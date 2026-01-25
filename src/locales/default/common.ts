@@ -256,7 +256,7 @@ export default {
   'cmdk.themeLight': 'Light',
   'cmdk.toOpen': 'Open',
   'cmdk.toSelect': 'Select',
-
+  'cmdk.workbench': 'Workbench',
   'confirm': 'Confirm',
   'contact': 'Contact Us',
   'copy': 'Copy',
@@ -475,6 +475,7 @@ export default {
   'tab.search': 'Search',
   'tab.setting': 'Settings',
   'tab.video': 'Video',
+  'tab.workbench': 'Workbench',
   'telemetry.allow': 'Allow',
   'telemetry.deny': 'Deny',
   'telemetry.desc':

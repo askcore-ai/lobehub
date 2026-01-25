@@ -16,6 +16,7 @@ export enum SidebarTabKey {
   Pages = 'pages',
   Resource = 'resource',
   Setting = 'settings',
+  Workbench = 'workbench',
 }
 
 export enum ChatSettingsTabs {

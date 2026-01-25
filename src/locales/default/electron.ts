@@ -23,6 +23,7 @@ export default {
   'navigation.recentView': 'Recent pages',
   'navigation.resources': 'Resources',
   'navigation.settings': 'Settings',
+  'navigation.workbench': 'Workbench',
   'notification.finishChatGeneration': 'AI message generation completed',
   'proxy.auth': 'Authentication Required',
   'proxy.authDesc': 'If the proxy server requires a username and password',

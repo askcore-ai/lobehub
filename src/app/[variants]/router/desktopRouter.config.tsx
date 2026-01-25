@@ -376,6 +376,46 @@ export const desktopRoutes: RouteConfig[] = [
         path: 'image',
       },
 
+      // Workbench routes
+      {
+        children: [
+          {
+            element: redirectElement('/workbench/task-center'),
+            index: true,
+          },
+          {
+            element: dynamicElement(
+              () => import('../(main)/workbench/admin/tenant-picker'),
+              'Desktop > Workbench > Admin > Tenant Picker',
+            ),
+            path: 'admin/tenant-picker',
+          },
+          {
+            element: dynamicElement(
+              () => import('../(main)/workbench/task-center'),
+              'Desktop > Workbench > Task Center',
+            ),
+            path: 'task-center',
+          },
+          {
+            element: dynamicElement(
+              () => import('../(main)/workbench/task-center'),
+              'Desktop > Workbench > Task Center > Detail',
+            ),
+            path: 'task-center/:runId',
+          },
+          {
+            element: dynamicElement(
+              () => import('../(main)/workbench/workspace'),
+              'Desktop > Workbench > Workspace',
+            ),
+            path: 'workspace',
+          },
+        ],
+        errorElement: <ErrorBoundary resetPath="/workbench/task-center" />,
+        path: 'workbench',
+      },
+
       ...BusinessDesktopRoutesWithMainLayout,
 
       // Pages routes

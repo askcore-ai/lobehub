@@ -59,7 +59,7 @@ const ExperienceDropdown = memo<ExperienceDropdownProps>(({ id, size = 'small' }
   ];
 
   return (
-    <DropdownMenu items={menuItems}>
+    <DropdownMenu items={menuItems} nativeButton={false}>
       <ActionIcon icon={MoreHorizontal} size={size} />
     </DropdownMenu>
   );

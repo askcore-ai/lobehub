@@ -48,7 +48,7 @@ const PluginTag = memo<PluginTagProps>(({ plugins }) => {
   const count = plugins.length;
 
   return (
-    <DropdownMenu items={items}>
+    <DropdownMenu items={items} nativeButton={false}>
       <div>
         <Tag>
           {<Icon icon={LucideToyBrick} />}

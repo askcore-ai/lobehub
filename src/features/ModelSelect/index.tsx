@@ -1,6 +1,6 @@
 import { LobeSelect, type LobeSelectProps, TooltipGroup } from '@lobehub/ui';
 import { createStaticStyles } from 'antd-style';
-import { type ReactNode, memo, useMemo } from 'react';
+import { type ComponentProps, type ReactNode, memo, useMemo } from 'react';
 
 import { ModelItemRender, ProviderItemRender } from '@/components/ModelSelect';
 import { useEnabledChatModels } from '@/hooks/useEnabledChatModels';
@@ -22,6 +22,8 @@ interface ModelOption {
   provider: string;
   value: string;
 }
+
+type ModelItemRenderProps = ComponentProps<typeof ModelItemRender>;
 
 interface ModelSelectProps extends Pick<LobeSelectProps, 'loading' | 'size' | 'style' | 'variant'> {
   defaultValue?: { model: string; provider?: string };
@@ -58,7 +60,7 @@ const ModelSelect = memo<ModelSelectProps>(
 
         return models.map((model) => ({
           ...model,
-          label: <ModelItemRender {...model} {...model.abilities} showInfoTag={false} />,
+          label: <ModelItemRender {...model} showInfoTag={false} />,
           provider: provider.id,
           value: `${provider.id}/${model.id}`,
         }));
@@ -100,17 +102,20 @@ const ModelSelect = memo<ModelSelectProps>(
             const model = (value as string).split('/').slice(1).join('/');
             onChange?.({ model, provider: (option as unknown as ModelOption).provider });
           }}
-          optionRender={(option) => {
-            const data = option as unknown as ModelOption;
-            return (
-              <ModelItemRender
-                displayName={data.displayName}
-                id={data.id}
-                showInfoTag
-                {...data.abilities}
-              />
-            );
-          }}
+          optionRender={(option) =>
+            (() => {
+              const raw = (option as unknown as { data?: unknown }).data ?? option;
+              const data = raw as Record<string, unknown> | undefined;
+              if (!data || typeof data.id !== 'string') return null;
+
+              const rest = { ...data } as Record<string, unknown>;
+              delete rest.label;
+              delete rest.provider;
+              delete rest.value;
+
+              return <ModelItemRender {...(rest as unknown as ModelItemRenderProps)} showInfoTag />;
+            })()
+          }
           options={options}
           popupClassName={styles.popup}
           popupMatchSelectWidth={false}

@@ -2,6 +2,7 @@ import {
   BrainCircuit,
   FilePenIcon,
   Image,
+  LayoutDashboardIcon,
   LibraryBigIcon,
   type LucideIcon,
   Settings,
@@ -86,6 +87,15 @@ export const NAVIGATION_ROUTES: NavigationRoute[] = [
     pathPrefix: '/memory',
   },
   {
+    cmdkKey: 'cmdk.workbench',
+    electronKey: 'navigation.workbench',
+    icon: LayoutDashboardIcon,
+    id: 'workbench',
+    keywords: ['workbench', 'workflow', 'tasks', 'runs'],
+    path: '/workbench/task-center',
+    pathPrefix: '/workbench',
+  },
+  {
     cmdkKey: 'cmdk.settings',
     electronKey: 'navigation.settings',
     icon: Settings,
@@ -108,5 +118,5 @@ export const getRouteById = (id: string): NavigationRoute | undefined =>
  */
 export const getNavigableRoutes = (): NavigationRoute[] =>
   NAVIGATION_ROUTES.filter((r) =>
-    ['community', 'image', 'resource', 'page', 'memory'].includes(r.id),
+    ['community', 'image', 'resource', 'page', 'memory', 'workbench'].includes(r.id),
   );

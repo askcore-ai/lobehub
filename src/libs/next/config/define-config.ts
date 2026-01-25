@@ -338,6 +338,7 @@ export function defineConfig(config: CustomNextConfig) {
         : codeInspectorPlugin({
             bundler: 'turbopack',
             hotKeys: ['altKey', 'ctrlKey'],
+            port: 15_678,
           }),
       ...config.turbopack,
     },

@@ -70,6 +70,7 @@ const LangButton = memo<{ placement?: DropdownMenuProps['placement']; size?: num
     return (
       <DropdownMenu
         items={items}
+        nativeButton={false}
         placement={placement}
         popupProps={{
           style: {

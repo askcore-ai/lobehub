@@ -98,6 +98,7 @@ const TopicSelector = memo<TopicSelectorProps>(({ agentId }) => {
           />
           <DropdownMenu
             items={items}
+            nativeButton={false}
             placement="bottomRight"
             popupProps={{ style: { maxHeight: 400, minWidth: 280, overflowY: 'auto' } }}
             triggerProps={{ disabled: isEmpty }}

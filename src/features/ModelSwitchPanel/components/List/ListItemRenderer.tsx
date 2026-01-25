@@ -114,12 +114,7 @@ export const ListItemRenderer = memo<ListItemRendererProps>(
             }}
             variant={isActive ? 'filled' : 'borderless'}
           >
-            <ModelItemRender
-              {...item.model}
-              {...item.model.abilities}
-              newBadgeLabel={newLabel}
-              showInfoTag
-            />
+            <ModelItemRender {...item.model} newBadgeLabel={newLabel} showInfoTag />
           </Block>
         );
       }

@@ -9,6 +9,7 @@ import { MemoryManifest } from '@lobechat/builtin-tool-memory';
 import { NotebookManifest } from '@lobechat/builtin-tool-notebook';
 import { PageAgentManifest } from '@lobechat/builtin-tool-page-agent';
 import { WebBrowsingManifest } from '@lobechat/builtin-tool-web-browsing';
+import { WorkbenchDemoManifest } from '@lobechat/builtin-tool-workbench-demo';
 
 import { ArtifactsManifest } from './artifacts';
 
@@ -25,4 +26,5 @@ export const builtinToolIdentifiers: string[] = [
   GTDManifest.identifier,
   MemoryManifest.identifier,
   NotebookManifest.identifier,
+  WorkbenchDemoManifest.identifier,
 ];

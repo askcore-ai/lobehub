@@ -10,14 +10,7 @@ interface SingleProviderModelItemProps {
 }
 
 export const SingleProviderModelItem = memo<SingleProviderModelItemProps>(({ data, newLabel }) => {
-  return (
-    <ModelItemRender
-      {...data.model}
-      {...data.model.abilities}
-      newBadgeLabel={newLabel}
-      showInfoTag={true}
-    />
-  );
+  return <ModelItemRender {...data.model} newBadgeLabel={newLabel} showInfoTag={true} />;
 });
 
 SingleProviderModelItem.displayName = 'SingleProviderModelItem';

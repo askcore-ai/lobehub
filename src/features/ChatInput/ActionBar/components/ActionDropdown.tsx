@@ -263,7 +263,9 @@ const ActionDropdown = memo<ActionDropdownProps>(
         onOpenChangeComplete={handleOpenChangeComplete}
         open={open}
       >
-        <DropdownMenuTrigger {...resolvedTriggerProps}>{children}</DropdownMenuTrigger>
+        <DropdownMenuTrigger nativeButton={false} {...resolvedTriggerProps}>
+          {children}
+        </DropdownMenuTrigger>
         <DropdownMenuPortal container={resolvedPortalContainer} {...restPortalProps}>
           <DropdownMenuPositioner
             {...positionerProps}

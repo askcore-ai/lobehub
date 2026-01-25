@@ -53,14 +53,10 @@ export const MultipleProvidersModelItem = memo<MultipleProvidersModelItemProps>(
       <DropdownMenuSubmenuRoot onOpenChange={setSubmenuOpen} open={submenuOpen}>
         <DropdownMenuSubmenuTrigger
           className={cx(menuSharedStyles.item, isActive && styles.menuItemActive)}
+          nativeButton={false}
           style={{ paddingBlock: 8, paddingInline: 8 }}
         >
-          <ModelItemRender
-            {...data.model}
-            {...data.model.abilities}
-            newBadgeLabel={newLabel}
-            showInfoTag={true}
-          />
+          <ModelItemRender {...data.model} abilities={data.model.abilities} newBadgeLabel={newLabel} showInfoTag />
         </DropdownMenuSubmenuTrigger>
         <DropdownMenuPortal>
           <DropdownMenuPositioner anchor={null} placement="rightTop" sideOffset={-4}>

@@ -78,10 +78,9 @@ const TelemetryStep = memo<TelemetryStepProps>(({ onNext }) => {
       </Flexbox>
       <Steps
         current={null as any}
-        direction={'vertical'}
         items={[
           {
-            description: (
+            content: (
               <Text as={'p'} color={cssVar.colorTextSecondary} style={{ marginBottom: 16 }}>
                 {t('telemetry.rows.create.desc')}
               </Text>
@@ -94,7 +93,7 @@ const TelemetryStep = memo<TelemetryStepProps>(({ onNext }) => {
             ),
           },
           {
-            description: (
+            content: (
               <Text as={'p'} color={cssVar.colorTextSecondary} style={{ marginBottom: 16 }}>
                 {t('telemetry.rows.collaborate.desc')}
               </Text>
@@ -107,7 +106,7 @@ const TelemetryStep = memo<TelemetryStepProps>(({ onNext }) => {
             ),
           },
           {
-            description: (
+            content: (
               <Text as={'p'} color={cssVar.colorTextSecondary}>
                 {t('telemetry.rows.evolve.desc')}
               </Text>
@@ -120,6 +119,7 @@ const TelemetryStep = memo<TelemetryStepProps>(({ onNext }) => {
             ),
           },
         ]}
+        orientation={'vertical'}
       />
       <Flexbox gap={8}>
         <Text as={'p'} color={cssVar.colorTextSecondary}>
