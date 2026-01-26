@@ -115,6 +115,34 @@ const WorkbenchPortalBody = memo(() => {
     { shouldRetryOnError: false },
   );
 
+  const fallbackHint = useMemo(() => {
+    if (!artifactDetail) return null;
+
+    const isRenderedByHelloPlugin =
+      isHelloPluginEnabled &&
+      ((artifactDetail.type === 'hello.note' && artifactDetail.schema_version === 'v1') ||
+        (artifactDetail.type === 'hello.table' && artifactDetail.schema_version === 'v1'));
+
+    if (isRenderedByHelloPlugin) return null;
+
+    const typeKey = `${artifactDetail.type}@${artifactDetail.schema_version}`;
+    const producedByPluginId = artifactDetail.produced_by_plugin_id;
+
+    if (actionsError) {
+      return `Plugin status is unknown; showing a safe fallback view for ${typeKey}.`;
+    }
+
+    if (producedByPluginId && !enabledPluginIds.has(producedByPluginId)) {
+      return `Plugin "${producedByPluginId}" is not enabled; showing a safe fallback view for ${typeKey}.`;
+    }
+
+    if (producedByPluginId) {
+      return `No renderer is available for ${typeKey} (produced by "${producedByPluginId}"); showing a safe fallback view.`;
+    }
+
+    return `No renderer is available for ${typeKey}; showing a safe fallback view.`;
+  }, [actionsError, artifactDetail, enabledPluginIds, isHelloPluginEnabled]);
+
   const columns = useMemo<ColumnsType<WorkbenchArtifact>>(
     () => [
       { dataIndex: 'artifact_id', key: 'artifact_id', title: 'Artifact' },
@@ -239,11 +267,7 @@ const WorkbenchPortalBody = memo(() => {
             Artifact detail
           </Typography.Title>
 
-          {!isHelloPluginEnabled ? (
-            <Typography.Text type="secondary">
-              Plugin may be disabled; showing fallback renderer.
-            </Typography.Text>
-          ) : null}
+          {fallbackHint ? <Typography.Text type="secondary">{fallbackHint}</Typography.Text> : null}
 
           <Flexbox
             style={{
