@@ -9,6 +9,8 @@ import Conversation from './features/Conversation';
 import PageTitle from './features/PageTitle';
 import Portal from './features/Portal';
 import TelemetryNotification from './features/TelemetryNotification';
+import WorkbenchAutoOpen from './features/WorkbenchAutoOpen';
+import WorkbenchTaskCenterOverlay from './features/WorkbenchTaskCenterOverlay';
 
 const ChatPage = memo(() => {
   return (
@@ -22,6 +24,8 @@ const ChatPage = memo(() => {
       >
         <Conversation />
         <Portal />
+        <WorkbenchAutoOpen />
+        <WorkbenchTaskCenterOverlay />
       </Flexbox>
       <MainInterfaceTracker />
       <TelemetryNotification mobile={false} />

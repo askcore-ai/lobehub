@@ -15,6 +15,8 @@ import { MessageDetail } from './MessageDetail';
 import { Notebook } from './Notebook';
 import { Plugins } from './Plugins';
 import { Thread } from './Thread';
+import WorkbenchBody from './Workbench/Body';
+import WorkbenchTitle from './Workbench/Title';
 import Header from './components/Header';
 import { type PortalImpl } from './type';
 
@@ -32,6 +34,7 @@ const VIEW_COMPONENTS: Record<PortalViewType, PortalImpl> = {
   [PortalViewType.ToolUI]: Plugins,
   [PortalViewType.Thread]: Thread,
   [PortalViewType.GroupThread]: GroupThread,
+  [PortalViewType.Workbench]: { Body: WorkbenchBody, Title: WorkbenchTitle },
 };
 
 // Default Home component

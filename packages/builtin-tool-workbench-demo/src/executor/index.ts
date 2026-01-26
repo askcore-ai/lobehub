@@ -14,12 +14,23 @@ class WorkbenchDemoExecutor extends BaseExecutor<typeof WorkbenchDemoApiName> {
     ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> => {
     try {
+      if (!ctx.topicId) {
+        return {
+          content:
+            'Save this conversation first. Workbench runs and artifacts must be linked to a durable conversation.',
+          error: { message: 'Conversation not saved', type: 'WorkbenchConversationUnsaved' },
+          success: false,
+        };
+      }
+
+      const conversationId = ctx.threadId ? `lc_thread:${ctx.threadId}` : `lc_topic:${ctx.topicId}`;
+
       const idempotencyKey = `workbench-demo:${ctx.messageId}`;
       const input: Record<string, unknown> = {};
       if (params.note) input.note = params.note;
 
       const res = await fetch('/api/workbench/runs', {
-        body: JSON.stringify({ input, workflow_name: 'workbench.demo' }),
+        body: JSON.stringify({ conversation_id: conversationId, input, workflow_name: 'workbench.demo' }),
         headers: {
           'Content-Type': 'application/json',
           'Idempotency-Key': idempotencyKey,
@@ -40,7 +51,9 @@ class WorkbenchDemoExecutor extends BaseExecutor<typeof WorkbenchDemoApiName> {
       const runId = data.run_id;
 
       return {
-        content: `Started demo run ${runId}. Open Task Center: /workbench/task-center/${runId}`,
+        content:
+          `Started demo run ${runId}. ` +
+          'Watch the in-chat Task Center for status; artifacts will appear in the right Workbench panel.',
         state: { runId },
         success: true,
       };

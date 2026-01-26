@@ -190,6 +190,7 @@ export const pluginTypes: StateCreator<
           registerAfterCompletion,
           signal: operation?.abortController?.signal,
           stepContext,
+          threadId: operation?.context?.threadId ?? null,
           topicId,
         });
 

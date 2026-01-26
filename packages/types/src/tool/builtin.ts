@@ -351,6 +351,12 @@ export interface BuiltinToolContext {
    * Used by tools that need to create messages or operations within a topic
    */
   topicId?: string | null;
+
+  /**
+   * The current thread ID (only available when operating within a thread)
+   * Used by tools that require stable per-thread context
+   */
+  threadId?: string | null;
 }
 
 /**
