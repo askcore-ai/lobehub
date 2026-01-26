@@ -1,6 +1,6 @@
 import { SignJWT } from 'jose';
 
-import { enableBetterAuth } from '@/envs/auth';
+import { authEnv } from '@/envs/auth';
 
 const WORKBENCH_ADMIN_TENANT_COOKIE = 'workbench_admin_tenant_id';
 
@@ -75,7 +75,7 @@ const resolveWorkbenchIdentity = (session: any): WorkbenchIdentity => {
 };
 
 export const mintWorkbenchIdentityToken = async (requestHeaders: Headers): Promise<string> => {
-  if (!enableBetterAuth) throw new Error('Better Auth is disabled');
+  if (!authEnv.AUTH_SECRET) throw new Error('Better Auth is disabled');
 
   const { auth } = await import('@/auth');
   const session = await auth.api.getSession({ headers: requestHeaders });
@@ -100,7 +100,7 @@ export const mintWorkbenchIdentityToken = async (requestHeaders: Headers): Promi
 const getWorkbenchAuthContext = async (
   requestHeaders: Headers,
 ): Promise<{ identity: WorkbenchIdentity; token: string }> => {
-  if (!enableBetterAuth) throw new Error('Better Auth is disabled');
+  if (!authEnv.AUTH_SECRET) throw new Error('Better Auth is disabled');
 
   const { auth } = await import('@/auth');
   const session = await auth.api.getSession({ headers: requestHeaders });
