@@ -9,6 +9,7 @@ import { MemoryManifest } from '@lobechat/builtin-tool-memory';
 import { NotebookManifest } from '@lobechat/builtin-tool-notebook';
 import { PageAgentManifest } from '@lobechat/builtin-tool-page-agent';
 import { WebBrowsingManifest } from '@lobechat/builtin-tool-web-browsing';
+import { HelloPluginManifest } from '@lobechat/builtin-tool-hello-plugin';
 import { WorkbenchDemoManifest } from '@lobechat/builtin-tool-workbench-demo';
 
 import { ArtifactsManifest } from './artifacts';
@@ -27,4 +28,5 @@ export const builtinToolIdentifiers: string[] = [
   MemoryManifest.identifier,
   NotebookManifest.identifier,
   WorkbenchDemoManifest.identifier,
+  HelloPluginManifest.identifier,
 ];

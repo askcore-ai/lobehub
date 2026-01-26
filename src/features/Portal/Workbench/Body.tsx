@@ -3,7 +3,7 @@
 import { Flexbox } from '@lobehub/ui';
 import { Button, Empty, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { memo, useEffect, useMemo } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 
 import Loading from '@/components/Loading/BrandTextLoading';
@@ -11,9 +11,16 @@ import { useChatStore } from '@/store/chat';
 import { chatPortalSelectors } from '@/store/chat/selectors';
 import { PortalViewType } from '@/store/chat/slices/portal/initialState';
 
+import { HelloNoteDetail, type HelloNoteContent, HelloNoteList } from './renderers/hello/HelloNote';
+import { HelloTableDetail, type HelloTableContent, HelloTableList } from './renderers/hello/HelloTable';
+import HelloTableEditor from './renderers/hello/HelloTableEditor';
+
 type WorkbenchArtifact = {
   artifact_id: string;
+  content: Record<string, unknown>;
   created_at: string;
+  produced_by_action_id: string | null;
+  produced_by_plugin_id: string | null;
   run_id: number;
   schema_version: string;
   summary: string | null;
@@ -22,14 +29,16 @@ type WorkbenchArtifact = {
 };
 
 type WorkbenchArtifactDetail = WorkbenchArtifact & {
-  content: Record<string, unknown>;
   conversation_id: string | null;
   invocation_id: string | null;
-  produced_by_action_id: string | null;
-  produced_by_plugin_id: string | null;
   redaction: Record<string, unknown> | null;
   references: unknown[];
   supersedes_artifact_id: string | null;
+};
+
+type WorkbenchAction = {
+  action_id: string;
+  plugin_id: string;
 };
 
 const fetchJson = async <T,>(url: string): Promise<T> => {
@@ -59,6 +68,7 @@ const WorkbenchPortalBody = memo(() => {
   const conversationId = workbenchView?.conversationId;
   const runIdFilter = workbenchView?.runId;
   const selectedArtifactId = workbenchView?.artifactId;
+  const [isEditing, setIsEditing] = useState(false);
 
   const { data: artifacts = [], isLoading: isLoadingArtifacts } = useSWR<WorkbenchArtifact[]>(
     conversationId ? ['workbench:artifacts', conversationId, runIdFilter ?? null] : null,
@@ -69,6 +79,16 @@ const WorkbenchPortalBody = memo(() => {
     },
     { refreshInterval: 2000 },
   );
+
+  const { data: actions, error: actionsError } = useSWR<WorkbenchAction[]>(
+    conversationId ? 'workbench:actions' : null,
+    async () => fetchJson('/api/workbench/actions'),
+    { refreshInterval: 15000, shouldRetryOnError: false },
+  );
+
+  const enabledPluginIds = useMemo(() => new Set((actions || []).map((a) => a.plugin_id)), [actions]);
+  const isHelloPluginEnabled =
+    actionsError != null ? true : enabledPluginIds.has('aitutor-hello-plugin');
 
   useEffect(() => {
     if (!conversationId) return;
@@ -84,6 +104,10 @@ const WorkbenchPortalBody = memo(() => {
     });
   }, [artifacts, conversationId, runIdFilter, selectedArtifactId]);
 
+  useEffect(() => {
+    setIsEditing(false);
+  }, [selectedArtifactId]);
+
   const { data: artifactDetail } = useSWR<WorkbenchArtifactDetail | undefined>(
     selectedArtifactId ? ['workbench:artifact', selectedArtifactId] : null,
     async ([, artifactId]: readonly [string, string]) =>
@@ -96,6 +120,23 @@ const WorkbenchPortalBody = memo(() => {
       { dataIndex: 'artifact_id', key: 'artifact_id', title: 'Artifact' },
       { dataIndex: 'type', key: 'type', title: 'Type' },
       { dataIndex: 'title', key: 'title', title: 'Title' },
+      {
+        key: 'preview',
+        render: (_, record) => {
+          if (!isHelloPluginEnabled) return <Typography.Text type="secondary">{record.summary || '—'}</Typography.Text>;
+
+          if (record.type === 'hello.note' && record.schema_version === 'v1') {
+            return <HelloNoteList content={record.content as HelloNoteContent} />;
+          }
+
+          if (record.type === 'hello.table' && record.schema_version === 'v1') {
+            return <HelloTableList content={record.content as HelloTableContent} />;
+          }
+
+          return <Typography.Text type="secondary">{record.summary || '—'}</Typography.Text>;
+        },
+        title: 'Preview',
+      },
       {
         dataIndex: 'schema_version',
         key: 'schema_version',
@@ -127,7 +168,7 @@ const WorkbenchPortalBody = memo(() => {
         title: 'Actions',
       },
     ],
-    [conversationId, runIdFilter],
+    [conversationId, isHelloPluginEnabled, runIdFilter],
   );
 
   if (!conversationId) {
@@ -198,6 +239,12 @@ const WorkbenchPortalBody = memo(() => {
             Artifact detail
           </Typography.Title>
 
+          {!isHelloPluginEnabled ? (
+            <Typography.Text type="secondary">
+              Plugin may be disabled; showing fallback renderer.
+            </Typography.Text>
+          ) : null}
+
           <Flexbox
             style={{
               border: '1px solid rgba(0,0,0,0.08)',
@@ -207,9 +254,36 @@ const WorkbenchPortalBody = memo(() => {
               padding: 12,
             }}
           >
-            <pre style={{ margin: 0 }}>
-              {artifactDetail ? JSON.stringify(artifactDetail, null, 2) : 'Loading...'}
-            </pre>
+            {artifactDetail ? (
+              artifactDetail.type === 'hello.note' &&
+              artifactDetail.schema_version === 'v1' &&
+              isHelloPluginEnabled ? (
+                <HelloNoteDetail content={artifactDetail.content as HelloNoteContent} />
+              ) : artifactDetail.type === 'hello.table' &&
+                artifactDetail.schema_version === 'v1' &&
+                isHelloPluginEnabled ? (
+                <Flexbox gap={12}>
+                  <HelloTableDetail content={artifactDetail.content as HelloTableContent} />
+                  <Space>
+                    <Button onClick={() => setIsEditing((v) => !v)} size="small">
+                      {isEditing ? 'Close editor' : 'Edit'}
+                    </Button>
+                  </Space>
+                  {isEditing ? (
+                    <HelloTableEditor
+                      artifactId={artifactDetail.artifact_id}
+                      conversationId={conversationId}
+                      initialContent={artifactDetail.content}
+                      onClose={() => setIsEditing(false)}
+                    />
+                  ) : null}
+                </Flexbox>
+              ) : (
+                <pre style={{ margin: 0 }}>{JSON.stringify(artifactDetail, null, 2)}</pre>
+              )
+            ) : (
+              <Typography.Text type="secondary">Loading…</Typography.Text>
+            )}
           </Flexbox>
         </Flexbox>
       ) : null}

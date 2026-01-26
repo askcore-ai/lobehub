@@ -13,6 +13,7 @@ import { knowledgeBaseExecutor } from '@lobechat/builtin-tool-knowledge-base/exe
 import { localSystemExecutor } from '@lobechat/builtin-tool-local-system/executor';
 import { memoryExecutor } from '@lobechat/builtin-tool-memory/executor';
 import { notebookExecutor } from '@lobechat/builtin-tool-notebook/executor';
+import { helloPluginExecutor } from '@lobechat/builtin-tool-hello-plugin/executor';
 import { workbenchDemoExecutor } from '@lobechat/builtin-tool-workbench-demo/executor';
 
 import type { IBuiltinToolExecutor } from '../types';
@@ -131,6 +132,7 @@ registerExecutors([
   memoryExecutor,
   notebookExecutor,
   workbenchDemoExecutor,
+  helloPluginExecutor,
   pageAgentExecutor,
   webBrowsing,
 ]);
