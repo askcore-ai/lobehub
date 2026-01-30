@@ -79,7 +79,13 @@ const getRenderDisplayControl =
     if (!builtinTool) return 'collapsed';
 
     const api = builtinTool.manifest.api.find((a) => a.name === apiName);
-    return api?.renderDisplayControl ?? 'collapsed';
+    if (api?.renderDisplayControl) return api.renderDisplayControl;
+
+    // UX override: admin ops tool results should be expanded by default so users can
+    // immediately see the primary action (e.g., "Open result") without extra clicks.
+    if (identifier === 'admin.ops.v1') return 'expand';
+
+    return 'collapsed';
   };
 
 export const toolSelectors = {

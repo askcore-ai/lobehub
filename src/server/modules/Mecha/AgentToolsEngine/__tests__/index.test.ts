@@ -141,9 +141,9 @@ describe('createServerToolsEngine', () => {
 });
 
 describe('createServerAgentToolsEngine', () => {
-  it('should return a ToolsEngine instance', () => {
+  it('should return a ToolsEngine instance', async () => {
     const context = createMockContext();
-    const engine = createServerAgentToolsEngine(context, {
+    const engine = await createServerAgentToolsEngine(context, {
       agentConfig: { plugins: [] },
       model: 'gpt-4',
       provider: 'openai',
@@ -152,9 +152,9 @@ describe('createServerAgentToolsEngine', () => {
     expect(engine).toBeInstanceOf(ToolsEngine);
   });
 
-  it('should filter LocalSystem tool on server', () => {
+  it('should filter LocalSystem tool on server', async () => {
     const context = createMockContext();
-    const engine = createServerAgentToolsEngine(context, {
+    const engine = await createServerAgentToolsEngine(context, {
       agentConfig: { plugins: [LocalSystemManifest.identifier] },
       model: 'gpt-4',
       provider: 'openai',
@@ -170,9 +170,9 @@ describe('createServerAgentToolsEngine', () => {
     expect(result.enabledToolIds).not.toContain(LocalSystemManifest.identifier);
   });
 
-  it('should enable WebBrowsing when search mode is on', () => {
+  it('should enable WebBrowsing when search mode is on', async () => {
     const context = createMockContext();
-    const engine = createServerAgentToolsEngine(context, {
+    const engine = await createServerAgentToolsEngine(context, {
       agentConfig: {
         plugins: [WebBrowsingManifest.identifier],
         chatConfig: { searchMode: 'on' },
@@ -190,9 +190,9 @@ describe('createServerAgentToolsEngine', () => {
     expect(result.enabledToolIds).toContain(WebBrowsingManifest.identifier);
   });
 
-  it('should disable WebBrowsing when search mode is off', () => {
+  it('should disable WebBrowsing when search mode is off', async () => {
     const context = createMockContext();
-    const engine = createServerAgentToolsEngine(context, {
+    const engine = await createServerAgentToolsEngine(context, {
       agentConfig: {
         plugins: [WebBrowsingManifest.identifier],
         chatConfig: { searchMode: 'off' },
@@ -210,9 +210,9 @@ describe('createServerAgentToolsEngine', () => {
     expect(result.enabledToolIds).not.toContain(WebBrowsingManifest.identifier);
   });
 
-  it('should enable KnowledgeBase when hasEnabledKnowledgeBases is true', () => {
+  it('should enable KnowledgeBase when hasEnabledKnowledgeBases is true', async () => {
     const context = createMockContext();
-    const engine = createServerAgentToolsEngine(context, {
+    const engine = await createServerAgentToolsEngine(context, {
       agentConfig: { plugins: [KnowledgeBaseManifest.identifier] },
       model: 'gpt-4',
       provider: 'openai',
@@ -228,9 +228,9 @@ describe('createServerAgentToolsEngine', () => {
     expect(result.enabledToolIds).toContain(KnowledgeBaseManifest.identifier);
   });
 
-  it('should disable KnowledgeBase when hasEnabledKnowledgeBases is false', () => {
+  it('should disable KnowledgeBase when hasEnabledKnowledgeBases is false', async () => {
     const context = createMockContext();
-    const engine = createServerAgentToolsEngine(context, {
+    const engine = await createServerAgentToolsEngine(context, {
       agentConfig: { plugins: [KnowledgeBaseManifest.identifier] },
       model: 'gpt-4',
       provider: 'openai',
@@ -246,9 +246,9 @@ describe('createServerAgentToolsEngine', () => {
     expect(result.enabledToolIds).not.toContain(KnowledgeBaseManifest.identifier);
   });
 
-  it('should include default tools (WebBrowsing, KnowledgeBase)', () => {
+  it('should include default tools (WebBrowsing, KnowledgeBase)', async () => {
     const context = createMockContext();
-    const engine = createServerAgentToolsEngine(context, {
+    const engine = await createServerAgentToolsEngine(context, {
       agentConfig: {
         plugins: ['test-plugin'],
         chatConfig: { searchMode: 'on' },
@@ -270,11 +270,11 @@ describe('createServerAgentToolsEngine', () => {
     expect(result.enabledToolIds).toContain(KnowledgeBaseManifest.identifier);
   });
 
-  it('should return undefined tools when model does not support function calling', () => {
+  it('should return undefined tools when model does not support function calling', async () => {
     const context = createMockContext({
       isModelSupportToolUse: () => false,
     });
-    const engine = createServerAgentToolsEngine(context, {
+    const engine = await createServerAgentToolsEngine(context, {
       agentConfig: { plugins: ['test-plugin'] },
       model: 'gpt-3.5-turbo',
       provider: 'openai',

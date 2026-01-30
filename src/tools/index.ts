@@ -1,15 +1,16 @@
+import { AdminOpsManifest } from '@lobechat/builtin-tool-admin-ops';
 import { AgentBuilderManifest } from '@lobechat/builtin-tool-agent-builder';
 import { CloudSandboxManifest } from '@lobechat/builtin-tool-cloud-sandbox';
 import { GroupAgentBuilderManifest } from '@lobechat/builtin-tool-group-agent-builder';
 import { GroupManagementManifest } from '@lobechat/builtin-tool-group-management';
 import { GTDManifest } from '@lobechat/builtin-tool-gtd';
+import { HelloPluginManifest } from '@lobechat/builtin-tool-hello-plugin';
 import { KnowledgeBaseManifest } from '@lobechat/builtin-tool-knowledge-base';
 import { LocalSystemManifest } from '@lobechat/builtin-tool-local-system';
 import { MemoryManifest } from '@lobechat/builtin-tool-memory';
 import { NotebookManifest } from '@lobechat/builtin-tool-notebook';
 import { PageAgentManifest } from '@lobechat/builtin-tool-page-agent';
 import { WebBrowsingManifest } from '@lobechat/builtin-tool-web-browsing';
-import { HelloPluginManifest } from '@lobechat/builtin-tool-hello-plugin';
 import { WorkbenchDemoManifest } from '@lobechat/builtin-tool-workbench-demo';
 import { isDesktop } from '@lobechat/const';
 import { type LobeBuiltinTool } from '@lobechat/types';
@@ -87,6 +88,11 @@ export const builtinTools: LobeBuiltinTool[] = [
   {
     identifier: WorkbenchDemoManifest.identifier,
     manifest: WorkbenchDemoManifest,
+    type: 'builtin',
+  },
+  {
+    identifier: AdminOpsManifest.identifier,
+    manifest: AdminOpsManifest,
     type: 'builtin',
   },
   {

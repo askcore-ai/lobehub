@@ -92,7 +92,7 @@ export const NAVIGATION_ROUTES: NavigationRoute[] = [
     icon: LayoutDashboardIcon,
     id: 'workbench',
     keywords: ['workbench', 'workflow', 'tasks', 'runs'],
-    path: '/workbench/task-center',
+    path: '/workbench/workspace',
     pathPrefix: '/workbench',
   },
   {

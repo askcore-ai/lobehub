@@ -34,7 +34,14 @@ export type PortalViewData =
   | { file: PortalFile; type: PortalViewType.FilePreview }
   | { messageId: string; type: PortalViewType.MessageDetail }
   | { identifier: string; messageId: string; type: PortalViewType.ToolUI }
-  | { artifactId?: string; conversationId: string; runId?: number; type: PortalViewType.Workbench }
+  | {
+      artifactId?: string;
+      backToArtifactId?: string;
+      backToRunId?: number;
+      conversationId: string;
+      runId?: number;
+      type: PortalViewType.Workbench;
+    }
   | { startMessageId?: string; threadId?: string; type: PortalViewType.Thread }
   | { agentId: string; type: PortalViewType.GroupThread };
 

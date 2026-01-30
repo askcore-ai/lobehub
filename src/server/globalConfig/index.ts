@@ -93,7 +93,7 @@ export const getServerGlobalConfig = async () => {
     oAuthSSOProviders: getBetterAuthSSOProviders(),
     systemAgent: parseSystemAgent(appEnv.SYSTEM_AGENT),
     telemetry: {
-      langfuse: langfuseEnv.ENABLE_LANGFUSE,
+      langfuse: !!(langfuseEnv.LANGFUSE_PUBLIC_KEY && langfuseEnv.LANGFUSE_SECRET_KEY),
     },
   };
 

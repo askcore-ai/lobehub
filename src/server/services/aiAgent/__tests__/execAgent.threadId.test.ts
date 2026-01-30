@@ -89,7 +89,7 @@ vi.mock('@/server/services/agentRuntime', () => ({
 
 // Mock Mecha modules
 vi.mock('@/server/modules/Mecha', () => ({
-  createServerAgentToolsEngine: vi.fn().mockReturnValue({
+  createServerAgentToolsEngine: vi.fn().mockResolvedValue({
     generateToolsDetailed: vi.fn().mockReturnValue({ enabledToolIds: [], tools: [] }),
     getEnabledPluginManifests: vi.fn().mockReturnValue(new Map()),
   }),

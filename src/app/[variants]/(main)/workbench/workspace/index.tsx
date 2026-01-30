@@ -4,7 +4,7 @@ import { Flexbox } from '@lobehub/ui';
 import { App, Button, Select, Space, Table, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { memo, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import useSWR from 'swr';
 
 import Loading from '@/components/Loading/BrandTextLoading';
@@ -37,7 +37,6 @@ const fetchJson = async <T,>(url: string): Promise<T> => {
 
 const Workspace = memo(() => {
   const { message } = App.useApp();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [selectedRunId, setSelectedRunId] = useState<number | null>(() => {
@@ -109,7 +108,6 @@ const Workspace = memo(() => {
         </Typography.Title>
 
         <Space wrap>
-          <Button onClick={() => navigate('/workbench/task-center')}>Task Center</Button>
           <Select
             onChange={(value) => {
               setSelectedArtifactId(null);

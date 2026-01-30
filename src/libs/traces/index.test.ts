@@ -8,19 +8,23 @@ import * as server from '@/envs/langfuse';
 import { TraceClient } from './index';
 
 describe('TraceClient', () => {
-  it('should not initialize Langfuse client when ENABLE_LANGFUSE is false', () => {
+  it('should not initialize Langfuse client when keys are missing', () => {
     vi.spyOn(server, 'getLangfuseConfig').mockReturnValue({
-      ENABLE_LANGFUSE: false,
+      LANGFUSE_PUBLIC_KEY: '',
+      LANGFUSE_SECRET_KEY: '',
+      LANGFUSE_HOST: 'http://localhost:13000',
     } as any);
     const client = new TraceClient();
     expect(client['_client']).toBeUndefined();
   });
 
-  it('should throw error if LANGFUSE keys are missing', () => {
+  it('should not throw if LANGFUSE keys are missing', () => {
     vi.spyOn(server, 'getLangfuseConfig').mockReturnValue({
-      ENABLE_LANGFUSE: true,
+      LANGFUSE_PUBLIC_KEY: '',
+      LANGFUSE_SECRET_KEY: '',
+      LANGFUSE_HOST: 'http://localhost:13000',
     } as any);
-    expect(() => new TraceClient()).toThrow('NO_LANGFUSE_KEY_ERROR');
+    expect(() => new TraceClient()).not.toThrow();
   });
 
   it('should call trace method of Langfuse client', () => {
@@ -29,7 +33,6 @@ describe('TraceClient', () => {
     vi.spyOn(Langfuse.prototype, 'trace').mockImplementation(mockTrace);
 
     vi.spyOn(server, 'getLangfuseConfig').mockReturnValue({
-      ENABLE_LANGFUSE: true,
       LANGFUSE_PUBLIC_KEY: 'public-key',
       LANGFUSE_SECRET_KEY: 'secret-key',
       LANGFUSE_HOST: 'host',
@@ -47,7 +50,6 @@ describe('TraceClient', () => {
 
     vi.spyOn(Langfuse.prototype, 'shutdownAsync').mockImplementation(mockShutdownAsync);
     vi.spyOn(server, 'getLangfuseConfig').mockReturnValue({
-      ENABLE_LANGFUSE: true,
       LANGFUSE_PUBLIC_KEY: 'public-key',
       LANGFUSE_SECRET_KEY: 'secret-key',
       LANGFUSE_HOST: 'host',

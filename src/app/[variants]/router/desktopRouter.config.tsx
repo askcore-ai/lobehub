@@ -380,7 +380,7 @@ export const desktopRoutes: RouteConfig[] = [
       {
         children: [
           {
-            element: redirectElement('/workbench/task-center'),
+            element: redirectElement('/workbench/workspace'),
             index: true,
           },
           {
@@ -412,7 +412,7 @@ export const desktopRoutes: RouteConfig[] = [
             path: 'workspace',
           },
         ],
-        errorElement: <ErrorBoundary resetPath="/workbench/task-center" />,
+        errorElement: <ErrorBoundary resetPath="/workbench/workspace" />,
         path: 'workbench',
       },
 

@@ -227,7 +227,7 @@ export class AiAgentService {
       isModelSupportToolUse,
     };
 
-    const toolsEngine = createServerAgentToolsEngine(toolsContext, {
+    const toolsEngine = await createServerAgentToolsEngine(toolsContext, {
       additionalManifests: [...lobehubSkillManifests, ...klavisManifests],
       agentConfig: {
         chatConfig: agentConfig.chatConfig ?? undefined,

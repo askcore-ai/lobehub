@@ -4,16 +4,17 @@
  * Central registry for all builtin tool executors.
  * Executors are registered as class instances by identifier.
  */
+import { adminOpsExecutor } from '@lobechat/builtin-tool-admin-ops/executor';
 import { agentBuilderExecutor } from '@lobechat/builtin-tool-agent-builder/executor';
 import { cloudSandboxExecutor } from '@lobechat/builtin-tool-cloud-sandbox/executor';
 import { groupAgentBuilderExecutor } from '@lobechat/builtin-tool-group-agent-builder/executor';
 import { groupManagementExecutor } from '@lobechat/builtin-tool-group-management/executor';
 import { gtdExecutor } from '@lobechat/builtin-tool-gtd/executor';
+import { helloPluginExecutor } from '@lobechat/builtin-tool-hello-plugin/executor';
 import { knowledgeBaseExecutor } from '@lobechat/builtin-tool-knowledge-base/executor';
 import { localSystemExecutor } from '@lobechat/builtin-tool-local-system/executor';
 import { memoryExecutor } from '@lobechat/builtin-tool-memory/executor';
 import { notebookExecutor } from '@lobechat/builtin-tool-notebook/executor';
-import { helloPluginExecutor } from '@lobechat/builtin-tool-hello-plugin/executor';
 import { workbenchDemoExecutor } from '@lobechat/builtin-tool-workbench-demo/executor';
 
 import type { IBuiltinToolExecutor } from '../types';
@@ -132,6 +133,7 @@ registerExecutors([
   memoryExecutor,
   notebookExecutor,
   workbenchDemoExecutor,
+  adminOpsExecutor,
   helloPluginExecutor,
   pageAgentExecutor,
   webBrowsing,

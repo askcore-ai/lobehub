@@ -1,7 +1,7 @@
 import { BaseExecutor, type BuiltinToolContext, type BuiltinToolResult } from '@lobechat/types';
 
 import { HelloPluginIdentifier } from '../manifest';
-import { type HelloRunParams, type HelloSaveParams, HelloPluginApiName } from '../types';
+import { HelloPluginApiName, type HelloRunParams, type HelloSaveParams } from '../types';
 
 type StartInvocationResponse = { invocation_id: string; run_id: number };
 
@@ -14,7 +14,10 @@ class HelloPluginExecutor extends BaseExecutor<typeof HelloPluginApiName> {
   readonly identifier = HelloPluginIdentifier;
   protected readonly apiEnum = HelloPluginApiName;
 
-  helloRun = async (params: HelloRunParams, ctx: BuiltinToolContext): Promise<BuiltinToolResult> => {
+  helloRun = async (
+    params: HelloRunParams,
+    ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> => {
     try {
       const conversationId = _conversationId(ctx);
       if (!conversationId) {
@@ -63,7 +66,7 @@ class HelloPluginExecutor extends BaseExecutor<typeof HelloPluginApiName> {
       return {
         content:
           `Started hello run ${runId}. ` +
-          'Watch the in-chat Task Center for status; artifacts will appear in the right Workbench panel.',
+          'Open Workbench → Workspace and select this run to view status and artifacts.',
         state: { runId },
         success: true,
       };
@@ -77,7 +80,10 @@ class HelloPluginExecutor extends BaseExecutor<typeof HelloPluginApiName> {
     }
   };
 
-  helloSave = async (params: HelloSaveParams, ctx: BuiltinToolContext): Promise<BuiltinToolResult> => {
+  helloSave = async (
+    params: HelloSaveParams,
+    ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> => {
     try {
       const conversationId = _conversationId(ctx);
       if (!conversationId) {
@@ -130,7 +136,7 @@ class HelloPluginExecutor extends BaseExecutor<typeof HelloPluginApiName> {
       return {
         content:
           `Started hello save run ${runId}. ` +
-          'Watch the in-chat Task Center for status; the updated artifact will appear in the right Workbench panel.',
+          'Open Workbench → Workspace and select this run to view status and artifacts.',
         state: { runId },
         success: true,
       };

@@ -22,6 +22,8 @@ export interface ServerAgentToolsContext {
 export interface ServerAgentToolsEngineConfig {
   /** Additional manifests to include (e.g., Klavis tools) */
   additionalManifests?: LobeToolManifest[];
+  /** Override builtin tool manifests (server-only) */
+  builtinManifests?: LobeToolManifest[];
   /** Default tool IDs that will always be added */
   defaultToolIds?: string[];
   /** Custom enable checker for plugins */

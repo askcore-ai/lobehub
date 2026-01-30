@@ -103,7 +103,7 @@ vi.mock('@/server/services/queue', () => ({
 
 // Mock Mecha module
 vi.mock('@/server/modules/Mecha', () => ({
-  createServerAgentToolsEngine: vi.fn().mockReturnValue({
+  createServerAgentToolsEngine: vi.fn().mockResolvedValue({
     generateToolsDetailed: vi.fn().mockReturnValue({
       tools: [],
       enabledToolIds: [],

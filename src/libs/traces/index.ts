@@ -12,19 +12,11 @@ export class TraceClient {
   private _client?: Langfuse;
 
   constructor() {
-    const { ENABLE_LANGFUSE, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST } =
-      getLangfuseConfig();
+    const { LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST } = getLangfuseConfig();
 
-    if (!ENABLE_LANGFUSE) return;
-
-    // when enabled langfuse, make sure the key are ready in envs
+    // Langfuse is always "enabled" by default; if keys are missing we degrade gracefully.
     if (!LANGFUSE_PUBLIC_KEY || !LANGFUSE_SECRET_KEY) {
-      console.log('-----');
-      console.error(
-        "You are enabling langfuse but don't set the `LANGFUSE_PUBLIC_KEY` or `LANGFUSE_SECRET_KEY`. Please check your env",
-      );
-
-      throw new TypeError('NO_LANGFUSE_KEY_ERROR');
+      return;
     }
 
     this._client = new Langfuse({

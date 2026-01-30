@@ -46,7 +46,7 @@ const BottomMenu = memo(() => {
           icon: getRouteById('workbench')!.icon,
           key: SidebarTabKey.Workbench,
           title: t('tab.workbench'),
-          url: '/workbench/task-center',
+          url: '/workbench/workspace',
         },
       ].filter(Boolean) as Item[],
     [t],

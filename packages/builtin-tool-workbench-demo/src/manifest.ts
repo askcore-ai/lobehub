@@ -6,7 +6,7 @@ export const WorkbenchDemoIdentifier = 'aitutor-workbench-demo';
 
 const systemPrompt = `You can start a self-hosted Workbench demo task.
 
-Use this tool ONLY when the user explicitly asks to run a demo Workbench task, or asks you to start a durable workflow run they can monitor in Task Center.`;
+Use this tool ONLY when the user explicitly asks to run a demo Workbench task, or asks you to start a durable workflow run they can monitor in Workbench → Workspace (run list).`;
 
 /* eslint-disable sort-keys-fix/sort-keys-fix */
 export const WorkbenchDemoManifest: BuiltinToolManifest = {

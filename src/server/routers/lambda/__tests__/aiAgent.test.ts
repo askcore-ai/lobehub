@@ -28,10 +28,10 @@ vi.mock('@/server/services/agentRuntime', () => ({
 
 // Mock serverMessagesEngine
 vi.mock('@/server/modules/Mecha', () => ({
-  createServerAgentToolsEngine: vi.fn(() => ({
+  createServerAgentToolsEngine: vi.fn().mockResolvedValue({
     generateToolsDetailed: vi.fn(() => ({ tools: [] })),
     getEnabledPluginManifests: vi.fn(() => new Map()),
-  })),
+  }),
   serverMessagesEngine: vi.fn().mockResolvedValue([
     { role: 'system', content: 'You are a helpful assistant.' },
     { role: 'user', content: 'Hello' },

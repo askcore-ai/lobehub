@@ -12,7 +12,7 @@ export type HelloNoteContent = {
 export const HelloNoteList = memo<{ content: HelloNoteContent }>(({ content }) => {
   const text = String(content.text || '').slice(0, 80);
   return (
-    <Typography.Text type="secondary" ellipsis>
+    <Typography.Text ellipsis type="secondary">
       {text || '—'}
     </Typography.Text>
   );
@@ -27,7 +27,9 @@ export const HelloNoteDetail = memo<{ content: HelloNoteContent }>(({ content })
       <Typography.Title level={5} style={{ margin: 0 }}>
         Hello Note
       </Typography.Title>
-      <Typography.Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{text}</Typography.Paragraph>
+      <Typography.Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+        {text}
+      </Typography.Paragraph>
       {tags.length > 0 ? (
         <Flexbox gap={8} horizontal wrap="wrap">
           {tags.map((tag) => (

@@ -1,0 +1,117 @@
+diff --git a/es/DropdownMenu/atoms.mjs b/es/DropdownMenu/atoms.mjs
+index cd3216d..40c4f8d 100644
+--- a/es/DropdownMenu/atoms.mjs
++++ b/es/DropdownMenu/atoms.mjs
+@@ -43,7 +43,7 @@ const DropdownMenuTrigger = ({ children, className, nativeButton, ref: refProp,
+ 			...mergedProps,
+ 			className: clsx(CLASSNAMES.DropdownMenuTrigger, className, mergedProps.className),
+ 			ref: mergeRefs([
+-				children.ref,
++				children.props.ref,
+ 				props.ref,
+ 				refProp
+ 			])
+diff --git a/es/Image/components/usePreview.mjs b/es/Image/components/usePreview.mjs
+index 1bbed76..898be04 100644
+--- a/es/Image/components/usePreview.mjs
++++ b/es/Image/components/usePreview.mjs
+@@ -12,7 +12,7 @@ const usePreview = (props) => {
+ 	const [visible, setVisible] = useState(false);
+ 	return useMemo(() => {
+ 		if (props === false) return props;
+-		const { onVisibleChange, onOpenChange, minScale = .32, maxScale = 32, toolbarAddon, rootClassName, imageRender, toolbarRender, actionsRender, ...rest } = props === true ? {} : props || {};
++		const { onVisibleChange, onOpenChange, minScale = .32, maxScale = 32, toolbarAddon, rootClassName, classNames, imageRender, toolbarRender, actionsRender, ...rest } = props === true ? {} : props || {};
+ 		return {
+ 			actionsRender: actionsRender || ((_, info) => {
+ 				const originalNode = /* @__PURE__ */ jsx(Toolbar_default, {
+@@ -43,7 +43,11 @@ const usePreview = (props) => {
+ 				onOpenChange?.(open);
+ 				onVisibleChange?.(open, !open);
+ 			},
+-			rootClassName: cx(styles.preview, rootClassName),
++			classNames: {
++				...classNames,
++				// antd v6 deprecates `preview.rootClassName` in favor of `preview.classNames.root`
++				root: cx(styles.preview, classNames?.root, rootClassName)
++			},
+ 			styles: { mask: { backdropFilter: "blur(8px)" } },
+ 			...rest
+ 		};
+diff --git a/es/LobeSelect/atoms.mjs b/es/LobeSelect/atoms.mjs
+index 16f3988..ffdb8a0 100644
+--- a/es/LobeSelect/atoms.mjs
++++ b/es/LobeSelect/atoms.mjs
+@@ -47,7 +47,7 @@ const LobeSelectTrigger = ({ children, className, nativeButton, shadow, size = "
+ 				...mergedProps,
+ 				className: cx(baseClassName, childClassName, extraClassName),
+ 				ref: mergeRefs([
+-					children.ref,
++					children.props.ref,
+ 					props.ref,
+ 					refProp
+ 				])
+diff --git a/es/Popover/PopoverInGroup.mjs b/es/Popover/PopoverInGroup.mjs
+index 6f0f6fa..4235e56 100644
+--- a/es/Popover/PopoverInGroup.mjs
++++ b/es/Popover/PopoverInGroup.mjs
+@@ -47,7 +47,7 @@ const PopoverInGroup = ({ children, ref: refProp, ...props }) => {
+ 				...mergedProps,
+ 				className: cx(mergedProps.className, triggerClassName),
+ 				ref: mergeRefs([
+-					children.ref,
++					children.props.ref,
+ 					renderProps.ref,
+ 					refProp
+ 				])
+diff --git a/es/Popover/atoms.mjs b/es/Popover/atoms.mjs
+index f88f10f..095746a 100644
+--- a/es/Popover/atoms.mjs
++++ b/es/Popover/atoms.mjs
+@@ -37,7 +37,7 @@ const PopoverTriggerElement = ({ children, className, nativeButton, ref: refProp
+ 				...mergedProps,
+ 				className: cx(baseClassName, extraClassName),
+ 				ref: mergeRefs([
+-					children.ref,
++					children.props.ref,
+ 					props.ref,
+ 					refProp
+ 				])
+diff --git a/es/Image/components/usePreviewGroup.mjs b/es/Image/components/usePreviewGroup.mjs
+index 1a4b9b7..0a326ad 100644
+--- a/es/Image/components/usePreviewGroup.mjs
++++ b/es/Image/components/usePreviewGroup.mjs
+@@ -12,7 +12,7 @@ const usePreview = (props) => {
+ 	const [visible, setVisible] = useState(false);
+ 	return useMemo(() => {
+ 		if (props === false) return props;
+-		const { onVisibleChange, onOpenChange, minScale = .32, maxScale = 32, toolbarAddon, rootClassName, imageRender, toolbarRender, ...rest } = props === true ? {} : props || {};
++		const { onVisibleChange, onOpenChange, minScale = .32, maxScale = 32, toolbarAddon, rootClassName, classNames, imageRender, toolbarRender, ...rest } = props === true ? {} : props || {};
+ 		return {
+ 			actionsRender: (_, info) => {
+ 				const originalNode = /* @__PURE__ */ jsx(Toolbar_default, {
+@@ -43,7 +43,11 @@ const usePreview = (props) => {
+ 				setVisible(open);
+ 				onOpenChange?.(open, info);
+ 				onVisibleChange?.(open, !open, info.current);
+ 			},
+-			rootClassName: cx(styles.preview, rootClassName),
++			classNames: {
++				...classNames,
++				// antd v6 deprecates `preview.rootClassName` in favor of `preview.classNames.root`
++				root: cx(styles.preview, classNames?.root, rootClassName)
++			},
+ 			...rest
+ 		};
+diff --git a/es/Tooltip/TooltipStandalone.mjs b/es/Tooltip/TooltipStandalone.mjs
+index e5ea9fe..142d6c9 100644
+--- a/es/Tooltip/TooltipStandalone.mjs
++++ b/es/Tooltip/TooltipStandalone.mjs
+@@ -93,7 +93,7 @@ const TooltipStandalone = memo(({ children, title, arrow = false, className, cla
+ 				return cloneElement(children, {
+ 					...mergeProps(children.props, resolvedProps),
+ 					ref: mergeRefs([
+-						children.ref,
++						children.props.ref,
+ 						props.ref,
+ 						refProp
+ 					])

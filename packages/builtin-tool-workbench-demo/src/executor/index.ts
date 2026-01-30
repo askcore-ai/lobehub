@@ -30,7 +30,11 @@ class WorkbenchDemoExecutor extends BaseExecutor<typeof WorkbenchDemoApiName> {
       if (params.note) input.note = params.note;
 
       const res = await fetch('/api/workbench/runs', {
-        body: JSON.stringify({ conversation_id: conversationId, input, workflow_name: 'workbench.demo' }),
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          input,
+          workflow_name: 'workbench.demo',
+        }),
         headers: {
           'Content-Type': 'application/json',
           'Idempotency-Key': idempotencyKey,
@@ -53,7 +57,7 @@ class WorkbenchDemoExecutor extends BaseExecutor<typeof WorkbenchDemoApiName> {
       return {
         content:
           `Started demo run ${runId}. ` +
-          'Watch the in-chat Task Center for status; artifacts will appear in the right Workbench panel.',
+          'Open Workbench → Workspace and select this run to view status and artifacts.',
         state: { runId },
         success: true,
       };

@@ -16,7 +16,6 @@ const COOKIE_EXPIRE_DAYS = 30;
 interface TenantRow {
   auth_org_id: string | null;
   auth_org_name: string | null;
-  is_active: boolean;
   name: string;
   tenant_id: number;
 }
@@ -92,9 +91,7 @@ const TenantPicker = memo(() => {
   const options = useMemo(
     () =>
       tenants.map((t) => ({
-        label: `${t.name} (#${t.tenant_id})${t.is_active ? '' : ' [inactive]'}${
-          t.auth_org_id ? ` · ${t.auth_org_id}` : ''
-        }`,
+        label: `${t.name} (#${t.tenant_id})${t.auth_org_id ? ` · ${t.auth_org_id}` : ''}`,
         value: t.tenant_id,
       })),
     [tenants],
@@ -112,7 +109,7 @@ const TenantPicker = memo(() => {
         </Typography.Title>
 
         <Typography.Paragraph style={{ margin: 0 }} type="secondary">
-          This selection filters Task Center and Workspace run lists for system admins.
+          This selection filters Workbench run lists for system admins.
         </Typography.Paragraph>
 
         {error ? (
@@ -123,7 +120,7 @@ const TenantPicker = memo(() => {
             <Typography.Text type="secondary">
               {error instanceof Error ? error.message : String(error)}
             </Typography.Text>
-            <Button onClick={() => navigate('/workbench/task-center')}>Back</Button>
+            <Button onClick={() => navigate('/workbench/workspace')}>Back</Button>
           </Flexbox>
         ) : tenants.length === 0 ? (
           <Typography.Text type="secondary">No tenants found yet.</Typography.Text>
@@ -153,7 +150,6 @@ const TenantPicker = memo(() => {
             </Space>
 
             <Space wrap>
-              <Button onClick={() => navigate('/workbench/task-center')}>Task Center</Button>
               <Button onClick={() => navigate('/workbench/workspace')}>Workspace</Button>
             </Space>
           </Flexbox>
