@@ -100,7 +100,6 @@ vertex-ai-key.json
 
 # AI coding tools
 .local/
-.claude/
 .mcp.json
 CLAUDE.local.md
 .agent/

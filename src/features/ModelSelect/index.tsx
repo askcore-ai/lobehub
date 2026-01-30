@@ -1,14 +1,18 @@
 import { LobeSelect, type LobeSelectProps, TooltipGroup } from '@lobehub/ui';
-import { createStaticStyles } from 'antd-style';
-import { type ComponentProps, type ReactNode, memo, useMemo } from 'react';
+import { createStyles } from 'antd-style';
+import { type ReactNode, memo, useMemo } from 'react';
 
 import { ModelItemRender, ProviderItemRender } from '@/components/ModelSelect';
 import { useEnabledChatModels } from '@/hooks/useEnabledChatModels';
 import { type EnabledProviderWithModels } from '@/types/aiProvider';
 
-const styles = createStaticStyles(({ css }) => ({
+const useStyles = createStyles(({ css }, { popupWidth }: { popupWidth?: number | string }) => ({
   popup: css`
-    width: max(360px, var(--anchor-width));
+    width: ${popupWidth
+      ? typeof popupWidth === 'number'
+        ? `${popupWidth}px`
+        : popupWidth
+      : 'max(360px, var(--anchor-width))'};
   `,
 }));
 
@@ -23,12 +27,11 @@ interface ModelOption {
   value: string;
 }
 
-type ModelItemRenderProps = ComponentProps<typeof ModelItemRender>;
-
 interface ModelSelectProps extends Pick<LobeSelectProps, 'loading' | 'size' | 'style' | 'variant'> {
   defaultValue?: { model: string; provider?: string };
   initialWidth?: boolean;
   onChange?: (props: { model: string; provider: string }) => void;
+  popupWidth?: number | string;
   requiredAbilities?: (keyof EnabledProviderWithModels['children'][number]['abilities'])[];
   showAbility?: boolean;
 
@@ -43,10 +46,12 @@ const ModelSelect = memo<ModelSelectProps>(
     showAbility = true,
     requiredAbilities,
     loading,
+    popupWidth,
     size,
     style,
     variant,
   }) => {
+    const { styles } = useStyles({ popupWidth });
     const enabledList = useEnabledChatModels();
 
     const options = useMemo<LobeSelectProps['options']>(() => {
@@ -102,20 +107,17 @@ const ModelSelect = memo<ModelSelectProps>(
             const model = (value as string).split('/').slice(1).join('/');
             onChange?.({ model, provider: (option as unknown as ModelOption).provider });
           }}
-          optionRender={(option) =>
-            (() => {
-              const raw = (option as unknown as { data?: unknown }).data ?? option;
-              const data = raw as Record<string, unknown> | undefined;
-              if (!data || typeof data.id !== 'string') return null;
-
-              const rest = { ...data } as Record<string, unknown>;
-              delete rest.label;
-              delete rest.provider;
-              delete rest.value;
-
-              return <ModelItemRender {...(rest as unknown as ModelItemRenderProps)} showInfoTag />;
-            })()
-          }
+          optionRender={(option) => {
+            const data = option as unknown as ModelOption;
+            return (
+              <ModelItemRender
+                displayName={data.displayName}
+                id={data.id}
+                showInfoTag={false}
+                {...data.abilities}
+              />
+            );
+          }}
           options={options}
           popupClassName={styles.popup}
           popupMatchSelectWidth={false}

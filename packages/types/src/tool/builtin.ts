@@ -347,16 +347,16 @@ export interface BuiltinToolContext {
   stepContext?: RuntimeStepContext;
 
   /**
-   * The current topic ID (only available when operating within a topic)
-   * Used by tools that need to create messages or operations within a topic
-   */
-  topicId?: string | null;
-
-  /**
    * The current thread ID (only available when operating within a thread)
    * Used by tools that require stable per-thread context
    */
   threadId?: string | null;
+
+  /**
+   * The current topic ID (only available when operating within a topic)
+   * Used by tools that need to create messages or operations within a topic
+   */
+  topicId?: string | null;
 }
 
 /**
@@ -440,14 +440,19 @@ export interface TriggerExecuteTaskParams extends GroupOrchestrationBaseParams {
    */
   agentId: string;
   /**
+   * The instruction/task description for the agent
+   */
+  instruction: string;
+  /**
+   * Whether to run on the desktop client (for local file/shell access).
+   * MUST be true when task requires local-system tools. Default is false (server execution).
+   */
+  runInClient?: boolean;
+  /**
    * If true, the orchestration will end after the task completes,
    * without calling the supervisor again.
    */
   skipCallSupervisor?: boolean;
-  /**
-   * The task description for the agent
-   */
-  task: string;
   /**
    * Optional timeout in milliseconds
    */
@@ -467,7 +472,7 @@ export interface TriggerExecuteTaskItem {
    */
   agentId: string;
   /**
-   * Detailed instruction/prompt for the task execution
+   * Detailed instruction for the agent to execute
    */
   instruction: string;
   /**
