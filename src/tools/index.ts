@@ -1,5 +1,6 @@
 import { AdminOpsManifest } from '@lobechat/builtin-tool-admin-ops';
 import { AgentBuilderManifest } from '@lobechat/builtin-tool-agent-builder';
+import { AssignmentAuthoringManifest } from '@lobechat/builtin-tool-assignment-authoring';
 import { CloudSandboxManifest } from '@lobechat/builtin-tool-cloud-sandbox';
 import { GroupAgentBuilderManifest } from '@lobechat/builtin-tool-group-agent-builder';
 import { GroupManagementManifest } from '@lobechat/builtin-tool-group-management';
@@ -98,6 +99,11 @@ export const builtinTools: LobeBuiltinTool[] = [
   {
     identifier: HelloPluginManifest.identifier,
     manifest: HelloPluginManifest,
+    type: 'builtin',
+  },
+  {
+    identifier: AssignmentAuthoringManifest.identifier,
+    manifest: AssignmentAuthoringManifest,
     type: 'builtin',
   },
 ];

@@ -167,6 +167,7 @@
     "@lobechat/builtin-agents": "workspace:*",
     "@lobechat/builtin-tool-admin-ops": "workspace:*",
     "@lobechat/builtin-tool-agent-builder": "workspace:*",
+    "@lobechat/builtin-tool-assignment-authoring": "workspace:*",
     "@lobechat/builtin-tool-cloud-sandbox": "workspace:*",
     "@lobechat/builtin-tool-group-agent-builder": "workspace:*",
     "@lobechat/builtin-tool-group-management": "workspace:*",

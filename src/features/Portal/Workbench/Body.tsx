@@ -25,6 +25,18 @@ import { chatPortalSelectors } from '@/store/chat/selectors';
 import { PortalViewType } from '@/store/chat/slices/portal/initialState';
 
 import SchoolsRenderer from './renderers/admin_ops/Schools';
+import {
+  type AssignmentDraftContent,
+  AssignmentDraftDetail,
+  AssignmentDraftList,
+} from './renderers/assignment_authoring/AssignmentDraft';
+import AssignmentDraftEditor from './renderers/assignment_authoring/AssignmentDraftEditor';
+import AssignmentOcrStart from './renderers/assignment_authoring/AssignmentOcrStart';
+import {
+  type AssignmentPublishResultContent,
+  AssignmentPublishResultDetail,
+  AssignmentPublishResultList,
+} from './renderers/assignment_authoring/AssignmentPublishResult';
 import { type HelloNoteContent, HelloNoteDetail, HelloNoteList } from './renderers/hello/HelloNote';
 import {
   type HelloTableContent,
@@ -261,6 +273,9 @@ const WorkbenchPortalBodyInner = memo(() => {
     [actions],
   );
   const isHelloPluginEnabled = actionsError ? true : enabledPluginIds.has('aitutor-hello-plugin');
+  const isAssignmentAuthoringEnabled = actionsError
+    ? true
+    : enabledPluginIds.has('assignment.authoring.v1');
 
   const handleCancel = useCallback(
     async (targetRunId: number) => {
@@ -385,6 +400,18 @@ const WorkbenchPortalBodyInner = memo(() => {
       isHelloPluginEnabled;
     if (isHelloTable) return true;
 
+    const isAssignmentDraft =
+      artifactDetail.type === 'assignment.draft' &&
+      artifactDetail.schema_version === 'v1' &&
+      isAssignmentAuthoringEnabled;
+    if (isAssignmentDraft) return true;
+
+    const isAssignmentPublishResult =
+      artifactDetail.type === 'assignment.publish.result' &&
+      artifactDetail.schema_version === 'v1' &&
+      isAssignmentAuthoringEnabled;
+    if (isAssignmentPublishResult) return true;
+
     const adminEntityType = String((artifactDetail.content as any)?.entity_type || '').trim();
     const isAdminEntityList =
       artifactDetail.type === 'admin.entity.list' &&
@@ -396,7 +423,7 @@ const WorkbenchPortalBodyInner = memo(() => {
     if (isAdminEntityList) return true;
 
     return false;
-  }, [artifactDetail, isHelloPluginEnabled]);
+  }, [artifactDetail, isAssignmentAuthoringEnabled, isHelloPluginEnabled]);
 
   const fallbackHint = useMemo(() => {
     if (!artifactDetail) return null;
@@ -435,15 +462,34 @@ const WorkbenchPortalBodyInner = memo(() => {
       {
         key: 'preview',
         render: (_, record) => {
-          if (!isHelloPluginEnabled)
-            return <Typography.Text type="secondary">{record.summary || '—'}</Typography.Text>;
-
-          if (record.type === 'hello.note' && record.schema_version === 'v1') {
-            return <HelloNoteList content={record.content as HelloNoteContent} />;
+          if (
+            record.type === 'assignment.draft' &&
+            record.schema_version === 'v1' &&
+            isAssignmentAuthoringEnabled
+          ) {
+            return <AssignmentDraftList content={record.content as AssignmentDraftContent} />;
           }
 
-          if (record.type === 'hello.table' && record.schema_version === 'v1') {
-            return <HelloTableList content={record.content as HelloTableContent} />;
+          if (
+            record.type === 'assignment.publish.result' &&
+            record.schema_version === 'v1' &&
+            isAssignmentAuthoringEnabled
+          ) {
+            return (
+              <AssignmentPublishResultList
+                content={record.content as AssignmentPublishResultContent}
+              />
+            );
+          }
+
+          if (isHelloPluginEnabled) {
+            if (record.type === 'hello.note' && record.schema_version === 'v1') {
+              return <HelloNoteList content={record.content as HelloNoteContent} />;
+            }
+
+            if (record.type === 'hello.table' && record.schema_version === 'v1') {
+              return <HelloTableList content={record.content as HelloTableContent} />;
+            }
           }
 
           return <Typography.Text type="secondary">{record.summary || '—'}</Typography.Text>;
@@ -481,7 +527,7 @@ const WorkbenchPortalBodyInner = memo(() => {
         title: 'Actions',
       },
     ],
-    [conversationId, isHelloPluginEnabled, runId],
+    [conversationId, isAssignmentAuthoringEnabled, isHelloPluginEnabled, runId],
   );
 
   if (!conversationId) {
@@ -748,6 +794,27 @@ const WorkbenchPortalBodyInner = memo(() => {
                 artifactDetail.schema_version === 'v1' &&
                 isHelloPluginEnabled ? (
                   <HelloNoteDetail content={artifactDetail.content as HelloNoteContent} />
+                ) : artifactDetail.type === 'assignment.draft' &&
+                  artifactDetail.schema_version === 'v1' &&
+                  isAssignmentAuthoringEnabled ? (
+                  <Flexbox gap={12}>
+                    <AssignmentDraftDetail
+                      content={artifactDetail.content as AssignmentDraftContent}
+                    />
+                    <Space>
+                      <Button onClick={() => setIsEditing((v) => !v)} size="small">
+                        {isEditing ? 'Close editor' : 'Edit'}
+                      </Button>
+                    </Space>
+                    {isEditing ? (
+                      <AssignmentDraftEditor
+                        artifactId={artifactDetail.artifact_id}
+                        conversationId={conversationId}
+                        initialContent={artifactDetail.content}
+                        onClose={() => setIsEditing(false)}
+                      />
+                    ) : null}
+                  </Flexbox>
                 ) : artifactDetail.type === 'admin.entity.list' &&
                   artifactDetail.schema_version === 'v1' &&
                   artifactDetail.produced_by_plugin_id === 'admin.ops.v1' &&
@@ -784,6 +851,12 @@ const WorkbenchPortalBodyInner = memo(() => {
                       />
                     ) : null}
                   </Flexbox>
+                ) : artifactDetail.type === 'assignment.publish.result' &&
+                  artifactDetail.schema_version === 'v1' &&
+                  isAssignmentAuthoringEnabled ? (
+                  <AssignmentPublishResultDetail
+                    content={artifactDetail.content as AssignmentPublishResultContent}
+                  />
                 ) : (
                   <pre style={{ margin: 0 }}>{JSON.stringify(artifactDetail, null, 2)}</pre>
                 )
@@ -795,16 +868,24 @@ const WorkbenchPortalBodyInner = memo(() => {
         ) : (
           <Empty description="Select an artifact to view details." />
         )
-      ) : artifacts.length === 0 ? (
-        <Empty description="No artifacts for this chat yet. Run a tool call to produce artifacts." />
       ) : (
-        <Table
-          columns={artifactColumns}
-          dataSource={artifacts}
-          pagination={{ pageSize: 20 }}
-          rowKey={(a) => a.artifact_id}
-          size="small"
-        />
+        <Flexbox gap={12}>
+          {conversationId && isAssignmentAuthoringEnabled ? (
+            <AssignmentOcrStart conversationId={conversationId} />
+          ) : null}
+
+          {artifacts.length === 0 ? (
+            <Empty description="No artifacts for this chat yet. Run a tool call to produce artifacts." />
+          ) : (
+            <Table
+              columns={artifactColumns}
+              dataSource={artifacts}
+              pagination={{ pageSize: 20 }}
+              rowKey={(a) => a.artifact_id}
+              size="small"
+            />
+          )}
+        </Flexbox>
       )}
     </Flexbox>
   );

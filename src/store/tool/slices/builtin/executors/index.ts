@@ -6,6 +6,7 @@
  */
 import { adminOpsExecutor } from '@lobechat/builtin-tool-admin-ops/executor';
 import { agentBuilderExecutor } from '@lobechat/builtin-tool-agent-builder/executor';
+import { assignmentAuthoringExecutor } from '@lobechat/builtin-tool-assignment-authoring/executor';
 import { cloudSandboxExecutor } from '@lobechat/builtin-tool-cloud-sandbox/executor';
 import { groupAgentBuilderExecutor } from '@lobechat/builtin-tool-group-agent-builder/executor';
 import { groupManagementExecutor } from '@lobechat/builtin-tool-group-management/executor';
@@ -135,6 +136,7 @@ registerExecutors([
   workbenchDemoExecutor,
   adminOpsExecutor,
   helloPluginExecutor,
+  assignmentAuthoringExecutor,
   pageAgentExecutor,
   webBrowsing,
 ]);
