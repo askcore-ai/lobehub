@@ -9,6 +9,7 @@ const systemPrompt = `You can create, save, and publish assignment drafts via th
 IMPORTANT:
 - These actions create durable Workbench runs and artifacts.
 - Use them ONLY when the user explicitly asks to create/save/publish an assignment draft.
+- This tool requires IDs (gradeId/subjectId/classIds/studentIds). If the user provides names/attributes (e.g., “高三”“物理”“开封高级中学”), you MUST map names to IDs using the Admin Ops **Resolve Entity (Semantic)** tool first. Do NOT use \`admin.list.*\` tools for name → ID mapping.
 - Do NOT include secrets or sensitive student data.
 - High-risk actions require explicit confirmation.`;
 

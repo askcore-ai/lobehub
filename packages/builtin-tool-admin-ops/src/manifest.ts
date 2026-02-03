@@ -10,10 +10,25 @@ Supported entities:
 - Roster: schools, classes, teachers, students
 - Academic config: academic years, grades, subjects
 
-Guidelines:
+CRITICAL (ID resolution):
+- If the user provides any entity by name/attributes (not an explicit numeric ID), you MUST call **Resolve Entity (Semantic)** first. Do this even if the name looks exact (e.g., “物理”).
+- Only use \`list*\` actions after Resolve Entity returns \`no_match\`, or when the user explicitly asks to browse a full list with coarse filters.
+- Never try to "find by name" using \`list*\` — list endpoints are not name-search and may return large pages.
+
+How to resolve:
+1) Identify entity types mentioned (school/grade/subject/teacher/class/student/assignment/question).
+2) Call Resolve Entity once per type. As soon as you have one ID, use it to narrow subsequent calls via \`scope\`.
+3) If \`status=ambiguous\`, ask the user to pick a candidate ID before proceeding.
+
+Example:
+- 用户说“给开封高级中学高三布置物理作业”
+  - resolveEntity {"entity_type":"school","query":"开封高级中学"}
+  - resolveEntity {"entity_type":"grade","query":"高三"}
+  - resolveEntity {"entity_type":"subject","query":"物理"}
+
+General guidelines:
 - Users will speak in natural language. Before calling any tool, inspect the tool's JSON schema and ask the user for any missing required fields. Ask for at most 3 missing items at a time and provide a copy/paste reply template.
-- If the user doesn't know an ID (school_id/class_id/student_id/teacher_id), use list actions with coarse filters to retrieve candidates, then ask the user to pick one.
-- Use list actions to read (they are safe and do not require confirmation).
+- Use list actions to browse/read (they are safe and do not require confirmation) ONLY after the resolution rule above.
 - Any DB write (create/update/delete/import/bulk delete/sql patch execute) must be explicit and should be confirmed by the user.
 - SQL patch must be a single UPDATE/INSERT statement and MUST be tenant-scoped (use \`tenant_id = __TENANT_ID__\`). Never use DELETE/DDL.
 
@@ -25,7 +40,48 @@ Execution modes:
 export const AdminOpsManifest: BuiltinToolManifest = {
   api: [
     {
-      description: 'List schools (produces an admin.entity.list@v1 artifact).',
+      description:
+        'Resolve a fuzzy entity reference (name/attributes) into ranked candidate IDs (P12-1). Produces an admin.entity.resolve@v1 artifact. FIRST choice when the user does not know an ID (even if the name looks exact).',
+      humanIntervention: 'never',
+      name: AdminOpsApiName.resolveEntity,
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          entity_type: {
+            enum: [
+              'school',
+              'subject',
+              'grade',
+              'teacher',
+              'class',
+              'student',
+              'assignment',
+              'question',
+            ],
+            type: 'string',
+          },
+          limit: { default: 5, maximum: 20, minimum: 1, type: 'integer' },
+          query: { maxLength: 256, minLength: 1, type: 'string' },
+          scope: {
+            additionalProperties: false,
+            default: {},
+            properties: {
+              class_id: { minimum: 1, type: 'integer' },
+              grade_id: { minimum: 1, type: 'integer' },
+              school_id: { minimum: 1, type: 'integer' },
+              subject_id: { minimum: 1, type: 'integer' },
+              teacher_id: { minimum: 1, type: 'integer' },
+            },
+            type: 'object',
+          },
+        },
+        required: ['entity_type', 'query'],
+        type: 'object',
+      },
+    },
+    {
+      description:
+        'List schools by coarse region filters (city/province) (produces an admin.entity.list@v1 artifact). No name search. If the user provides a school name, call Resolve Entity (Semantic) instead.',
       humanIntervention: 'never',
       name: AdminOpsApiName.listSchools,
       parameters: {
@@ -49,7 +105,8 @@ export const AdminOpsManifest: BuiltinToolManifest = {
       },
     },
     {
-      description: 'List classes with coarse filters (produces an admin.entity.list@v1 artifact).',
+      description:
+        'List classes with coarse filters (produces an admin.entity.list@v1 artifact). No name search. If the user provides a class name/label, call Resolve Entity (Semantic) instead.',
       humanIntervention: 'never',
       name: AdminOpsApiName.listClasses,
       parameters: {
@@ -74,7 +131,8 @@ export const AdminOpsManifest: BuiltinToolManifest = {
       },
     },
     {
-      description: 'List students with coarse filters (produces an admin.entity.list@v1 artifact).',
+      description:
+        'List students with coarse filters (produces an admin.entity.list@v1 artifact). No name search. If the user provides a student name/attributes, call Resolve Entity (Semantic) instead.',
       humanIntervention: 'never',
       name: AdminOpsApiName.listStudents,
       parameters: {
@@ -100,7 +158,8 @@ export const AdminOpsManifest: BuiltinToolManifest = {
       },
     },
     {
-      description: 'List teachers with coarse filters (produces an admin.entity.list@v1 artifact).',
+      description:
+        'List teachers with coarse filters (produces an admin.entity.list@v1 artifact). No name search. If the user provides a teacher name, call Resolve Entity (Semantic) instead.',
       humanIntervention: 'never',
       name: AdminOpsApiName.listTeachers,
       parameters: {
@@ -124,7 +183,8 @@ export const AdminOpsManifest: BuiltinToolManifest = {
       },
     },
     {
-      description: 'List academic years (produces an admin.entity.list@v1 artifact).',
+      description:
+        'List academic years (produces an admin.entity.list@v1 artifact). Not for name → ID mapping; if the user provides a label, call Resolve Entity (Semantic) instead.',
       humanIntervention: 'never',
       name: AdminOpsApiName.listAcademicYears,
       parameters: {
@@ -140,7 +200,8 @@ export const AdminOpsManifest: BuiltinToolManifest = {
       },
     },
     {
-      description: 'List grades (produces an admin.entity.list@v1 artifact).',
+      description:
+        'List grades (produces an admin.entity.list@v1 artifact). No name search. If the user provides a grade label (“高一/高三/高中一年级”), call Resolve Entity (Semantic) instead.',
       humanIntervention: 'never',
       name: AdminOpsApiName.listGrades,
       parameters: {
@@ -161,7 +222,8 @@ export const AdminOpsManifest: BuiltinToolManifest = {
       },
     },
     {
-      description: 'List subjects (produces an admin.entity.list@v1 artifact).',
+      description:
+        'List subjects (produces an admin.entity.list@v1 artifact). No name search. If the user provides a subject name (“物理/Physics”), call Resolve Entity (Semantic) instead.',
       humanIntervention: 'never',
       name: AdminOpsApiName.listSubjects,
       parameters: {

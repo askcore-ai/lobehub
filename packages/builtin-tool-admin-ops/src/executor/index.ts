@@ -62,7 +62,7 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
   private async _fetchJson<T>(
     input: FetchInput,
     init?: FetchInit,
-  ): Promise<{ data: T, ok: true; } | { error: string, ok: false; }> {
+  ): Promise<{ data: T; ok: true } | { error: string; ok: false }> {
     const res = await fetch(input, init);
     if (!res.ok) {
       const text = await res.text();
@@ -76,8 +76,8 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
     options: { timeoutMs: number },
   ): Promise<
     | { ok: true; run: _WorkbenchRun }
-    | { error: string, ok: false; timedOut: true; }
-    | { error: string, ok: false; timedOut: false; }
+    | { error: string; ok: false; timedOut: true }
+    | { error: string; ok: false; timedOut: false }
   > {
     const startMs = Date.now();
     const terminalStates = new Set(['succeeded', 'failed', 'cancelled']);
@@ -172,6 +172,33 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
 
       const details = [errorCode, message].filter(Boolean).join('：');
       return `${opLabel}${entityLabel}失败${details ? `（${details}）` : ''}`;
+    }
+
+    if (typeKey === 'admin.entity.resolve@v1') {
+      const entityType = String(artifact.content?.entity_type || '');
+      const entityLabel = this._entityLabel(entityType);
+      const status = String(artifact.content?.status || '');
+      const explanation = String(artifact.content?.explanation || '').trim();
+      const candidates = Array.isArray(artifact.content?.candidates)
+        ? artifact.content.candidates
+        : [];
+      const preview = candidates
+        .slice(0, 8)
+        .map((c: any) => `${c?.entity_id ?? '?'}:${String(c?.display_name ?? '').slice(0, 50)}`)
+        .filter(Boolean)
+        .join(', ');
+
+      if (status === 'resolved') {
+        return `已解析${entityLabel}：候选 ${candidates.length} 个。${preview ? `候选（前${Math.min(8, candidates.length)}个）：${preview}` : ''}`;
+      }
+      if (status === 'ambiguous') {
+        return (
+          `已解析${entityLabel}：存在多个候选，需要人工确认。` +
+          `${preview ? `候选（前${Math.min(8, candidates.length)}个）：${preview}` : ''}` +
+          `${explanation ? `。提示：${explanation}` : ''}`
+        );
+      }
+      return `未能解析${entityLabel}（no_match）${explanation ? `：${explanation}` : ''}`;
     }
 
     if (typeKey === 'admin.entity.list@v1') {
@@ -378,7 +405,7 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
 
   private async presignUpload(
     payload: Record<string, unknown>,
-  ): Promise<{ data: PresignUploadResponse, ok: true; } | { error: string, ok: false; }> {
+  ): Promise<{ data: PresignUploadResponse; ok: true } | { error: string; ok: false }> {
     const res = await fetch('/api/workbench/object-store/presign-upload', {
       body: JSON.stringify(payload),
       headers: { 'Content-Type': 'application/json' },
@@ -407,7 +434,7 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
         tenantId: number | null;
         uploadUrl: string;
       }
-    | { error: string, ok: false; }
+    | { error: string; ok: false }
   > {
     const hash = await sha256Hex(text);
 
@@ -433,8 +460,8 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
 
   private async uploadPresignedText(
     text: string,
-    presign: { requiredHeaders: Record<string, string>, uploadUrl: string; },
-  ): Promise<{ ok: true } | { error: string, ok: false; }> {
+    presign: { requiredHeaders: Record<string, string>; uploadUrl: string },
+  ): Promise<{ ok: true } | { error: string; ok: false }> {
     const put = await fetch(presign.uploadUrl, {
       body: text,
       headers: presign.requiredHeaders,
@@ -449,6 +476,13 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
 
     return { ok: true };
   }
+
+  // ===== Entity resolve =====
+  resolveEntity = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
+    this.startInvocation('admin.entity.resolve', params, ctx, {
+      executionMode: 'blocking',
+      requireConfirmation: false,
+    });
 
   // ===== List =====
   listSchools = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>

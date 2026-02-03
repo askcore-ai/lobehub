@@ -37,6 +37,7 @@ export const AdminOpsApiName = {
   listStudents: 'listStudents',
   listSubjects: 'listSubjects',
   listTeachers: 'listTeachers',
+  resolveEntity: 'resolveEntity',
   sqlPatchExecute: 'sqlPatchExecute',
   sqlPatchPreview: 'sqlPatchPreview',
   updateAcademicYear: 'updateAcademicYear',
@@ -53,6 +54,27 @@ export type ListParams = {
   include_total?: boolean;
   page?: number;
   page_size?: number;
+};
+
+export type ResolveEntityParams = {
+  entity_type:
+    | 'school'
+    | 'subject'
+    | 'grade'
+    | 'teacher'
+    | 'class'
+    | 'student'
+    | 'assignment'
+    | 'question';
+  limit?: number;
+  query: string;
+  scope?: {
+    class_id?: number;
+    grade_id?: number;
+    school_id?: number;
+    subject_id?: number;
+    teacher_id?: number;
+  };
 };
 
 export type ListAcademicYearsParams = ListParams;
