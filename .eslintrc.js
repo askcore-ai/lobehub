@@ -40,6 +40,14 @@ config.overrides = [
       'mdx/code-blocks': false,
     },
   },
+  // TypeScript's type checker handles undefined identifiers; `no-undef` produces false-positives on TS types
+  // (e.g., global DOM types like `RequestInit`).
+  {
+    files: ['**/*.ts', '**/*.tsx'],
+    rules: {
+      'no-undef': 0,
+    },
+  },
   {
     files: ['src/store/image/**/*', 'src/types/generation/**/*'],
     rules: {
