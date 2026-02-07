@@ -209,6 +209,12 @@ const renderCsvRequirement = (row: CsvColumnHintRow) => {
   );
 };
 
+const EDUCATION_LEVEL_OPTIONS = [
+  { label: '小学', value: '小学' },
+  { label: '初中', value: '初中' },
+  { label: '高中', value: '高中' },
+];
+
 const buildCsvHintSpec = (params: {
   defaultAcademicYearId?: number | null;
   defaultClassId?: number | null;
@@ -254,12 +260,12 @@ const buildCsvHintSpec = (params: {
       rows: [
         {
           headers: ['name', '年级'],
-          meaning: '年级名称（例如：小学一年级）。同名年级会跳过。',
+          meaning: '年级名称（例如：小学1年级 / 高中3年级）。同名年级会跳过。',
           requirement: 'required',
         },
         {
           headers: ['education_level', '学段'],
-          meaning: '学段（例如：小学/初中/高中 或 primary/junior/senior）。',
+          meaning: '学段（建议：小学/初中/高中；兼容 primary/junior/senior）。',
           requirement: 'required',
         },
         {
@@ -387,7 +393,7 @@ const buildCsvHintSpec = (params: {
       notes: [
         ...baseNotes,
         'school_id / academic_year_id 用于按“学校/学年”筛选班级。若不想在 CSV 每行填写，可在上方选择默认值。',
-        'education_level（学段）建议使用：primary / junior / senior。',
+        'education_level（学段）建议使用：小学 / 初中 / 高中（兼容 primary / junior / senior）。',
       ],
       rows: [
         { headers: ['name', '班级'], meaning: '班级名称（例如：1班）。', requirement: 'required' },
@@ -419,7 +425,7 @@ const buildCsvHintSpec = (params: {
         },
         {
           headers: ['education_level', '学段'],
-          meaning: '学段（用于年级推导）。推荐：primary / junior / senior。',
+          meaning: '学段（用于年级推导）。推荐：小学 / 初中 / 高中。',
           note: hasDefaultEducationLevel
             ? '已设置默认学段，可不在 CSV 中提供'
             : '未设置默认学段时必填',
@@ -816,7 +822,16 @@ const setTreeChildrenByKey = (
 const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) => {
   const { message } = App.useApp();
   const isSchool = content.entity_type === 'school';
-  const supportsCrud = ['school', 'academic_year', 'grade', 'subject'].includes(
+  const supportsCreate = [
+    'school',
+    'teacher',
+    'class',
+    'student',
+    'academic_year',
+    'grade',
+    'subject',
+  ].includes(content.entity_type);
+  const supportsEditDeleteAndBulk = ['school', 'academic_year', 'grade', 'subject'].includes(
     content.entity_type,
   );
   const title = entityTitle(content.entity_type);
@@ -1390,13 +1405,14 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
   );
 
   useEffect(() => {
-    if (!importOpen) return;
+    if (!importOpen && !drawerOpen) return;
     if (!['teacher', 'class'].includes(content.entity_type)) return;
     if (schoolTreeLoading) return;
     if (schoolTreeData.length > 0) return;
     void loadSchoolTreeForTeacherImport();
   }, [
     content.entity_type,
+    drawerOpen,
     importOpen,
     loadSchoolTreeForTeacherImport,
     schoolTreeData.length,
@@ -1404,7 +1420,7 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
   ]);
 
   useEffect(() => {
-    if (!importOpen) return;
+    if (!importOpen && !drawerOpen) return;
     if (content.entity_type !== 'class') return;
     if (academicYearLoading) return;
     if (classTreeAcademicYears.length > 0) return;
@@ -1413,12 +1429,13 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
     academicYearLoading,
     classTreeAcademicYears.length,
     content.entity_type,
+    drawerOpen,
     importOpen,
     loadAcademicYearsForImport,
   ]);
 
   useEffect(() => {
-    if (!importOpen) return;
+    if (!importOpen && !drawerOpen) return;
     if (content.entity_type !== 'student') return;
     if (classTreeLoading) return;
     if (classTreeData.length > 0) return;
@@ -1427,17 +1444,21 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
     classTreeData.length,
     classTreeLoading,
     content.entity_type,
+    drawerOpen,
     importOpen,
     loadClassTreeForStudentImport,
   ]);
 
   const openCreate = () => {
-    if (!supportsCrud) return;
+    if (!supportsCreate) return;
     setDrawerMode('create');
     setEditingRow(null);
     form.resetFields();
     if (content.entity_type === 'school') {
       form.setFieldsValue({ tags: [] } as any);
+    }
+    if (content.entity_type === 'teacher') {
+      form.setFieldsValue({ role: 'TEACHER' } as any);
     }
     if (content.entity_type === 'subject') {
       form.setFieldsValue({ is_core_subject: true } as any);
@@ -1446,7 +1467,7 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
   };
 
   const openEdit = (row: any) => {
-    if (!supportsCrud) return;
+    if (!supportsEditDeleteAndBulk) return;
     setDrawerMode('edit');
     setEditingRow(row);
     form.resetFields();
@@ -1480,6 +1501,44 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
           start_date: String(values.start_date || '').trim(),
         };
       }
+      if (entityType === 'teacher') {
+        const schoolId = Number(values.school_id);
+        const teacherNumber = String(values.teacher_number || '').trim();
+        const role = String(values.role || '').trim();
+        return {
+          new_password: String(values.new_password || '').trim(),
+          real_name: String(values.real_name || '').trim(),
+          role: role || 'TEACHER',
+          school_id: Number.isFinite(schoolId) && schoolId > 0 ? schoolId : undefined,
+          teacher_number: teacherNumber || undefined,
+          username: String(values.username || '').trim(),
+        };
+      }
+      if (entityType === 'class') {
+        const schoolId = Number(values.school_id);
+        const academicYearId = Number(values.academic_year_id);
+        return {
+          academic_year_id:
+            Number.isFinite(academicYearId) && academicYearId > 0 ? academicYearId : undefined,
+          admission_year: Number(values.admission_year),
+          education_level: String(values.education_level || '').trim(),
+          graduation_year: Number(values.graduation_year),
+          name: String(values.name || '').trim(),
+          school_id: Number.isFinite(schoolId) && schoolId > 0 ? schoolId : undefined,
+        };
+      }
+      if (entityType === 'student') {
+        const classId = Number(values.class_id);
+        const pinyinName = String(values.pinyin_name || '').trim();
+        const gender = String(values.gender || '').trim();
+        return {
+          class_id: Number.isFinite(classId) && classId > 0 ? classId : undefined,
+          gender: gender || undefined,
+          name: String(values.name || '').trim(),
+          pinyin_name: pinyinName || undefined,
+          student_number: String(values.student_number || '').trim(),
+        };
+      }
       if (entityType === 'grade') {
         return {
           education_level: String(values.education_level || '').trim(),
@@ -1503,14 +1562,15 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
   );
 
   const handleSubmit = async () => {
-    if (!supportsCrud) return;
+    if (!supportsCreate) return;
     const values = await form.validateFields();
     const entityType = content.entity_type;
     const payload = buildCrudPayload(entityType, values);
     const createActionId = createActionIdForEntity(entityType);
     const updateActionId = updateActionIdForEntity(entityType);
     const idKey = entityIdKeyForEntity(entityType);
-    if (!createActionId || !updateActionId) return;
+    if (!createActionId) return;
+    if (drawerMode === 'edit' && !updateActionId) return;
 
     setSubmitting(true);
     try {
@@ -1544,6 +1604,7 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
         }
         message.success(`${title}已创建`);
       } else {
+        if (!updateActionId) return;
         const entityId = Number(editingRow?.[idKey]);
         if (!entityId) throw new Error(`Missing ${idKey}`);
         const { run_id } = await startInvocation({
@@ -1586,7 +1647,7 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
   };
 
   const handleDeleteOne = (row: any) => {
-    if (!supportsCrud) return;
+    if (!supportsEditDeleteAndBulk) return;
     const entityType = content.entity_type;
     const deleteActionId = deleteActionIdForEntity(entityType);
     const idKey = entityIdKeyForEntity(entityType);
@@ -1639,7 +1700,7 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
   };
 
   const handleBulkDelete = async () => {
-    if (!supportsCrud) return;
+    if (!supportsEditDeleteAndBulk) return;
     const config = bulkDeleteConfigForEntity(content.entity_type);
     if (!config) return;
     const ids = selectedRowKeys.slice();
@@ -2122,11 +2183,13 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
           <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)} size="small">
             Import CSV
           </Button>
-          {supportsCrud ? (
+          {supportsCreate ? (
+            <Button icon={<PlusOutlined />} onClick={openCreate} size="small" type="primary">
+              New
+            </Button>
+          ) : null}
+          {supportsEditDeleteAndBulk ? (
             <>
-              <Button icon={<PlusOutlined />} onClick={openCreate} size="small" type="primary">
-                New
-              </Button>
               <Button
                 danger
                 disabled={selectedRowKeys.length === 0}
@@ -2301,7 +2364,7 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
         title={drawerTitle}
         width={420}
       >
-        <Form disabled={!supportsCrud} form={form} layout="vertical">
+        <Form disabled={!supportsCreate} form={form} layout="vertical">
           {content.entity_type === 'school' ? (
             <>
               <Form.Item label="学校名称" name="name" rules={[{ required: true }]}>
@@ -2342,21 +2405,110 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
             </>
           ) : null}
 
+          {content.entity_type === 'teacher' ? (
+            <>
+              <Form.Item label="用户名" name="username" rules={[{ required: true }]}>
+                <Input placeholder="例如：zhangsan" />
+              </Form.Item>
+              <Form.Item label="姓名" name="real_name" rules={[{ required: true }]}>
+                <Input placeholder="例如：张三" />
+              </Form.Item>
+              <Form.Item label="初始密码" name="new_password" rules={[{ required: true }]}>
+                <Input.Password placeholder="请输入初始密码" />
+              </Form.Item>
+              <Form.Item label="教师编号（可选）" name="teacher_number">
+                <Input placeholder="例如：T1001" />
+              </Form.Item>
+              <Form.Item label="角色" name="role" rules={[{ required: true }]}>
+                <Select
+                  options={[
+                    { label: 'TEACHER', value: 'TEACHER' },
+                    { label: 'ADMIN', value: 'ADMIN' },
+                    { label: 'PRINCIPAL', value: 'PRINCIPAL' },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item label="学校ID（可选）" name="school_id">
+                <TreeSelect
+                  allowClear
+                  loading={schoolTreeLoading}
+                  placeholder="请选择：省 / 市 / 学校"
+                  showSearch
+                  treeData={schoolTreeData}
+                  treeDefaultExpandAll={false}
+                  treeNodeFilterProp="title"
+                />
+              </Form.Item>
+            </>
+          ) : null}
+
+          {content.entity_type === 'class' ? (
+            <>
+              <Form.Item label="班级名称" name="name" rules={[{ required: true }]}>
+                <Input placeholder="例如：高三(1)班" />
+              </Form.Item>
+              <Form.Item label="学校ID（可选）" name="school_id">
+                <TreeSelect
+                  allowClear
+                  loading={schoolTreeLoading}
+                  placeholder="请选择：省 / 市 / 学校"
+                  showSearch
+                  treeData={schoolTreeData}
+                  treeDefaultExpandAll={false}
+                  treeNodeFilterProp="title"
+                />
+              </Form.Item>
+              <Form.Item label="学年ID（可选）" name="academic_year_id">
+                <InputNumber min={1} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item label="入学年份" name="admission_year" rules={[{ required: true }]}>
+                <InputNumber min={1900} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item label="毕业年份" name="graduation_year" rules={[{ required: true }]}>
+                <InputNumber min={1900} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item label="学段" name="education_level" rules={[{ required: true }]}>
+                <Select options={EDUCATION_LEVEL_OPTIONS} placeholder="请选择学段" />
+              </Form.Item>
+            </>
+          ) : null}
+
+          {content.entity_type === 'student' ? (
+            <>
+              <Form.Item label="学号" name="student_number" rules={[{ required: true }]}>
+                <Input placeholder="例如：20260001" />
+              </Form.Item>
+              <Form.Item label="姓名" name="name" rules={[{ required: true }]}>
+                <Input placeholder="例如：李四" />
+              </Form.Item>
+              <Form.Item label="班级ID（可选）" name="class_id">
+                <TreeSelect
+                  allowClear
+                  loadData={loadClassTreeNodeData}
+                  loading={classTreeLoading}
+                  placeholder="请选择：省 / 市 / 学校 / 入学年份 / 班级"
+                  showSearch
+                  treeData={classTreeData}
+                  treeDefaultExpandAll={false}
+                  treeNodeFilterProp="title"
+                />
+              </Form.Item>
+              <Form.Item label="拼音（可选）" name="pinyin_name">
+                <Input placeholder="例如：li si" />
+              </Form.Item>
+              <Form.Item label="性别（可选）" name="gender">
+                <Input placeholder="例如：男 / 女" />
+              </Form.Item>
+            </>
+          ) : null}
+
           {content.entity_type === 'grade' ? (
             <>
               <Form.Item label="年级名称" name="name" rules={[{ required: true }]}>
-                <Input placeholder="例如：小学一年级" />
+                <Input placeholder="例如：高中3年级" />
               </Form.Item>
               <Form.Item label="学段" name="education_level" rules={[{ required: true }]}>
-                <Select
-                  options={[
-                    { label: '小学（primary）', value: 'primary' },
-                    { label: '初中（junior）', value: 'junior' },
-                    { label: '高中（senior）', value: 'senior' },
-                  ]}
-                  placeholder="请选择学段"
-                  showSearch
-                />
+                <Select options={EDUCATION_LEVEL_OPTIONS} placeholder="请选择学段" showSearch />
               </Form.Item>
               <Form.Item label="排序序号" name="grade_order" rules={[{ required: true }]}>
                 <InputNumber min={0} style={{ width: '100%' }} />
@@ -2499,11 +2651,7 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
                 <Form.Item label="默认学段（可选）" name="education_level">
                   <Select
                     allowClear
-                    options={[
-                      { label: '小学（primary）', value: 'primary' },
-                      { label: '初中（junior）', value: 'junior' },
-                      { label: '高中（senior）', value: 'senior' },
-                    ]}
+                    options={EDUCATION_LEVEL_OPTIONS}
                     placeholder="请选择学段"
                     showSearch
                   />
