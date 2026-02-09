@@ -18,7 +18,7 @@ jobs:
         uses: actions-cool/issues-helper@v3
         with:
           actions: 'check-inactive'
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ secrets.GH_TOKEN || github.token }}
           inactive-label: 'Inactive'
           inactive-day: 60
 
@@ -32,7 +32,7 @@ jobs:
         uses: actions-cool/issues-helper@v3
         with:
           actions: 'close-issues'
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ secrets.GH_TOKEN || github.token }}
           labels: '✅ Fixed'
           inactive-day: 3
           body: |
@@ -43,7 +43,7 @@ jobs:
         uses: actions-cool/issues-helper@v3
         with:
           actions: 'close-issues'
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ secrets.GH_TOKEN || github.token }}
           labels: '🤔 Need Reproduce'
           inactive-day: 3
           body: |
@@ -54,7 +54,7 @@ jobs:
         uses: actions-cool/issues-helper@v3
         with:
           actions: 'close-issues'
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ secrets.GH_TOKEN || github.token }}
           labels: "🙅🏻‍♀️ WON'T DO"
           inactive-day: 3
           body: |

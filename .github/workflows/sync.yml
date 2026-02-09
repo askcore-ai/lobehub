@@ -23,16 +23,17 @@ jobs:
         uses: actions-cool/issues-helper@v3
         with:
           actions: 'close-issues'
+          token: ${{ secrets.GH_TOKEN || github.token }}
           labels: '🚨 Sync Fail'
 
       - name: Sync upstream changes
         id: sync
         uses: aormsby/Fork-Sync-With-Upstream-action@v3.4
         with:
-          upstream_sync_repo: lobehub/lobehub
+          upstream_sync_repo: lobehub/lobe-chat
           upstream_sync_branch: main
-          target_sync_branch: main
-          target_repo_token: ${{ secrets.GITHUB_TOKEN }} # automatically generated, no need to set
+          target_sync_branch: next
+          target_repo_token: ${{ secrets.GH_TOKEN || github.token }}
           test_mode: false
 
       - name: Sync check
@@ -40,6 +41,7 @@ jobs:
         uses: actions-cool/issues-helper@v3
         with:
           actions: 'create-issue'
+          token: ${{ secrets.GH_TOKEN || github.token }}
           title: '🚨 同步失败 | Sync Fail'
           labels: '🚨 Sync Fail'
           body: |
