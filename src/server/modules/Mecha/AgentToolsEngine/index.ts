@@ -40,10 +40,6 @@ const ADMIN_OPS_LANGFUSE_PROMPT_LABEL = 'production';
 const ADMIN_OPS_LANGFUSE_PROMPT_TTL_MS = 60_000;
 
 const ASSIGNMENT_AUTHORING_IDENTIFIER = 'assignment.authoring.v1';
-const ASSIGNMENT_AUTHORING_LANGFUSE_PROMPT_NAME =
-  'workbench.tool.assignment_authoring.v1.system@v1';
-const ASSIGNMENT_AUTHORING_LANGFUSE_PROMPT_LABEL = 'production';
-const ASSIGNMENT_AUTHORING_LANGFUSE_PROMPT_TTL_MS = 60_000;
 
 type _CachedPrompt = {
   fetchedAtMs: number;
@@ -55,7 +51,6 @@ type _CachedPrompt = {
 };
 
 let _adminOpsPromptCache: _CachedPrompt | undefined;
-let _assignmentAuthoringPromptCache: _CachedPrompt | undefined;
 
 const _mergeAdminOpsSystemRole = (options: {
   langfuseSystemRole: string | undefined;
@@ -69,12 +64,13 @@ const _mergeAdminOpsSystemRole = (options: {
   if (!toolDefault) return langfuse || undefined;
 
   return [
-    langfuse,
+    'Authoritative capability reference (must follow this section first):',
+    toolDefault,
     '',
     '---',
     '',
-    'Tool reference (auto-injected from the tool manifest; if anything conflicts, follow the tool JSON schema/description as the source of truth):',
-    toolDefault,
+    'Supplemental policy guidance from Langfuse (apply only when not conflicting with the authoritative capability reference above):',
+    langfuse,
   ].join('\n');
 };
 
@@ -173,61 +169,6 @@ const _resolveAdminOpsSystemRoleFromLangfuse = async (): Promise<_CachedPrompt |
   }
 };
 
-const _resolveAssignmentAuthoringSystemRoleFromLangfuse = async (): Promise<
-  _CachedPrompt | undefined
-> => {
-  const now = Date.now();
-  if (
-    _assignmentAuthoringPromptCache &&
-    now - _assignmentAuthoringPromptCache.fetchedAtMs <= _assignmentAuthoringPromptCache.ttlMs
-  ) {
-    return _assignmentAuthoringPromptCache;
-  }
-
-  const { LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST } = getLangfuseConfig();
-
-  if (!LANGFUSE_PUBLIC_KEY || !LANGFUSE_SECRET_KEY) {
-    return _assignmentAuthoringPromptCache;
-  }
-
-  try {
-    const client = new Langfuse({
-      baseUrl: LANGFUSE_HOST,
-      publicKey: LANGFUSE_PUBLIC_KEY,
-      secretKey: LANGFUSE_SECRET_KEY,
-    });
-
-    const prompt = await client.api.promptsGet({
-      label: ASSIGNMENT_AUTHORING_LANGFUSE_PROMPT_LABEL,
-      promptName: ASSIGNMENT_AUTHORING_LANGFUSE_PROMPT_NAME,
-    });
-
-    const systemRole = _extractSystemRoleFromPrompt(prompt);
-    if (!systemRole) return _assignmentAuthoringPromptCache;
-
-    _assignmentAuthoringPromptCache = {
-      fetchedAtMs: now,
-      promptLabel: ASSIGNMENT_AUTHORING_LANGFUSE_PROMPT_LABEL,
-      promptName: ASSIGNMENT_AUTHORING_LANGFUSE_PROMPT_NAME,
-      promptVersion: Number((prompt as any).version || 0),
-      systemRole,
-      ttlMs: ASSIGNMENT_AUTHORING_LANGFUSE_PROMPT_TTL_MS,
-    };
-
-    log(
-      'Resolved assignment authoring systemRole from Langfuse prompt=%s label=%s version=%s',
-      _assignmentAuthoringPromptCache.promptName,
-      _assignmentAuthoringPromptCache.promptLabel,
-      String(_assignmentAuthoringPromptCache.promptVersion),
-    );
-
-    return _assignmentAuthoringPromptCache;
-  } catch (error) {
-    log('Failed to resolve assignment authoring systemRole from Langfuse: %O', error);
-    return _assignmentAuthoringPromptCache;
-  }
-};
-
 /**
  * Initialize ToolsEngine with server-side context
  *
@@ -306,16 +247,16 @@ export const createServerAgentToolsEngine = async (
     additionalManifests?.length ?? 0,
   );
 
-  const requestedToolIds = agentConfig.plugins ?? [];
-  const shouldInjectAdminOpsPrompt = requestedToolIds.includes(ADMIN_OPS_IDENTIFIER);
-  const shouldInjectAssignmentAuthoringPrompt = requestedToolIds.includes(
-    ASSIGNMENT_AUTHORING_IDENTIFIER,
+  const requestedToolIds = Array.from(
+    new Set(
+      (agentConfig.plugins ?? []).map((id) =>
+        id === ASSIGNMENT_AUTHORING_IDENTIFIER ? ADMIN_OPS_IDENTIFIER : id,
+      ),
+    ),
   );
+  const shouldInjectAdminOpsPrompt = requestedToolIds.includes(ADMIN_OPS_IDENTIFIER);
   const adminOpsPrompt = shouldInjectAdminOpsPrompt
     ? await _resolveAdminOpsSystemRoleFromLangfuse()
-    : undefined;
-  const assignmentAuthoringPrompt = shouldInjectAssignmentAuthoringPrompt
-    ? await _resolveAssignmentAuthoringSystemRoleFromLangfuse()
     : undefined;
 
   const builtinManifests = builtinTools
@@ -326,19 +267,6 @@ export const createServerAgentToolsEngine = async (
           ...m,
           systemRole: _mergeAdminOpsSystemRole({
             langfuseSystemRole: adminOpsPrompt.systemRole,
-            toolDefaultSystemRole: m.systemRole,
-          }),
-        };
-      }
-
-      if (
-        m.identifier === ASSIGNMENT_AUTHORING_IDENTIFIER &&
-        assignmentAuthoringPrompt?.systemRole
-      ) {
-        return {
-          ...m,
-          systemRole: _mergeAdminOpsSystemRole({
-            langfuseSystemRole: assignmentAuthoringPrompt.systemRole,
             toolDefaultSystemRole: m.systemRole,
           }),
         };

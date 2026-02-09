@@ -25,6 +25,8 @@ const log = debug('mecha:agentConfigResolver');
  * Set of valid builtin agent slugs for O(1) lookup
  */
 const VALID_BUILTIN_SLUGS = new Set<string>(Object.values(BUILTIN_AGENT_SLUGS));
+const ADMIN_OPS_IDENTIFIER = 'admin.ops.v1';
+const ASSIGNMENT_AUTHORING_IDENTIFIER = 'assignment.authoring.v1';
 
 /**
  * Check if a slug is a valid builtin agent slug
@@ -161,7 +163,16 @@ export const resolveAgentConfig = (ctx: AgentConfigResolverContext): ResolvedAge
       log('disableTools is true, returning empty plugins');
       return [];
     }
-    return isSubTask ? pluginIds.filter((id) => id !== 'lobe-gtd') : pluginIds;
+
+    const normalizedPlugins = pluginIds.map((id) =>
+      id === ASSIGNMENT_AUTHORING_IDENTIFIER ? ADMIN_OPS_IDENTIFIER : id,
+    );
+
+    const filteredPlugins = isSubTask
+      ? normalizedPlugins.filter((id) => id !== 'lobe-gtd')
+      : normalizedPlugins;
+
+    return Array.from(new Set(filteredPlugins));
   };
 
   const agentStoreState = getAgentStoreState();

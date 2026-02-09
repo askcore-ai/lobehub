@@ -32,6 +32,17 @@ import { KlavisService } from '@/server/services/klavis';
 import { MarketService } from '@/server/services/market';
 
 const log = debug('lobe-server:ai-agent-service');
+const ADMIN_OPS_IDENTIFIER = 'admin.ops.v1';
+const LEGACY_ASSIGNMENT_AUTHORING_IDENTIFIER = 'assignment.authoring.v1';
+
+const normalizeTeachingToolPlugins = (pluginIds: string[]) =>
+  Array.from(
+    new Set(
+      pluginIds.map((id) =>
+        id === LEGACY_ASSIGNMENT_AUTHORING_IDENTIFIER ? ADMIN_OPS_IDENTIFIER : id,
+      ),
+    ),
+  );
 
 /**
  * Format error for storage in thread metadata
@@ -227,11 +238,12 @@ export class AiAgentService {
       isModelSupportToolUse,
     };
 
+    const pluginIds = normalizeTeachingToolPlugins(agentConfig.plugins || []);
     const toolsEngine = await createServerAgentToolsEngine(toolsContext, {
       additionalManifests: [...lobehubSkillManifests, ...klavisManifests],
       agentConfig: {
         chatConfig: agentConfig.chatConfig ?? undefined,
-        plugins: agentConfig.plugins ?? undefined,
+        plugins: pluginIds,
       },
       hasEnabledKnowledgeBases,
       model,
@@ -239,7 +251,6 @@ export class AiAgentService {
     });
 
     // Generate tools and manifest map
-    const pluginIds = agentConfig.plugins || [];
     log('execAgent: agent configured plugins: %O', pluginIds);
 
     const toolsResult = toolsEngine.generateToolsDetailed({

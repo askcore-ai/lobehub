@@ -4,11 +4,13 @@ import { AdminOpsApiName } from './types';
 
 export const AdminOpsIdentifier = 'admin.ops.v1';
 
-const systemPrompt = `You can manage admin data by starting durable Workbench runs using the P11 plugin \`admin.ops.v1\`.
+const systemPrompt = `You can manage teaching operations by starting durable Workbench runs using the unified tool \`admin.ops.v1\` (display name: 教学).
 
 Supported entities:
 - Roster: schools, classes, teachers, students
 - Academic config: academic years, grades, subjects
+- Assignment domain: assignments, questions, submissions, submission_questions
+- Assignment authoring workflow: draft create/save/publish
 
 CRITICAL (ID resolution):
 - If the user provides any entity by name/attributes (not an explicit numeric ID), you MUST call **Resolve Entity (Semantic)** first. Do this even if the name looks exact (e.g., “物理”).
@@ -16,7 +18,7 @@ CRITICAL (ID resolution):
 - Never try to "find by name" using \`list*\` — list endpoints are not name-search and may return large pages.
 
 How to resolve:
-1) Identify entity types mentioned (school/grade/subject/teacher/class/student/assignment/question).
+1) Identify entity types mentioned (school/grade/subject/teacher/class/student/assignment/question/submission/submission_question).
 2) Call Resolve Entity once per type. As soon as you have one ID, use it to narrow subsequent calls via \`scope\`.
 3) If \`status=ambiguous\`, ask the user to pick a candidate ID before proceeding.
 
@@ -57,6 +59,8 @@ export const AdminOpsManifest: BuiltinToolManifest = {
               'student',
               'assignment',
               'question',
+              'submission',
+              'submission_question',
             ],
             type: 'string',
           },
@@ -66,10 +70,13 @@ export const AdminOpsManifest: BuiltinToolManifest = {
             additionalProperties: false,
             default: {},
             properties: {
+              assignment_id: { minimum: 1, type: 'integer' },
               class_id: { minimum: 1, type: 'integer' },
               grade_id: { minimum: 1, type: 'integer' },
               school_id: { minimum: 1, type: 'integer' },
+              student_id: { minimum: 1, type: 'integer' },
               subject_id: { minimum: 1, type: 'integer' },
+              submission_id: { minimum: 1, type: 'integer' },
               teacher_id: { minimum: 1, type: 'integer' },
             },
             type: 'object',
@@ -234,6 +241,111 @@ export const AdminOpsManifest: BuiltinToolManifest = {
             additionalProperties: false,
             default: {},
             properties: { subject_category: { maxLength: 20, minLength: 1, type: 'string' } },
+            type: 'object',
+          },
+          include_total: { default: false, type: 'boolean' },
+          page: { default: 1, minimum: 1, type: 'integer' },
+          page_size: { default: 50, maximum: 200, minimum: 1, type: 'integer' },
+        },
+        type: 'object',
+      },
+    },
+    {
+      description:
+        'List assignments with coarse filters (subject_id/grade_id). No name search. If the user provides an assignment title, call Resolve Entity (Semantic) instead.',
+      humanIntervention: 'never',
+      name: AdminOpsApiName.listAssignments,
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          after_id: { minimum: 0, type: 'integer' },
+          filters: {
+            additionalProperties: false,
+            default: {},
+            properties: {
+              grade_id: { minimum: 1, type: 'integer' },
+              subject_id: { minimum: 1, type: 'integer' },
+            },
+            type: 'object',
+          },
+          include_total: { default: false, type: 'boolean' },
+          page: { default: 1, minimum: 1, type: 'integer' },
+          page_size: { default: 50, maximum: 200, minimum: 1, type: 'integer' },
+        },
+        type: 'object',
+      },
+    },
+    {
+      description:
+        'List canonical questions with coarse filters. No name search. If the user provides a fuzzy question reference, call Resolve Entity (Semantic) instead.',
+      humanIntervention: 'never',
+      name: AdminOpsApiName.listQuestions,
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          after_id: { minimum: 0, type: 'integer' },
+          filters: {
+            additionalProperties: false,
+            default: {},
+            properties: {
+              grade_id: { minimum: 1, type: 'integer' },
+              question_type: {
+                enum: ['single_choice', 'multiple_choice', 'fill_in_blank', 'problem_solving'],
+                type: 'string',
+              },
+              subject_id: { minimum: 1, type: 'integer' },
+            },
+            type: 'object',
+          },
+          include_total: { default: false, type: 'boolean' },
+          page: { default: 1, minimum: 1, type: 'integer' },
+          page_size: { default: 50, maximum: 200, minimum: 1, type: 'integer' },
+        },
+        type: 'object',
+      },
+    },
+    {
+      description:
+        'List submissions with coarse filters. Contains student work metadata; use resolve + scoped queries for precise targeting.',
+      humanIntervention: 'never',
+      name: AdminOpsApiName.listSubmissions,
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          after_id: { minimum: 0, type: 'integer' },
+          filters: {
+            additionalProperties: false,
+            default: {},
+            properties: {
+              assignment_student_id: { minimum: 1, type: 'integer' },
+              status: { maxLength: 20, minLength: 1, type: 'string' },
+            },
+            type: 'object',
+          },
+          include_total: { default: false, type: 'boolean' },
+          page: { default: 1, minimum: 1, type: 'integer' },
+          page_size: { default: 50, maximum: 200, minimum: 1, type: 'integer' },
+        },
+        type: 'object',
+      },
+    },
+    {
+      description:
+        'List submission_question rows with coarse filters. Contains student work metadata; use scoped resolve for precise targeting.',
+      humanIntervention: 'never',
+      name: AdminOpsApiName.listSubmissionQuestions,
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          after_id: { minimum: 0, type: 'integer' },
+          filters: {
+            additionalProperties: false,
+            default: {},
+            properties: {
+              is_correct: { type: 'boolean' },
+              question_id: { minimum: 1, type: 'integer' },
+              submission_id: { minimum: 1, type: 'integer' },
+            },
             type: 'object',
           },
           include_total: { default: false, type: 'boolean' },
@@ -666,6 +778,385 @@ export const AdminOpsManifest: BuiltinToolManifest = {
         type: 'object',
       },
     },
+    {
+      description: 'Create an assignment. Produces an admin.mutation.result@v1 artifact.',
+      humanIntervention: 'required',
+      name: AdminOpsApiName.createAssignment,
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          payload: {
+            additionalProperties: false,
+            properties: {
+              assign_date: { minLength: 1, maxLength: 64, type: 'string' },
+              created_by_teachers: {
+                items: { minimum: 1, type: 'integer' },
+                type: 'array',
+              },
+              creation_type: { maxLength: 20, minLength: 1, type: 'string' },
+              due_date: { minLength: 1, maxLength: 64, type: 'string' },
+              file_keys: {
+                items: { maxLength: 1024, minLength: 1, type: 'string' },
+                type: 'array',
+              },
+              grade_id: { minimum: 1, type: 'integer' },
+              subject_id: { minimum: 1, type: 'integer' },
+              title: { maxLength: 200, minLength: 1, type: 'string' },
+            },
+            required: ['title', 'subject_id', 'grade_id'],
+            type: 'object',
+          },
+        },
+        required: ['payload'],
+        type: 'object',
+      },
+    },
+    {
+      description: 'Update an assignment. Produces an admin.mutation.result@v1 artifact.',
+      humanIntervention: 'required',
+      name: AdminOpsApiName.updateAssignment,
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          assignment_id: { minimum: 1, type: 'integer' },
+          patch: {
+            additionalProperties: false,
+            properties: {
+              assign_date: { minLength: 1, maxLength: 64, type: 'string' },
+              created_by_teachers: {
+                items: { minimum: 1, type: 'integer' },
+                type: 'array',
+              },
+              creation_type: { maxLength: 20, minLength: 1, type: 'string' },
+              due_date: { minLength: 1, maxLength: 64, type: 'string' },
+              file_keys: {
+                items: { maxLength: 1024, minLength: 1, type: 'string' },
+                type: 'array',
+              },
+              grade_id: { minimum: 1, type: 'integer' },
+              subject_id: { minimum: 1, type: 'integer' },
+              title: { maxLength: 200, minLength: 1, type: 'string' },
+            },
+            type: 'object',
+          },
+        },
+        required: ['assignment_id', 'patch'],
+        type: 'object',
+      },
+    },
+    {
+      description:
+        'Delete an assignment (hard delete). Produces an admin.mutation.result@v1 artifact.',
+      humanIntervention: 'required',
+      name: AdminOpsApiName.deleteAssignment,
+      parameters: {
+        additionalProperties: false,
+        properties: { assignment_id: { minimum: 1, type: 'integer' } },
+        required: ['assignment_id'],
+        type: 'object',
+      },
+    },
+    {
+      description: 'Create a question. Produces an admin.mutation.result@v1 artifact.',
+      humanIntervention: 'required',
+      name: AdminOpsApiName.createQuestion,
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          payload: {
+            additionalProperties: false,
+            properties: {
+              answer: { type: 'object' },
+              content: { type: 'object' },
+              created_by_teachers: { items: { minimum: 1, type: 'integer' }, type: 'array' },
+              creation_type: { maxLength: 20, minLength: 1, type: 'string' },
+              difficulty: { minimum: 0, maximum: 1, type: 'number' },
+              extra_data: { type: 'object' },
+              grade_id: { minimum: 1, type: 'integer' },
+              knowledge_points: {
+                items: { maxLength: 128, minLength: 1, type: 'string' },
+                type: 'array',
+              },
+              question_type: {
+                enum: ['single_choice', 'multiple_choice', 'fill_in_blank', 'problem_solving'],
+                type: 'string',
+              },
+              subject_id: { minimum: 1, type: 'integer' },
+              thinking: { type: 'object' },
+            },
+            required: ['subject_id', 'grade_id', 'question_type', 'content', 'answer'],
+            type: 'object',
+          },
+        },
+        required: ['payload'],
+        type: 'object',
+      },
+    },
+    {
+      description: 'Update a question. Produces an admin.mutation.result@v1 artifact.',
+      humanIntervention: 'required',
+      name: AdminOpsApiName.updateQuestion,
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          patch: {
+            additionalProperties: false,
+            properties: {
+              answer: { type: 'object' },
+              content: { type: 'object' },
+              created_by_teachers: { items: { minimum: 1, type: 'integer' }, type: 'array' },
+              creation_type: { maxLength: 20, minLength: 1, type: 'string' },
+              difficulty: { minimum: 0, maximum: 1, type: 'number' },
+              extra_data: { type: 'object' },
+              grade_id: { minimum: 1, type: 'integer' },
+              knowledge_points: {
+                items: { maxLength: 128, minLength: 1, type: 'string' },
+                type: 'array',
+              },
+              question_type: {
+                enum: ['single_choice', 'multiple_choice', 'fill_in_blank', 'problem_solving'],
+                type: 'string',
+              },
+              subject_id: { minimum: 1, type: 'integer' },
+              thinking: { type: 'object' },
+            },
+            type: 'object',
+          },
+          question_id: { minimum: 1, type: 'integer' },
+        },
+        required: ['question_id', 'patch'],
+        type: 'object',
+      },
+    },
+    {
+      description:
+        'Delete a question (hard delete). Produces an admin.mutation.result@v1 artifact.',
+      humanIntervention: 'required',
+      name: AdminOpsApiName.deleteQuestion,
+      parameters: {
+        additionalProperties: false,
+        properties: { question_id: { minimum: 1, type: 'integer' } },
+        required: ['question_id'],
+        type: 'object',
+      },
+    },
+    {
+      description: 'Create a submission. Produces an admin.mutation.result@v1 artifact.',
+      humanIntervention: 'required',
+      name: AdminOpsApiName.createSubmission,
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          payload: {
+            additionalProperties: false,
+            properties: {
+              assignment_student_id: { minimum: 1, type: 'integer' },
+              file_keys: {
+                items: { maxLength: 1024, minLength: 1, type: 'string' },
+                type: 'array',
+              },
+              graded_at: { minLength: 1, maxLength: 64, type: 'string' },
+              graded_by: { maxLength: 20, minLength: 1, type: 'string' },
+              report_path: { maxLength: 255, minLength: 1, type: 'string' },
+              score: { type: 'number' },
+              status: { maxLength: 20, minLength: 1, type: 'string' },
+              submitted_at: { minLength: 1, maxLength: 64, type: 'string' },
+              total_score: { type: 'number' },
+            },
+            required: ['assignment_student_id'],
+            type: 'object',
+          },
+        },
+        required: ['payload'],
+        type: 'object',
+      },
+    },
+    {
+      description: 'Update a submission. Produces an admin.mutation.result@v1 artifact.',
+      humanIntervention: 'required',
+      name: AdminOpsApiName.updateSubmission,
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          patch: {
+            additionalProperties: false,
+            properties: {
+              assignment_student_id: { minimum: 1, type: 'integer' },
+              file_keys: {
+                items: { maxLength: 1024, minLength: 1, type: 'string' },
+                type: 'array',
+              },
+              graded_at: { minLength: 1, maxLength: 64, type: 'string' },
+              graded_by: { maxLength: 20, minLength: 1, type: 'string' },
+              report_path: { maxLength: 255, minLength: 1, type: 'string' },
+              score: { type: 'number' },
+              status: { maxLength: 20, minLength: 1, type: 'string' },
+              submitted_at: { minLength: 1, maxLength: 64, type: 'string' },
+              total_score: { type: 'number' },
+            },
+            type: 'object',
+          },
+          submission_id: { minimum: 1, type: 'integer' },
+        },
+        required: ['submission_id', 'patch'],
+        type: 'object',
+      },
+    },
+    {
+      description:
+        'Delete a submission (hard delete). Produces an admin.mutation.result@v1 artifact.',
+      humanIntervention: 'required',
+      name: AdminOpsApiName.deleteSubmission,
+      parameters: {
+        additionalProperties: false,
+        properties: { submission_id: { minimum: 1, type: 'integer' } },
+        required: ['submission_id'],
+        type: 'object',
+      },
+    },
+    {
+      description:
+        'Create a submission_question row. Produces an admin.mutation.result@v1 artifact.',
+      humanIntervention: 'required',
+      name: AdminOpsApiName.createSubmissionQuestion,
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          payload: {
+            additionalProperties: false,
+            properties: {
+              feedback: { maxLength: 200_000, minLength: 1, type: 'string' },
+              is_correct: { type: 'boolean' },
+              max_score: { type: 'number' },
+              order_index: { minimum: 1, type: 'integer' },
+              question_id: { minimum: 1, type: 'integer' },
+              score: { type: 'number' },
+              student_answer: { maxLength: 200_000, minLength: 1, type: 'string' },
+              submission_id: { minimum: 1, type: 'integer' },
+            },
+            required: ['submission_id', 'order_index'],
+            type: 'object',
+          },
+        },
+        required: ['payload'],
+        type: 'object',
+      },
+    },
+    {
+      description:
+        'Update a submission_question row. Produces an admin.mutation.result@v1 artifact.',
+      humanIntervention: 'required',
+      name: AdminOpsApiName.updateSubmissionQuestion,
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          patch: {
+            additionalProperties: false,
+            properties: {
+              feedback: { maxLength: 200_000, minLength: 1, type: 'string' },
+              is_correct: { type: 'boolean' },
+              max_score: { type: 'number' },
+              order_index: { minimum: 1, type: 'integer' },
+              question_id: { minimum: 1, type: 'integer' },
+              score: { type: 'number' },
+              student_answer: { maxLength: 200_000, minLength: 1, type: 'string' },
+              submission_id: { minimum: 1, type: 'integer' },
+            },
+            type: 'object',
+          },
+          submission_question_id: { minimum: 1, type: 'integer' },
+        },
+        required: ['submission_question_id', 'patch'],
+        type: 'object',
+      },
+    },
+    {
+      description:
+        'Delete a submission_question row (hard delete). Produces an admin.mutation.result@v1 artifact.',
+      humanIntervention: 'required',
+      name: AdminOpsApiName.deleteSubmissionQuestion,
+      parameters: {
+        additionalProperties: false,
+        properties: { submission_question_id: { minimum: 1, type: 'integer' } },
+        required: ['submission_question_id'],
+        type: 'object',
+      },
+    },
+    {
+      description:
+        'Create a new empty assignment draft (manual authoring) for the current conversation.',
+      humanIntervention: 'required',
+      name: AdminOpsApiName.draftCreateManual,
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          dueDate: { description: 'Optional due date (RFC3339 date-time).', type: 'string' },
+          gradeId: { description: 'Grade id.', minimum: 1, type: 'number' },
+          subjectId: { description: 'Subject id.', minimum: 1, type: 'number' },
+          title: { description: 'Assignment title.', maxLength: 255, minLength: 1, type: 'string' },
+        },
+        required: ['title', 'subjectId', 'gradeId'],
+        type: 'object',
+      },
+    },
+    {
+      description:
+        'Save a draft update: creates a new assignment.draft revision and upserts canonical questions.',
+      humanIntervention: 'required',
+      name: AdminOpsApiName.draftSave,
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          draftArtifactId: {
+            description: 'The latest assignment.draft artifact id.',
+            minLength: 1,
+            type: 'string',
+          },
+          dueDate: { description: 'Optional due date (RFC3339 date-time).', type: 'string' },
+          questions: {
+            description: 'Draft questions (v1 JSON).',
+            items: { type: 'object' },
+            minItems: 1,
+            type: 'array',
+          },
+          title: {
+            description: 'Optional updated title.',
+            maxLength: 255,
+            minLength: 1,
+            type: 'string',
+          },
+        },
+        required: ['draftArtifactId', 'questions'],
+        type: 'object',
+      },
+    },
+    {
+      description:
+        'Publish a draft into a persisted assignment and produce an assignment.publish.result artifact.',
+      humanIntervention: 'required',
+      name: AdminOpsApiName.draftPublish,
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          draftArtifactId: {
+            description: 'The latest assignment.draft artifact id.',
+            minLength: 1,
+            type: 'string',
+          },
+          target: {
+            additionalProperties: false,
+            description: 'Optional publish targets.',
+            properties: {
+              classIds: { items: { minimum: 1, type: 'number' }, type: 'array' },
+              studentIds: { items: { minimum: 1, type: 'number' }, type: 'array' },
+            },
+            type: 'object',
+          },
+        },
+        required: ['draftArtifactId'],
+        type: 'object',
+      },
+    },
 
     {
       description:
@@ -919,8 +1410,8 @@ export const AdminOpsManifest: BuiltinToolManifest = {
   ],
   identifier: AdminOpsIdentifier,
   meta: {
-    avatar: '🏫',
-    title: 'Admin Ops',
+    avatar: '🎓',
+    title: '教学',
   },
   systemRole: systemPrompt,
   type: 'builtin',

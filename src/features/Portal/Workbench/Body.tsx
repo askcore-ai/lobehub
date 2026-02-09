@@ -273,9 +273,7 @@ const WorkbenchPortalBodyInner = memo(() => {
     [actions],
   );
   const isHelloPluginEnabled = actionsError ? true : enabledPluginIds.has('aitutor-hello-plugin');
-  const isAssignmentAuthoringEnabled = actionsError
-    ? true
-    : enabledPluginIds.has('assignment.authoring.v1');
+  const isAssignmentAuthoringEnabled = actionsError ? true : enabledPluginIds.has('admin.ops.v1');
 
   const handleCancel = useCallback(
     async (targetRunId: number) => {
@@ -417,9 +415,19 @@ const WorkbenchPortalBodyInner = memo(() => {
       artifactDetail.type === 'admin.entity.list' &&
       artifactDetail.schema_version === 'v1' &&
       artifactDetail.produced_by_plugin_id === 'admin.ops.v1' &&
-      ['school', 'teacher', 'class', 'student', 'academic_year', 'grade', 'subject'].includes(
-        adminEntityType,
-      );
+      [
+        'school',
+        'teacher',
+        'class',
+        'student',
+        'academic_year',
+        'grade',
+        'subject',
+        'assignment',
+        'question',
+        'submission',
+        'submission_question',
+      ].includes(adminEntityType);
     if (isAdminEntityList) return true;
 
     return false;
@@ -826,6 +834,10 @@ const WorkbenchPortalBodyInner = memo(() => {
                     'academic_year',
                     'grade',
                     'subject',
+                    'assignment',
+                    'question',
+                    'submission',
+                    'submission_question',
                   ].includes(String((artifactDetail.content as any)?.entity_type || '').trim()) ? (
                   <SchoolsRenderer
                     artifactId={artifactDetail.artifact_id}

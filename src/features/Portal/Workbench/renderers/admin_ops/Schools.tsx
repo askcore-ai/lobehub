@@ -126,6 +126,57 @@ type SubjectItem = {
   subject_id: number;
 };
 
+type AssignmentItem = {
+  assign_date: string;
+  assignment_id: number;
+  created_by_teachers: number[];
+  creation_type: string;
+  due_date?: string | null;
+  file_keys: string[];
+  grade_id: number;
+  subject_id: number;
+  title: string;
+};
+
+type QuestionItem = {
+  content_preview: string;
+  difficulty?: number | null;
+  grade_id: number;
+  knowledge_points: string[];
+  question_id: number;
+  question_type: string;
+  subject_id: number;
+};
+
+type SubmissionItem = {
+  assignment_id?: number | null;
+  assignment_student_id: number;
+  file_keys_count: number;
+  graded_at?: string | null;
+  graded_by: string;
+  report_path?: string | null;
+  score?: number | null;
+  status: string;
+  student_id?: number | null;
+  submission_id: number;
+  submitted_at: string;
+  total_score?: number | null;
+};
+
+type SubmissionQuestionItem = {
+  assignment_id?: number | null;
+  feedback_preview?: string | null;
+  is_correct?: boolean | null;
+  max_score?: number | null;
+  order_index: number;
+  question_id?: number | null;
+  score?: number | null;
+  student_answer_preview?: string | null;
+  student_id?: number | null;
+  submission_id: number;
+  submission_question_id: number;
+};
+
 type AdminEntityType =
   | 'school'
   | 'teacher'
@@ -133,7 +184,11 @@ type AdminEntityType =
   | 'student'
   | 'academic_year'
   | 'grade'
-  | 'subject';
+  | 'subject'
+  | 'assignment'
+  | 'question'
+  | 'submission'
+  | 'submission_question';
 
 type AdminEntityListContent = {
   entity_type: AdminEntityType;
@@ -516,7 +571,7 @@ const sha256Hex = async (buffer: ArrayBuffer): Promise<string> => {
 const waitForRunCompletion = async (
   runId: number,
   options: { timeoutMs: number },
-): Promise<{ ok: true; run: WorkbenchRun } | { error: string, ok: false; timedOut: boolean; }> => {
+): Promise<{ ok: true; run: WorkbenchRun } | { error: string; ok: false; timedOut: boolean }> => {
   const startMs = Date.now();
   const terminalStates = new Set(['succeeded', 'failed', 'cancelled']);
   let pollMs = 200;
@@ -594,6 +649,10 @@ const entityTitle = (entityType: AdminEntityType): string => {
   if (entityType === 'academic_year') return '学年';
   if (entityType === 'grade') return '年级';
   if (entityType === 'subject') return '学科';
+  if (entityType === 'assignment') return '作业';
+  if (entityType === 'question') return '题目';
+  if (entityType === 'submission') return '提交';
+  if (entityType === 'submission_question') return '作答题目';
   return entityType;
 };
 
@@ -605,10 +664,14 @@ const listActionIdForEntity = (entityType: AdminEntityType): string => {
   if (entityType === 'academic_year') return 'admin.list.academic_years';
   if (entityType === 'grade') return 'admin.list.grades';
   if (entityType === 'subject') return 'admin.list.subjects';
+  if (entityType === 'assignment') return 'admin.list.assignments';
+  if (entityType === 'question') return 'admin.list.questions';
+  if (entityType === 'submission') return 'admin.list.submissions';
+  if (entityType === 'submission_question') return 'admin.list.submission_questions';
   return 'admin.list.schools';
 };
 
-const importActionIdForEntity = (entityType: AdminEntityType): string => {
+const importActionIdForEntity = (entityType: AdminEntityType): string | null => {
   if (entityType === 'school') return 'admin.import.schools';
   if (entityType === 'teacher') return 'admin.import.teachers';
   if (entityType === 'class') return 'admin.import.classes';
@@ -616,11 +679,12 @@ const importActionIdForEntity = (entityType: AdminEntityType): string => {
   if (entityType === 'academic_year') return 'admin.import.academic_years';
   if (entityType === 'grade') return 'admin.import.grades';
   if (entityType === 'subject') return 'admin.import.subjects';
-  return 'admin.import.schools';
+  return null;
 };
 
 const importCsvSensitivityForEntity = (entityType: AdminEntityType): string => {
   if (entityType === 'student') return 'student_personal';
+  if (entityType === 'submission' || entityType === 'submission_question') return 'student_work';
   return 'restricted';
 };
 
@@ -632,6 +696,10 @@ const entityIdKeyForEntity = (entityType: AdminEntityType): string => {
   if (entityType === 'teacher') return 'teacher_id';
   if (entityType === 'class') return 'class_id';
   if (entityType === 'student') return 'student_id';
+  if (entityType === 'assignment') return 'assignment_id';
+  if (entityType === 'question') return 'question_id';
+  if (entityType === 'submission') return 'submission_id';
+  if (entityType === 'submission_question') return 'submission_question_id';
   return 'id';
 };
 
@@ -643,6 +711,10 @@ const createActionIdForEntity = (entityType: AdminEntityType): string | null => 
   if (entityType === 'academic_year') return 'admin.create.academic_year';
   if (entityType === 'grade') return 'admin.create.grade';
   if (entityType === 'subject') return 'admin.create.subject';
+  if (entityType === 'assignment') return 'admin.create.assignment';
+  if (entityType === 'question') return 'admin.create.question';
+  if (entityType === 'submission') return 'admin.create.submission';
+  if (entityType === 'submission_question') return 'admin.create.submission_question';
   return null;
 };
 
@@ -654,6 +726,10 @@ const updateActionIdForEntity = (entityType: AdminEntityType): string | null => 
   if (entityType === 'academic_year') return 'admin.update.academic_year';
   if (entityType === 'grade') return 'admin.update.grade';
   if (entityType === 'subject') return 'admin.update.subject';
+  if (entityType === 'assignment') return 'admin.update.assignment';
+  if (entityType === 'question') return 'admin.update.question';
+  if (entityType === 'submission') return 'admin.update.submission';
+  if (entityType === 'submission_question') return 'admin.update.submission_question';
   return null;
 };
 
@@ -665,6 +741,10 @@ const deleteActionIdForEntity = (entityType: AdminEntityType): string | null => 
   if (entityType === 'academic_year') return 'admin.delete.academic_year';
   if (entityType === 'grade') return 'admin.delete.grade';
   if (entityType === 'subject') return 'admin.delete.subject';
+  if (entityType === 'assignment') return 'admin.delete.assignment';
+  if (entityType === 'question') return 'admin.delete.question';
+  if (entityType === 'submission') return 'admin.delete.submission';
+  if (entityType === 'submission_question') return 'admin.delete.submission_question';
   return null;
 };
 
@@ -830,10 +910,25 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
     'academic_year',
     'grade',
     'subject',
+    'assignment',
+    'question',
+    'submission',
+    'submission_question',
   ].includes(content.entity_type);
-  const supportsEditDeleteAndBulk = ['school', 'academic_year', 'grade', 'subject'].includes(
+  const supportsEditDelete = [
+    'school',
+    'academic_year',
+    'grade',
+    'subject',
+    'assignment',
+    'question',
+    'submission',
+    'submission_question',
+  ].includes(content.entity_type);
+  const supportsBulkDelete = ['school', 'academic_year', 'grade', 'subject'].includes(
     content.entity_type,
   );
+  const supportsImport = importActionIdForEntity(content.entity_type) !== null;
   const title = entityTitle(content.entity_type);
 
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
@@ -897,9 +992,7 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
   );
 
   const [listIds, setListIds] = useState<number[]>(() =>
-    Array.isArray(content.ids)
-      ? content.ids.map(Number).filter((id) => Number.isFinite(id))
-      : [],
+    Array.isArray(content.ids) ? content.ids.map(Number).filter((id) => Number.isFinite(id)) : [],
   );
   const [listItems, setListItems] = useState<any[]>(() =>
     Array.isArray(content.items) ? (content.items as any[]) : [],
@@ -945,12 +1038,30 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
     return listItems as SubjectItem[];
   }, [content.entity_type, listItems]);
 
+  const assignmentRows: AssignmentItem[] = useMemo(() => {
+    if (content.entity_type !== 'assignment') return [];
+    return listItems as AssignmentItem[];
+  }, [content.entity_type, listItems]);
+
+  const questionRows: QuestionItem[] = useMemo(() => {
+    if (content.entity_type !== 'question') return [];
+    return listItems as QuestionItem[];
+  }, [content.entity_type, listItems]);
+
+  const submissionRows: SubmissionItem[] = useMemo(() => {
+    if (content.entity_type !== 'submission') return [];
+    return listItems as SubmissionItem[];
+  }, [content.entity_type, listItems]);
+
+  const submissionQuestionRows: SubmissionQuestionItem[] = useMemo(() => {
+    if (content.entity_type !== 'submission_question') return [];
+    return listItems as SubmissionQuestionItem[];
+  }, [content.entity_type, listItems]);
+
   useEffect(() => {
     setSelectedRowKeys([]);
     setListIds(
-      Array.isArray(content.ids)
-        ? content.ids.map(Number).filter((id) => Number.isFinite(id))
-        : [],
+      Array.isArray(content.ids) ? content.ids.map(Number).filter((id) => Number.isFinite(id)) : [],
     );
     setListItems(Array.isArray(content.items) ? content.items : []);
     setListHasMore(Boolean(content.has_more));
@@ -958,7 +1069,7 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
   }, [artifactId, content.has_more, content.ids, content.items, content.next_after_id]);
 
   const openListRun = useCallback(
-    async (params: { filters: Record<string, unknown>, page: number; page_size: number; }) => {
+    async (params: { filters: Record<string, unknown>; page: number; page_size: number }) => {
       const { run_id } = await startInvocation({
         actionId: listActionIdForEntity(content.entity_type),
         conversationId,
@@ -1463,16 +1574,39 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
     if (content.entity_type === 'subject') {
       form.setFieldsValue({ is_core_subject: true } as any);
     }
+    if (content.entity_type === 'assignment') {
+      form.setFieldsValue({ creation_type: 'teacher' } as any);
+    }
+    if (content.entity_type === 'question') {
+      form.setFieldsValue({
+        answer_json:
+          '{"version":"question.answer@v1","sub_answers":[{"sub_question_id":"sq1","value":{"raw_text":""}}]}',
+        content_json:
+          '{"version":"question.content@v1","stem":{"nodes":[{"kind":"text","text":""}]},"assets":[],"sub_questions":[{"id":"sq1","prompt":{"nodes":[{"kind":"text","text":""}]}}]}',
+        creation_type: 'teacher',
+        question_type: 'problem_solving',
+      } as any);
+    }
+    if (content.entity_type === 'submission') {
+      form.setFieldsValue({ graded_by: 'ai', status: 'submitted' } as any);
+    }
     setDrawerOpen(true);
   };
 
   const openEdit = (row: any) => {
-    if (!supportsEditDeleteAndBulk) return;
+    if (!supportsEditDelete) return;
     setDrawerMode('edit');
     setEditingRow(row);
     form.resetFields();
     if (content.entity_type === 'school') {
       form.setFieldsValue({ ...row, tags: row.tags || [] } as any);
+    } else if (content.entity_type === 'question') {
+      form.setFieldsValue({
+        ...row,
+        answer_json: '',
+        content_json: '',
+        thinking_json: '',
+      } as any);
     } else {
       form.setFieldsValue({ ...row } as any);
     }
@@ -1554,6 +1688,116 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
             typeof values.is_core_subject === 'boolean' ? values.is_core_subject : true,
           name: String(values.name || '').trim(),
           subject_category: subjectCategory ? subjectCategory : undefined,
+        };
+      }
+      if (entityType === 'assignment') {
+        const createdByTeachers = String(values.created_by_teachers || '')
+          .split(',')
+          .map((v) => Number(v.trim()))
+          .filter((v) => Number.isFinite(v) && v > 0);
+        const fileKeys = String(values.file_keys || '')
+          .split(',')
+          .map((v) => String(v).trim())
+          .filter(Boolean);
+        const assignDate = String(values.assign_date || '').trim();
+        const dueDate = String(values.due_date || '').trim();
+        return {
+          assign_date: assignDate || undefined,
+          created_by_teachers: createdByTeachers,
+          creation_type: String(values.creation_type || 'teacher').trim() || 'teacher',
+          due_date: dueDate || undefined,
+          file_keys: fileKeys,
+          grade_id: Number(values.grade_id),
+          subject_id: Number(values.subject_id),
+          title: String(values.title || '').trim(),
+        };
+      }
+      if (entityType === 'question') {
+        const contentJson = String(values.content_json || '').trim();
+        const answerJson = String(values.answer_json || '').trim();
+        const thinkingJson = String(values.thinking_json || '').trim();
+        let contentObj: Record<string, unknown> = {};
+        let answerObj: Record<string, unknown> = {};
+        let thinkingObj: Record<string, unknown> | null = null;
+        try {
+          contentObj = contentJson ? (JSON.parse(contentJson) as Record<string, unknown>) : {};
+        } catch {
+          throw new Error('content_json 必须是合法 JSON');
+        }
+        try {
+          answerObj = answerJson ? (JSON.parse(answerJson) as Record<string, unknown>) : {};
+        } catch {
+          throw new Error('answer_json 必须是合法 JSON');
+        }
+        if (thinkingJson) {
+          try {
+            thinkingObj = JSON.parse(thinkingJson) as Record<string, unknown>;
+          } catch {
+            throw new Error('thinking_json 必须是合法 JSON');
+          }
+        }
+        const knowledgePoints = String(values.knowledge_points || '')
+          .split(',')
+          .map((v) => String(v).trim())
+          .filter(Boolean);
+        const createdByTeachers = String(values.created_by_teachers || '')
+          .split(',')
+          .map((v) => Number(v.trim()))
+          .filter((v) => Number.isFinite(v) && v > 0);
+        const difficultyRaw = Number(values.difficulty);
+        return {
+          answer: answerObj,
+          content: contentObj,
+          created_by_teachers: createdByTeachers,
+          creation_type: String(values.creation_type || 'teacher').trim() || 'teacher',
+          difficulty: Number.isFinite(difficultyRaw) ? difficultyRaw : undefined,
+          extra_data: {},
+          grade_id: Number(values.grade_id),
+          knowledge_points: knowledgePoints,
+          question_type: String(values.question_type || '').trim(),
+          subject_id: Number(values.subject_id),
+          thinking: thinkingObj,
+        };
+      }
+      if (entityType === 'submission') {
+        const fileKeys = String(values.file_keys || '')
+          .split(',')
+          .map((v) => String(v).trim())
+          .filter(Boolean);
+        const score = Number(values.score);
+        const totalScore = Number(values.total_score);
+        const submittedAt = String(values.submitted_at || '').trim();
+        const gradedAt = String(values.graded_at || '').trim();
+        const gradedBy = String(values.graded_by || '').trim();
+        const reportPath = String(values.report_path || '').trim();
+        const status = String(values.status || '').trim();
+        return {
+          assignment_student_id: Number(values.assignment_student_id),
+          file_keys: fileKeys,
+          graded_at: gradedAt || undefined,
+          graded_by: gradedBy || undefined,
+          report_path: reportPath || undefined,
+          score: Number.isFinite(score) ? score : undefined,
+          status: status || undefined,
+          submitted_at: submittedAt || undefined,
+          total_score: Number.isFinite(totalScore) ? totalScore : undefined,
+        };
+      }
+      if (entityType === 'submission_question') {
+        const questionId = Number(values.question_id);
+        const score = Number(values.score);
+        const maxScore = Number(values.max_score);
+        const studentAnswer = String(values.student_answer || '').trim();
+        const feedback = String(values.feedback || '').trim();
+        return {
+          feedback: feedback || undefined,
+          is_correct: typeof values.is_correct === 'boolean' ? values.is_correct : undefined,
+          max_score: Number.isFinite(maxScore) ? maxScore : undefined,
+          order_index: Number(values.order_index),
+          question_id: Number.isFinite(questionId) && questionId > 0 ? questionId : undefined,
+          score: Number.isFinite(score) ? score : undefined,
+          student_answer: studentAnswer || undefined,
+          submission_id: Number(values.submission_id),
         };
       }
       return {};
@@ -1647,7 +1891,7 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
   };
 
   const handleDeleteOne = (row: any) => {
-    if (!supportsEditDeleteAndBulk) return;
+    if (!supportsEditDelete) return;
     const entityType = content.entity_type;
     const deleteActionId = deleteActionIdForEntity(entityType);
     const idKey = entityIdKeyForEntity(entityType);
@@ -1700,7 +1944,7 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
   };
 
   const handleBulkDelete = async () => {
-    if (!supportsEditDeleteAndBulk) return;
+    if (!supportsBulkDelete) return;
     const config = bulkDeleteConfigForEntity(content.entity_type);
     if (!config) return;
     const ids = selectedRowKeys.slice();
@@ -1869,8 +2113,13 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
         sensitivity: importCsvSensitivityForEntity(content.entity_type),
       };
 
+      const importActionId = importActionIdForEntity(content.entity_type);
+      if (!importActionId) {
+        throw new Error(`Import CSV is not supported for ${content.entity_type}`);
+      }
+
       const { run_id } = await startInvocation({
-        actionId: importActionIdForEntity(content.entity_type),
+        actionId: importActionId,
         conversationId,
         params: { csv_ref: csvRef, defaults },
         requireConfirmation: true,
@@ -2153,6 +2402,236 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
     [handleDeleteOne, openEdit],
   );
 
+  const assignmentColumns = useMemo<ColumnsType<AssignmentItem>>(
+    () => [
+      { dataIndex: 'assignment_id', key: 'assignment_id', title: 'ID', width: 90 },
+      { dataIndex: 'title', key: 'title', title: '标题', width: 220 },
+      { dataIndex: 'subject_id', key: 'subject_id', title: '学科ID', width: 100 },
+      { dataIndex: 'grade_id', key: 'grade_id', title: '年级ID', width: 100 },
+      { dataIndex: 'creation_type', key: 'creation_type', title: '来源', width: 110 },
+      {
+        dataIndex: 'assign_date',
+        key: 'assign_date',
+        render: (v: string) =>
+          v ? (
+            <Typography.Text>{v}</Typography.Text>
+          ) : (
+            <Typography.Text type="secondary">—</Typography.Text>
+          ),
+        title: '发布时间',
+        width: 180,
+      },
+      {
+        dataIndex: 'due_date',
+        key: 'due_date',
+        render: (v: string | null | undefined) =>
+          v ? (
+            <Typography.Text>{v}</Typography.Text>
+          ) : (
+            <Typography.Text type="secondary">—</Typography.Text>
+          ),
+        title: '截止时间',
+        width: 180,
+      },
+      {
+        key: 'actions',
+        render: (_, row) => (
+          <Space>
+            <Button onClick={() => openEdit(row)} size="small">
+              Edit
+            </Button>
+            <Button danger onClick={() => handleDeleteOne(row)} size="small">
+              Delete
+            </Button>
+          </Space>
+        ),
+        title: '操作',
+        width: 150,
+      },
+    ],
+    [handleDeleteOne, openEdit],
+  );
+
+  const questionColumns = useMemo<ColumnsType<QuestionItem>>(
+    () => [
+      { dataIndex: 'question_id', key: 'question_id', title: 'ID', width: 90 },
+      { dataIndex: 'question_type', key: 'question_type', title: '题型', width: 130 },
+      { dataIndex: 'subject_id', key: 'subject_id', title: '学科ID', width: 100 },
+      { dataIndex: 'grade_id', key: 'grade_id', title: '年级ID', width: 100 },
+      {
+        dataIndex: 'difficulty',
+        key: 'difficulty',
+        render: (v: number | null | undefined) =>
+          typeof v === 'number' ? (
+            <Typography.Text>{v}</Typography.Text>
+          ) : (
+            <Typography.Text type="secondary">—</Typography.Text>
+          ),
+        title: '难度',
+        width: 100,
+      },
+      {
+        dataIndex: 'knowledge_points',
+        key: 'knowledge_points',
+        render: (v: string[] | null | undefined) =>
+          Array.isArray(v) && v.length ? (
+            <Typography.Text>{v.join(', ')}</Typography.Text>
+          ) : (
+            <Typography.Text type="secondary">—</Typography.Text>
+          ),
+        title: '知识点',
+        width: 220,
+      },
+      {
+        dataIndex: 'content_preview',
+        key: 'content_preview',
+        render: (v: string) =>
+          v ? (
+            <Typography.Text>{v}</Typography.Text>
+          ) : (
+            <Typography.Text type="secondary">—</Typography.Text>
+          ),
+        title: '题干预览',
+      },
+      {
+        key: 'actions',
+        render: (_, row) => (
+          <Space>
+            <Button onClick={() => openEdit(row)} size="small">
+              Edit
+            </Button>
+            <Button danger onClick={() => handleDeleteOne(row)} size="small">
+              Delete
+            </Button>
+          </Space>
+        ),
+        title: '操作',
+        width: 150,
+      },
+    ],
+    [handleDeleteOne, openEdit],
+  );
+
+  const submissionColumns = useMemo<ColumnsType<SubmissionItem>>(
+    () => [
+      { dataIndex: 'submission_id', key: 'submission_id', title: 'ID', width: 90 },
+      {
+        dataIndex: 'assignment_student_id',
+        key: 'assignment_student_id',
+        title: 'AssignmentStudent',
+        width: 140,
+      },
+      { dataIndex: 'assignment_id', key: 'assignment_id', title: '作业ID', width: 110 },
+      { dataIndex: 'student_id', key: 'student_id', title: '学生ID', width: 110 },
+      { dataIndex: 'status', key: 'status', title: '状态', width: 120 },
+      {
+        key: 'score',
+        render: (_, row) =>
+          row.score !== null && row.score !== undefined ? (
+            <Typography.Text>
+              {row.score}
+              {row.total_score !== null && row.total_score !== undefined
+                ? ` / ${row.total_score}`
+                : ''}
+            </Typography.Text>
+          ) : (
+            <Typography.Text type="secondary">—</Typography.Text>
+          ),
+        title: '分数',
+        width: 140,
+      },
+      { dataIndex: 'submitted_at', key: 'submitted_at', title: '提交时间', width: 180 },
+      { dataIndex: 'graded_at', key: 'graded_at', title: '批改时间', width: 180 },
+      {
+        key: 'actions',
+        render: (_, row) => (
+          <Space>
+            <Button onClick={() => openEdit(row)} size="small">
+              Edit
+            </Button>
+            <Button danger onClick={() => handleDeleteOne(row)} size="small">
+              Delete
+            </Button>
+          </Space>
+        ),
+        title: '操作',
+        width: 150,
+      },
+    ],
+    [handleDeleteOne, openEdit],
+  );
+
+  const submissionQuestionColumns = useMemo<ColumnsType<SubmissionQuestionItem>>(
+    () => [
+      {
+        dataIndex: 'submission_question_id',
+        key: 'submission_question_id',
+        title: 'ID',
+        width: 90,
+      },
+      { dataIndex: 'submission_id', key: 'submission_id', title: '提交ID', width: 110 },
+      { dataIndex: 'assignment_id', key: 'assignment_id', title: '作业ID', width: 110 },
+      { dataIndex: 'student_id', key: 'student_id', title: '学生ID', width: 110 },
+      { dataIndex: 'order_index', key: 'order_index', title: '题序', width: 90 },
+      { dataIndex: 'question_id', key: 'question_id', title: '题目ID', width: 100 },
+      {
+        key: 'score',
+        render: (_, row) =>
+          row.score !== null && row.score !== undefined ? (
+            <Typography.Text>
+              {row.score}
+              {row.max_score !== null && row.max_score !== undefined ? ` / ${row.max_score}` : ''}
+            </Typography.Text>
+          ) : (
+            <Typography.Text type="secondary">—</Typography.Text>
+          ),
+        title: '分数',
+        width: 120,
+      },
+      {
+        dataIndex: 'is_correct',
+        key: 'is_correct',
+        render: (v: boolean | null | undefined) =>
+          v === true ? (
+            <Tag color="green">正确</Tag>
+          ) : v === false ? (
+            <Tag color="red">错误</Tag>
+          ) : (
+            <Typography.Text type="secondary">—</Typography.Text>
+          ),
+        title: '判定',
+        width: 100,
+      },
+      {
+        dataIndex: 'student_answer_preview',
+        key: 'student_answer_preview',
+        render: (v: string | null | undefined) =>
+          v ? (
+            <Typography.Text>{v}</Typography.Text>
+          ) : (
+            <Typography.Text type="secondary">—</Typography.Text>
+          ),
+        title: '作答预览',
+      },
+      {
+        key: 'actions',
+        render: (_, row) => (
+          <Space>
+            <Button onClick={() => openEdit(row)} size="small">
+              Edit
+            </Button>
+            <Button danger onClick={() => handleDeleteOne(row)} size="small">
+              Delete
+            </Button>
+          </Space>
+        ),
+        title: '操作',
+        width: 150,
+      },
+    ],
+    [handleDeleteOne, openEdit],
+  );
+
   const editingEntityId = useMemo(() => {
     const idKey = entityIdKeyForEntity(content.entity_type);
     const id = Number(editingRow?.[idKey]);
@@ -2180,27 +2659,27 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
           >
             Refresh
           </Button>
-          <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)} size="small">
-            Import CSV
-          </Button>
+          {supportsImport ? (
+            <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)} size="small">
+              Import CSV
+            </Button>
+          ) : null}
           {supportsCreate ? (
             <Button icon={<PlusOutlined />} onClick={openCreate} size="small" type="primary">
               New
             </Button>
           ) : null}
-          {supportsEditDeleteAndBulk ? (
-            <>
-              <Button
-                danger
-                disabled={selectedRowKeys.length === 0}
-                icon={<DeleteOutlined />}
-                loading={submitting}
-                onClick={handleBulkDelete}
-                size="small"
-              >
-                Delete selected
-              </Button>
-            </>
+          {supportsBulkDelete ? (
+            <Button
+              danger
+              disabled={selectedRowKeys.length === 0}
+              icon={<DeleteOutlined />}
+              loading={submitting}
+              onClick={handleBulkDelete}
+              size="small"
+            >
+              Delete selected
+            </Button>
           ) : null}
         </Space>
       </Flexbox>
@@ -2320,6 +2799,38 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
               }}
               size="small"
             />
+          ) : content.entity_type === 'assignment' && assignmentRows.length ? (
+            <Table
+              columns={assignmentColumns}
+              dataSource={assignmentRows}
+              pagination={false}
+              rowKey={(r) => r.assignment_id}
+              size="small"
+            />
+          ) : content.entity_type === 'question' && questionRows.length ? (
+            <Table
+              columns={questionColumns}
+              dataSource={questionRows}
+              pagination={false}
+              rowKey={(r) => r.question_id}
+              size="small"
+            />
+          ) : content.entity_type === 'submission' && submissionRows.length ? (
+            <Table
+              columns={submissionColumns}
+              dataSource={submissionRows}
+              pagination={false}
+              rowKey={(r) => r.submission_id}
+              size="small"
+            />
+          ) : content.entity_type === 'submission_question' && submissionQuestionRows.length ? (
+            <Table
+              columns={submissionQuestionColumns}
+              dataSource={submissionQuestionRows}
+              pagination={false}
+              rowKey={(r) => r.submission_question_id}
+              size="small"
+            />
           ) : (
             <Table
               columns={[{ dataIndex: 'id', key: 'id', title: 'ID', width: 120 }]}
@@ -2346,7 +2857,16 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
                         ? gradeRows.length
                         : content.entity_type === 'subject' && subjectRows.length
                           ? subjectRows.length
-                          : listIds.length}{' '}
+                          : content.entity_type === 'assignment' && assignmentRows.length
+                            ? assignmentRows.length
+                            : content.entity_type === 'question' && questionRows.length
+                              ? questionRows.length
+                              : content.entity_type === 'submission' && submissionRows.length
+                                ? submissionRows.length
+                                : content.entity_type === 'submission_question' &&
+                                    submissionQuestionRows.length
+                                  ? submissionQuestionRows.length
+                                  : listIds.length}{' '}
               条{typeof content.total === 'number' ? `（总数 ${content.total}）` : ''}
             </Typography.Text>
             {listHasMore ? (
@@ -2533,6 +3053,163 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
             </>
           ) : null}
 
+          {content.entity_type === 'assignment' ? (
+            <>
+              <Form.Item label="标题" name="title" rules={[{ required: true }]}>
+                <Input placeholder="例如：高三物理练习1" />
+              </Form.Item>
+              <Form.Item label="学科ID" name="subject_id" rules={[{ required: true }]}>
+                <InputNumber min={1} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item label="年级ID" name="grade_id" rules={[{ required: true }]}>
+                <InputNumber min={1} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item label="创建来源（可选）" name="creation_type">
+                <Input placeholder="teacher / ocr / imported" />
+              </Form.Item>
+              <Form.Item label="发布时间（可选，ISO）" name="assign_date">
+                <Input placeholder="2026-02-09T12:00:00Z" />
+              </Form.Item>
+              <Form.Item label="截止时间（可选，ISO）" name="due_date">
+                <Input placeholder="2026-02-16T23:59:59Z" />
+              </Form.Item>
+              <Form.Item label="创建教师ID（可选，逗号分隔）" name="created_by_teachers">
+                <Input placeholder="1,2,3" />
+              </Form.Item>
+              <Form.Item label="文件 keys（可选，逗号分隔）" name="file_keys">
+                <Input placeholder="assignments/a.pdf,assignments/b.png" />
+              </Form.Item>
+            </>
+          ) : null}
+
+          {content.entity_type === 'question' ? (
+            <>
+              <Form.Item label="学科ID" name="subject_id" rules={[{ required: true }]}>
+                <InputNumber min={1} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item label="年级ID" name="grade_id" rules={[{ required: true }]}>
+                <InputNumber min={1} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item label="题型" name="question_type" rules={[{ required: true }]}>
+                <Select
+                  options={[
+                    { label: 'single_choice', value: 'single_choice' },
+                    { label: 'multiple_choice', value: 'multiple_choice' },
+                    { label: 'fill_in_blank', value: 'fill_in_blank' },
+                    { label: 'problem_solving', value: 'problem_solving' },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item
+                label="content_json"
+                name="content_json"
+                rules={drawerMode === 'create' ? [{ required: true }] : []}
+                tooltip="符合 question.content@v1 结构"
+              >
+                <Input.TextArea placeholder='{"version":"question.content@v1", ...}' rows={6} />
+              </Form.Item>
+              <Form.Item
+                label="answer_json"
+                name="answer_json"
+                rules={drawerMode === 'create' ? [{ required: true }] : []}
+                tooltip="符合 question.answer@v1 结构"
+              >
+                <Input.TextArea placeholder='{"version":"question.answer@v1", ...}' rows={5} />
+              </Form.Item>
+              <Form.Item label="thinking_json（可选）" name="thinking_json">
+                <Input.TextArea placeholder='{"version":"question.thinking@v1", ...}' rows={4} />
+              </Form.Item>
+              <Form.Item label="难度（可选 0~1）" name="difficulty">
+                <InputNumber max={1} min={0} step={0.1} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item label="知识点（可选，逗号分隔）" name="knowledge_points">
+                <Input placeholder="牛顿第二定律,受力分析" />
+              </Form.Item>
+              <Form.Item label="创建来源（可选）" name="creation_type">
+                <Input placeholder="teacher / ocr / imported" />
+              </Form.Item>
+              <Form.Item label="创建教师ID（可选，逗号分隔）" name="created_by_teachers">
+                <Input placeholder="1,2,3" />
+              </Form.Item>
+              {drawerMode === 'edit' ? (
+                <Typography.Text type="secondary">
+                  编辑模式下若留空 content_json/answer_json，将只更新其他字段。
+                </Typography.Text>
+              ) : null}
+            </>
+          ) : null}
+
+          {content.entity_type === 'submission' ? (
+            <>
+              <Form.Item
+                label="AssignmentStudent ID"
+                name="assignment_student_id"
+                rules={[{ required: true }]}
+              >
+                <InputNumber min={1} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item label="状态（可选）" name="status">
+                <Input placeholder="submitted / graded / processing" />
+              </Form.Item>
+              <Form.Item label="分数（可选）" name="score">
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item label="总分（可选）" name="total_score">
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item label="提交时间（可选，ISO）" name="submitted_at">
+                <Input placeholder="2026-02-09T12:00:00Z" />
+              </Form.Item>
+              <Form.Item label="批改时间（可选，ISO）" name="graded_at">
+                <Input placeholder="2026-02-09T13:00:00Z" />
+              </Form.Item>
+              <Form.Item label="批改人（可选）" name="graded_by">
+                <Input placeholder="ai" />
+              </Form.Item>
+              <Form.Item label="报告路径（可选）" name="report_path">
+                <Input placeholder="reports/submission-1.pdf" />
+              </Form.Item>
+              <Form.Item label="文件 keys（可选，逗号分隔）" name="file_keys">
+                <Input placeholder="submissions/a.jpg,submissions/b.jpg" />
+              </Form.Item>
+            </>
+          ) : null}
+
+          {content.entity_type === 'submission_question' ? (
+            <>
+              <Form.Item label="提交ID" name="submission_id" rules={[{ required: true }]}>
+                <InputNumber min={1} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item label="题序" name="order_index" rules={[{ required: true }]}>
+                <InputNumber min={1} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item label="题目ID（可选）" name="question_id">
+                <InputNumber min={1} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item label="得分（可选）" name="score">
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item label="满分（可选）" name="max_score">
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item label="判定（可选）" name="is_correct">
+                <Select
+                  allowClear
+                  options={[
+                    { label: '正确', value: true },
+                    { label: '错误', value: false },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item label="学生作答（可选）" name="student_answer">
+                <Input.TextArea rows={3} />
+              </Form.Item>
+              <Form.Item label="反馈（可选）" name="feedback">
+                <Input.TextArea rows={3} />
+              </Form.Item>
+            </>
+          ) : null}
+
           <Space>
             <Button onClick={() => setDrawerOpen(false)}>Cancel</Button>
             <Button loading={submitting} onClick={handleSubmit} type="primary">
@@ -2660,25 +3337,25 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
             ) : null}
             {content.entity_type === 'student' ? (
               <Form.Item
-                  extra={
-                    <Typography.Text type="secondary">
-                      按 省 → 市 → 学校 → 入学年份 → 班级 选择（会自动带入班级ID）
-                    </Typography.Text>
-                  }
-                  label="默认班级（可选）"
-                  name="class_id"
-                >
-                  <TreeSelect
-                    allowClear
-                    loadData={loadClassTreeNodeData}
-                    loading={classTreeLoading}
-                    placeholder="请选择：省 / 市 / 学校 / 入学年份 / 班级"
-                    showSearch
-                    treeData={classTreeData}
-                    treeDefaultExpandAll={false}
-                    treeNodeFilterProp="title"
-                  />
-                </Form.Item>
+                extra={
+                  <Typography.Text type="secondary">
+                    按 省 → 市 → 学校 → 入学年份 → 班级 选择（会自动带入班级ID）
+                  </Typography.Text>
+                }
+                label="默认班级（可选）"
+                name="class_id"
+              >
+                <TreeSelect
+                  allowClear
+                  loadData={loadClassTreeNodeData}
+                  loading={classTreeLoading}
+                  placeholder="请选择：省 / 市 / 学校 / 入学年份 / 班级"
+                  showSearch
+                  treeData={classTreeData}
+                  treeDefaultExpandAll={false}
+                  treeNodeFilterProp="title"
+                />
+              </Form.Item>
             ) : null}
           </Form>
 

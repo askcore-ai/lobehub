@@ -145,7 +145,11 @@ describe('createClientGroupAgentTaskThread Integration', () => {
       expect(result.userMessageId).toBeDefined();
 
       // Verify Thread uses subAgentId (worker) as the agentId
-      const [thread] = await serverDB.select().from(threads).where(eq(threads.id, result.threadId));
+      const threadRows = await serverDB
+        .select()
+        .from(threads)
+        .where(eq(threads.id, result.threadId));
+      const thread = (threadRows as any[])[0];
       expect(thread.agentId).toBe(workerAgentId);
       expect(thread.groupId).toBe(testGroupId);
       expect(thread.type).toBe(ThreadType.Isolation);
@@ -375,7 +379,11 @@ describe('createClientGroupAgentTaskThread Integration', () => {
         topicId: testTopicId,
       });
 
-      const [thread] = await serverDB.select().from(threads).where(eq(threads.id, result.threadId));
+      const threadRows = await serverDB
+        .select()
+        .from(threads)
+        .where(eq(threads.id, result.threadId));
+      const thread = (threadRows as any[])[0];
       expect(thread.metadata?.clientMode).toBe(true);
     });
 
@@ -394,7 +402,11 @@ describe('createClientGroupAgentTaskThread Integration', () => {
 
       const afterCall = new Date().toISOString();
 
-      const [thread] = await serverDB.select().from(threads).where(eq(threads.id, result.threadId));
+      const threadRows = await serverDB
+        .select()
+        .from(threads)
+        .where(eq(threads.id, result.threadId));
+      const thread = (threadRows as any[])[0];
 
       expect(thread.metadata?.startedAt).toBeDefined();
       expect(result.startedAt).toBe(thread.metadata?.startedAt);
@@ -416,7 +428,11 @@ describe('createClientGroupAgentTaskThread Integration', () => {
         topicId: testTopicId,
       });
 
-      const [thread] = await serverDB.select().from(threads).where(eq(threads.id, result.threadId));
+      const threadRows = await serverDB
+        .select()
+        .from(threads)
+        .where(eq(threads.id, result.threadId));
+      const thread = (threadRows as any[])[0];
       expect(thread.title).toBe('Data Analysis Task');
     });
   });

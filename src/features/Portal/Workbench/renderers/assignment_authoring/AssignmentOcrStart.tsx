@@ -116,7 +116,7 @@ const AssignmentOcrStart = memo<Props>(({ conversationId }) => {
             },
             subject_id: subjectId,
           },
-          plugin_id: 'assignment.authoring.v1',
+          plugin_id: 'admin.ops.v1',
         }),
         headers: {
           'Idempotency-Key': idempotencyKey,

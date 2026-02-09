@@ -25,15 +25,19 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
   `,
 }));
 
+const EPOCH_DATE = new Date(0);
+
 const ConfigGroupModal = memo<ModalProps>(({ open, onCancel }) => {
   const { t } = useTranslation('chat');
-  // Map SidebarGroup to SessionGroupItem-like structure for the sortable list
+  // Home sidebar groups do not currently include timestamps, but SortableList here is typed as SessionGroupItem.
   const sessionGroupItems = useHomeStore(
     (s) =>
       homeAgentListSelectors.agentGroups(s).map((g) => ({
+        createdAt: EPOCH_DATE,
         id: g.id,
         name: g.name,
         sort: g.sort,
+        updatedAt: EPOCH_DATE,
       })),
     isEqual,
   );

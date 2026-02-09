@@ -59,7 +59,7 @@ export const AssignmentAuthoringManifest: BuiltinToolManifest = {
     },
     {
       description:
-        'Publish a draft into an assignment (may be mocked) and produce an assignment.publish.result artifact. Requires explicit confirmation.',
+        'Publish a draft into a persisted assignment and produce an assignment.publish.result artifact. Requires explicit confirmation.',
       humanIntervention: 'required',
       name: AssignmentAuthoringApiName.draftPublish,
       parameters: {

@@ -1,7 +1,12 @@
 import { BaseExecutor, type BuiltinToolContext, type BuiltinToolResult } from '@lobechat/types';
 
 import { AdminOpsIdentifier } from '../manifest';
-import { AdminOpsApiName } from '../types';
+import {
+  AdminOpsApiName,
+  type DraftCreateManualParams,
+  type DraftPublishParams,
+  type DraftSaveParams,
+} from '../types';
 
 type StartInvocationResponse = { invocation_id: string; run_id: number };
 type PresignUploadResponse = {
@@ -110,6 +115,10 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
     if (key === 'academic_year') return '学年';
     if (key === 'grade') return '年级';
     if (key === 'subject') return '学科';
+    if (key === 'assignment') return '作业';
+    if (key === 'question') return '题目';
+    if (key === 'submission') return '提交';
+    if (key === 'submission_question') return '作答题目';
     return key || '实体';
   }
 
@@ -122,6 +131,10 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
     if (key === 'academic_year') return 'admin.list.academic_years';
     if (key === 'grade') return 'admin.list.grades';
     if (key === 'subject') return 'admin.list.subjects';
+    if (key === 'assignment') return 'admin.list.assignments';
+    if (key === 'question') return 'admin.list.questions';
+    if (key === 'submission') return 'admin.list.submissions';
+    if (key === 'submission_question') return 'admin.list.submission_questions';
     return 'admin.list.schools';
   }
 
@@ -284,6 +297,7 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
     ctx: BuiltinToolContext,
     options: {
       executionMode: 'blocking' | 'non_blocking';
+      pluginId?: string;
       requireConfirmation: boolean;
       waitTimeoutMs?: number;
     },
@@ -298,7 +312,8 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
       };
     }
 
-    const idempotencyKey = `admin-ops:${actionId}:${ctx.messageId}`;
+    const pluginId = String(options.pluginId || AdminOpsIdentifier);
+    const idempotencyKey = `admin-ops:${pluginId}:${actionId}:${ctx.messageId}`;
     const confirmationId = options.requireConfirmation ? `confirm:${ctx.messageId}` : undefined;
 
     const res = await fetch('/api/workbench/invocations', {
@@ -307,7 +322,7 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
         confirmation_id: confirmationId,
         conversation_id: conversationId,
         params,
-        plugin_id: AdminOpsIdentifier,
+        plugin_id: pluginId,
       }),
       headers: {
         'Content-Type': 'application/json',
@@ -527,6 +542,33 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
       requireConfirmation: false,
     });
 
+  listAssignments = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
+    this.startInvocation('admin.list.assignments', params, ctx, {
+      executionMode: 'blocking',
+      requireConfirmation: false,
+    });
+
+  listQuestions = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
+    this.startInvocation('admin.list.questions', params, ctx, {
+      executionMode: 'blocking',
+      requireConfirmation: false,
+    });
+
+  listSubmissions = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
+    this.startInvocation('admin.list.submissions', params, ctx, {
+      executionMode: 'blocking',
+      requireConfirmation: false,
+    });
+
+  listSubmissionQuestions = async (
+    params: any,
+    ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> =>
+    this.startInvocation('admin.list.submission_questions', params, ctx, {
+      executionMode: 'blocking',
+      requireConfirmation: false,
+    });
+
   // ===== CRUD =====
   createSchool = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
     this.startInvocation('admin.create.school', params, ctx, {
@@ -653,6 +695,146 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
       executionMode: 'blocking',
       requireConfirmation: true,
     });
+
+  createAssignment = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
+    this.startInvocation('admin.create.assignment', params, ctx, {
+      executionMode: 'blocking',
+      requireConfirmation: true,
+    });
+
+  updateAssignment = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
+    this.startInvocation('admin.update.assignment', params, ctx, {
+      executionMode: 'blocking',
+      requireConfirmation: true,
+    });
+
+  deleteAssignment = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
+    this.startInvocation('admin.delete.assignment', params, ctx, {
+      executionMode: 'blocking',
+      requireConfirmation: true,
+    });
+
+  createQuestion = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
+    this.startInvocation('admin.create.question', params, ctx, {
+      executionMode: 'blocking',
+      requireConfirmation: true,
+    });
+
+  updateQuestion = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
+    this.startInvocation('admin.update.question', params, ctx, {
+      executionMode: 'blocking',
+      requireConfirmation: true,
+    });
+
+  deleteQuestion = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
+    this.startInvocation('admin.delete.question', params, ctx, {
+      executionMode: 'blocking',
+      requireConfirmation: true,
+    });
+
+  createSubmission = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
+    this.startInvocation('admin.create.submission', params, ctx, {
+      executionMode: 'blocking',
+      requireConfirmation: true,
+    });
+
+  updateSubmission = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
+    this.startInvocation('admin.update.submission', params, ctx, {
+      executionMode: 'blocking',
+      requireConfirmation: true,
+    });
+
+  deleteSubmission = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
+    this.startInvocation('admin.delete.submission', params, ctx, {
+      executionMode: 'blocking',
+      requireConfirmation: true,
+    });
+
+  createSubmissionQuestion = async (
+    params: any,
+    ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> =>
+    this.startInvocation('admin.create.submission_question', params, ctx, {
+      executionMode: 'blocking',
+      requireConfirmation: true,
+    });
+
+  updateSubmissionQuestion = async (
+    params: any,
+    ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> =>
+    this.startInvocation('admin.update.submission_question', params, ctx, {
+      executionMode: 'blocking',
+      requireConfirmation: true,
+    });
+
+  deleteSubmissionQuestion = async (
+    params: any,
+    ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> =>
+    this.startInvocation('admin.delete.submission_question', params, ctx, {
+      executionMode: 'blocking',
+      requireConfirmation: true,
+    });
+
+  // ===== Assignment authoring workflow =====
+  draftCreateManual = async (
+    params: DraftCreateManualParams,
+    ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> =>
+    this.startInvocation(
+      'assignment.draft.create_manual',
+      {
+        due_date: params.dueDate,
+        grade_id: params.gradeId,
+        subject_id: params.subjectId,
+        title: params.title,
+      },
+      ctx,
+      {
+        executionMode: 'non_blocking',
+        requireConfirmation: false,
+      },
+    );
+
+  draftSave = async (
+    params: DraftSaveParams,
+    ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> =>
+    this.startInvocation(
+      'assignment.draft.save',
+      {
+        draft_artifact_id: params.draftArtifactId,
+        due_date: params.dueDate,
+        questions: params.questions,
+        title: params.title,
+      },
+      ctx,
+      {
+        executionMode: 'non_blocking',
+        requireConfirmation: false,
+      },
+    );
+
+  draftPublish = async (
+    params: DraftPublishParams,
+    ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> =>
+    this.startInvocation(
+      'assignment.draft.publish',
+      {
+        draft_artifact_id: params.draftArtifactId,
+        target: {
+          class_ids: params.target?.classIds || [],
+          student_ids: params.target?.studentIds || [],
+        },
+      },
+      ctx,
+      {
+        executionMode: 'non_blocking',
+        requireConfirmation: true,
+      },
+    );
 
   // ===== Imports =====
   importSchools = async (_params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
