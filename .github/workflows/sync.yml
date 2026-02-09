@@ -30,9 +30,9 @@ jobs:
         id: sync
         uses: aormsby/Fork-Sync-With-Upstream-action@v3.4
         with:
-          upstream_sync_repo: lobehub/lobe-chat
+          upstream_sync_repo: lobehub/lobehub
           upstream_sync_branch: main
-          target_sync_branch: next
+          target_sync_branch: main
           target_repo_token: ${{ secrets.GH_TOKEN || github.token }}
           test_mode: false
 
@@ -51,6 +51,6 @@ jobs:
 
             ![](https://github-production-user-asset-6210df.s3.amazonaws.com/17870709/273954625-df80c890-0822-4ac2-95e6-c990785cbed5.png)
 
-            [lobechat]: https://github.com/lobehub/lobe-chat
+            [lobechat]: https://github.com/lobehub/lobehub
             [tutorial-zh-CN]: https://lobehub.com/zh/docs/self-hosting/advanced/upstream-sync
             [tutorial-en-US]: https://lobehub.com/docs/self-hosting/advanced/upstream-sync
