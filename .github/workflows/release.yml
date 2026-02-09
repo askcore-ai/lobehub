@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   release:
-    if: ${{ github.repository == 'lobehub/lobe-chat' && secrets.GH_TOKEN != '' && secrets.NPM_TOKEN != '' }}
+    if: ${{ github.repository == 'lobehub/lobehub' }}
     name: Release
     runs-on: ubuntu-latest
 

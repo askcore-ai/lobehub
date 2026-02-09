@@ -1,5 +1,4 @@
 name: Claude Translate Non-English Comments
-description: Automatically detect and translate non-English comments to English in codebase
 
 on:
   schedule:
@@ -18,7 +17,7 @@ concurrency:
 
 jobs:
   translate-comments:
-    if: ${{ github.repository == 'lobehub/lobe-chat' && secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+    if: ${{ github.repository == 'lobehub/lobehub' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

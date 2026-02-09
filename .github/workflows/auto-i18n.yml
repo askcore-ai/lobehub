@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   update-i18n:
-    if: ${{ github.repository == 'lobehub/lobe-chat' && secrets.OPENAI_API_KEY != '' }}
+    if: ${{ github.repository == 'lobehub/lobehub' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
 

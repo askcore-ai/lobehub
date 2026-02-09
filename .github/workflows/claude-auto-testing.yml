@@ -1,5 +1,4 @@
 name: Claude Auto Testing Coverage
-description: Automatically add unit tests to improve code coverage
 
 on:
   schedule:
@@ -18,7 +17,7 @@ concurrency:
 
 jobs:
   add-tests:
-    if: ${{ github.repository == 'lobehub/lobe-chat' && secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+    if: ${{ github.repository == 'lobehub/lobehub' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
