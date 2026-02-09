@@ -39,7 +39,7 @@ jobs:
 
   e2e:
     needs: check-duplicate-run
-    if: needs.check-duplicate-run.outputs.should_skip != 'true' && (github.event_name != 'push' || github.repository == 'lobehub/lobe-chat')
+    if: needs.check-duplicate-run.outputs.should_skip != 'true' && (github.event_name != 'push' || github.repository == 'lobehub/lobehub')
     name: Test Web App
     runs-on: ubuntu-latest
     services:
