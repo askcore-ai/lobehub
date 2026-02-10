@@ -25,6 +25,11 @@ type AdminOpsToolState = {
   runId?: number;
 };
 
+const asArtifactId = (value: unknown): string | undefined => {
+  const raw = String(value || '').trim();
+  return /^[\dA-Fa-f-]{36}$/.test(raw) ? raw : undefined;
+};
+
 const styles = createStaticStyles(({ css, cssVar }) => ({
   actions: css`
     display: flex;
@@ -99,7 +104,7 @@ const AdminOpsRunCardRender = memo<BuiltinRenderProps<any, any, any>>(
     const state: AdminOpsToolState = pluginState || {};
     const runId = Number(state.runId);
     const conversationId = String(state.conversationId || '').trim() || undefined;
-    const artifactId = String(state.artifactId || '').trim() || undefined;
+    const artifactId = asArtifactId(state.artifactId);
 
     const canOpen = Boolean(conversationId && Number.isFinite(runId) && runId > 0);
 
@@ -139,10 +144,10 @@ const AdminOpsRunCardRender = memo<BuiltinRenderProps<any, any, any>>(
             onClick={() => {
               if (!canOpen) return;
               useChatStore.getState().pushPortalView({
-                artifactId,
                 conversationId: conversationId!,
                 runId,
                 type: PortalViewType.Workbench,
+                ...(artifactId ? { artifactId } : {}),
               });
             }}
             size={'small'}

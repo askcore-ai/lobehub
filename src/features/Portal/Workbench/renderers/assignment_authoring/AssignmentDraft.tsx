@@ -15,10 +15,12 @@ export interface AssignmentDraftQuestion {
   answer?: Record<string, unknown>;
   content?: Record<string, unknown>;
   grade_id?: number;
+  grade_name?: string;
   order_index?: number;
   question_id?: number;
   question_type?: string;
   subject_id?: number;
+  subject_name?: string;
   thinking?: Record<string, unknown> | null;
 }
 
@@ -26,10 +28,12 @@ export interface AssignmentDraftContent {
   draft_id?: string;
   due_date?: string;
   grade_id?: number;
+  grade_name?: string;
   question_refs?: AssignmentDraftQuestionRef[];
   questions?: AssignmentDraftQuestion[];
   source?: string;
   subject_id?: number;
+  subject_name?: string;
   title?: string;
   updated_at?: string;
 }
@@ -53,6 +57,8 @@ const richTextToString = (value: unknown): string => {
     .join('\n')
     .trim();
 };
+
+const optionFallbackId = (idx: number): string => String.fromCharCode(65 + idx);
 
 const questionTypeLabel = (value?: string): string => {
   if (value === 'single_choice') return '单选题';
@@ -83,6 +89,8 @@ export const AssignmentDraftDetail = memo<{ content: AssignmentDraftContent }>((
   const title = String(content.title || '').trim() || 'Untitled Draft';
   const source = String(content.source || '').trim() || 'manual';
   const dueDate = String(content.due_date || '').trim();
+  const subjectName = String(content.subject_name || '').trim();
+  const gradeName = String(content.grade_name || '').trim();
   const refs = Array.isArray(content.question_refs) ? content.question_refs : [];
   const questions = Array.isArray(content.questions) ? content.questions : [];
 
@@ -112,6 +120,25 @@ export const AssignmentDraftDetail = memo<{ content: AssignmentDraftContent }>((
         richTextToString(contentObj.stem) ||
         richTextToString(asRecord(firstSubQuestion.prompt)) ||
         '';
+      const optionsRaw = Array.isArray(contentObj.options)
+        ? (contentObj.options as unknown[])
+        : Array.isArray(asRecord(firstSubQuestion).options)
+          ? (asRecord(firstSubQuestion).options as unknown[])
+          : [];
+      const choiceOptions = optionsRaw
+        .map((option, optionIdx) => {
+          const optionObj = asRecord(option);
+          const id = String(optionObj.id || optionObj.label || optionFallbackId(optionIdx)).trim();
+          const text =
+            richTextToString(optionObj.content) ||
+            String(optionObj.label || optionObj.id || '').trim();
+          if (!id && !text) return null;
+          return {
+            id: id || optionFallbackId(optionIdx),
+            text: text || id || optionFallbackId(optionIdx),
+          };
+        })
+        .filter((item): item is { id: string; text: string } => item !== null);
       const answerObj = asRecord(question.answer);
       const subAnswers = Array.isArray(answerObj.sub_answers)
         ? (answerObj.sub_answers as unknown[])
@@ -131,6 +158,7 @@ export const AssignmentDraftDetail = memo<{ content: AssignmentDraftContent }>((
 
       return {
         answerText,
+        choiceOptions,
         explanation,
         order: Number(question.order_index) || idx + 1,
         points:
@@ -152,8 +180,16 @@ export const AssignmentDraftDetail = memo<{ content: AssignmentDraftContent }>((
       </Typography.Title>
       <Flexbox gap={8} horizontal wrap="wrap">
         <Tag>{source}</Tag>
-        {content.subject_id ? <Tag color="blue">subject {content.subject_id}</Tag> : null}
-        {content.grade_id ? <Tag color="gold">grade {content.grade_id}</Tag> : null}
+        {subjectName ? (
+          <Tag color="blue">subject {subjectName}</Tag>
+        ) : content.subject_id ? (
+          <Tag color="blue">subject #{content.subject_id}</Tag>
+        ) : null}
+        {gradeName ? (
+          <Tag color="gold">grade {gradeName}</Tag>
+        ) : content.grade_id ? (
+          <Tag color="gold">grade #{content.grade_id}</Tag>
+        ) : null}
         {dueDate ? <Tag color="blue">due {dueDate}</Tag> : null}
         {content.updated_at ? (
           <Tag color="default">updated {String(content.updated_at)}</Tag>
@@ -196,6 +232,18 @@ export const AssignmentDraftDetail = memo<{ content: AssignmentDraftContent }>((
                       <Markdown style={{ overflow: 'unset' }} variant={'chat'}>
                         {item.stemText || '*（暂无题干）*'}
                       </Markdown>
+                      {item.choiceOptions.length > 0 ? (
+                        <Flexbox gap={2}>
+                          {item.choiceOptions.map((option) => (
+                            <Typography.Text
+                              key={`${item.order}:${item.questionId ?? 'x'}:${option.id}`}
+                              type="secondary"
+                            >
+                              {option.id}. {option.text}
+                            </Typography.Text>
+                          ))}
+                        </Flexbox>
+                      ) : null}
                       {item.answerText ? (
                         <Typography.Text type="secondary">答案：{item.answerText}</Typography.Text>
                       ) : null}

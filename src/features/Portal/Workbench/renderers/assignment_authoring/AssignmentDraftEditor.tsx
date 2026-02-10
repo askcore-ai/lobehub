@@ -217,7 +217,9 @@ const AssignmentDraftEditor = memo<Props>(
     const initialTitle = String((initialContent as any)?.title || '').trim();
     const initialDueDate = String((initialContent as any)?.due_date || '').trim();
     const subjectId = Number((initialContent as any)?.subject_id || 0);
+    const subjectName = String((initialContent as any)?.subject_name || '').trim();
     const gradeId = Number((initialContent as any)?.grade_id || 0);
+    const gradeName = String((initialContent as any)?.grade_name || '').trim();
 
     const initialQuestionsRaw = Array.isArray((initialContent as any)?.questions)
       ? ((initialContent as any).questions as unknown[])
@@ -516,8 +518,14 @@ const AssignmentDraftEditor = memo<Props>(
               style={{ minWidth: 280 }}
               value={dueDate}
             />
-            <Tag>subject_id: {subjectId > 0 ? subjectId : 'N/A'}</Tag>
-            <Tag>grade_id: {gradeId > 0 ? gradeId : 'N/A'}</Tag>
+            <Tag>
+              {subjectName
+                ? `subject: ${subjectName}`
+                : `subject_id: ${subjectId > 0 ? subjectId : 'N/A'}`}
+            </Tag>
+            <Tag>
+              {gradeName ? `grade: ${gradeName}` : `grade_id: ${gradeId > 0 ? gradeId : 'N/A'}`}
+            </Tag>
           </Space>
         </Flexbox>
 

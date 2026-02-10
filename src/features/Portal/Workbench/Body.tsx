@@ -376,12 +376,32 @@ const WorkbenchPortalBodyInner = memo(() => {
     };
   }, [hasRunId, runId]);
 
-  const { data: artifactDetail } = useSWR<WorkbenchArtifactDetail | undefined>(
+  const { data: artifactDetail, error: artifactDetailError } = useSWR<
+    WorkbenchArtifactDetail | undefined
+  >(
     selectedArtifactId ? ['workbench:artifact', selectedArtifactId] : null,
     async ([, artifactId]: readonly [string, string]) =>
       fetchJson(`/api/workbench/artifacts/${encodeURIComponent(artifactId)}`),
     { shouldRetryOnError: false },
   );
+
+  useEffect(() => {
+    if (!conversationId) return;
+    if (!hasRunId) return;
+    if (!selectedArtifactId) return;
+    if (!artifactDetailError) return;
+    if (artifacts.length === 0) return;
+
+    const fallbackArtifact = artifacts[0];
+    if (fallbackArtifact.artifact_id === selectedArtifactId) return;
+
+    useChatStore.getState().pushPortalView({
+      artifactId: fallbackArtifact.artifact_id,
+      conversationId,
+      runId,
+      type: PortalViewType.Workbench,
+    });
+  }, [artifactDetailError, artifacts, conversationId, hasRunId, runId, selectedArtifactId]);
 
   const hasKnownRenderer = useMemo(() => {
     if (!artifactDetail) return false;
@@ -399,15 +419,11 @@ const WorkbenchPortalBodyInner = memo(() => {
     if (isHelloTable) return true;
 
     const isAssignmentDraft =
-      artifactDetail.type === 'assignment.draft' &&
-      artifactDetail.schema_version === 'v1' &&
-      isAssignmentAuthoringEnabled;
+      artifactDetail.type === 'assignment.draft' && artifactDetail.schema_version === 'v1';
     if (isAssignmentDraft) return true;
 
     const isAssignmentPublishResult =
-      artifactDetail.type === 'assignment.publish.result' &&
-      artifactDetail.schema_version === 'v1' &&
-      isAssignmentAuthoringEnabled;
+      artifactDetail.type === 'assignment.publish.result' && artifactDetail.schema_version === 'v1';
     if (isAssignmentPublishResult) return true;
 
     const adminEntityType = String((artifactDetail.content as any)?.entity_type || '').trim();
@@ -431,7 +447,7 @@ const WorkbenchPortalBodyInner = memo(() => {
     if (isAdminEntityList) return true;
 
     return false;
-  }, [artifactDetail, isAssignmentAuthoringEnabled, isHelloPluginEnabled]);
+  }, [artifactDetail, isHelloPluginEnabled]);
 
   const fallbackHint = useMemo(() => {
     if (!artifactDetail) return null;
@@ -470,22 +486,16 @@ const WorkbenchPortalBodyInner = memo(() => {
       {
         key: 'preview',
         render: (_, record) => {
-          if (
-            record.type === 'assignment.draft' &&
-            record.schema_version === 'v1' &&
-            isAssignmentAuthoringEnabled
-          ) {
-            return <AssignmentDraftList content={record.content as AssignmentDraftContent} />;
+          if (record.type === 'assignment.draft' && record.schema_version === 'v1') {
+            return (
+              <AssignmentDraftList content={(record.content || {}) as AssignmentDraftContent} />
+            );
           }
 
-          if (
-            record.type === 'assignment.publish.result' &&
-            record.schema_version === 'v1' &&
-            isAssignmentAuthoringEnabled
-          ) {
+          if (record.type === 'assignment.publish.result' && record.schema_version === 'v1') {
             return (
               <AssignmentPublishResultList
-                content={record.content as AssignmentPublishResultContent}
+                content={(record.content || {}) as AssignmentPublishResultContent}
               />
             );
           }
@@ -535,7 +545,7 @@ const WorkbenchPortalBodyInner = memo(() => {
         title: 'Actions',
       },
     ],
-    [conversationId, isAssignmentAuthoringEnabled, isHelloPluginEnabled, runId],
+    [conversationId, isHelloPluginEnabled, runId],
   );
 
   if (!conversationId) {
@@ -803,11 +813,10 @@ const WorkbenchPortalBodyInner = memo(() => {
                 isHelloPluginEnabled ? (
                   <HelloNoteDetail content={artifactDetail.content as HelloNoteContent} />
                 ) : artifactDetail.type === 'assignment.draft' &&
-                  artifactDetail.schema_version === 'v1' &&
-                  isAssignmentAuthoringEnabled ? (
+                  artifactDetail.schema_version === 'v1' ? (
                   <Flexbox gap={12}>
                     <AssignmentDraftDetail
-                      content={artifactDetail.content as AssignmentDraftContent}
+                      content={(artifactDetail.content || {}) as AssignmentDraftContent}
                     />
                     <Space>
                       <Button onClick={() => setIsEditing((v) => !v)} size="small">
@@ -864,14 +873,33 @@ const WorkbenchPortalBodyInner = memo(() => {
                     ) : null}
                   </Flexbox>
                 ) : artifactDetail.type === 'assignment.publish.result' &&
-                  artifactDetail.schema_version === 'v1' &&
-                  isAssignmentAuthoringEnabled ? (
+                  artifactDetail.schema_version === 'v1' ? (
                   <AssignmentPublishResultDetail
-                    content={artifactDetail.content as AssignmentPublishResultContent}
+                    content={(artifactDetail.content || {}) as AssignmentPublishResultContent}
                   />
                 ) : (
                   <pre style={{ margin: 0 }}>{JSON.stringify(artifactDetail, null, 2)}</pre>
                 )
+              ) : artifactDetailError ? (
+                <Flexbox gap={8}>
+                  <Typography.Text type="danger">
+                    Failed to load selected artifact. Try reopening from the run artifact list.
+                  </Typography.Text>
+                  <Space>
+                    <Button
+                      onClick={() =>
+                        useChatStore.getState().pushPortalView({
+                          conversationId,
+                          runId,
+                          type: PortalViewType.Workbench,
+                        })
+                      }
+                      size="small"
+                    >
+                      Back to run artifacts
+                    </Button>
+                  </Space>
+                </Flexbox>
               ) : (
                 <Typography.Text type="secondary">Loading…</Typography.Text>
               )}
