@@ -248,7 +248,31 @@ export type UpdateStudentParams = {
 
 export type DeleteStudentParams = { student_id: number };
 
-export type OpenImportUiParams = Record<string, never>;
+export type CsvImportDefaults = {
+  academic_year_id?: number;
+  city?: string;
+  class_id?: number;
+  education_level?: string;
+  province?: string;
+  role?: 'TEACHER' | 'ADMIN' | 'PRINCIPAL';
+  school_id?: number;
+  tags?: string[];
+};
+
+export type OpenImportUiParams = {
+  /**
+   * Optional CSV filename from conversation uploads.
+   * If omitted, executor derives a filename from URL or entity type.
+   */
+  csvFileName?: string;
+  /**
+   * Optional CSV file URL from conversation uploads (`<file ... url="...">`).
+   * If provided, the executor will fetch this file and start import directly.
+   * If omitted, the executor opens the list page and lets the user click "Import CSV".
+   */
+  csvFileUrl?: string;
+  defaults?: CsvImportDefaults;
+};
 
 export type AcademicYearPayload = {
   end_date: string;

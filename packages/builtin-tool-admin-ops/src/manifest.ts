@@ -36,7 +36,32 @@ General guidelines:
 
 Execution modes:
 - **Blocking (fast)**: list + single CRUD + bulk delete + sql patch preview/execute will return a short result summary directly.
-- **Non-blocking (long-running)**: CSV import runs in the background; the user should use the right-side Workbench panel \`Import CSV\` button on the list page to upload and start the import run. The assistant should open the relevant list first, then guide the user to click \`Import CSV\`.`;
+- **Non-blocking (long-running)**: CSV import runs in the background.
+  - Preferred: if the current conversation already includes an uploaded CSV (\`<file ... url="...">\`), call \`import*\` with \`csvFileUrl\` (and optional \`csvFileName\`/\`defaults\`) to start import directly.
+  - Fallback: if no CSV file URL is available, open the list page and guide the user to click \`Import CSV\` in the right-side Workbench panel.`;
+
+const csvImportApiParameters = {
+  additionalProperties: false,
+  properties: {
+    csvFileName: { maxLength: 255, minLength: 1, type: 'string' },
+    csvFileUrl: { format: 'uri', maxLength: 4096, minLength: 1, type: 'string' },
+    defaults: {
+      additionalProperties: false,
+      properties: {
+        academic_year_id: { minimum: 1, type: 'integer' },
+        city: { maxLength: 100, minLength: 1, type: 'string' },
+        class_id: { minimum: 1, type: 'integer' },
+        education_level: { maxLength: 64, minLength: 1, type: 'string' },
+        province: { maxLength: 100, minLength: 1, type: 'string' },
+        role: { enum: ['TEACHER', 'ADMIN', 'PRINCIPAL'], type: 'string' },
+        school_id: { minimum: 1, type: 'integer' },
+        tags: { items: { maxLength: 100, minLength: 1, type: 'string' }, type: 'array' },
+      },
+      type: 'object',
+    },
+  },
+  type: 'object',
+} as const;
 
 /* eslint-disable sort-keys-fix/sort-keys-fix */
 export const AdminOpsManifest: BuiltinToolManifest = {
@@ -1160,80 +1185,52 @@ export const AdminOpsManifest: BuiltinToolManifest = {
 
     {
       description:
-        'Open the schools list so the user can click "Import CSV" in the right-side panel to upload and import (produces admin.import.result@v1).',
-      humanIntervention: 'never',
+        'Import schools from a conversation-uploaded CSV via `csvFileUrl` (preferred). If `csvFileUrl` is omitted, open the schools list and let user click "Import CSV" in the right-side panel (produces admin.import.result@v1).',
+      humanIntervention: 'required',
       name: AdminOpsApiName.importSchools,
-      parameters: {
-        additionalProperties: false,
-        properties: {},
-        type: 'object',
-      },
+      parameters: csvImportApiParameters,
     },
     {
       description:
-        'Open the classes list so the user can click "Import CSV" in the right-side panel to upload and import (produces admin.import.result@v1).',
-      humanIntervention: 'never',
+        'Import classes from a conversation-uploaded CSV via `csvFileUrl` (preferred). If `csvFileUrl` is omitted, open the classes list and let user click "Import CSV" in the right-side panel (produces admin.import.result@v1).',
+      humanIntervention: 'required',
       name: AdminOpsApiName.importClasses,
-      parameters: {
-        additionalProperties: false,
-        properties: {},
-        type: 'object',
-      },
+      parameters: csvImportApiParameters,
     },
     {
       description:
-        'Open the teachers list so the user can click "Import CSV" in the right-side panel to upload and import (produces admin.import.result@v1).',
-      humanIntervention: 'never',
+        'Import teachers from a conversation-uploaded CSV via `csvFileUrl` (preferred). If `csvFileUrl` is omitted, open the teachers list and let user click "Import CSV" in the right-side panel (produces admin.import.result@v1).',
+      humanIntervention: 'required',
       name: AdminOpsApiName.importTeachers,
-      parameters: {
-        additionalProperties: false,
-        properties: {},
-        type: 'object',
-      },
+      parameters: csvImportApiParameters,
     },
     {
       description:
-        'Open the students list so the user can click "Import CSV" in the right-side panel to upload and import (produces admin.import.result@v1).',
-      humanIntervention: 'never',
+        'Import students from a conversation-uploaded CSV via `csvFileUrl` (preferred). If `csvFileUrl` is omitted, open the students list and let user click "Import CSV" in the right-side panel (produces admin.import.result@v1).',
+      humanIntervention: 'required',
       name: AdminOpsApiName.importStudents,
-      parameters: {
-        additionalProperties: false,
-        properties: {},
-        type: 'object',
-      },
+      parameters: csvImportApiParameters,
     },
     {
       description:
-        'Open the academic years list so the user can click "Import CSV" in the right-side panel to upload and import (produces admin.import.result@v1).',
-      humanIntervention: 'never',
+        'Import academic years from a conversation-uploaded CSV via `csvFileUrl` (preferred). If `csvFileUrl` is omitted, open the academic years list and let user click "Import CSV" in the right-side panel (produces admin.import.result@v1).',
+      humanIntervention: 'required',
       name: AdminOpsApiName.importAcademicYears,
-      parameters: {
-        additionalProperties: false,
-        properties: {},
-        type: 'object',
-      },
+      parameters: csvImportApiParameters,
     },
     {
       description:
-        'Open the grades list so the user can click "Import CSV" in the right-side panel to upload and import (produces admin.import.result@v1).',
-      humanIntervention: 'never',
+        'Import grades from a conversation-uploaded CSV via `csvFileUrl` (preferred). If `csvFileUrl` is omitted, open the grades list and let user click "Import CSV" in the right-side panel (produces admin.import.result@v1).',
+      humanIntervention: 'required',
       name: AdminOpsApiName.importGrades,
-      parameters: {
-        additionalProperties: false,
-        properties: {},
-        type: 'object',
-      },
+      parameters: csvImportApiParameters,
     },
     {
       description:
-        'Open the subjects list so the user can click "Import CSV" in the right-side panel to upload and import (produces admin.import.result@v1).',
-      humanIntervention: 'never',
+        'Import subjects from a conversation-uploaded CSV via `csvFileUrl` (preferred). If `csvFileUrl` is omitted, open the subjects list and let user click "Import CSV" in the right-side panel (produces admin.import.result@v1).',
+      humanIntervention: 'required',
       name: AdminOpsApiName.importSubjects,
-      parameters: {
-        additionalProperties: false,
-        properties: {},
-        type: 'object',
-      },
+      parameters: csvImportApiParameters,
     },
 
     {

@@ -6,6 +6,7 @@ import {
   type DraftCreateManualParams,
   type DraftPublishParams,
   type DraftSaveParams,
+  type OpenImportUiParams,
 } from '../types';
 
 type StartInvocationResponse = { invocation_id: string; run_id: number };
@@ -33,6 +34,14 @@ type _WorkbenchArtifact = {
 
 type FetchInput = Parameters<typeof fetch>[0];
 type FetchInit = Parameters<typeof fetch>[1];
+type ImportEntityType =
+  | 'school'
+  | 'class'
+  | 'teacher'
+  | 'student'
+  | 'academic_year'
+  | 'grade'
+  | 'subject';
 
 const _conversationId = (ctx: BuiltinToolContext): string | null => {
   if (!ctx.topicId) return null;
@@ -46,6 +55,13 @@ const _sleep = (ms: number): Promise<void> =>
 
 const sha256Hex = async (text: string): Promise<string> => {
   const bytes = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+};
+
+const sha256HexBytes = async (bytes: ArrayBuffer): Promise<string> => {
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, '0'))
@@ -138,8 +154,210 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
     return 'admin.list.schools';
   }
 
+  private _importActionId(entityType: ImportEntityType): string {
+    if (entityType === 'school') return 'admin.import.schools';
+    if (entityType === 'class') return 'admin.import.classes';
+    if (entityType === 'teacher') return 'admin.import.teachers';
+    if (entityType === 'student') return 'admin.import.students';
+    if (entityType === 'academic_year') return 'admin.import.academic_years';
+    if (entityType === 'grade') return 'admin.import.grades';
+    return 'admin.import.subjects';
+  }
+
+  private _importCsvSensitivity(entityType: ImportEntityType): 'restricted' | 'student_personal' {
+    return entityType === 'student' ? 'student_personal' : 'restricted';
+  }
+
+  private _csvFileUrlCandidates(rawUrl: string): string[] {
+    const trimmed = String(rawUrl || '').trim();
+    if (!trimmed) return [];
+
+    const unquoted = trimmed.replaceAll(/^["'`]+|["'`]+$/g, '').trim();
+    const deXml = unquoted
+      .replaceAll('&amp;', '&')
+      .replaceAll('&#38;', '&')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#34;', '"')
+      .replaceAll('&apos;', "'")
+      .replaceAll('&#39;', "'")
+      .trim();
+    const deAngle = deXml.replaceAll(/^<+|>+$/g, '').trim();
+
+    const candidates = [unquoted];
+    if (deXml && deXml !== unquoted) candidates.push(deXml);
+    if (deAngle && deAngle !== deXml) candidates.push(deAngle);
+
+    return [...new Set(candidates.filter((url) => /^https?:\/\//i.test(url)))];
+  }
+
+  private async _readConversationCsvBytes(
+    csvFileUrl: string,
+  ): Promise<{ bytes: ArrayBuffer; ok: true } | { error: string; ok: false }> {
+    const candidates = this._csvFileUrlCandidates(csvFileUrl);
+    if (candidates.length === 0) {
+      return { error: 'CSV 文件 URL 无效（必须是 http/https）。', ok: false };
+    }
+
+    let lastError = '';
+
+    for (const candidate of candidates) {
+      try {
+        const fileResponse = await fetch(candidate);
+        if (fileResponse.ok) {
+          return { bytes: await fileResponse.arrayBuffer(), ok: true };
+        }
+
+        const text = await fileResponse.text();
+        const snippet = text ? text.slice(0, 300) : '';
+        const isSignatureMismatch =
+          fileResponse.status === 403 && /signaturedoesnotmatch/i.test(snippet);
+        const hint = isSignatureMismatch
+          ? '（签名不匹配，通常是 URL 中的 & 被转义成了 &amp;）'
+          : '';
+
+        lastError = `无法读取会话里的 CSV 文件（${fileResponse.status}）${snippet ? `：${snippet}` : ''}${hint}`;
+      } catch (error) {
+        lastError = `读取会话里的 CSV 文件失败：${error instanceof Error ? error.message : String(error)}`;
+      }
+    }
+
+    return { error: lastError || '读取会话里的 CSV 文件失败。', ok: false };
+  }
+
+  private _sanitizeCsvFilename(entityType: ImportEntityType, params: OpenImportUiParams): string {
+    const fromParam = String(params.csvFileName || '').trim();
+    const fromUrl = this._csvFileUrlCandidates(String(params.csvFileUrl || ''))[0] || '';
+
+    let derived = fromParam;
+    if (!derived && fromUrl) {
+      try {
+        const pathname = new URL(fromUrl, 'http://localhost').pathname;
+        const base = pathname.split('/').findLast(Boolean) || '';
+        derived = decodeURIComponent(base).trim();
+      } catch {
+        derived = '';
+      }
+    }
+
+    let filename = (derived || `${entityType}_${Date.now()}.csv`)
+      .replaceAll('\\', '_')
+      .replaceAll('/', '_')
+      .trim();
+    if (!filename) filename = `${entityType}_${Date.now()}.csv`;
+    if (!/\.csv$/i.test(filename)) filename = `${filename}.csv`;
+    return filename;
+  }
+
+  private _sanitizeImportDefaults(
+    entityType: ImportEntityType,
+    defaults: OpenImportUiParams['defaults'],
+  ): Record<string, unknown> {
+    if (!defaults || typeof defaults !== 'object') return {};
+
+    const safe: Record<string, unknown> = {};
+
+    if (entityType === 'school') {
+      const province = String(defaults.province || '').trim();
+      const city = String(defaults.city || '').trim();
+      const tags = Array.isArray(defaults.tags)
+        ? defaults.tags.map((t) => String(t).trim()).filter(Boolean)
+        : [];
+      if (province) safe.province = province;
+      if (city) safe.city = city;
+      if (tags.length > 0) safe.tags = tags;
+      return safe;
+    }
+
+    if (entityType === 'teacher') {
+      const schoolId = Number(defaults.school_id);
+      const role = String(defaults.role || '').trim();
+      if (Number.isFinite(schoolId) && schoolId > 0) safe.school_id = schoolId;
+      if (['TEACHER', 'ADMIN', 'PRINCIPAL'].includes(role)) safe.role = role;
+      return safe;
+    }
+
+    if (entityType === 'class') {
+      const schoolId = Number(defaults.school_id);
+      const academicYearId = Number(defaults.academic_year_id);
+      const educationLevel = String(defaults.education_level || '').trim();
+      if (Number.isFinite(schoolId) && schoolId > 0) safe.school_id = schoolId;
+      if (Number.isFinite(academicYearId) && academicYearId > 0)
+        safe.academic_year_id = academicYearId;
+      if (educationLevel) safe.education_level = educationLevel;
+      return safe;
+    }
+
+    if (entityType === 'student') {
+      const classId = Number(defaults.class_id);
+      if (Number.isFinite(classId) && classId > 0) safe.class_id = classId;
+      return safe;
+    }
+
+    return safe;
+  }
+
+  private async _importCsvFromConversationFile(
+    entityType: ImportEntityType,
+    params: OpenImportUiParams,
+    ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> {
+    const csvFileUrl = String(params.csvFileUrl || '').trim();
+    if (!csvFileUrl) return this._openCsvImportUi(entityType, ctx);
+
+    const csvRead = await this._readConversationCsvBytes(csvFileUrl);
+    if (!csvRead.ok) return { content: csvRead.error, success: false };
+    const csvBytes = csvRead.bytes;
+
+    if (csvBytes.byteLength <= 0) {
+      return { content: '会话里的 CSV 文件为空，无法导入。', success: false };
+    }
+
+    const csvHash = await sha256HexBytes(csvBytes);
+    const filename = this._sanitizeCsvFilename(entityType, params);
+    const presign = await this.presignUpload({
+      content_type: 'text/csv',
+      filename,
+      purpose: 'csv',
+      sha256: csvHash,
+    });
+    if (!presign.ok) {
+      return { content: `Failed to presign csv upload: ${presign.error}`, success: false };
+    }
+
+    const put = await fetch(presign.data.upload_url, {
+      body: new Uint8Array(csvBytes),
+      headers: presign.data.required_headers,
+      method: 'PUT',
+    });
+    if (!put.ok) {
+      const putText = await put.text();
+      const preview = putText.slice(0, 500);
+      return { content: `Failed to upload csv: ${put.status} ${preview}`, success: false };
+    }
+
+    const invocationParams: Record<string, unknown> = {
+      csv_ref: {
+        integrity: { sha256: csvHash },
+        locator: { kind: 'object_store', object_key: presign.data.object_key },
+        media_type: 'text/csv',
+        purpose: 'csv',
+        sensitivity: this._importCsvSensitivity(entityType),
+      },
+    };
+
+    const safeDefaults = this._sanitizeImportDefaults(entityType, params.defaults);
+    if (Object.keys(safeDefaults).length > 0) {
+      invocationParams.defaults = safeDefaults;
+    }
+
+    return this.startInvocation(this._importActionId(entityType), invocationParams, ctx, {
+      executionMode: 'non_blocking',
+      requireConfirmation: true,
+    });
+  }
+
   private async _openCsvImportUi(
-    entityType: 'school' | 'class' | 'teacher' | 'student' | 'academic_year' | 'grade' | 'subject',
+    entityType: ImportEntityType,
     ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> {
     const listActionId = this._listActionId(entityType);
@@ -837,26 +1055,44 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
     );
 
   // ===== Imports =====
-  importSchools = async (_params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
-    this._openCsvImportUi('school', ctx);
+  importSchools = async (
+    params: OpenImportUiParams,
+    ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> => this._importCsvFromConversationFile('school', params || {}, ctx);
 
-  importClasses = async (_params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
-    this._openCsvImportUi('class', ctx);
+  importClasses = async (
+    params: OpenImportUiParams,
+    ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> => this._importCsvFromConversationFile('class', params || {}, ctx);
 
-  importTeachers = async (_params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
-    this._openCsvImportUi('teacher', ctx);
+  importTeachers = async (
+    params: OpenImportUiParams,
+    ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> =>
+    this._importCsvFromConversationFile('teacher', params || {}, ctx);
 
-  importStudents = async (_params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
-    this._openCsvImportUi('student', ctx);
+  importStudents = async (
+    params: OpenImportUiParams,
+    ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> =>
+    this._importCsvFromConversationFile('student', params || {}, ctx);
 
-  importAcademicYears = async (_params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
-    this._openCsvImportUi('academic_year', ctx);
+  importAcademicYears = async (
+    params: OpenImportUiParams,
+    ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> =>
+    this._importCsvFromConversationFile('academic_year', params || {}, ctx);
 
-  importGrades = async (_params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
-    this._openCsvImportUi('grade', ctx);
+  importGrades = async (
+    params: OpenImportUiParams,
+    ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> => this._importCsvFromConversationFile('grade', params || {}, ctx);
 
-  importSubjects = async (_params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
-    this._openCsvImportUi('subject', ctx);
+  importSubjects = async (
+    params: OpenImportUiParams,
+    ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> =>
+    this._importCsvFromConversationFile('subject', params || {}, ctx);
 
   // ===== Bulk delete =====
   bulkDeleteStudentsPreview = async (
