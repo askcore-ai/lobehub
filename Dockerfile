@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 ## Set global build ENV
 ARG NODEJS_VERSION
 
@@ -43,6 +44,9 @@ ARG DATABASE_DRIVER
 ARG DATABASE_URL
 ARG KEY_VAULTS_SECRET
 ARG AUTH_SECRET
+ARG SKIP_DOCKER_LINT_AND_TYPECHECK
+ARG PG_VERSION="8.17.2"
+ARG DRIZZLE_ORM_VERSION="0.44.7"
 
 ENV NEXT_PUBLIC_BASE_PATH="${NEXT_PUBLIC_BASE_PATH}" \
     FEATURE_FLAGS="${FEATURE_FLAGS}"
@@ -67,18 +71,22 @@ ENV NEXT_PUBLIC_ANALYTICS_UMAMI="${NEXT_PUBLIC_ANALYTICS_UMAMI}" \
     NEXT_PUBLIC_UMAMI_WEBSITE_ID="${NEXT_PUBLIC_UMAMI_WEBSITE_ID}"
 
 # Node
-ENV NODE_OPTIONS="--max-old-space-size=8192"
+ENV NODE_OPTIONS="--max-old-space-size=6144"
+ENV PNPM_STORE_DIR="/root/.local/share/pnpm/store"
 
 WORKDIR /app
 
 COPY package.json pnpm-workspace.yaml ./
+COPY pnpm-lock.yaml ./
 COPY .npmrc ./
 COPY packages ./packages
 COPY patches ./patches
 # bring in desktop workspace manifest so pnpm can resolve it
 COPY apps/desktop/src/main/package.json ./apps/desktop/src/main/package.json
 
-RUN set -e && \
+RUN --mount=type=cache,id=lobechat-npm-cache,target=/root/.npm,sharing=locked \
+    --mount=type=cache,id=lobechat-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
+    set -e && \
     if [ "${USE_CN_MIRROR}" = "true" ]; then \
         export SENTRYCLI_CDNURL="https://npmmirror.com/mirrors/sentry-cli"; \
         # 1) 写全局 npmrc，保证任何目录都生效（包括 /deps）
@@ -89,19 +97,47 @@ RUN set -e && \
     export COREPACK_NPM_REGISTRY="$(npm config get registry | sed 's/\/$//')" && \
     npm i -g corepack@latest && \
     corepack enable && \
-    corepack use "$(sed -n 's/.*\"packageManager\": \"\(.*\)\".*/\1/p' package.json)" && \
+    corepack prepare "$(sed -n 's/.*\"packageManager\": \"\(.*\)\".*/\1/p' package.json)" --activate && \
     # 2) pnpm 显式指定 registry（避免 pnpm 读配置不一致）
-    pnpm config set registry "$(npm config get registry)" && \
-    pnpm i --registry "$(npm config get registry)" && \
+    pnpm config set store-dir "${PNPM_STORE_DIR}" && \
+    pnpm config set registry "$(npm config get registry)"
+
+RUN --mount=type=cache,id=lobechat-npm-cache,target=/root/.npm,sharing=locked \
+    --mount=type=cache,id=lobechat-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
+    set -e && \
     mkdir -p /deps && \
     cd /deps && \
     npm init -y && \
-    pnpm add pg drizzle-orm --registry "$(npm config get registry)"
+    pnpm config set store-dir "${PNPM_STORE_DIR}" && \
+    pnpm config set registry "$(npm config get registry)" && \
+    pnpm add "pg@${PG_VERSION}" "drizzle-orm@${DRIZZLE_ORM_VERSION}" --prefer-offline
 
-COPY . .
+COPY next.config.ts ./
+COPY next-env.d.ts ./
+COPY tsconfig.json ./
+COPY drizzle.config.ts ./
+COPY vitest.config.mts ./
+COPY src ./src
+COPY scripts ./scripts
+COPY public ./public
+COPY locales ./locales
+COPY apps ./apps
 
 # run build standalone for docker version
-RUN npm run build:docker
+RUN --mount=type=cache,id=lobechat-next-cache,target=/app/.next/cache,sharing=locked \
+    --mount=type=cache,id=lobechat-npm-cache,target=/root/.npm,sharing=locked \
+    --mount=type=cache,id=lobechat-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
+    --mount=type=cache,id=lobechat-node-modules,target=/app/node_modules,sharing=locked \
+    set -e && \
+    pnpm fetch --frozen-lockfile --prefer-offline && \
+    CI=true pnpm install --frozen-lockfile --offline --prefer-offline && \
+    if [ "${SKIP_DOCKER_LINT_AND_TYPECHECK}" = "true" ]; then \
+        pnpm exec tsx scripts/prebuild.mts && \
+        NEXT_DISABLE_ESLINT=1 NEXT_TELEMETRY_DISABLED=1 DISABLE_WEBPACK_BUILD_WORKER=1 NODE_OPTIONS=--max-old-space-size=6144 DOCKER=true pnpm exec next build --webpack && \
+        pnpm run build-sitemap; \
+    else \
+        NEXT_TELEMETRY_DISABLED=1 pnpm run build:docker; \
+    fi
 
 # Prepare desktop export assets for Electron packaging (if generated)
 RUN set -e && \

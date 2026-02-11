@@ -1,10 +1,12 @@
 import { defineConfig } from './src/libs/next/config/define-config';
 
 const isVercel = !!process.env.VERCEL_ENV;
+const disableWebpackCache = process.env.DISABLE_WEBPACK_CACHE === '1';
+const disableWebpackBuildWorker = process.env.DISABLE_WEBPACK_BUILD_WORKER === '1';
 
 const nextConfig = defineConfig({
   experimental: {
-    webpackBuildWorker: true,
+    webpackBuildWorker: !disableWebpackBuildWorker,
     webpackMemoryOptimizations: true,
   },
   // Vercel serverless optimization: exclude musl binaries
@@ -20,7 +22,7 @@ const nextConfig = defineConfig({
     : undefined,
   webpack: (webpackConfig, context) => {
     const { dev } = context;
-    if (!dev) {
+    if (!dev && disableWebpackCache) {
       webpackConfig.cache = false;
     }
 

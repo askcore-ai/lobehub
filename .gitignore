@@ -122,5 +122,3 @@ e2e/reports
 out
 i18n-unused-keys-report.json
 .vitest-reports
-
-pnpm-lock.yaml
