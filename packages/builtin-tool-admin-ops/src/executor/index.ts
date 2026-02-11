@@ -34,14 +34,7 @@ type _WorkbenchArtifact = {
 
 type FetchInput = Parameters<typeof fetch>[0];
 type FetchInit = Parameters<typeof fetch>[1];
-type ImportEntityType =
-  | 'school'
-  | 'class'
-  | 'teacher'
-  | 'student'
-  | 'academic_year'
-  | 'grade'
-  | 'subject';
+type ImportEntityType = 'school' | 'class' | 'teacher' | 'student' | 'grade' | 'subject';
 
 const _conversationId = (ctx: BuiltinToolContext): string | null => {
   if (!ctx.topicId) return null;
@@ -128,7 +121,6 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
     if (key === 'class') return '班级';
     if (key === 'teacher') return '教师';
     if (key === 'student') return '学生';
-    if (key === 'academic_year') return '学年';
     if (key === 'grade') return '年级';
     if (key === 'subject') return '学科';
     if (key === 'assignment') return '作业';
@@ -144,7 +136,6 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
     if (key === 'class') return 'admin.list.classes';
     if (key === 'teacher') return 'admin.list.teachers';
     if (key === 'student') return 'admin.list.students';
-    if (key === 'academic_year') return 'admin.list.academic_years';
     if (key === 'grade') return 'admin.list.grades';
     if (key === 'subject') return 'admin.list.subjects';
     if (key === 'assignment') return 'admin.list.assignments';
@@ -159,7 +150,6 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
     if (entityType === 'class') return 'admin.import.classes';
     if (entityType === 'teacher') return 'admin.import.teachers';
     if (entityType === 'student') return 'admin.import.students';
-    if (entityType === 'academic_year') return 'admin.import.academic_years';
     if (entityType === 'grade') return 'admin.import.grades';
     return 'admin.import.subjects';
   }
@@ -278,11 +268,8 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
 
     if (entityType === 'class') {
       const schoolId = Number(defaults.school_id);
-      const academicYearId = Number(defaults.academic_year_id);
       const educationLevel = String(defaults.education_level || '').trim();
       if (Number.isFinite(schoolId) && schoolId > 0) safe.school_id = schoolId;
-      if (Number.isFinite(academicYearId) && academicYearId > 0)
-        safe.academic_year_id = academicYearId;
       if (educationLevel) safe.education_level = educationLevel;
       return safe;
     }
@@ -742,12 +729,6 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
       requireConfirmation: false,
     });
 
-  listAcademicYears = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
-    this.startInvocation('admin.list.academic_years', params, ctx, {
-      executionMode: 'blocking',
-      requireConfirmation: false,
-    });
-
   listGrades = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
     this.startInvocation('admin.list.grades', params, ctx, {
       executionMode: 'blocking',
@@ -856,24 +837,6 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
 
   deleteStudent = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
     this.startInvocation('admin.delete.student', params, ctx, {
-      executionMode: 'blocking',
-      requireConfirmation: true,
-    });
-
-  createAcademicYear = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
-    this.startInvocation('admin.create.academic_year', params, ctx, {
-      executionMode: 'blocking',
-      requireConfirmation: true,
-    });
-
-  updateAcademicYear = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
-    this.startInvocation('admin.update.academic_year', params, ctx, {
-      executionMode: 'blocking',
-      requireConfirmation: true,
-    });
-
-  deleteAcademicYear = async (params: any, ctx: BuiltinToolContext): Promise<BuiltinToolResult> =>
-    this.startInvocation('admin.delete.academic_year', params, ctx, {
       executionMode: 'blocking',
       requireConfirmation: true,
     });
@@ -1077,12 +1040,6 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
   ): Promise<BuiltinToolResult> =>
     this._importCsvFromConversationFile('student', params || {}, ctx);
 
-  importAcademicYears = async (
-    params: OpenImportUiParams,
-    ctx: BuiltinToolContext,
-  ): Promise<BuiltinToolResult> =>
-    this._importCsvFromConversationFile('academic_year', params || {}, ctx);
-
   importGrades = async (
     params: OpenImportUiParams,
     ctx: BuiltinToolContext,
@@ -1128,25 +1085,6 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
     ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> =>
     this.startInvocation('admin.bulk_delete.schools.execute', params, ctx, {
-      executionMode: 'blocking',
-      requireConfirmation: true,
-      waitTimeoutMs: 15_000,
-    });
-
-  bulkDeleteAcademicYearsPreview = async (
-    params: any,
-    ctx: BuiltinToolContext,
-  ): Promise<BuiltinToolResult> =>
-    this.startInvocation('admin.bulk_delete.academic_years.preview', params, ctx, {
-      executionMode: 'blocking',
-      requireConfirmation: false,
-    });
-
-  bulkDeleteAcademicYearsExecute = async (
-    params: any,
-    ctx: BuiltinToolContext,
-  ): Promise<BuiltinToolResult> =>
-    this.startInvocation('admin.bulk_delete.academic_years.execute', params, ctx, {
       executionMode: 'blocking',
       requireConfirmation: true,
       waitTimeoutMs: 15_000,

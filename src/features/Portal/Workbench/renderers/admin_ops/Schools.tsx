@@ -74,15 +74,7 @@ type SchoolItem = {
   tags: string[];
 };
 
-type AcademicYearItem = {
-  academic_year_id: number;
-  end_date?: string | null;
-  name: string;
-  start_date?: string | null;
-};
-
 type ClassItem = {
-  academic_year_id: number | null;
   admission_year: number;
   class_id: number;
   education_level: string;
@@ -182,7 +174,6 @@ type AdminEntityType =
   | 'teacher'
   | 'class'
   | 'student'
-  | 'academic_year'
   | 'grade'
   | 'subject'
   | 'assignment'
@@ -271,7 +262,6 @@ const EDUCATION_LEVEL_OPTIONS = [
 ];
 
 const buildCsvHintSpec = (params: {
-  defaultAcademicYearId?: number | null;
   defaultClassId?: number | null;
   defaultEducationLevel?: string | null;
   defaultSchoolCity?: string | null;
@@ -284,30 +274,6 @@ const buildCsvHintSpec = (params: {
     '编码支持 UTF-8（推荐）/ UTF-8 with BOM / GBK。',
     '列名支持中文或英文（见下表）；建议优先使用英文列名，便于复用模板。',
   ];
-
-  if (params.entityType === 'academic_year') {
-    return {
-      notes: [...baseNotes, '日期格式必须为 YYYY-MM-DD（例如：2025-09-01）。'],
-      rows: [
-        {
-          headers: ['name', '学年'],
-          meaning: '学年名称（例如：2025-2026）。同租户同名学年会跳过。',
-          requirement: 'required',
-        },
-        {
-          headers: ['start_date', '开始日期', 'start'],
-          meaning: '学年开始日期（YYYY-MM-DD）。',
-          requirement: 'required',
-        },
-        {
-          headers: ['end_date', '结束日期', 'end'],
-          meaning: '学年结束日期（YYYY-MM-DD）。',
-          requirement: 'required',
-        },
-      ],
-      title: '学年 CSV 格式',
-    };
-  }
 
   if (params.entityType === 'grade') {
     return {
@@ -439,15 +405,12 @@ const buildCsvHintSpec = (params: {
   if (params.entityType === 'class') {
     const hasDefaultSchoolId =
       typeof params.defaultSchoolId === 'number' && Number.isFinite(params.defaultSchoolId);
-    const hasDefaultAcademicYearId =
-      typeof params.defaultAcademicYearId === 'number' &&
-      Number.isFinite(params.defaultAcademicYearId);
     const hasDefaultEducationLevel = Boolean(params.defaultEducationLevel?.trim());
 
     return {
       notes: [
         ...baseNotes,
-        'school_id / academic_year_id 用于按“学校/学年”筛选班级。若不想在 CSV 每行填写，可在上方选择默认值。',
+        'school_id 用于按学校筛选班级。若不想在 CSV 每行填写，可在上方选择默认值。',
         'education_level（学段）建议使用：小学 / 初中 / 高中（兼容 primary / junior / senior）。',
       ],
       rows: [
@@ -459,14 +422,6 @@ const buildCsvHintSpec = (params: {
             ? '已选择默认学校，可不在 CSV 中提供'
             : '未选择默认学校时建议在 CSV 中提供',
           requirement: hasDefaultSchoolId ? 'optional' : 'conditional',
-        },
-        {
-          headers: ['academic_year_id', '学年id'],
-          meaning: '学年 ID（整数）。对应“学年”列表中的 ID（用于按学年筛选班级）。',
-          note: hasDefaultAcademicYearId
-            ? '已设置默认学年，可不在 CSV 中提供'
-            : '建议在上方选择默认学年，或在 CSV 中提供',
-          requirement: hasDefaultAcademicYearId ? 'optional' : 'conditional',
         },
         {
           headers: ['admission_year', '入学年份'],
@@ -646,7 +601,6 @@ const entityTitle = (entityType: AdminEntityType): string => {
   if (entityType === 'teacher') return '教师';
   if (entityType === 'class') return '班级';
   if (entityType === 'student') return '学生';
-  if (entityType === 'academic_year') return '学年';
   if (entityType === 'grade') return '年级';
   if (entityType === 'subject') return '学科';
   if (entityType === 'assignment') return '作业';
@@ -661,7 +615,6 @@ const listActionIdForEntity = (entityType: AdminEntityType): string => {
   if (entityType === 'teacher') return 'admin.list.teachers';
   if (entityType === 'class') return 'admin.list.classes';
   if (entityType === 'student') return 'admin.list.students';
-  if (entityType === 'academic_year') return 'admin.list.academic_years';
   if (entityType === 'grade') return 'admin.list.grades';
   if (entityType === 'subject') return 'admin.list.subjects';
   if (entityType === 'assignment') return 'admin.list.assignments';
@@ -676,7 +629,6 @@ const importActionIdForEntity = (entityType: AdminEntityType): string | null => 
   if (entityType === 'teacher') return 'admin.import.teachers';
   if (entityType === 'class') return 'admin.import.classes';
   if (entityType === 'student') return 'admin.import.students';
-  if (entityType === 'academic_year') return 'admin.import.academic_years';
   if (entityType === 'grade') return 'admin.import.grades';
   if (entityType === 'subject') return 'admin.import.subjects';
   return null;
@@ -690,7 +642,6 @@ const importCsvSensitivityForEntity = (entityType: AdminEntityType): string => {
 
 const entityIdKeyForEntity = (entityType: AdminEntityType): string => {
   if (entityType === 'school') return 'school_id';
-  if (entityType === 'academic_year') return 'academic_year_id';
   if (entityType === 'grade') return 'grade_id';
   if (entityType === 'subject') return 'subject_id';
   if (entityType === 'teacher') return 'teacher_id';
@@ -708,7 +659,6 @@ const createActionIdForEntity = (entityType: AdminEntityType): string | null => 
   if (entityType === 'class') return 'admin.create.class';
   if (entityType === 'teacher') return 'admin.create.teacher';
   if (entityType === 'student') return 'admin.create.student';
-  if (entityType === 'academic_year') return 'admin.create.academic_year';
   if (entityType === 'grade') return 'admin.create.grade';
   if (entityType === 'subject') return 'admin.create.subject';
   if (entityType === 'assignment') return 'admin.create.assignment';
@@ -723,7 +673,6 @@ const updateActionIdForEntity = (entityType: AdminEntityType): string | null => 
   if (entityType === 'class') return 'admin.update.class';
   if (entityType === 'teacher') return 'admin.update.teacher';
   if (entityType === 'student') return 'admin.update.student';
-  if (entityType === 'academic_year') return 'admin.update.academic_year';
   if (entityType === 'grade') return 'admin.update.grade';
   if (entityType === 'subject') return 'admin.update.subject';
   if (entityType === 'assignment') return 'admin.update.assignment';
@@ -738,7 +687,6 @@ const deleteActionIdForEntity = (entityType: AdminEntityType): string | null => 
   if (entityType === 'class') return 'admin.delete.class';
   if (entityType === 'teacher') return 'admin.delete.teacher';
   if (entityType === 'student') return 'admin.delete.student';
-  if (entityType === 'academic_year') return 'admin.delete.academic_year';
   if (entityType === 'grade') return 'admin.delete.grade';
   if (entityType === 'subject') return 'admin.delete.subject';
   if (entityType === 'assignment') return 'admin.delete.assignment';
@@ -756,13 +704,6 @@ const bulkDeleteConfigForEntity = (
       executeActionId: 'admin.bulk_delete.schools.execute',
       previewActionId: 'admin.bulk_delete.schools.preview',
       requestedIdsKey: 'school_ids',
-    };
-  }
-  if (entityType === 'academic_year') {
-    return {
-      executeActionId: 'admin.bulk_delete.academic_years.execute',
-      previewActionId: 'admin.bulk_delete.academic_years.preview',
-      requestedIdsKey: 'academic_year_ids',
     };
   }
   if (entityType === 'grade') {
@@ -907,7 +848,6 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
     'teacher',
     'class',
     'student',
-    'academic_year',
     'grade',
     'subject',
     'assignment',
@@ -917,7 +857,6 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
   ].includes(content.entity_type);
   const supportsEditDelete = [
     'school',
-    'academic_year',
     'grade',
     'subject',
     'assignment',
@@ -925,9 +864,7 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
     'submission',
     'submission_question',
   ].includes(content.entity_type);
-  const supportsBulkDelete = ['school', 'academic_year', 'grade', 'subject'].includes(
-    content.entity_type,
-  );
+  const supportsBulkDelete = ['school', 'grade', 'subject'].includes(content.entity_type);
   const supportsImport = importActionIdForEntity(content.entity_type) !== null;
   const title = entityTitle(content.entity_type);
 
@@ -939,11 +876,9 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
   const [importFile, setImportFile] = useState<RcFile | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [academicYearLoading, setAcademicYearLoading] = useState(false);
   const [schoolTreeData, setSchoolTreeData] = useState<SchoolTreeNode[]>([]);
   const [schoolTreeLoading, setSchoolTreeLoading] = useState(false);
   const [classTreeData, setClassTreeData] = useState<SchoolTreeNode[]>([]);
-  const [classTreeAcademicYears, setClassTreeAcademicYears] = useState<AcademicYearItem[]>([]);
   const [classTreeLoading, setClassTreeLoading] = useState(false);
   const classTreeLoadedKeysRef = useRef<Set<string>>(new Set());
   const classTreeClassesBySchoolIdRef = useRef<Map<number, ClassItem[]>>(new Map());
@@ -954,7 +889,6 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
   const defaultSchoolProvince = Form.useWatch('province', importForm);
   const defaultSchoolCity = Form.useWatch('city', importForm);
   const rawDefaultSchoolId = Form.useWatch('school_id', importForm);
-  const rawDefaultAcademicYearId = Form.useWatch('academic_year_id', importForm);
   const defaultEducationLevel = Form.useWatch('education_level', importForm);
   const defaultClassId = Form.useWatch('class_id', importForm);
 
@@ -962,15 +896,10 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
     typeof rawDefaultSchoolId === 'number' && Number.isFinite(rawDefaultSchoolId)
       ? rawDefaultSchoolId
       : null;
-  const defaultAcademicYearId =
-    typeof rawDefaultAcademicYearId === 'number' && Number.isFinite(rawDefaultAcademicYearId)
-      ? rawDefaultAcademicYearId
-      : null;
 
   const csvHintSpec = useMemo(
     () =>
       buildCsvHintSpec({
-        defaultAcademicYearId,
         defaultClassId: typeof defaultClassId === 'number' ? defaultClassId : null,
         defaultEducationLevel:
           typeof defaultEducationLevel === 'string' ? defaultEducationLevel : null,
@@ -982,7 +911,6 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
       }),
     [
       content.entity_type,
-      defaultAcademicYearId,
       defaultClassId,
       defaultEducationLevel,
       defaultSchoolCity,
@@ -1016,11 +944,6 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
   const classRows: ClassItem[] = useMemo(() => {
     if (content.entity_type !== 'class') return [];
     return listItems as ClassItem[];
-  }, [content.entity_type, listItems]);
-
-  const yearRows: AcademicYearItem[] = useMemo(() => {
-    if (content.entity_type !== 'academic_year') return [];
-    return listItems as AcademicYearItem[];
   }, [content.entity_type, listItems]);
 
   const studentRows: StudentItem[] = useMemo(() => {
@@ -1340,62 +1263,6 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
     }
   }, [conversationId, message]);
 
-  const loadAcademicYearsForImport = useCallback(async () => {
-    setAcademicYearLoading(true);
-    try {
-      const pageSize = 200;
-      let yearPage = 1;
-      const maxYearPages = 20;
-      const academicYears: AcademicYearItem[] = [];
-      let totalYears = 0;
-
-      for (;;) {
-        const { run_id } = await startInvocation({
-          actionId: 'admin.list.academic_years',
-          conversationId,
-          params: { page: yearPage, page_size: pageSize },
-          requireConfirmation: false,
-        });
-        const waited = await waitForRunCompletion(run_id, { timeoutMs: LIST_TIMEOUT_MS });
-        if (!waited.ok)
-          throw new Error(waited.timedOut ? '加载学年列表超时，请稍后重试' : waited.error);
-        if (waited.run.state !== 'succeeded')
-          throw new Error(waited.run.failure_reason || waited.run.state);
-
-        const artifacts = await listRunArtifacts(run_id);
-        const latest = artifacts[0];
-        if (!latest) throw new Error('加载学年列表失败：run 无 artifacts');
-        if (latest.type !== 'admin.entity.list' || latest.schema_version !== 'v1') {
-          throw new Error(
-            `加载学年列表失败：unexpected artifact ${latest.type}@${latest.schema_version}`,
-          );
-        }
-
-        const list = latest.content as AdminEntityListContent;
-        if (String(list.entity_type) !== 'academic_year')
-          throw new Error('加载学年列表失败：entity_type mismatch');
-
-        const items = Array.isArray(list.items) ? (list.items as AcademicYearItem[]) : [];
-        academicYears.push(...items);
-
-        if (typeof list.total === 'number') totalYears = list.total;
-        if (Number.isFinite(totalYears) && totalYears > 0 && academicYears.length >= totalYears)
-          break;
-
-        yearPage += 1;
-        if (yearPage > maxYearPages) break;
-        if (!items.length) break;
-      }
-
-      setClassTreeAcademicYears(academicYears);
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : '加载学年失败');
-      setClassTreeAcademicYears([]);
-    } finally {
-      setAcademicYearLoading(false);
-    }
-  }, [conversationId, message]);
-
   const loadClassTreeNodeData = useCallback(
     async (node: any) => {
       const key = String(node?.key || node?.value || '').trim();
@@ -1532,21 +1399,6 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
 
   useEffect(() => {
     if (!importOpen && !drawerOpen) return;
-    if (content.entity_type !== 'class') return;
-    if (academicYearLoading) return;
-    if (classTreeAcademicYears.length > 0) return;
-    void loadAcademicYearsForImport();
-  }, [
-    academicYearLoading,
-    classTreeAcademicYears.length,
-    content.entity_type,
-    drawerOpen,
-    importOpen,
-    loadAcademicYearsForImport,
-  ]);
-
-  useEffect(() => {
-    if (!importOpen && !drawerOpen) return;
     if (content.entity_type !== 'student') return;
     if (classTreeLoading) return;
     if (classTreeData.length > 0) return;
@@ -1628,13 +1480,6 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
             : [],
         };
       }
-      if (entityType === 'academic_year') {
-        return {
-          end_date: String(values.end_date || '').trim(),
-          name: String(values.name || '').trim(),
-          start_date: String(values.start_date || '').trim(),
-        };
-      }
       if (entityType === 'teacher') {
         const schoolId = Number(values.school_id);
         const teacherNumber = String(values.teacher_number || '').trim();
@@ -1650,10 +1495,7 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
       }
       if (entityType === 'class') {
         const schoolId = Number(values.school_id);
-        const academicYearId = Number(values.academic_year_id);
         return {
-          academic_year_id:
-            Number.isFinite(academicYearId) && academicYearId > 0 ? academicYearId : undefined,
           admission_year: Number(values.admission_year),
           education_level: String(values.education_level || '').trim(),
           graduation_year: Number(values.graduation_year),
@@ -2073,11 +1915,8 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
       }
       if (content.entity_type === 'class') {
         const school_id = Number(rawDefaults.school_id);
-        const academic_year_id = Number(rawDefaults.academic_year_id);
         const education_level = String(rawDefaults.education_level || '').trim();
         if (Number.isFinite(school_id) && school_id > 0) defaults.school_id = school_id;
-        if (Number.isFinite(academic_year_id) && academic_year_id > 0)
-          defaults.academic_year_id = academic_year_id;
         if (education_level) defaults.education_level = education_level;
       }
       if (content.entity_type === 'student') {
@@ -2243,7 +2082,6 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
       { dataIndex: 'class_id', key: 'class_id', title: 'ID', width: 90 },
       { dataIndex: 'name', key: 'name', title: '班级', width: 160 },
       { dataIndex: 'school_id', key: 'school_id', title: '学校ID', width: 120 },
-      { dataIndex: 'academic_year_id', key: 'academic_year_id', title: '学年ID', width: 120 },
       { dataIndex: 'education_level', key: 'education_level', title: '学段', width: 120 },
       { dataIndex: 'grade_label', key: 'grade_label', title: '年级', width: 140 },
       { dataIndex: 'admission_year', key: 'admission_year', title: '入学年', width: 120 },
@@ -2295,31 +2133,6 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
       },
     ],
     [],
-  );
-
-  const yearColumns = useMemo<ColumnsType<AcademicYearItem>>(
-    () => [
-      { dataIndex: 'academic_year_id', key: 'academic_year_id', title: 'ID', width: 90 },
-      { dataIndex: 'name', key: 'name', title: '学年', width: 160 },
-      { dataIndex: 'start_date', key: 'start_date', title: '开始日期', width: 140 },
-      { dataIndex: 'end_date', key: 'end_date', title: '结束日期', width: 140 },
-      {
-        key: 'actions',
-        render: (_, row) => (
-          <Space>
-            <Button onClick={() => openEdit(row)} size="small">
-              Edit
-            </Button>
-            <Button danger onClick={() => handleDeleteOne(row)} size="small">
-              Delete
-            </Button>
-          </Space>
-        ),
-        title: '操作',
-        width: 150,
-      },
-    ],
-    [handleDeleteOne, openEdit],
   );
 
   const gradeColumns = useMemo<ColumnsType<GradeItem>>(
@@ -2752,19 +2565,6 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
               rowKey={(r) => r.class_id}
               size="small"
             />
-          ) : content.entity_type === 'academic_year' && yearRows.length ? (
-            <Table
-              columns={yearColumns}
-              dataSource={yearRows}
-              pagination={false}
-              rowKey={(r) => r.academic_year_id}
-              rowSelection={{
-                onChange: (keys) =>
-                  setSelectedRowKeys(keys.map(Number).filter((v) => Number.isFinite(v))),
-                selectedRowKeys,
-              }}
-              size="small"
-            />
           ) : content.entity_type === 'student' && studentRows.length ? (
             <Table
               columns={studentColumns}
@@ -2849,24 +2649,22 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
                 ? teacherRows.length
                 : content.entity_type === 'class' && classRows.length
                   ? classRows.length
-                  : content.entity_type === 'academic_year' && yearRows.length
-                    ? yearRows.length
-                    : content.entity_type === 'student' && studentRows.length
-                      ? studentRows.length
-                      : content.entity_type === 'grade' && gradeRows.length
-                        ? gradeRows.length
-                        : content.entity_type === 'subject' && subjectRows.length
-                          ? subjectRows.length
-                          : content.entity_type === 'assignment' && assignmentRows.length
-                            ? assignmentRows.length
-                            : content.entity_type === 'question' && questionRows.length
-                              ? questionRows.length
-                              : content.entity_type === 'submission' && submissionRows.length
-                                ? submissionRows.length
-                                : content.entity_type === 'submission_question' &&
-                                    submissionQuestionRows.length
-                                  ? submissionQuestionRows.length
-                                  : listIds.length}{' '}
+                  : content.entity_type === 'student' && studentRows.length
+                    ? studentRows.length
+                    : content.entity_type === 'grade' && gradeRows.length
+                      ? gradeRows.length
+                      : content.entity_type === 'subject' && subjectRows.length
+                        ? subjectRows.length
+                        : content.entity_type === 'assignment' && assignmentRows.length
+                          ? assignmentRows.length
+                          : content.entity_type === 'question' && questionRows.length
+                            ? questionRows.length
+                            : content.entity_type === 'submission' && submissionRows.length
+                              ? submissionRows.length
+                              : content.entity_type === 'submission_question' &&
+                                  submissionQuestionRows.length
+                                ? submissionQuestionRows.length
+                                : listIds.length}{' '}
               条{typeof content.total === 'number' ? `（总数 ${content.total}）` : ''}
             </Typography.Text>
             {listHasMore ? (
@@ -2907,20 +2705,6 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
               </Form.Item>
               <Form.Item label="标签" name="tags">
                 <Select mode="tags" placeholder="输入后回车" />
-              </Form.Item>
-            </>
-          ) : null}
-
-          {content.entity_type === 'academic_year' ? (
-            <>
-              <Form.Item label="学年名称" name="name" rules={[{ required: true }]}>
-                <Input placeholder="例如：2025-2026" />
-              </Form.Item>
-              <Form.Item label="开始日期" name="start_date" rules={[{ required: true }]}>
-                <Input placeholder="YYYY-MM-DD，例如：2025-09-01" />
-              </Form.Item>
-              <Form.Item label="结束日期" name="end_date" rules={[{ required: true }]}>
-                <Input placeholder="YYYY-MM-DD，例如：2026-07-15" />
               </Form.Item>
             </>
           ) : null}
@@ -2977,9 +2761,6 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
                   treeDefaultExpandAll={false}
                   treeNodeFilterProp="title"
                 />
-              </Form.Item>
-              <Form.Item label="学年ID（可选）" name="academic_year_id">
-                <InputNumber min={1} style={{ width: '100%' }} />
               </Form.Item>
               <Form.Item label="入学年份" name="admission_year" rules={[{ required: true }]}>
                 <InputNumber min={1900} style={{ width: '100%' }} />
@@ -3297,32 +3078,6 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
                     treeData={schoolTreeData}
                     treeDefaultExpandAll={false}
                     treeNodeFilterProp="title"
-                  />
-                </Form.Item>
-                <Form.Item
-                  extra={
-                    <Typography.Text type="secondary">
-                      学年用于“按学校/学年”筛选班级；若已设置默认学年，可不在 CSV 中提供
-                      academic_year_id
-                    </Typography.Text>
-                  }
-                  label="默认学年（可选）"
-                  name="academic_year_id"
-                >
-                  <Select
-                    allowClear
-                    loading={academicYearLoading}
-                    optionFilterProp="label"
-                    options={classTreeAcademicYears.map((ay) => ({
-                      label: `${ay.name} (ID=${ay.academic_year_id})${ay.start_date && ay.end_date ? ` · ${ay.start_date}~${ay.end_date}` : ''}`,
-                      value: ay.academic_year_id,
-                    }))}
-                    placeholder={
-                      classTreeAcademicYears.length
-                        ? '请选择学年'
-                        : '暂无学年数据（可稍后刷新重试）'
-                    }
-                    showSearch
                   />
                 </Form.Item>
                 <Form.Item label="默认学段（可选）" name="education_level">

@@ -1,6 +1,4 @@
 export const AdminOpsApiName = {
-  bulkDeleteAcademicYearsExecute: 'bulkDeleteAcademicYearsExecute',
-  bulkDeleteAcademicYearsPreview: 'bulkDeleteAcademicYearsPreview',
   bulkDeleteGradesExecute: 'bulkDeleteGradesExecute',
   bulkDeleteGradesPreview: 'bulkDeleteGradesPreview',
   bulkDeleteSchoolsExecute: 'bulkDeleteSchoolsExecute',
@@ -9,7 +7,6 @@ export const AdminOpsApiName = {
   bulkDeleteStudentsPreview: 'bulkDeleteStudentsPreview',
   bulkDeleteSubjectsExecute: 'bulkDeleteSubjectsExecute',
   bulkDeleteSubjectsPreview: 'bulkDeleteSubjectsPreview',
-  createAcademicYear: 'createAcademicYear',
   createAssignment: 'createAssignment',
   createClass: 'createClass',
   createGrade: 'createGrade',
@@ -20,7 +17,6 @@ export const AdminOpsApiName = {
   createSubmission: 'createSubmission',
   createSubmissionQuestion: 'createSubmissionQuestion',
   createTeacher: 'createTeacher',
-  deleteAcademicYear: 'deleteAcademicYear',
   deleteAssignment: 'deleteAssignment',
   deleteClass: 'deleteClass',
   deleteGrade: 'deleteGrade',
@@ -34,14 +30,12 @@ export const AdminOpsApiName = {
   draftCreateManual: 'draftCreateManual',
   draftPublish: 'draftPublish',
   draftSave: 'draftSave',
-  importAcademicYears: 'importAcademicYears',
   importClasses: 'importClasses',
   importGrades: 'importGrades',
   importSchools: 'importSchools',
   importStudents: 'importStudents',
   importSubjects: 'importSubjects',
   importTeachers: 'importTeachers',
-  listAcademicYears: 'listAcademicYears',
   listAssignments: 'listAssignments',
   listClasses: 'listClasses',
   listGrades: 'listGrades',
@@ -55,7 +49,6 @@ export const AdminOpsApiName = {
   resolveEntity: 'resolveEntity',
   sqlPatchExecute: 'sqlPatchExecute',
   sqlPatchPreview: 'sqlPatchPreview',
-  updateAcademicYear: 'updateAcademicYear',
   updateAssignment: 'updateAssignment',
   updateClass: 'updateClass',
   updateGrade: 'updateGrade',
@@ -101,8 +94,6 @@ export type ResolveEntityParams = {
   };
 };
 
-export type ListAcademicYearsParams = ListParams;
-
 export type ListGradesParams = ListParams & {
   filters?: {
     education_level?: string;
@@ -124,7 +115,6 @@ export type ListSchoolsParams = ListParams & {
 
 export type ListClassesParams = ListParams & {
   filters?: {
-    academic_year_id?: number;
     grade?: string;
     school_id?: number;
   };
@@ -132,7 +122,6 @@ export type ListClassesParams = ListParams & {
 
 export type ListStudentsParams = ListParams & {
   filters?: {
-    academic_year_id?: number;
     class_id?: number;
     grade?: string;
     school_id?: number;
@@ -197,7 +186,6 @@ export type DeleteSchoolParams = { school_id: number };
 
 export type CreateClassParams = {
   payload: {
-    academic_year_id?: number;
     admission_year: number;
     education_level: string;
     graduation_year: number;
@@ -249,7 +237,6 @@ export type UpdateStudentParams = {
 export type DeleteStudentParams = { student_id: number };
 
 export type CsvImportDefaults = {
-  academic_year_id?: number;
   city?: string;
   class_id?: number;
   education_level?: string;
@@ -274,31 +261,12 @@ export type OpenImportUiParams = {
   defaults?: CsvImportDefaults;
 };
 
-export type AcademicYearPayload = {
-  end_date: string;
-  name: string;
-  start_date: string;
-};
-
-export type CreateAcademicYearParams = { payload: AcademicYearPayload };
-
-export type UpdateAcademicYearParams = {
-  academic_year_id: number;
-  patch: Partial<AcademicYearPayload>;
-};
-
-export type DeleteAcademicYearParams = { academic_year_id: number };
-
 export type BulkDeleteStudentsParams = {
   student_ids: number[];
 };
 
 export type BulkDeleteSchoolsParams = {
   school_ids: number[];
-};
-
-export type BulkDeleteAcademicYearsParams = {
-  academic_year_ids: number[];
 };
 
 export type GradePayload = {

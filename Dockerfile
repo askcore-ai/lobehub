@@ -133,10 +133,10 @@ RUN --mount=type=cache,id=lobechat-next-cache,target=/app/.next/cache,sharing=lo
     CI=true pnpm install --frozen-lockfile --offline --prefer-offline && \
     if [ "${SKIP_DOCKER_LINT_AND_TYPECHECK}" = "true" ]; then \
         pnpm exec tsx scripts/prebuild.mts && \
-        NEXT_DISABLE_ESLINT=1 NEXT_TELEMETRY_DISABLED=1 DISABLE_WEBPACK_BUILD_WORKER=1 NODE_OPTIONS=--max-old-space-size=6144 DOCKER=true pnpm exec next build --webpack && \
+        NEXT_DISABLE_ESLINT=1 NEXT_TELEMETRY_DISABLED=1 DISABLE_WEBPACK_BUILD_WORKER=1 DISABLE_WEBPACK_CACHE=1 NODE_OPTIONS=--max-old-space-size=6144 DOCKER=true pnpm exec next build --webpack && \
         pnpm run build-sitemap; \
     else \
-        NEXT_TELEMETRY_DISABLED=1 pnpm run build:docker; \
+        NEXT_TELEMETRY_DISABLED=1 DISABLE_WEBPACK_CACHE=1 pnpm run build:docker; \
     fi
 
 # Prepare desktop export assets for Electron packaging (if generated)

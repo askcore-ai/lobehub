@@ -168,7 +168,6 @@ export const AdminOpsRenders: Record<string, BuiltinRender> = {
   [AdminOpsApiName.listClasses]: AdminOpsRunCardRender as BuiltinRender,
   [AdminOpsApiName.listStudents]: AdminOpsRunCardRender as BuiltinRender,
   [AdminOpsApiName.listTeachers]: AdminOpsRunCardRender as BuiltinRender,
-  [AdminOpsApiName.listAcademicYears]: AdminOpsRunCardRender as BuiltinRender,
   [AdminOpsApiName.listGrades]: AdminOpsRunCardRender as BuiltinRender,
   [AdminOpsApiName.listSubjects]: AdminOpsRunCardRender as BuiltinRender,
   [AdminOpsApiName.listAssignments]: AdminOpsRunCardRender as BuiltinRender,
@@ -191,10 +190,6 @@ export const AdminOpsRenders: Record<string, BuiltinRender> = {
   [AdminOpsApiName.createStudent]: AdminOpsRunCardRender as BuiltinRender,
   [AdminOpsApiName.updateStudent]: AdminOpsRunCardRender as BuiltinRender,
   [AdminOpsApiName.deleteStudent]: AdminOpsRunCardRender as BuiltinRender,
-
-  [AdminOpsApiName.createAcademicYear]: AdminOpsRunCardRender as BuiltinRender,
-  [AdminOpsApiName.updateAcademicYear]: AdminOpsRunCardRender as BuiltinRender,
-  [AdminOpsApiName.deleteAcademicYear]: AdminOpsRunCardRender as BuiltinRender,
 
   [AdminOpsApiName.createGrade]: AdminOpsRunCardRender as BuiltinRender,
   [AdminOpsApiName.updateGrade]: AdminOpsRunCardRender as BuiltinRender,
@@ -223,7 +218,6 @@ export const AdminOpsRenders: Record<string, BuiltinRender> = {
   [AdminOpsApiName.importClasses]: AdminOpsRunCardRender as BuiltinRender,
   [AdminOpsApiName.importTeachers]: AdminOpsRunCardRender as BuiltinRender,
   [AdminOpsApiName.importStudents]: AdminOpsRunCardRender as BuiltinRender,
-  [AdminOpsApiName.importAcademicYears]: AdminOpsRunCardRender as BuiltinRender,
   [AdminOpsApiName.importGrades]: AdminOpsRunCardRender as BuiltinRender,
   [AdminOpsApiName.importSubjects]: AdminOpsRunCardRender as BuiltinRender,
 
@@ -231,8 +225,6 @@ export const AdminOpsRenders: Record<string, BuiltinRender> = {
   [AdminOpsApiName.bulkDeleteStudentsExecute]: AdminOpsRunCardRender as BuiltinRender,
   [AdminOpsApiName.bulkDeleteSchoolsPreview]: AdminOpsRunCardRender as BuiltinRender,
   [AdminOpsApiName.bulkDeleteSchoolsExecute]: AdminOpsRunCardRender as BuiltinRender,
-  [AdminOpsApiName.bulkDeleteAcademicYearsPreview]: AdminOpsRunCardRender as BuiltinRender,
-  [AdminOpsApiName.bulkDeleteAcademicYearsExecute]: AdminOpsRunCardRender as BuiltinRender,
   [AdminOpsApiName.bulkDeleteGradesPreview]: AdminOpsRunCardRender as BuiltinRender,
   [AdminOpsApiName.bulkDeleteGradesExecute]: AdminOpsRunCardRender as BuiltinRender,
   [AdminOpsApiName.bulkDeleteSubjectsPreview]: AdminOpsRunCardRender as BuiltinRender,

@@ -57,6 +57,7 @@ jobs:
       - name: Build with bundle analyzer
         run: npm run build:analyze || true
         env:
+          DISABLE_WEBPACK_CACHE: '1'
           NODE_OPTIONS: --max-old-space-size=81920
           KEY_VAULTS_SECRET: ${{ secrets.KEY_VAULTS_SECRET || steps.generate-secret.outputs.secret }}
 

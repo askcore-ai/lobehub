@@ -8,7 +8,7 @@ const systemPrompt = `You can manage teaching operations by starting durable Wor
 
 Supported entities:
 - Roster: schools, classes, teachers, students
-- Academic config: academic years, grades, subjects
+- Academic config: grades, subjects
 - Assignment domain: assignments, questions, submissions, submission_questions
 - Assignment authoring workflow: draft create/save/publish
 
@@ -48,7 +48,6 @@ const csvImportApiParameters = {
     defaults: {
       additionalProperties: false,
       properties: {
-        academic_year_id: { minimum: 1, type: 'integer' },
         city: { maxLength: 100, minLength: 1, type: 'string' },
         class_id: { minimum: 1, type: 'integer' },
         education_level: { maxLength: 64, minLength: 1, type: 'string' },
@@ -149,7 +148,6 @@ export const AdminOpsManifest: BuiltinToolManifest = {
             additionalProperties: false,
             default: {},
             properties: {
-              academic_year_id: { minimum: 1, type: 'integer' },
               grade: { maxLength: 50, minLength: 1, type: 'string' },
               school_id: { minimum: 1, type: 'integer' },
             },
@@ -175,7 +173,6 @@ export const AdminOpsManifest: BuiltinToolManifest = {
             additionalProperties: false,
             default: {},
             properties: {
-              academic_year_id: { minimum: 1, type: 'integer' },
               class_id: { minimum: 1, type: 'integer' },
               grade: { maxLength: 50, minLength: 1, type: 'string' },
               school_id: { minimum: 1, type: 'integer' },
@@ -207,23 +204,6 @@ export const AdminOpsManifest: BuiltinToolManifest = {
             },
             type: 'object',
           },
-          include_total: { default: false, type: 'boolean' },
-          page: { default: 1, minimum: 1, type: 'integer' },
-          page_size: { default: 50, maximum: 200, minimum: 1, type: 'integer' },
-        },
-        type: 'object',
-      },
-    },
-    {
-      description:
-        'List academic years (produces an admin.entity.list@v1 artifact). Not for name → ID mapping; if the user provides a label, call Resolve Entity (Semantic) instead.',
-      humanIntervention: 'never',
-      name: AdminOpsApiName.listAcademicYears,
-      parameters: {
-        additionalProperties: false,
-        properties: {
-          after_id: { minimum: 0, type: 'integer' },
-          filters: { additionalProperties: false, default: {}, properties: {}, type: 'object' },
           include_total: { default: false, type: 'boolean' },
           page: { default: 1, minimum: 1, type: 'integer' },
           page_size: { default: 50, maximum: 200, minimum: 1, type: 'integer' },
@@ -459,7 +439,6 @@ export const AdminOpsManifest: BuiltinToolManifest = {
           payload: {
             additionalProperties: false,
             properties: {
-              academic_year_id: { minimum: 1, type: 'integer' },
               admission_year: { minimum: 1900, maximum: 3000, type: 'integer' },
               education_level: { maxLength: 10, minLength: 1, type: 'string' },
               graduation_year: { minimum: 1900, maximum: 3000, type: 'integer' },
@@ -485,7 +464,6 @@ export const AdminOpsManifest: BuiltinToolManifest = {
           patch: {
             additionalProperties: false,
             properties: {
-              academic_year_id: { minimum: 1, type: 'integer' },
               admission_year: { minimum: 1900, maximum: 3000, type: 'integer' },
               education_level: { maxLength: 10, minLength: 1, type: 'string' },
               graduation_year: { minimum: 1900, maximum: 3000, type: 'integer' },
@@ -629,63 +607,6 @@ export const AdminOpsManifest: BuiltinToolManifest = {
         additionalProperties: false,
         properties: { student_id: { minimum: 1, type: 'integer' } },
         required: ['student_id'],
-        type: 'object',
-      },
-    },
-
-    {
-      description: 'Create an academic year. Produces an admin.mutation.result@v1 artifact.',
-      humanIntervention: 'required',
-      name: AdminOpsApiName.createAcademicYear,
-      parameters: {
-        additionalProperties: false,
-        properties: {
-          payload: {
-            additionalProperties: false,
-            properties: {
-              end_date: { minLength: 1, maxLength: 32, type: 'string' },
-              name: { maxLength: 20, minLength: 1, type: 'string' },
-              start_date: { minLength: 1, maxLength: 32, type: 'string' },
-            },
-            required: ['name', 'start_date', 'end_date'],
-            type: 'object',
-          },
-        },
-        required: ['payload'],
-        type: 'object',
-      },
-    },
-    {
-      description: 'Update an academic year. Produces an admin.mutation.result@v1 artifact.',
-      humanIntervention: 'required',
-      name: AdminOpsApiName.updateAcademicYear,
-      parameters: {
-        additionalProperties: false,
-        properties: {
-          academic_year_id: { minimum: 1, type: 'integer' },
-          patch: {
-            additionalProperties: false,
-            properties: {
-              end_date: { minLength: 1, maxLength: 32, type: 'string' },
-              name: { maxLength: 20, minLength: 1, type: 'string' },
-              start_date: { minLength: 1, maxLength: 32, type: 'string' },
-            },
-            type: 'object',
-          },
-        },
-        required: ['academic_year_id', 'patch'],
-        type: 'object',
-      },
-    },
-    {
-      description:
-        'Delete an academic year (hard delete). Produces an admin.mutation.result@v1 artifact.',
-      humanIntervention: 'required',
-      name: AdminOpsApiName.deleteAcademicYear,
-      parameters: {
-        additionalProperties: false,
-        properties: { academic_year_id: { minimum: 1, type: 'integer' } },
-        required: ['academic_year_id'],
         type: 'object',
       },
     },
@@ -1213,13 +1134,6 @@ export const AdminOpsManifest: BuiltinToolManifest = {
     },
     {
       description:
-        'Import academic years from a conversation-uploaded CSV via `csvFileUrl` (preferred). If `csvFileUrl` is omitted, open the academic years list and let user click "Import CSV" in the right-side panel (produces admin.import.result@v1).',
-      humanIntervention: 'required',
-      name: AdminOpsApiName.importAcademicYears,
-      parameters: csvImportApiParameters,
-    },
-    {
-      description:
         'Import grades from a conversation-uploaded CSV via `csvFileUrl` (preferred). If `csvFileUrl` is omitted, open the grades list and let user click "Import CSV" in the right-side panel (produces admin.import.result@v1).',
       humanIntervention: 'required',
       name: AdminOpsApiName.importGrades,
@@ -1286,34 +1200,6 @@ export const AdminOpsManifest: BuiltinToolManifest = {
           school_ids: { items: { minimum: 1, type: 'integer' }, minItems: 1, type: 'array' },
         },
         required: ['school_ids'],
-        type: 'object',
-      },
-    },
-    {
-      description:
-        'Preview a bulk academic year delete (produces an admin.bulk_delete.preview@v1 artifact; no write).',
-      humanIntervention: 'required',
-      name: AdminOpsApiName.bulkDeleteAcademicYearsPreview,
-      parameters: {
-        additionalProperties: false,
-        properties: {
-          academic_year_ids: { items: { minimum: 1, type: 'integer' }, minItems: 1, type: 'array' },
-        },
-        required: ['academic_year_ids'],
-        type: 'object',
-      },
-    },
-    {
-      description:
-        'Execute a bulk academic year delete (produces an admin.bulk_delete.result@v1 artifact). Requires confirmation.',
-      humanIntervention: 'required',
-      name: AdminOpsApiName.bulkDeleteAcademicYearsExecute,
-      parameters: {
-        additionalProperties: false,
-        properties: {
-          academic_year_ids: { items: { minimum: 1, type: 'integer' }, minItems: 1, type: 'array' },
-        },
-        required: ['academic_year_ids'],
         type: 'object',
       },
     },
