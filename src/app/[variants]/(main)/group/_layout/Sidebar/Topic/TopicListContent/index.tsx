@@ -28,6 +28,7 @@ const TopicListContent = memo(() => {
     topicSelectors.isInSearchMode(s),
   ]);
   const activeGroupId = useAgentGroupStore((s) => s.activeGroupId);
+  const switchToNewTopic = useAgentGroupStore((s) => s.switchToNewTopic);
   const [topicDisplayMode] = useUserStore((s) => [preferenceSelectors.topicDisplayMode(s)]);
 
   useFetchTopics();
@@ -43,6 +44,7 @@ const TopicListContent = memo(() => {
         <EmptyNavItem
           onClick={() => {
             router.push(urlJoin('/group', activeGroupId));
+            switchToNewTopic();
           }}
           title={t('actions.addNewTopic')}
         />

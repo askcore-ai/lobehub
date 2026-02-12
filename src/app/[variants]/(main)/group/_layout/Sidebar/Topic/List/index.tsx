@@ -25,6 +25,7 @@ const TopicList = memo(() => {
   const topicLength = useChatStore((s) => topicSelectors.currentTopicLength(s));
   const isUndefinedTopics = useChatStore((s) => topicSelectors.isUndefinedTopics(s));
   const activeGroupId = useAgentGroupStore((s) => s.activeGroupId);
+  const switchToNewTopic = useAgentGroupStore((s) => s.switchToNewTopic);
   const [allTopicsDrawerOpen, closeAllTopicsDrawer] = useChatStore((s) => [
     s.allTopicsDrawerOpen,
     s.closeAllTopicsDrawer,
@@ -43,6 +44,7 @@ const TopicList = memo(() => {
         <EmptyNavItem
           onClick={() => {
             router.push(urlJoin('/group', activeGroupId));
+            switchToNewTopic();
           }}
           title={t('actions.addNewTopic')}
         />

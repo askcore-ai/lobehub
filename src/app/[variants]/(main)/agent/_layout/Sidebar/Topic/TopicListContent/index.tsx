@@ -27,6 +27,7 @@ const TopicListContent = memo(() => {
     topicSelectors.isUndefinedTopics(s),
     topicSelectors.isInSearchMode(s),
   ]);
+  const openNewTopicOrSaveTopic = useChatStore((s) => s.openNewTopicOrSaveTopic);
 
   const [topicDisplayMode] = useUserStore((s) => [preferenceSelectors.topicDisplayMode(s)]);
 
@@ -42,7 +43,8 @@ const TopicListContent = memo(() => {
       {topicLength === 0 && (
         <EmptyNavItem
           onClick={() => {
-            router.push(urlJoin('/agent', agentId));
+            if (agentId) router.push(urlJoin('/agent', agentId));
+            openNewTopicOrSaveTopic();
           }}
           title={t('actions.addNewTopic')}
         />
