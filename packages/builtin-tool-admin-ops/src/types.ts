@@ -248,6 +248,11 @@ export type CsvImportDefaults = {
 
 export type OpenImportUiParams = {
   /**
+   * Optional file id from conversation uploads (`<file id="...">`).
+   * Preferred because it avoids LLM reconstruction errors on presigned URLs.
+   */
+  csvFileId?: string;
+  /**
    * Optional CSV filename from conversation uploads.
    * If omitted, executor derives a filename from URL or entity type.
    */

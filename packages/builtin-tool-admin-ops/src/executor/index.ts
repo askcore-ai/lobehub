@@ -158,6 +158,13 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
     return entityType === 'student' ? 'student_personal' : 'restricted';
   }
 
+  private _sanitizeCsvFileId(rawFileId: string): string {
+    const trimmed = String(rawFileId || '').trim();
+    if (!trimmed) return '';
+    const unquoted = trimmed.replaceAll(/^["'`]+|["'`]+$/g, '').trim();
+    return unquoted.replaceAll(/^<+|>+$/g, '').trim();
+  }
+
   private _csvFileUrlCandidates(rawUrl: string): string[] {
     const trimmed = String(rawUrl || '').trim();
     if (!trimmed) return [];
@@ -180,19 +187,55 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
     return [...new Set(candidates.filter((url) => /^https?:\/\//i.test(url)))];
   }
 
+  private _conversationCsvReadCandidates(
+    params: OpenImportUiParams,
+  ): Array<{ source: 'file_id' | 'file_url'; url: string }> {
+    const candidates: Array<{ source: 'file_id' | 'file_url'; url: string }> = [];
+    const fileId = this._sanitizeCsvFileId(String(params.csvFileId || ''));
+
+    if (fileId) {
+      const fileProxyPath = `/f/${encodeURIComponent(fileId)}`;
+      const hasWindow = typeof window !== 'undefined';
+      const origin = hasWindow ? String(window.location?.origin || '') : '';
+
+      if (/^https?:\/\//i.test(origin)) {
+        candidates.push({ source: 'file_id', url: `${origin}${fileProxyPath}` });
+      }
+      if (hasWindow) {
+        candidates.push({ source: 'file_id', url: fileProxyPath });
+      }
+    }
+
+    for (const url of this._csvFileUrlCandidates(String(params.csvFileUrl || ''))) {
+      candidates.push({ source: 'file_url', url });
+    }
+
+    const seen = new Set<string>();
+    const deduped: Array<{ source: 'file_id' | 'file_url'; url: string }> = [];
+    for (const candidate of candidates) {
+      if (seen.has(candidate.url)) continue;
+      seen.add(candidate.url);
+      deduped.push(candidate);
+    }
+    return deduped;
+  }
+
   private async _readConversationCsvBytes(
-    csvFileUrl: string,
+    params: OpenImportUiParams,
   ): Promise<{ bytes: ArrayBuffer; ok: true } | { error: string; ok: false }> {
-    const candidates = this._csvFileUrlCandidates(csvFileUrl);
+    const candidates = this._conversationCsvReadCandidates(params);
     if (candidates.length === 0) {
-      return { error: 'CSV 文件 URL 无效（必须是 http/https）。', ok: false };
+      return {
+        error: '缺少可用的 CSV 文件定位参数（请提供 csvFileId 或 csvFileUrl）。',
+        ok: false,
+      };
     }
 
     let lastError = '';
 
     for (const candidate of candidates) {
       try {
-        const fileResponse = await fetch(candidate);
+        const fileResponse = await fetch(candidate.url);
         if (fileResponse.ok) {
           return { bytes: await fileResponse.arrayBuffer(), ok: true };
         }
@@ -200,14 +243,21 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
         const text = await fileResponse.text();
         const snippet = text ? text.slice(0, 300) : '';
         const isSignatureMismatch =
-          fileResponse.status === 403 && /signaturedoesnotmatch/i.test(snippet);
-        const hint = isSignatureMismatch
-          ? '（签名不匹配，通常是 URL 中的 & 被转义成了 &amp;）'
-          : '';
+          candidate.source === 'file_url' &&
+          fileResponse.status === 403 &&
+          /signaturedoesnotmatch/i.test(snippet);
+        const sourceLabel = candidate.source === 'file_id' ? 'csvFileId' : 'csvFileUrl';
+        const hintParts: string[] = [];
+        if (isSignatureMismatch) hintParts.push('签名不匹配，通常是预签名 URL 被改写');
+        if (candidate.source === 'file_id' && fileResponse.status === 404) {
+          hintParts.push('file id 不存在或不可访问');
+        }
+        const hint = hintParts.length > 0 ? `（${hintParts.join('；')}）` : '';
 
-        lastError = `无法读取会话里的 CSV 文件（${fileResponse.status}）${snippet ? `：${snippet}` : ''}${hint}`;
+        lastError = `无法读取会话里的 CSV 文件（${sourceLabel}, ${fileResponse.status}）${snippet ? `：${snippet}` : ''}${hint}`;
       } catch (error) {
-        lastError = `读取会话里的 CSV 文件失败：${error instanceof Error ? error.message : String(error)}`;
+        const sourceLabel = candidate.source === 'file_id' ? 'csvFileId' : 'csvFileUrl';
+        lastError = `读取会话里的 CSV 文件失败（${sourceLabel}）：${error instanceof Error ? error.message : String(error)}`;
       }
     }
 
@@ -289,9 +339,10 @@ class AdminOpsExecutor extends BaseExecutor<typeof AdminOpsApiName> {
     ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> {
     const csvFileUrl = String(params.csvFileUrl || '').trim();
-    if (!csvFileUrl) return this._openCsvImportUi(entityType, ctx);
+    const csvFileId = this._sanitizeCsvFileId(String(params.csvFileId || ''));
+    if (!csvFileUrl && !csvFileId) return this._openCsvImportUi(entityType, ctx);
 
-    const csvRead = await this._readConversationCsvBytes(csvFileUrl);
+    const csvRead = await this._readConversationCsvBytes(params);
     if (!csvRead.ok) return { content: csvRead.error, success: false };
     const csvBytes = csvRead.bytes;
 

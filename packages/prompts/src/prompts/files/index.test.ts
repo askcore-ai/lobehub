@@ -71,6 +71,19 @@ describe('filesPrompts', () => {
     );
   });
 
+  it('should XML-escape file url attributes', () => {
+    const result = filesPrompts({
+      fileList: [
+        {
+          ...mockFile,
+          url: 'https://example.com/test.csv?a=1&b=2',
+        },
+      ],
+    });
+
+    expect(result).toContain('url="https://example.com/test.csv?a=1&amp;b=2"');
+  });
+
   it('should generate prompt with both images and files', () => {
     const result = filesPrompts({
       imageList: [mockImage],

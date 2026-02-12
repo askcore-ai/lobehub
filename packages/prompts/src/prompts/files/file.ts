@@ -1,10 +1,12 @@
 import { ChatFileItem } from '@lobechat/types';
 
+import { escapeXmlAttr } from '../search/xmlEscape';
+
 const filePrompt = (item: ChatFileItem, addUrl: boolean) => {
   const content = item.content || '';
   return addUrl
-    ? `<file id="${item.id}" name="${item.name}" type="${item.fileType}" size="${item.size}" url="${item.url}">${content}</file>`
-    : `<file id="${item.id}" name="${item.name}" type="${item.fileType}" size="${item.size}">${content}</file>`;
+    ? `<file id="${escapeXmlAttr(item.id)}" name="${escapeXmlAttr(item.name)}" type="${escapeXmlAttr(item.fileType)}" size="${item.size}" url="${escapeXmlAttr(item.url)}">${content}</file>`
+    : `<file id="${escapeXmlAttr(item.id)}" name="${escapeXmlAttr(item.name)}" type="${escapeXmlAttr(item.fileType)}" size="${item.size}">${content}</file>`;
 };
 
 export const filePrompts = (fileList: ChatFileItem[], addUrl: boolean) => {

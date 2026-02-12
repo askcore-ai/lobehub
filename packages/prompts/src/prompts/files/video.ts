@@ -1,9 +1,11 @@
 import { ChatVideoItem } from '@lobechat/types';
 
+import { escapeXmlAttr } from '../search/xmlEscape';
+
 const videoPrompt = (item: ChatVideoItem, attachUrl: boolean) =>
   attachUrl
-    ? `<video name="${item.alt}" url="${item.url}"></video>`
-    : `<video name="${item.alt}"></video>`;
+    ? `<video name="${escapeXmlAttr(item.alt)}" url="${escapeXmlAttr(item.url)}"></video>`
+    : `<video name="${escapeXmlAttr(item.alt)}"></video>`;
 
 export const videosPrompts = (videoList: ChatVideoItem[], addUrl: boolean = true) => {
   if (videoList.length === 0) return '';
