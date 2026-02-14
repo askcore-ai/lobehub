@@ -227,6 +227,11 @@ type SchoolTreeNode = {
   value: number | string;
 };
 
+type AssignmentRefOption = {
+  label: string;
+  value: number;
+};
+
 type Props = {
   artifactId: string;
   content: AdminEntityListContent;
@@ -959,9 +964,14 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
     typeof content.next_after_id === 'number' ? content.next_after_id : null,
   );
   const [listLoadingMore, setListLoadingMore] = useState(false);
+  const [assignmentSubjectOptions, setAssignmentSubjectOptions] = useState<AssignmentRefOption[]>(
+    [],
+  );
+  const [assignmentGradeOptions, setAssignmentGradeOptions] = useState<AssignmentRefOption[]>([]);
+  const [assignmentRefLoading, setAssignmentRefLoading] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
-  const [draftSubjectId, setDraftSubjectId] = useState<number>(1);
-  const [draftGradeId, setDraftGradeId] = useState<number>(1);
+  const [draftSubjectId, setDraftSubjectId] = useState<number | null>(null);
+  const [draftGradeId, setDraftGradeId] = useState<number | null>(null);
   const [draftDueDate, setDraftDueDate] = useState('');
   const [creatingDraft, setCreatingDraft] = useState(false);
 
@@ -1130,8 +1140,8 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
       message.error('标题不能为空');
       return;
     }
-    if (!(draftSubjectId > 0) || !(draftGradeId > 0)) {
-      message.error('subject_id / grade_id 必须 >= 1');
+    if (!(draftSubjectId && draftSubjectId > 0) || !(draftGradeId && draftGradeId > 0)) {
+      message.error('请选择有效的学科和年级');
       return;
     }
 
@@ -1234,6 +1244,124 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
     listNextAfterId,
     message,
   ]);
+
+  const loadAllEntityItems = useCallback(
+    async (actionId: string, expectedEntityType: AdminEntityType): Promise<any[]> => {
+      const allItems: any[] = [];
+      const pageSize = 200;
+      let afterId: number | null = null;
+      let guard = 0;
+
+      for (;;) {
+        guard += 1;
+        if (guard > 200) break;
+
+        const params: Record<string, unknown> = {
+          filters: {},
+          include_total: false,
+          page: 1,
+          page_size: pageSize,
+        };
+        if (afterId !== null) params.after_id = afterId;
+
+        const { run_id } = await startInvocation({
+          actionId,
+          conversationId,
+          params,
+          requireConfirmation: false,
+        });
+
+        const waited = await waitForRunCompletion(run_id, { timeoutMs: LIST_TIMEOUT_MS });
+        if (!waited.ok) {
+          throw new Error(waited.timedOut ? `${expectedEntityType} 列表加载超时` : waited.error);
+        }
+        if (waited.run.state !== 'succeeded') {
+          throw new Error(waited.run.failure_reason || waited.run.state);
+        }
+
+        const artifacts = await listRunArtifacts(run_id);
+        const latest = artifacts[0];
+        if (!latest) throw new Error(`${expectedEntityType} 列表加载失败：run 无 artifacts`);
+        if (latest.type !== 'admin.entity.list' || latest.schema_version !== 'v1') {
+          throw new Error(
+            `${expectedEntityType} 列表加载失败：unexpected artifact ${latest.type}@${latest.schema_version}`,
+          );
+        }
+
+        const list = latest.content as AdminEntityListContent;
+        if (String(list.entity_type) !== String(expectedEntityType)) {
+          throw new Error(`${expectedEntityType} 列表加载失败：entity_type mismatch`);
+        }
+
+        const pageItems = Array.isArray(list.items) ? list.items : [];
+        allItems.push(...pageItems);
+
+        const hasMore = Boolean(list.has_more);
+        const nextAfterId = typeof list.next_after_id === 'number' ? list.next_after_id : null;
+        if (!hasMore || nextAfterId === null) break;
+        afterId = nextAfterId;
+      }
+
+      return allItems;
+    },
+    [conversationId],
+  );
+
+  const loadAssignmentReferenceOptions = useCallback(async () => {
+    if (content.entity_type !== 'assignment') return;
+    setAssignmentRefLoading(true);
+    try {
+      const [subjects, grades] = await Promise.all([
+        loadAllEntityItems('admin.list.subjects', 'subject'),
+        loadAllEntityItems('admin.list.grades', 'grade'),
+      ]);
+
+      const normalizedSubjects = (subjects as SubjectItem[])
+        .filter((s) => Number.isFinite(Number(s.subject_id)) && Number(s.subject_id) > 0)
+        .map((s) => ({
+          label: `${s.name} (ID=${s.subject_id})`,
+          value: Number(s.subject_id),
+        }))
+        .sort((a, b) => a.value - b.value);
+      const normalizedGrades = (grades as GradeItem[])
+        .filter((g) => Number.isFinite(Number(g.grade_id)) && Number(g.grade_id) > 0)
+        .map((g) => ({
+          label: `${g.name} (ID=${g.grade_id})`,
+          value: Number(g.grade_id),
+        }))
+        .sort((a, b) => a.value - b.value);
+
+      setAssignmentSubjectOptions(normalizedSubjects);
+      setAssignmentGradeOptions(normalizedGrades);
+    } catch (error) {
+      setAssignmentSubjectOptions([]);
+      setAssignmentGradeOptions([]);
+      message.error(error instanceof Error ? error.message : '加载作业学科/年级选项失败');
+    } finally {
+      setAssignmentRefLoading(false);
+    }
+  }, [content.entity_type, loadAllEntityItems, message]);
+
+  useEffect(() => {
+    if (content.entity_type !== 'assignment') return;
+    void loadAssignmentReferenceOptions();
+  }, [content.entity_type, loadAssignmentReferenceOptions]);
+
+  useEffect(() => {
+    if (content.entity_type !== 'assignment') return;
+    setDraftSubjectId((prev) => {
+      if (prev && assignmentSubjectOptions.some((opt) => opt.value === prev)) return prev;
+      return assignmentSubjectOptions[0]?.value ?? null;
+    });
+  }, [assignmentSubjectOptions, content.entity_type]);
+
+  useEffect(() => {
+    if (content.entity_type !== 'assignment') return;
+    setDraftGradeId((prev) => {
+      if (prev && assignmentGradeOptions.some((opt) => opt.value === prev)) return prev;
+      return assignmentGradeOptions[0]?.value ?? null;
+    });
+  }, [assignmentGradeOptions, content.entity_type]);
 
   const loadSchoolTreeForTeacherImport = useCallback(async () => {
     setSchoolTreeLoading(true);
@@ -2652,34 +2780,53 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
             style={{ border: '1px solid rgba(0,0,0,0.08)', borderRadius: 8, padding: 12 }}
           >
             <Typography.Text strong>创建作业草稿（手动）</Typography.Text>
-            <Space wrap>
-              <Input
-                onChange={(e) => setDraftTitle(e.target.value)}
-                placeholder="作业标题"
-                style={{ minWidth: 220 }}
-                value={draftTitle}
-              />
-              <InputNumber
-                min={1}
-                onChange={(v) => setDraftSubjectId(Number(v || 0))}
-                placeholder="subject_id"
-                style={{ width: 140 }}
-                value={draftSubjectId}
-              />
-              <InputNumber
-                min={1}
-                onChange={(v) => setDraftGradeId(Number(v || 0))}
-                placeholder="grade_id"
-                style={{ width: 140 }}
-                value={draftGradeId}
-              />
-              <Input
-                onChange={(e) => setDraftDueDate(e.target.value)}
-                placeholder="截止时间（可选，RFC3339）"
-                style={{ minWidth: 220 }}
-                value={draftDueDate}
-              />
+            <Space align="start" wrap>
+              <Flexbox gap={4}>
+                <Typography.Text type="secondary">作业标题（必填）</Typography.Text>
+                <Input
+                  onChange={(e) => setDraftTitle(e.target.value)}
+                  placeholder="例如：高一物理周末作业"
+                  style={{ minWidth: 260 }}
+                  value={draftTitle}
+                />
+              </Flexbox>
+
+              <Flexbox gap={4}>
+                <Typography.Text type="secondary">学科（必填）</Typography.Text>
+                <Select
+                  loading={assignmentRefLoading}
+                  onChange={(v) => setDraftSubjectId(typeof v === 'number' ? v : null)}
+                  options={assignmentSubjectOptions}
+                  placeholder="请选择学科"
+                  style={{ minWidth: 220 }}
+                  value={draftSubjectId ?? undefined}
+                />
+              </Flexbox>
+
+              <Flexbox gap={4}>
+                <Typography.Text type="secondary">年级（必填）</Typography.Text>
+                <Select
+                  loading={assignmentRefLoading}
+                  onChange={(v) => setDraftGradeId(typeof v === 'number' ? v : null)}
+                  options={assignmentGradeOptions}
+                  placeholder="请选择年级"
+                  style={{ minWidth: 220 }}
+                  value={draftGradeId ?? undefined}
+                />
+              </Flexbox>
+
+              <Flexbox gap={4}>
+                <Typography.Text type="secondary">截止时间（可选，RFC3339）</Typography.Text>
+                <Input
+                  onChange={(e) => setDraftDueDate(e.target.value)}
+                  placeholder="例如：2026-03-01T23:59:59Z"
+                  style={{ minWidth: 260 }}
+                  value={draftDueDate}
+                />
+              </Flexbox>
+
               <Button
+                disabled={assignmentRefLoading}
                 loading={creatingDraft}
                 onClick={() => void handleCreateAssignmentDraft()}
                 type="primary"
@@ -2689,7 +2836,12 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
             </Space>
           </Flexbox>
 
-          <AssignmentOcrStart conversationId={conversationId} />
+          <AssignmentOcrStart
+            conversationId={conversationId}
+            gradeOptions={assignmentGradeOptions}
+            optionsLoading={assignmentRefLoading}
+            subjectOptions={assignmentSubjectOptions}
+          />
         </Flexbox>
       ) : null}
 
