@@ -31,7 +31,6 @@ import {
   AssignmentDraftList,
 } from './renderers/assignment_authoring/AssignmentDraft';
 import AssignmentDraftEditor from './renderers/assignment_authoring/AssignmentDraftEditor';
-import AssignmentOcrStart from './renderers/assignment_authoring/AssignmentOcrStart';
 import {
   type AssignmentPublishResultContent,
   AssignmentPublishResultDetail,
@@ -273,7 +272,6 @@ const WorkbenchPortalBodyInner = memo(() => {
     [actions],
   );
   const isHelloPluginEnabled = actionsError ? true : enabledPluginIds.has('aitutor-hello-plugin');
-  const isAssignmentAuthoringEnabled = actionsError ? true : enabledPluginIds.has('admin.ops.v1');
 
   const handleCancel = useCallback(
     async (targetRunId: number) => {
@@ -908,10 +906,6 @@ const WorkbenchPortalBodyInner = memo(() => {
         )
       ) : (
         <Flexbox gap={12}>
-          {conversationId && isAssignmentAuthoringEnabled ? (
-            <AssignmentOcrStart conversationId={conversationId} />
-          ) : null}
-
           {artifacts.length === 0 ? (
             <Empty description="No artifacts for this chat yet. Run a tool call to produce artifacts." />
           ) : (

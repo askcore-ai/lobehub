@@ -27,6 +27,8 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useChatStore } from '@/store/chat';
 import { PortalViewType } from '@/store/chat/slices/portal/initialState';
 
+import AssignmentOcrStart from '../assignment_authoring/AssignmentOcrStart';
+
 type WorkbenchRun = {
   failure_reason: string | null;
   run_id: number;
@@ -130,6 +132,29 @@ type AssignmentItem = {
   title: string;
 };
 
+type AssignmentDraftItem = {
+  conversation_id?: string | null;
+  draft_artifact_id: string;
+  draft_id: string;
+  due_date?: string | null;
+  grade_id: number;
+  run_id: number;
+  source: string;
+  status: 'draft';
+  subject_id: number;
+  title: string;
+  updated_at: string;
+};
+
+type AssignmentListRow =
+  | (AssignmentItem & {
+      row_key: string;
+      status: 'published';
+    })
+  | (AssignmentDraftItem & {
+      row_key: string;
+    });
+
 type QuestionItem = {
   content_preview: string;
   difficulty?: number | null;
@@ -182,6 +207,7 @@ type AdminEntityType =
   | 'submission_question';
 
 type AdminEntityListContent = {
+  draft_items?: unknown[];
   entity_type: AdminEntityType;
   filters: Record<string, unknown>;
   has_more?: boolean;
@@ -925,11 +951,19 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
   const [listItems, setListItems] = useState<any[]>(() =>
     Array.isArray(content.items) ? (content.items as any[]) : [],
   );
+  const [listDraftItems, setListDraftItems] = useState<AssignmentDraftItem[]>(() =>
+    Array.isArray(content.draft_items) ? (content.draft_items as AssignmentDraftItem[]) : [],
+  );
   const [listHasMore, setListHasMore] = useState<boolean>(() => Boolean(content.has_more));
   const [listNextAfterId, setListNextAfterId] = useState<number | null>(() =>
     typeof content.next_after_id === 'number' ? content.next_after_id : null,
   );
   const [listLoadingMore, setListLoadingMore] = useState(false);
+  const [draftTitle, setDraftTitle] = useState('');
+  const [draftSubjectId, setDraftSubjectId] = useState<number>(1);
+  const [draftGradeId, setDraftGradeId] = useState<number>(1);
+  const [draftDueDate, setDraftDueDate] = useState('');
+  const [creatingDraft, setCreatingDraft] = useState(false);
 
   const schoolRows: SchoolItem[] = useMemo(() => {
     if (!isSchool) return [];
@@ -965,6 +999,23 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
     if (content.entity_type !== 'assignment') return [];
     return listItems as AssignmentItem[];
   }, [content.entity_type, listItems]);
+  const assignmentDraftRows: AssignmentDraftItem[] = useMemo(() => {
+    if (content.entity_type !== 'assignment') return [];
+    return listDraftItems;
+  }, [content.entity_type, listDraftItems]);
+  const assignmentListRows: AssignmentListRow[] = useMemo(() => {
+    if (content.entity_type !== 'assignment') return [];
+    const publishedRows: AssignmentListRow[] = assignmentRows.map((row) => ({
+      ...row,
+      row_key: `assignment:${row.assignment_id}`,
+      status: 'published',
+    }));
+    const draftRows: AssignmentListRow[] = assignmentDraftRows.map((row) => ({
+      ...row,
+      row_key: `draft:${row.draft_artifact_id}`,
+    }));
+    return [...draftRows, ...publishedRows];
+  }, [assignmentDraftRows, assignmentRows, content.entity_type]);
 
   const questionRows: QuestionItem[] = useMemo(() => {
     if (content.entity_type !== 'question') return [];
@@ -987,9 +1038,19 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
       Array.isArray(content.ids) ? content.ids.map(Number).filter((id) => Number.isFinite(id)) : [],
     );
     setListItems(Array.isArray(content.items) ? content.items : []);
+    setListDraftItems(
+      Array.isArray(content.draft_items) ? (content.draft_items as AssignmentDraftItem[]) : [],
+    );
     setListHasMore(Boolean(content.has_more));
     setListNextAfterId(typeof content.next_after_id === 'number' ? content.next_after_id : null);
-  }, [artifactId, content.has_more, content.ids, content.items, content.next_after_id]);
+  }, [
+    artifactId,
+    content.draft_items,
+    content.has_more,
+    content.ids,
+    content.items,
+    content.next_after_id,
+  ]);
 
   const openListRun = useCallback(
     async (params: { filters: Record<string, unknown>; page: number; page_size: number }) => {
@@ -1063,6 +1124,44 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
     }
   }, [message, refresh, refreshing]);
 
+  const handleCreateAssignmentDraft = useCallback(async () => {
+    const normalizedTitle = draftTitle.trim();
+    if (!normalizedTitle) {
+      message.error('标题不能为空');
+      return;
+    }
+    if (!(draftSubjectId > 0) || !(draftGradeId > 0)) {
+      message.error('subject_id / grade_id 必须 >= 1');
+      return;
+    }
+
+    setCreatingDraft(true);
+    try {
+      const params: Record<string, unknown> = {
+        grade_id: Number(draftGradeId),
+        subject_id: Number(draftSubjectId),
+        title: normalizedTitle,
+      };
+      const normalizedDueDate = draftDueDate.trim();
+      if (normalizedDueDate) params.due_date = normalizedDueDate;
+
+      const { run_id } = await startInvocation({
+        actionId: 'assignment.draft.create_manual',
+        conversationId,
+        params,
+        requireConfirmation: false,
+      });
+      message.success(`草稿创建已发起（run=${run_id}）`);
+      useChatStore
+        .getState()
+        .pushPortalView({ conversationId, runId: run_id, type: PortalViewType.Workbench });
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '创建草稿失败');
+    } finally {
+      setCreatingDraft(false);
+    }
+  }, [conversationId, draftDueDate, draftGradeId, draftSubjectId, draftTitle, message]);
+
   const loadMore = useCallback(async () => {
     if (listLoadingMore) return;
     if (!listHasMore) return;
@@ -1114,6 +1213,9 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
 
       const newItems = Array.isArray(list.items) ? list.items : [];
       setListItems((prev) => (newItems.length ? [...prev, ...newItems] : prev));
+      if (Array.isArray(list.draft_items)) {
+        setListDraftItems(list.draft_items as AssignmentDraftItem[]);
+      }
 
       setListHasMore(Boolean(list.has_more));
       setListNextAfterId(typeof list.next_after_id === 'number' ? list.next_after_id : null);
@@ -2215,23 +2317,51 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
     [handleDeleteOne, openEdit],
   );
 
-  const assignmentColumns = useMemo<ColumnsType<AssignmentItem>>(
+  const assignmentColumns = useMemo<ColumnsType<AssignmentListRow>>(
     () => [
-      { dataIndex: 'assignment_id', key: 'assignment_id', title: 'ID', width: 90 },
+      {
+        key: 'assignment_id',
+        render: (_, row) =>
+          row.status === 'draft' ? (
+            <Typography.Text code>{row.draft_id}</Typography.Text>
+          ) : (
+            <Typography.Text>{row.assignment_id}</Typography.Text>
+          ),
+        title: 'ID',
+        width: 140,
+      },
+      {
+        dataIndex: 'status',
+        key: 'status',
+        render: (value: AssignmentListRow['status']) =>
+          value === 'draft' ? <Tag color="gold">Draft</Tag> : <Tag color="blue">Published</Tag>,
+        title: '状态',
+        width: 110,
+      },
       { dataIndex: 'title', key: 'title', title: '标题', width: 220 },
       { dataIndex: 'subject_id', key: 'subject_id', title: '学科ID', width: 100 },
       { dataIndex: 'grade_id', key: 'grade_id', title: '年级ID', width: 100 },
-      { dataIndex: 'creation_type', key: 'creation_type', title: '来源', width: 110 },
       {
-        dataIndex: 'assign_date',
-        key: 'assign_date',
-        render: (v: string) =>
-          v ? (
-            <Typography.Text>{v}</Typography.Text>
+        key: 'source',
+        render: (_, row) => (
+          <Typography.Text>
+            {row.status === 'draft' ? row.source : row.creation_type}
+          </Typography.Text>
+        ),
+        title: '来源',
+        width: 110,
+      },
+      {
+        key: 'time',
+        render: (_, row) =>
+          row.status === 'draft' ? (
+            <Typography.Text>{row.updated_at}</Typography.Text>
+          ) : row.assign_date ? (
+            <Typography.Text>{row.assign_date}</Typography.Text>
           ) : (
             <Typography.Text type="secondary">—</Typography.Text>
           ),
-        title: '发布时间',
+        title: '时间',
         width: 180,
       },
       {
@@ -2250,19 +2380,37 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
         key: 'actions',
         render: (_, row) => (
           <Space>
-            <Button onClick={() => openEdit(row)} size="small">
-              Edit
-            </Button>
-            <Button danger onClick={() => handleDeleteOne(row)} size="small">
-              Delete
-            </Button>
+            {row.status === 'draft' ? (
+              <Button
+                onClick={() =>
+                  useChatStore.getState().pushPortalView({
+                    artifactId: row.draft_artifact_id,
+                    conversationId: row.conversation_id || conversationId,
+                    runId: row.run_id,
+                    type: PortalViewType.Workbench,
+                  })
+                }
+                size="small"
+              >
+                Edit Draft
+              </Button>
+            ) : (
+              <>
+                <Button onClick={() => openEdit(row)} size="small">
+                  Edit
+                </Button>
+                <Button danger onClick={() => handleDeleteOne(row)} size="small">
+                  Delete
+                </Button>
+              </>
+            )}
           </Space>
         ),
         title: '操作',
         width: 150,
       },
     ],
-    [handleDeleteOne, openEdit],
+    [conversationId, handleDeleteOne, openEdit],
   );
 
   const questionColumns = useMemo<ColumnsType<QuestionItem>>(
@@ -2497,6 +2645,54 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
         </Space>
       </Flexbox>
 
+      {content.entity_type === 'assignment' ? (
+        <Flexbox gap={10}>
+          <Flexbox
+            gap={8}
+            style={{ border: '1px solid rgba(0,0,0,0.08)', borderRadius: 8, padding: 12 }}
+          >
+            <Typography.Text strong>创建作业草稿（手动）</Typography.Text>
+            <Space wrap>
+              <Input
+                onChange={(e) => setDraftTitle(e.target.value)}
+                placeholder="作业标题"
+                style={{ minWidth: 220 }}
+                value={draftTitle}
+              />
+              <InputNumber
+                min={1}
+                onChange={(v) => setDraftSubjectId(Number(v || 0))}
+                placeholder="subject_id"
+                style={{ width: 140 }}
+                value={draftSubjectId}
+              />
+              <InputNumber
+                min={1}
+                onChange={(v) => setDraftGradeId(Number(v || 0))}
+                placeholder="grade_id"
+                style={{ width: 140 }}
+                value={draftGradeId}
+              />
+              <Input
+                onChange={(e) => setDraftDueDate(e.target.value)}
+                placeholder="截止时间（可选，RFC3339）"
+                style={{ minWidth: 220 }}
+                value={draftDueDate}
+              />
+              <Button
+                loading={creatingDraft}
+                onClick={() => void handleCreateAssignmentDraft()}
+                type="primary"
+              >
+                新建草稿
+              </Button>
+            </Space>
+          </Flexbox>
+
+          <AssignmentOcrStart conversationId={conversationId} />
+        </Flexbox>
+      ) : null}
+
       {isSchool ? (
         schoolRows.length === 0 ? (
           <Empty
@@ -2536,7 +2732,8 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
             </Flexbox>
           </>
         )
-      ) : listIds.length === 0 ? (
+      ) : listIds.length === 0 &&
+        !(content.entity_type === 'assignment' && assignmentListRows.length > 0) ? (
         <Empty
           description={
             <Flexbox gap={4}>
@@ -2599,12 +2796,12 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
               }}
               size="small"
             />
-          ) : content.entity_type === 'assignment' && assignmentRows.length ? (
+          ) : content.entity_type === 'assignment' && assignmentListRows.length ? (
             <Table
               columns={assignmentColumns}
-              dataSource={assignmentRows}
+              dataSource={assignmentListRows}
               pagination={false}
-              rowKey={(r) => r.assignment_id}
+              rowKey={(r) => r.row_key}
               size="small"
             />
           ) : content.entity_type === 'question' && questionRows.length ? (
@@ -2655,8 +2852,8 @@ const SchoolsRenderer = memo<Props>(({ artifactId, content, conversationId }) =>
                       ? gradeRows.length
                       : content.entity_type === 'subject' && subjectRows.length
                         ? subjectRows.length
-                        : content.entity_type === 'assignment' && assignmentRows.length
-                          ? assignmentRows.length
+                        : content.entity_type === 'assignment' && assignmentListRows.length
+                          ? assignmentListRows.length
                           : content.entity_type === 'question' && questionRows.length
                             ? questionRows.length
                             : content.entity_type === 'submission' && submissionRows.length

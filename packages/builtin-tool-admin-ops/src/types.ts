@@ -138,6 +138,7 @@ export type ListTeachersParams = ListParams & {
 export type ListAssignmentsParams = ListParams & {
   filters?: {
     grade_id?: number;
+    include_drafts?: boolean;
     subject_id?: number;
   };
 };

@@ -270,6 +270,7 @@ export const AdminOpsManifest: BuiltinToolManifest = {
             default: {},
             properties: {
               grade_id: { minimum: 1, type: 'integer' },
+              include_drafts: { default: true, type: 'boolean' },
               subject_id: { minimum: 1, type: 'integer' },
             },
             type: 'object',

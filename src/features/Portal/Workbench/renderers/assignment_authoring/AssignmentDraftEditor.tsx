@@ -18,6 +18,7 @@ import {
   Select,
   Space,
   Tag,
+  TreeSelect,
   Typography,
 } from 'antd';
 import { memo, useMemo, useState } from 'react';
@@ -33,6 +34,28 @@ type Props = {
 };
 
 type StartInvocationResponse = { invocation_id: string; run_id: number };
+type WorkbenchRun = { failure_reason: string | null; run_id: number; state: string };
+type WorkbenchArtifact = {
+  artifact_id: string;
+  content: Record<string, unknown>;
+  schema_version: string;
+  type: string;
+};
+type SchoolListItem = { name: string; school_id: number };
+type ClassListItem = {
+  class_id: number;
+  grade_label?: string | null;
+  name: string;
+  school_id?: number | null;
+};
+type PublishClassTreeNode = {
+  children?: PublishClassTreeNode[];
+  disableCheckbox?: boolean;
+  key: string;
+  selectable?: boolean;
+  title: string;
+  value: string;
+};
 
 type QuestionType = 'single_choice' | 'multiple_choice' | 'fill_in_blank' | 'problem_solving';
 
@@ -267,6 +290,11 @@ const AssignmentDraftEditor = memo<Props>(
       return [emptyQuestion(0)];
     });
     const [saving, setSaving] = useState(false);
+    const [publishing, setPublishing] = useState(false);
+    const [publishOpen, setPublishOpen] = useState(false);
+    const [publishClassTreeData, setPublishClassTreeData] = useState<PublishClassTreeNode[]>([]);
+    const [publishClassIds, setPublishClassIds] = useState<number[]>([]);
+    const [publishClassLoading, setPublishClassLoading] = useState(false);
     const [advancedJson, setAdvancedJson] = useState(() => {
       const initialList =
         initialQuestionsRaw.length > 0 ? initialQuestionsRaw : initialQuestionRefs;
@@ -494,6 +522,283 @@ const AssignmentDraftEditor = memo<Props>(
       });
     };
 
+    const waitForRunCompletion = async (
+      runId: number,
+      timeoutMs: number,
+    ): Promise<WorkbenchRun> => {
+      const started = Date.now();
+      const terminalStates = new Set(['succeeded', 'failed', 'cancelled']);
+      let pollMs = 200;
+
+      for (;;) {
+        const res = await fetch(`/api/workbench/runs/${encodeURIComponent(String(runId))}`, {
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || `Run query failed (${res.status})`);
+        }
+        const run = (await res.json()) as WorkbenchRun;
+        if (terminalStates.has(String(run.state))) return run;
+        if (Date.now() - started > timeoutMs) {
+          throw new Error(`Timed out after ${timeoutMs}ms`);
+        }
+        const delayMs = pollMs;
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, delayMs);
+        });
+        pollMs = Math.min(1000, Math.floor(pollMs * 1.3));
+      }
+    };
+
+    const loadPublishClassOptions = async () => {
+      if (publishClassLoading) return;
+
+      setPublishClassLoading(true);
+      try {
+        const loadEntityItems = async <T extends object>(
+          actionId: 'admin.list.classes' | 'admin.list.schools',
+          entityType: 'class' | 'school',
+        ): Promise<T[]> => {
+          const items: T[] = [];
+          let afterId: number | null = null;
+          let guard = 0;
+
+          for (;;) {
+            guard += 1;
+            if (guard > 200) break;
+
+            const payload: Record<string, unknown> = {
+              action_id: actionId,
+              confirmation_id: null,
+              conversation_id: conversationId,
+              params: {
+                filters: {},
+                include_total: false,
+                page: 1,
+                page_size: 200,
+                ...(afterId !== null ? { after_id: afterId } : {}),
+              },
+              plugin_id: 'admin.ops.v1',
+            };
+
+            const startRes = await fetch('/api/workbench/invocations', {
+              body: JSON.stringify(payload),
+              headers: {
+                'Content-Type': 'application/json',
+                'Idempotency-Key': `${actionId}:${artifactId}:${crypto.randomUUID()}`,
+              },
+              method: 'POST',
+            });
+            if (!startRes.ok) {
+              const text = await startRes.text();
+              throw new Error(text || `List ${entityType}s failed (${startRes.status})`);
+            }
+            const started = (await startRes.json()) as StartInvocationResponse;
+
+            const run = await waitForRunCompletion(started.run_id, 20_000);
+            if (run.state !== 'succeeded') {
+              throw new Error(run.failure_reason || run.state);
+            }
+
+            const artifactsRes = await fetch(
+              `/api/workbench/runs/${encodeURIComponent(String(started.run_id))}/artifacts`,
+              { headers: { 'Content-Type': 'application/json' } },
+            );
+            if (!artifactsRes.ok) {
+              const text = await artifactsRes.text();
+              throw new Error(text || `List artifacts failed (${artifactsRes.status})`);
+            }
+            const artifacts = (await artifactsRes.json()) as WorkbenchArtifact[];
+            const latest = artifacts[0];
+            if (!latest) throw new Error(`List ${entityType}s run has no artifacts`);
+            if (latest.type !== 'admin.entity.list' || latest.schema_version !== 'v1') {
+              throw new Error(`Unexpected artifact ${latest.type}@${latest.schema_version}`);
+            }
+            const list = latest.content || {};
+            if (String((list as any).entity_type) !== entityType) {
+              throw new Error(`entity_type mismatch for ${entityType} list`);
+            }
+            const rows = Array.isArray((list as any).items) ? ((list as any).items as T[]) : [];
+            items.push(...rows);
+
+            const hasMore = Boolean((list as any).has_more);
+            const nextAfter =
+              typeof (list as any).next_after_id === 'number'
+                ? Number((list as any).next_after_id)
+                : null;
+            if (!hasMore || nextAfter === null) break;
+            afterId = nextAfter;
+          }
+
+          return items;
+        };
+
+        const [schools, classes] = await Promise.all([
+          loadEntityItems<SchoolListItem>('admin.list.schools', 'school'),
+          loadEntityItems<ClassListItem>('admin.list.classes', 'class'),
+        ]);
+
+        const schoolNameById = new Map<number, string>();
+        for (const school of schools) {
+          const schoolId = Number(school.school_id);
+          if (!Number.isFinite(schoolId) || schoolId <= 0) continue;
+          const schoolName = String(school.name || '').trim();
+          schoolNameById.set(schoolId, schoolName || `学校 ${schoolId}`);
+        }
+
+        const groups = new Map<
+          string,
+          {
+            grades: Map<
+              string,
+              { classIds: Set<number>; classes: Array<{ class_id: number; name: string }> }
+            >;
+            label: string;
+            sortKey: string;
+          }
+        >();
+
+        const seenClassIds = new Set<number>();
+        for (const row of classes) {
+          const classId = Number(row.class_id);
+          if (!Number.isFinite(classId) || classId <= 0 || seenClassIds.has(classId)) continue;
+          seenClassIds.add(classId);
+
+          const className = String(row.name || '').trim() || `班级 ${classId}`;
+          const schoolIdRaw = Number(row.school_id);
+          const schoolId =
+            Number.isFinite(schoolIdRaw) && schoolIdRaw > 0 ? Math.trunc(schoolIdRaw) : null;
+          const schoolKey = schoolId === null ? 'school:none' : `school:${schoolId}`;
+          const schoolName =
+            schoolId === null ? '未分配学校' : (schoolNameById.get(schoolId) ?? `学校 ${schoolId}`);
+          const schoolLabel = schoolId === null ? schoolName : `${schoolName} (ID=${schoolId})`;
+          const schoolSortKey =
+            schoolId === null
+              ? `~${schoolLabel}`
+              : `${schoolLabel}:${schoolId.toString().padStart(8, '0')}`;
+
+          const gradeLabel = String(row.grade_label || '').trim() || '未分年级';
+          const gradeKey = `grade:${gradeLabel}`;
+
+          if (!groups.has(schoolKey)) {
+            groups.set(schoolKey, {
+              grades: new Map(),
+              label: schoolLabel,
+              sortKey: schoolSortKey,
+            });
+          }
+          const schoolGroup = groups.get(schoolKey)!;
+          if (!schoolGroup.grades.has(gradeKey)) {
+            schoolGroup.grades.set(gradeKey, { classIds: new Set(), classes: [] });
+          }
+          const gradeGroup = schoolGroup.grades.get(gradeKey)!;
+          if (gradeGroup.classIds.has(classId)) continue;
+          gradeGroup.classIds.add(classId);
+          gradeGroup.classes.push({ class_id: classId, name: className });
+        }
+
+        const treeData: PublishClassTreeNode[] = Array.from(groups.entries())
+          .sort((a, b) => a[1].sortKey.localeCompare(b[1].sortKey, 'zh-CN'))
+          .map(([schoolKey, schoolGroup]) => {
+            const gradeNodes: PublishClassTreeNode[] = Array.from(schoolGroup.grades.entries())
+              .sort((a, b) => a[0].localeCompare(b[0], 'zh-CN'))
+              .map(([gradeKey, gradeGroup]) => ({
+                children: gradeGroup.classes
+                  .sort((a, b) =>
+                    `${a.name}:${a.class_id.toString().padStart(8, '0')}`.localeCompare(
+                      `${b.name}:${b.class_id.toString().padStart(8, '0')}`,
+                      'zh-CN',
+                    ),
+                  )
+                  .map((item) => ({
+                    key: `class:${item.class_id}`,
+                    title: `${item.name} (ID=${item.class_id})`,
+                    value: String(item.class_id),
+                  })),
+                disableCheckbox: true,
+                key: `${schoolKey}:${gradeKey}`,
+                selectable: false,
+                title: gradeKey.replace(/^grade:/, ''),
+                value: `${schoolKey}:${gradeKey}`,
+              }));
+
+            return {
+              children: gradeNodes,
+              disableCheckbox: true,
+              key: schoolKey,
+              selectable: false,
+              title: schoolGroup.label,
+              value: schoolKey,
+            };
+          });
+
+        setPublishClassTreeData(treeData);
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : '加载班级列表失败');
+        setPublishClassTreeData([]);
+      } finally {
+        setPublishClassLoading(false);
+      }
+    };
+
+    const doPublish = async (classIds: number[]) => {
+      setPublishing(true);
+      try {
+        const res = await fetch('/api/workbench/invocations', {
+          body: JSON.stringify({
+            action_id: 'assignment.draft.publish',
+            confirmation_id: `ui-confirm:${crypto.randomUUID()}`,
+            conversation_id: conversationId,
+            params: {
+              draft_artifact_id: artifactId,
+              target: classIds.length > 0 ? { class_ids: classIds } : {},
+            },
+            plugin_id: 'admin.ops.v1',
+          }),
+          headers: {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': `assignment-draft-publish:${artifactId}:${Date.now()}`,
+          },
+          method: 'POST',
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          message.error(text || `Publish failed (${res.status})`);
+          return;
+        }
+
+        const data = (await res.json()) as StartInvocationResponse;
+        message.success(`Publish started (run ${data.run_id}).`);
+        useChatStore.getState().pushPortalView({
+          conversationId,
+          runId: data.run_id,
+          type: PortalViewType.Workbench,
+        });
+        setPublishOpen(false);
+        onClose();
+      } finally {
+        setPublishing(false);
+      }
+    };
+
+    const onPublish = async () => {
+      const selectedClassIds = Array.from(
+        new Set(publishClassIds.filter((value) => Number.isFinite(value) && value > 0)),
+      );
+      if (selectedClassIds.length === 0) {
+        Modal.confirm({
+          content: '未选择班级，将仅发布作业但不分配学生。是否继续？',
+          okText: '继续发布',
+          onOk: async () => doPublish([]),
+          title: '不分配班级发布',
+        });
+        return;
+      }
+      await doPublish(selectedClassIds);
+    };
+
     return (
       <Flexbox gap={12}>
         <Typography.Title level={5} style={{ margin: 0 }}>
@@ -709,9 +1014,61 @@ const AssignmentDraftEditor = memo<Props>(
           size="small"
         />
 
+        <Modal
+          confirmLoading={publishing}
+          okButtonProps={{ disabled: publishClassLoading }}
+          okText="Publish"
+          onCancel={() => setPublishOpen(false)}
+          onOk={() => void onPublish()}
+          open={publishOpen}
+          title="发布作业并指定班级（可选）"
+        >
+          <Flexbox gap={8}>
+            <Typography.Text type="secondary">
+              可按学校/年级/班级三级结构选择一个或多个班级；不选择班级时，将仅发布作业。
+            </Typography.Text>
+            <TreeSelect
+              allowClear
+              loading={publishClassLoading}
+              maxTagCount="responsive"
+              onChange={(values) => {
+                const rawValues = Array.isArray(values) ? values : values ? [values] : [];
+                const classIds = rawValues
+                  .map((value) =>
+                    Number(
+                      typeof value === 'string' || typeof value === 'number'
+                        ? value
+                        : (value as any)?.value,
+                    ),
+                  )
+                  .filter((value) => Number.isFinite(value) && value > 0);
+                setPublishClassIds(Array.from(new Set(classIds)));
+              }}
+              placeholder="按学校 > 年级 > 班级选择（可多选）"
+              showCheckedStrategy={TreeSelect.SHOW_CHILD}
+              style={{ width: '100%' }}
+              treeCheckable
+              treeData={publishClassTreeData}
+              treeDefaultExpandAll
+              value={publishClassIds.map(String)}
+            />
+          </Flexbox>
+        </Modal>
+
         <Space>
           <Button loading={saving} onClick={onSave} type="primary">
             Save draft
+          </Button>
+          <Button
+            disabled={saving}
+            loading={publishClassLoading}
+            onClick={async () => {
+              setPublishOpen(true);
+              await loadPublishClassOptions();
+            }}
+            type="default"
+          >
+            Publish
           </Button>
           <Button onClick={onClose}>Cancel</Button>
         </Space>
