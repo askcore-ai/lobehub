@@ -101,6 +101,35 @@ type WorkbenchStreamEvent = {
 
 type FetchInit = Parameters<typeof fetch>[1];
 
+const formatWorkbenchError = (
+  status: number,
+  bodyText: string,
+  contentType: string | null,
+): string => {
+  const fallback = `Request failed (${status})`;
+  const text = bodyText.trim();
+  if (!text) return fallback;
+
+  const normalizedContentType = String(contentType || '')
+    .trim()
+    .toLowerCase();
+  if (normalizedContentType.includes('application/json')) {
+    try {
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      for (const key of ['error', 'message', 'detail']) {
+        const value = parsed[key];
+        if (typeof value === 'string' && value.trim()) return value.trim();
+      }
+    } catch {
+      // Ignore JSON parse errors and continue with fallback guards.
+    }
+  }
+
+  // Next.js not-found/error pages are HTML and should not be surfaced as giant raw strings.
+  if (/^\s*</.test(text)) return fallback;
+  return text.length > 400 ? `${text.slice(0, 400)}...` : text;
+};
+
 const fetchJson = async <T,>(url: string, init?: FetchInit): Promise<T> => {
   const res = await fetch(url, {
     ...init,
@@ -109,11 +138,21 @@ const fetchJson = async <T,>(url: string, init?: FetchInit): Promise<T> => {
       'Content-Type': 'application/json',
     },
   });
+  const responseText = await res.text();
+
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `Request failed (${res.status})`);
+    throw new Error(
+      formatWorkbenchError(res.status, responseText, res.headers.get('Content-Type')),
+    );
   }
-  return res.json() as Promise<T>;
+
+  try {
+    return JSON.parse(responseText) as T;
+  } catch {
+    throw new Error(
+      formatWorkbenchError(res.status, responseText, res.headers.get('Content-Type')),
+    );
+  }
 };
 
 const runStateTag = (state: string) => {
