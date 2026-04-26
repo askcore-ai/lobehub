@@ -95,6 +95,28 @@ describe('AgentModel.getAgentAvatarsByIds', () => {
     });
   });
 
+  it('should fallback to AskCore AI defaults for inbox agent with legacy LobeHub default avatar', async () => {
+    await serverDB.insert(agents).values({
+      avatar: '/avatars/lobe-ai.png',
+      backgroundColor: null,
+      id: 'agent-inbox-legacy-avatar',
+      slug: 'inbox',
+      title: null,
+      userId,
+    });
+
+    const model = new AgentModel(serverDB, userId);
+    const result = await model.getAgentAvatarsByIds(['agent-inbox-legacy-avatar']);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      avatar: '/askcore-logo.png',
+      backgroundColor: null,
+      id: 'agent-inbox-legacy-avatar',
+      title: 'AskCore AI',
+    });
+  });
+
   it('should not override inbox agent avatar/title when they are set', async () => {
     await serverDB.insert(agents).values({
       avatar: '🤖',

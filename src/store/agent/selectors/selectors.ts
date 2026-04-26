@@ -7,6 +7,7 @@ import {
   DEFAULT_MODEL,
   DEFAUTT_AGENT_TTS_CONFIG,
   isDesktop,
+  normalizeInboxAvatar,
 } from '@lobechat/const';
 import {
   type AgentMode,
@@ -40,8 +41,16 @@ const getDefaultAvatarByAgentId = (s: AgentStoreState, agentId?: string) => {
   return agentId && inboxAgentId === agentId ? DEFAULT_INBOX_AVATAR : DEFAULT_AVATAR;
 };
 
+const getAvatarByAgentId = (s: AgentStoreState, agentId?: string, avatar?: null | string) => {
+  const inboxAgentId = builtinAgentSelectors.inboxAgentId(s);
+
+  if (agentId && inboxAgentId === agentId) return normalizeInboxAvatar(avatar);
+
+  return avatar || DEFAULT_AVATAR;
+};
+
 const currentAgentAvatar = (s: AgentStoreState) =>
-  currentAgentData(s)?.avatar || getDefaultAvatarByAgentId(s, s.activeAgentId);
+  getAvatarByAgentId(s, s.activeAgentId, currentAgentData(s)?.avatar);
 
 const currentAgentDescription = (s: AgentStoreState) => currentAgentData(s)?.description;
 
@@ -57,7 +66,7 @@ const currentAgentTags = (s: AgentStoreState) => currentAgentData(s)?.tags || []
 const currentAgentMeta = (s: AgentStoreState): MetaData => {
   const data = currentAgentData(s);
   return {
-    avatar: data?.avatar || getDefaultAvatarByAgentId(s, s.activeAgentId),
+    avatar: getAvatarByAgentId(s, s.activeAgentId, data?.avatar),
     backgroundColor: data?.backgroundColor || DEFAULT_BACKGROUND_COLOR,
     description: data?.description || undefined,
     marketIdentifier: data?.marketIdentifier || undefined,
@@ -77,7 +86,7 @@ const getAgentMetaById =
     if (!data) return {};
 
     return {
-      avatar: data.avatar || getDefaultAvatarByAgentId(s, agentId),
+      avatar: getAvatarByAgentId(s, agentId, data.avatar),
       backgroundColor: data.backgroundColor || DEFAULT_BACKGROUND_COLOR,
       description: data.description || undefined,
       marketIdentifier: data.marketIdentifier || undefined,
