@@ -149,18 +149,6 @@ describe('agentSelectors', () => {
 
       expect(meta.avatar).toBe(DEFAULT_INBOX_AVATAR);
     });
-
-    it('should return inbox avatar fallback for inbox agent with legacy LobeHub default avatar', () => {
-      const state = createState({
-        activeAgentId: 'inbox-agent',
-        agentMap: { 'inbox-agent': { avatar: '/avatars/lobe-ai.png' } },
-        builtinAgentIdMap: { [INBOX_SESSION_ID]: 'inbox-agent' },
-      });
-
-      const meta = agentSelectors.currentAgentMeta(state);
-
-      expect(meta.avatar).toBe(DEFAULT_INBOX_AVATAR);
-    });
   });
 
   describe('getAgentMetaById', () => {
@@ -190,17 +178,6 @@ describe('agentSelectors', () => {
     it('should return inbox avatar fallback for inbox agent with no custom avatar', () => {
       const state = createState({
         agentMap: { 'inbox-agent': {} },
-        builtinAgentIdMap: { [INBOX_SESSION_ID]: 'inbox-agent' },
-      });
-
-      const meta = agentSelectors.getAgentMetaById('inbox-agent')(state);
-
-      expect(meta.avatar).toBe(DEFAULT_INBOX_AVATAR);
-    });
-
-    it('should return inbox avatar fallback by id for legacy LobeHub default avatar', () => {
-      const state = createState({
-        agentMap: { 'inbox-agent': { avatar: '/avatars/lobe-ai.png' } },
         builtinAgentIdMap: { [INBOX_SESSION_ID]: 'inbox-agent' },
       });
 

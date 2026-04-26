@@ -195,27 +195,6 @@ describe('AgentService', () => {
       expect((result as any)?.avatar).toBe(DEFAULT_INBOX_AVATAR);
     });
 
-    it('should replace the legacy LobeHub default avatar for builtin agents', async () => {
-      const mockAgent = {
-        avatar: '/avatars/lobe-ai.png',
-        id: 'agent-1',
-        slug: 'inbox',
-        model: 'gpt-4',
-      };
-
-      const mockAgentModel = {
-        getBuiltinAgent: vi.fn().mockResolvedValue(mockAgent),
-      };
-
-      (AgentModel as any).mockImplementation(() => mockAgentModel);
-      (parseAgentConfig as any).mockReturnValue({});
-
-      const newService = new AgentService(mockDb, mockUserId);
-      const result = await newService.getBuiltinAgent('inbox');
-
-      expect((result as any)?.avatar).toBe(DEFAULT_INBOX_AVATAR);
-    });
-
     it('should not include avatar for non-builtin agents', async () => {
       const mockAgent = {
         id: 'agent-1',

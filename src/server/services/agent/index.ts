@@ -1,6 +1,6 @@
 import { type BuiltinAgentSlug } from '@lobechat/builtin-agents';
 import { BUILTIN_AGENTS } from '@lobechat/builtin-agents';
-import { DEFAULT_AGENT_CONFIG, isLegacyLobeDefaultAvatar } from '@lobechat/const';
+import { DEFAULT_AGENT_CONFIG } from '@lobechat/const';
 import { type LobeChatDatabase } from '@lobechat/database';
 import { type AgentItem, type LobeAgentConfig } from '@lobechat/types';
 import { cleanObject, merge } from '@lobechat/utils';
@@ -83,10 +83,7 @@ export class AgentService {
 
     // Use builtin avatar as fallback only when DB has no custom avatar
     const builtinAgent = BUILTIN_AGENTS[slug as BuiltinAgentSlug];
-    if (
-      builtinAgent?.avatar &&
-      (!mergedConfig.avatar || isLegacyLobeDefaultAvatar(mergedConfig.avatar))
-    ) {
+    if (builtinAgent?.avatar && !mergedConfig.avatar) {
       return { ...mergedConfig, avatar: builtinAgent.avatar };
     }
 
