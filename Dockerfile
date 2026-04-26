@@ -108,28 +108,28 @@ COPY --from=base /distroless/ /
 
 # Automatically leverage output traces to reduce image size
 # https://nextjs.org/docs/advanced-features/output-file-tracing
-COPY --from=builder /app/.next/standalone /app/
-COPY --from=builder /app/.next/static /app/.next/static
+COPY --from=builder --chown=1001:1001 /app/.next/standalone /app/
+COPY --from=builder --chown=1001:1001 /app/.next/static /app/.next/static
 # Copy SPA assets (Vite build output)
-COPY --from=builder /app/public/_spa /app/public/_spa
+COPY --from=builder --chown=1001:1001 /app/public/_spa /app/public/_spa
 # Copy database migrations
-COPY --from=builder /app/packages/database/migrations /app/migrations
-COPY --from=builder /app/scripts/migrateServerDB/docker.cjs /app/docker.cjs
-COPY --from=builder /app/scripts/migrateServerDB/errorHint.js /app/errorHint.js
+COPY --from=builder --chown=1001:1001 /app/packages/database/migrations /app/migrations
+COPY --from=builder --chown=1001:1001 /app/scripts/migrateServerDB/docker.cjs /app/docker.cjs
+COPY --from=builder --chown=1001:1001 /app/scripts/migrateServerDB/errorHint.js /app/errorHint.js
 
 # copy dependencies
-COPY --from=builder /deps/node_modules/.pnpm /app/node_modules/.pnpm
-COPY --from=builder /deps/node_modules/pg /app/node_modules/pg
-COPY --from=builder /deps/node_modules/drizzle-orm /app/node_modules/drizzle-orm
+COPY --from=builder --chown=1001:1001 /deps/node_modules/.pnpm /app/node_modules/.pnpm
+COPY --from=builder --chown=1001:1001 /deps/node_modules/pg /app/node_modules/pg
+COPY --from=builder --chown=1001:1001 /deps/node_modules/drizzle-orm /app/node_modules/drizzle-orm
 
 # Copy server launcher and shared scripts
-COPY --from=builder /app/scripts/serverLauncher/startServer.js /app/startServer.js
-COPY --from=builder /app/scripts/_shared /app/scripts/_shared
+COPY --from=builder --chown=1001:1001 /app/scripts/serverLauncher/startServer.js /app/startServer.js
+COPY --from=builder --chown=1001:1001 /app/scripts/_shared /app/scripts/_shared
 
 RUN set -e && \
     addgroup -S -g 1001 nodejs && \
     adduser -D -G nodejs -H -S -h /app -u 1001 nextjs && \
-    chown -R nextjs:nodejs /app /etc/proxychains4.conf
+    chown nextjs:nodejs /app /etc/proxychains4.conf
 
 ## Production image, copy all the files and run next
 FROM scratch
