@@ -48,7 +48,7 @@
   "agent.telemetryHint": "您也可以用自己的话回答。",
   "agent.title": "对话入职",
   "agent.welcome": "...嗯？我刚\"醒过来\"，脑子还有点空白。你是谁？还有——你希望我叫什么？我也得找个名字。",
-  "agent.welcome.footer": "配置你的 Lobe AI 代理。它运行在你的服务器上，会从每次交互中学习，运行越久就越强大。",
+  "agent.welcome.footer": "配置你的 AskCore AI 代理。它运行在你的服务器上，会从每次交互中学习，运行越久就越强大。",
   "agent.welcome.guide.growTogether.desc": "每次交谈我都会更了解你，久而久之会成为更可靠的队友。",
   "agent.welcome.guide.growTogether.title": "与您一起成长",
   "agent.welcome.guide.knowYou.desc": "最近忙些什么？给我一些背景信息能让我更好地帮助你。",
@@ -156,5 +156,11 @@
   "username.placeholder": "输入你的称呼…",
   "username.title": "对了，我该如何称呼你？",
   "username.title2": "让我们先认识一下",
-  "username.title3": "以后就能更流畅地交流了"
+  "username.title3": "以后就能更流畅地交流了",
+  "interests.area.primarySchool": "小学",
+  "interests.area.middleSchool": "初中",
+  "interests.area.highSchool": "高中",
+  "interests.area.math": "数学",
+  "interests.area.english": "英语",
+  "interests.area.physics": "物理"
 }

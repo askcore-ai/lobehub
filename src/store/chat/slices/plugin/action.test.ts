@@ -1,6 +1,11 @@
 import { PLUGIN_SCHEMA_API_MD5_PREFIX, PLUGIN_SCHEMA_SEPARATOR } from '@lobechat/const';
 import { ToolNameResolver } from '@lobechat/context-engine';
-import { type ChatToolPayload, type MessageToolCall, type UIChatMessage } from '@lobechat/types';
+import {
+  type ChatToolPayload,
+  type MessageToolCall,
+  type PluginRequestPayload,
+  type UIChatMessage,
+} from '@lobechat/types';
 import { act, renderHook } from '@testing-library/react';
 import i18n from 'i18next';
 import { type Mock } from 'vitest';
@@ -1455,7 +1460,7 @@ describe('ChatPluginAction', () => {
           success: true,
         };
 
-        const standalonePayload: ChatToolPayload = {
+        const standalonePayload: ChatToolPayload & Pick<PluginRequestPayload, 'manifest'> = {
           ...payload,
           apiName: 'suite_run',
           arguments: JSON.stringify({ action: 'ui.read.dashboard', params: {} }),

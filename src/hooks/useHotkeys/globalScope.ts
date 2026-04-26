@@ -15,7 +15,7 @@ import { useHotkeyById } from './useHotkeyById';
 export const isTaskPanelRoute = (pathname: string) =>
   pathname === '/tasks' || pathname.startsWith('/tasks/') || pathname.startsWith('/task/');
 
-// Switch to chat tab (and focus on Lobe AI)
+// Switch to chat tab (and focus on AskCore AI)
 export const useNavigateToChatHotkey = () => {
   const navigateToAgent = useNavigateToAgent();
   const [, { unpinAgent }] = usePinnedAgentState();

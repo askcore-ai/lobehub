@@ -198,13 +198,13 @@ const Platform = memo<PlatformProps>(
     const handleUseOnLobeAI = useCallback(() => {
       if (!inboxAgentId) return;
 
-      // Send message to LobeAI
+      // Send message to AskCore AI
       sendMessage({
         context: { agentId: inboxAgentId },
         message: agentPrompt,
       });
 
-      // Navigate to LobeAI chat session
+      // Navigate to AskCore AI chat session
       navigate(SESSION_CHAT_URL(inboxAgentId, mobile));
     }, [agentPrompt, inboxAgentId, mobile, navigate, sendMessage]);
 

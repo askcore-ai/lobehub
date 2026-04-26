@@ -1,9 +1,27 @@
 import { useCallback, useState } from 'react';
 
-const QUESTION_COUNT = 40;
-const DISPLAY_COUNT = 6;
+import { type StarterMode } from '@/store/home';
 
-export type QuestionMode = 'agent' | 'chat' | 'group' | 'write';
+const QUESTION_COUNTS = {
+  agent: 40,
+  chat: 3,
+  group: 40,
+  write: 40,
+} as const;
+
+const DISPLAY_COUNTS = {
+  agent: 6,
+  chat: 3,
+  group: 6,
+  write: 6,
+} as const;
+
+type SuggestQuestionMode = keyof typeof QUESTION_COUNTS;
+
+const isSuggestQuestionMode = (mode: string): mode is SuggestQuestionMode =>
+  mode in QUESTION_COUNTS;
+
+export type QuestionMode = SuggestQuestionMode;
 
 const shuffleArray = <T>(array: T[]): T[] => {
   const shuffled = [...array];
@@ -14,13 +32,19 @@ const shuffleArray = <T>(array: T[]): T[] => {
   return shuffled;
 };
 
-const generateQuestions = (mode: QuestionMode) => {
-  const ids = Array.from({ length: QUESTION_COUNT }, (_, i) => i + 1);
+const generateQuestions = (mode: QuestionMode | StarterMode = 'chat') => {
+  const modeKey = mode ?? 'chat';
+
+  if (!isSuggestQuestionMode(modeKey)) {
+    return [];
+  }
+
+  const ids = Array.from({ length: QUESTION_COUNTS[modeKey] }, (_, i) => i + 1);
   const shuffled = shuffleArray(ids);
-  return shuffled.slice(0, DISPLAY_COUNT).map((id) => ({
+  return shuffled.slice(0, DISPLAY_COUNTS[modeKey]).map((id) => ({
     id,
-    promptKey: `${mode}.${String(id).padStart(2, '0')}.prompt`,
-    titleKey: `${mode}.${String(id).padStart(2, '0')}.title`,
+    promptKey: `${modeKey}.${String(id).padStart(2, '0')}.prompt`,
+    titleKey: `${modeKey}.${String(id).padStart(2, '0')}.title`,
   }));
 };
 
@@ -35,7 +59,9 @@ interface UseRandomQuestionsResult {
   refresh: () => void;
 }
 
-export const useRandomQuestions = (mode: QuestionMode = 'chat'): UseRandomQuestionsResult => {
+export const useRandomQuestions = (
+  mode: QuestionMode | StarterMode = 'chat',
+): UseRandomQuestionsResult => {
   const [questions, setQuestions] = useState<QuestionItem[]>(() => generateQuestions(mode));
 
   const refresh = useCallback(() => {

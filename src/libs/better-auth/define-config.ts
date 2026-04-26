@@ -8,7 +8,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { verifyPassword as defaultVerifyPassword } from 'better-auth/crypto';
 import { type BetterAuthOptions } from 'better-auth/minimal';
 import { betterAuth } from 'better-auth/minimal';
-import { createAccessControl } from 'better-auth/plugins/access';
+import { createAccessControl, type Role } from 'better-auth/plugins/access';
 import {
   adminAc as platformAdminAc,
   defaultStatements as platformAdminDefaultStatements,
@@ -93,6 +93,13 @@ const enabledSSOProviders = parseSSOProviders(authEnv.AUTH_SSO_PROVIDERS);
 
 const { socialProviders, genericOAuthProviders } = initBetterAuthSSOProviders();
 
+const toMutableStatements = <const TStatements extends Record<string, readonly string[]>>(
+  statements: TStatements,
+) =>
+  Object.fromEntries(
+    Object.entries(statements).map(([resource, actions]) => [resource, [...actions]]),
+  ) as { [K in keyof TStatements]: TStatements[K][number][] };
+
 const askCoreOrganizationStatements = {
   ...organizationDefaultStatements,
   organization: ['update'],
@@ -107,14 +114,14 @@ const askCoreOrganizationMemberRole = askCoreOrganizationAc.newRole({
 });
 
 const askCoreOrganizationAdminRole = askCoreOrganizationAc.newRole({
-  ...defaultOrganizationAc.statements,
+  ...toMutableStatements(defaultOrganizationAc.statements),
   organization: ['update'],
   member: ['invite', 'update-role', 'remove'],
   project: ['read', 'write'],
 });
 
 const askCoreOrganizationOwnerRole = askCoreOrganizationAc.newRole({
-  ...defaultOrganizationAc.statements,
+  ...toMutableStatements(defaultOrganizationAc.statements),
   organization: ['update'],
   member: ['invite', 'update-role', 'remove'],
   project: ['read', 'write'],
@@ -132,11 +139,11 @@ const askCorePlatformAc = createAccessControl(askCorePlatformStatements);
 const askCorePlatformUserRole = askCorePlatformAc.newRole({});
 
 const askCorePlatformAdminRole = askCorePlatformAc.newRole({
-  ...platformAdminAc.statements,
+  ...toMutableStatements(platformAdminAc.statements),
 });
 
 const askCoreSuperAdminRole = askCorePlatformAc.newRole({
-  ...platformAdminAc.statements,
+  ...toMutableStatements(platformAdminAc.statements),
   organization: ['update'],
   member: ['invite', 'update-role', 'remove'],
   project: ['read', 'write'],
@@ -331,17 +338,17 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
         ac: askCorePlatformAc,
         adminRoles: ['admin', 'super_admin'],
         roles: {
-          admin: askCorePlatformAdminRole,
-          super_admin: askCoreSuperAdminRole,
-          user: askCorePlatformUserRole,
+          admin: askCorePlatformAdminRole as Role,
+          super_admin: askCoreSuperAdminRole as Role,
+          user: askCorePlatformUserRole as Role,
         },
       }),
       organization({
         ac: askCoreOrganizationAc,
         roles: {
-          admin: askCoreOrganizationAdminRole,
-          member: askCoreOrganizationMemberRole,
-          owner: askCoreOrganizationOwnerRole,
+          admin: askCoreOrganizationAdminRole as Role,
+          member: askCoreOrganizationMemberRole as Role,
+          owner: askCoreOrganizationOwnerRole as Role,
         },
       }),
       // Email OTP plugin for mobile verification
