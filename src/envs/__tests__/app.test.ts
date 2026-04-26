@@ -15,7 +15,7 @@ describe('getServerConfig', () => {
         'https://registry.npmmirror.com/@lobehub/agents-index/v1/files/public',
       );
       expect(config.PLUGINS_INDEX_URL).toBe(
-        'https://registry.npmmirror.com/@lobehub/plugins-index/v1/files/public',
+        'https://askcore.cn/api/lobe/plugins/v1/market/index.json',
       );
     });
 
@@ -38,7 +38,7 @@ describe('getServerConfig', () => {
         'https://registry.npmmirror.com/@lobehub/agents-index/v1/files/public',
       );
       expect(config.PLUGINS_INDEX_URL).toBe(
-        'https://registry.npmmirror.com/@lobehub/plugins-index/v1/files/public',
+        'https://askcore.cn/api/lobe/plugins/v1/market/index.json',
       );
     });
   });

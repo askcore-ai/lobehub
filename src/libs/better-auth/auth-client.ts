@@ -3,6 +3,7 @@ import {
   genericOAuthClient,
   inferAdditionalFields,
   magicLinkClient,
+  organizationClient,
 } from 'better-auth/client/plugins';
 import { createAuthClient } from 'better-auth/react';
 
@@ -27,6 +28,7 @@ export const {
     adminClient(),
     inferAdditionalFields<typeof auth>(),
     genericOAuthClient(),
+    organizationClient(),
     // Always include magicLinkClient - server will reject if not enabled
     magicLinkClient(),
   ],

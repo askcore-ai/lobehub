@@ -1,28 +1,28 @@
 // the code below can only be modified with commercial license
 // if you want to use it in the commercial usage
-// please contact us for more information: hello@lobehub.com
+// AskCore fork branding. Upstream attribution remains visible in About/Open Source surfaces.
 
-export const LOBE_CHAT_CLOUD = 'LobeHub Cloud';
+export const LOBE_CHAT_CLOUD = 'AskCore AI';
 
-export const BRANDING_NAME = 'LobeHub';
-export const BRANDING_LOGO_URL = '';
+export const BRANDING_NAME = 'AskCore';
+export const BRANDING_LOGO_URL = '/askcore-logo.png';
 
-export const ORG_NAME = 'LobeHub';
+export const ORG_NAME = 'AskCore AI';
 
 export const BRANDING_URL = {
-  help: undefined,
-  privacy: undefined,
+  help: 'https://askcore.cn',
+  privacy: 'https://askcore.cn/privacy',
   subscription: undefined,
-  support: undefined,
-  terms: undefined,
+  support: 'https://askcore.cn',
+  terms: 'https://askcore.cn/terms',
 };
 
 export const SOCIAL_URL = {
-  discord: 'https://discord.gg/AYFPHvv2jT',
-  github: 'https://github.com/lobehub',
-  medium: 'https://medium.com/@lobehub',
-  x: 'https://x.com/lobehub',
-  youtube: 'https://www.youtube.com/@lobehub',
+  discord: 'https://askcore.cn',
+  github: 'https://github.com/askcore-ai/aitutor',
+  medium: 'https://askcore.cn',
+  x: 'https://askcore.cn',
+  youtube: 'https://askcore.cn',
 };
 
 export const FILE_URL = {
@@ -30,11 +30,11 @@ export const FILE_URL = {
 };
 
 export const BRANDING_EMAIL = {
-  business: 'hello@lobehub.com',
-  support: 'support@lobehub.com',
+  business: 'support@askcore.cn',
+  support: 'support@askcore.cn',
 };
 
-export const BRANDING_PROVIDER = 'lobehub';
+export const BRANDING_PROVIDER = 'askcore';
 
 export const COPYRIGHT = `© ${new Date().getFullYear()} ${ORG_NAME}`;
 export const COPYRIGHT_FULL = `${COPYRIGHT}. All rights reserved.`;

@@ -1,4 +1,4 @@
-import { type ToolManifest } from '@lobechat/types';
+import { type LobeToolSource, type ToolManifest } from '@lobechat/types';
 
 import { isInstalledPluginAvailableInCurrentEnv } from '@/helpers/toolAvailability';
 import { type InstallPluginMeta, type LobeToolCustomPlugin } from '@/types/tool/plugin';
@@ -44,19 +44,25 @@ const installedPluginMetaList = (s: ToolStoreState) =>
     // Filter out Klavis plugins (they have their own display location)
     .filter((p) => !p.customParams?.klavis)
     .filter((plugin) => isInstalledPluginAvailableInCurrentEnv(plugin))
-    .map<InstallPluginMeta>((p) => ({
-      author: p.manifest?.author,
-      createdAt: p.manifest?.createdAt || (p.manifest as any)?.createAt,
-      homepage: p.manifest?.homepage,
-      identifier: p.identifier,
-      /*
-       * should remove meta
-       */
-      meta: getPluginMetaById(p.identifier)(s),
-      runtimeType: p.runtimeType,
-      type: p.source || p.type,
-      ...getPluginMetaById(p.identifier)(s),
-    }));
+    .map<InstallPluginMeta>((p) => {
+      const source = (p.source ||
+        (p.type === 'customPlugin' ? 'user' : 'market')) as LobeToolSource;
+
+      return {
+        author: p.manifest?.author,
+        createdAt: p.manifest?.createdAt || (p.manifest as any)?.createAt,
+        homepage: p.manifest?.homepage,
+        identifier: p.identifier,
+        /*
+         * should remove meta
+         */
+        meta: getPluginMetaById(p.identifier)(s),
+        runtimeType: p.runtimeType,
+        source,
+        type: source,
+        ...getPluginMetaById(p.identifier)(s),
+      };
+    });
 const installedCustomPluginMetaList = (s: ToolStoreState) =>
   installedPluginMetaList(s).filter((p) => p.type === 'customPlugin');
 

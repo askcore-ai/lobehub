@@ -8,6 +8,7 @@ import { AgentRuntimeError, responsesAPIModels } from '@lobechat/model-runtime';
 import {
   type RuntimeInitialContext,
   type RuntimeStepContext,
+  type PluginRequestPayload,
   type TracePayload,
   type UIChatMessage,
 } from '@lobechat/types';
@@ -104,6 +105,41 @@ interface CreateAssistantMessageStream extends FetchSSEOptions {
 }
 
 class ChatService {
+  runPluginApi = async (
+    params: PluginRequestPayload,
+    options?: FetchOptions,
+  ): Promise<{ text: string }> => {
+    const gateway =
+      params.manifest?.gateway ||
+      params.manifest?.api?.find((api) => api.name === params.apiName)?.url;
+
+    if (!gateway) {
+      throw new Error(`Plugin ${params.identifier} is missing a standalone gateway.`);
+    }
+
+    const traceHeader = createTraceHeader({ ...options?.trace });
+    const headers = await createHeaderWithAuth({
+      headers: {
+        'Content-Type': 'application/json',
+        ...traceHeader,
+      },
+    });
+
+    const response = await fetch(gateway, {
+      body: JSON.stringify(params),
+      headers,
+      method: 'POST',
+      signal: options?.signal,
+    });
+    const text = await response.text();
+
+    if (!response.ok) {
+      throw new Error(text || `Plugin ${params.identifier}/${params.apiName} failed`);
+    }
+
+    return { text };
+  };
+
   private resolveAgentDocumentsTargetId = (
     targetAgentId: string,
     enabledToolIds: string[] = [],

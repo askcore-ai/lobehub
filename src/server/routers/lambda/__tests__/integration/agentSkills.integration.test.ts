@@ -648,7 +648,7 @@ describe('Skill Router Integration Tests', () => {
   });
 
   describe('listResources', () => {
-    it('should return empty array for skill without resources', async () => {
+    it('should block source tree listing for installed skills', async () => {
       const caller = agentSkillsRouter.createCaller(createTestContext(userId));
 
       const created = await caller.create({
@@ -657,10 +657,9 @@ describe('Skill Router Integration Tests', () => {
         description: 'Skill without resources',
       });
 
-      const result = await caller.listResources({ id: created!.id });
-
-      // Mock returns empty array
-      expect(result).toEqual([]);
+      await expect(caller.listResources({ id: created!.id })).rejects.toThrow(
+        'Skill source access is restricted',
+      );
     });
 
     it('should throw for non-existent skill', async () => {

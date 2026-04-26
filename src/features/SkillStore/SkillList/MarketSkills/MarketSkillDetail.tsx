@@ -5,15 +5,13 @@ import { Github } from '@lobehub/icons';
 import { ActionIcon, Avatar, Flexbox, Icon } from '@lobehub/ui';
 import { Skeleton } from 'antd';
 import { createStaticStyles, cssVar } from 'antd-style';
-import { unzip } from 'fflate';
 import { DotIcon, ExternalLinkIcon } from 'lucide-react';
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import PublishedTime from '@/components/PublishedTime';
 import ContentViewer from '@/features/AgentSkillDetail/ContentViewer';
 import FileTree from '@/features/FileTree';
-import { marketApiService } from '@/services/marketApi';
 import { useDiscoverStore } from '@/store/discover';
 import { useToolStore } from '@/store/tool';
 import { agentSkillsSelectors } from '@/store/tool/selectors';
@@ -92,47 +90,6 @@ const buildMarketResourceTree = (
     }));
 };
 
-/**
- * Fetch zip from downloadUrl and extract text file contents
- */
-const fetchZipContents = async (
-  url: string,
-): Promise<{ contentMap: Record<string, string>; tree: SkillResourceTreeNode[] }> => {
-  const res = await fetch(url);
-  const buf = await res.arrayBuffer();
-
-  return new Promise((resolve, reject) => {
-    unzip(new Uint8Array(buf), (err, files) => {
-      if (err) return reject(err);
-
-      const contentMap: Record<string, string> = {};
-      const tree: SkillResourceTreeNode[] = [];
-      const decoder = new TextDecoder();
-
-      for (const [rawPath, data] of Object.entries(files)) {
-        if (rawPath.endsWith('/') || rawPath.includes('__MACOSX')) continue;
-
-        // Strip the top-level directory prefix (e.g. "skill-name/")
-        const slashIdx = rawPath.indexOf('/');
-        const path = slashIdx >= 0 ? rawPath.slice(slashIdx + 1) : rawPath;
-        if (!path || path === 'SKILL.md') continue;
-
-        const content = decoder.decode(data);
-        contentMap[path] = content;
-        tree.push({
-          content,
-          name: path.split('/').pop() || path,
-          path,
-          type: 'file',
-        });
-      }
-
-      tree.sort((a, b) => a.path.localeCompare(b.path));
-      resolve({ contentMap, tree });
-    });
-  });
-};
-
 const MarketSkillDetail = memo<MarketSkillDetailProps>(({ identifier }) => {
   const { t } = useTranslation('setting');
   const [selectedFile, setSelectedFile] = useState('SKILL.md');
@@ -147,25 +104,6 @@ const MarketSkillDetail = memo<MarketSkillDetailProps>(({ identifier }) => {
     installedSkill?.id,
   );
 
-  // Zip-based content for uninstalled skills
-  const [zipContentMap, setZipContentMap] = useState<Record<string, string>>({});
-  const [zipTree, setZipTree] = useState<SkillResourceTreeNode[]>([]);
-
-  const downloadUrl = marketApiService.getSkillDownloadUrl(encodeURIComponent(identifier));
-
-  useEffect(() => {
-    if (installedSkill) return;
-
-    fetchZipContents(downloadUrl)
-      .then(({ contentMap, tree }) => {
-        setZipContentMap(contentMap);
-        setZipTree(tree);
-      })
-      .catch(() => {
-        // fall back to metadata-only view
-      });
-  }, [downloadUrl, installedSkill]);
-
   const installedResourceTree = useMemo(
     () => installedData?.resourceTree ?? [],
     [installedData?.resourceTree],
@@ -175,13 +113,12 @@ const MarketSkillDetail = memo<MarketSkillDetailProps>(({ identifier }) => {
     [installedResourceTree],
   );
 
-  // Pick the best content source: installed > zip > market metadata
-  const contentMap = installedResourceTree.length > 0 ? installedContentMap : zipContentMap;
+  // Uninstalled private skills intentionally show metadata only; source content is runtime-only.
+  const contentMap = installedResourceTree.length > 0 ? installedContentMap : {};
   const resourceTree = useMemo(() => {
     if (installedResourceTree.length > 0) return installedResourceTree;
-    if (zipTree.length > 0) return zipTree;
     return buildMarketResourceTree(data?.resources);
-  }, [installedResourceTree, zipTree, data?.resources]);
+  }, [installedResourceTree, data?.resources]);
 
   if (isLoading || !data) {
     return <Skeleton active paragraph={{ rows: 8 }} style={{ padding: 16 }} />;

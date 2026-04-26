@@ -4,10 +4,8 @@ import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 
 import { AgentSkillModel } from '@/database/models/agentSkill';
-import { FileModel } from '@/database/models/file';
 import { authedProcedure, router } from '@/libs/trpc/lambda';
 import { serverDatabase } from '@/libs/trpc/lambda/middleware';
-import { FileService } from '@/server/services/file';
 import { MarketService } from '@/server/services/market';
 import {
   SkillImporter,
@@ -59,8 +57,6 @@ const skillProcedure = authedProcedure.use(serverDatabase).use(async (opts) => {
 
   return opts.next({
     ctx: {
-      fileModel: new FileModel(ctx.serverDB, ctx.userId),
-      fileService: new FileService(ctx.serverDB, ctx.userId),
       marketService: new MarketService({ userInfo: { userId: ctx.userId } }),
       skillImporter: new SkillImporter(ctx.serverDB, ctx.userId),
       skillModel,
@@ -127,17 +123,8 @@ export const agentSkillsRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Skill not found' });
       }
 
-      if (!skill.zipFileHash) {
-        return { name: skill.name, url: null };
-      }
-
-      const fileInfo = await ctx.fileModel.checkHash(skill.zipFileHash);
-      if (!fileInfo.isExist || !fileInfo.url) {
-        return { name: skill.name, url: null };
-      }
-
-      const fullUrl = await ctx.fileService.getFullFileUrl(fileInfo.url);
-      return { name: skill.name, url: fullUrl || null };
+      // AskCore private skills must remain install/runtime-compatible without exposing source ZIPs.
+      return { name: skill.name, url: null };
     }),
 
   getByIdentifier: skillProcedure
@@ -225,11 +212,10 @@ export const agentSkillsRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Skill not found' });
       }
 
-      if (!skill.resources) {
-        return [];
-      }
-
-      return ctx.skillResourceService.listResources(skill.resources, input.includeContent);
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'Skill source access is restricted',
+      });
     }),
 
   readResource: skillResourceProcedure

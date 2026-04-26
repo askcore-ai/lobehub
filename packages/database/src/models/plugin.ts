@@ -52,7 +52,7 @@ export class PluginModel {
         identifier: userInstalledPlugins.identifier,
         manifest: userInstalledPlugins.manifest,
         settings: userInstalledPlugins.settings,
-        source: userInstalledPlugins.type,
+        source: userInstalledPlugins.source,
         type: userInstalledPlugins.type,
         updatedAt: userInstalledPlugins.updatedAt,
       })
@@ -63,6 +63,7 @@ export class PluginModel {
     return data.map<LobeTool>((item) => ({
       ...item,
       runtimeType: item.manifest?.type || 'default',
+      source: (item.source || undefined) as LobeTool['source'],
     }));
   };
 

@@ -87,25 +87,24 @@ export class Ld {
     return {
       '@id': this.getId(OFFICIAL_URL, '#organization'),
       '@type': 'Organization',
-      'alternateName': 'LobeHub',
+      'alternateName': 'AskCore AI',
       'contactPoint': {
         '@type': 'ContactPoint',
         'contactType': 'customer support',
         'email': BRANDING_EMAIL.support,
       },
       'description':
-        'Agent teammates that grow with you\n' +
-        'LobeHub is a work-and-lifestyle space to find, build, and collaborate with agent teams that grow with you.',
+        'AskCore is an AI teaching workspace for structured school operations, assignments, grading, and tutoring workflows.',
       'email': BRANDING_EMAIL.business,
       'founders': [this.getAuthors(['arvinxx']), this.getAuthors(['canisminor'])],
-      'image': urlJoin(OFFICIAL_SITE, '/icon-512x512.png'),
+      'image': urlJoin(OFFICIAL_SITE, '/icons/icon-512x512.png'),
       'logo': {
         '@type': 'ImageObject',
         'height': 512,
-        'url': urlJoin(OFFICIAL_SITE, '/icon-512x512.png'),
+        'url': urlJoin(OFFICIAL_SITE, '/icons/icon-512x512.png'),
         'width': 512,
       },
-      'name': 'LobeHub',
+      'name': BRANDING_NAME,
       'sameAs': [SOCIAL_URL.x, SOCIAL_URL.github, SOCIAL_URL.medium, SOCIAL_URL.youtube],
       'url': OFFICIAL_SITE,
     };

@@ -2,6 +2,8 @@ import type { Meta } from './builtin';
 import type { ToolManifest, ToolManifestType } from './manifest';
 import type { LobeToolType } from './tool';
 
+type InstallPluginSource = LobeToolType | 'builtin' | 'market' | 'user';
+
 export type PluginManifestMap = Record<string, ToolManifest>;
 
 export interface CustomPluginMetadata {
@@ -64,7 +66,8 @@ export interface InstallPluginMeta extends Partial<Meta> {
   homepage?: string;
   identifier: string;
   runtimeType?: ToolManifestType;
-  type: LobeToolType;
+  source?: InstallPluginSource;
+  type: InstallPluginSource;
 }
 
 export interface PluginInstallError {

@@ -31,7 +31,7 @@ const INTERNAL_APP_URL = process.env.INTERNAL_APP_URL || APP_URL;
 
 const ASSISTANT_INDEX_URL = 'https://registry.npmmirror.com/@lobehub/agents-index/v1/files/public';
 
-const PLUGINS_INDEX_URL = 'https://registry.npmmirror.com/@lobehub/plugins-index/v1/files/public';
+const PLUGINS_INDEX_URL = 'https://askcore.cn/api/lobe/plugins/v1/market/index.json';
 
 export const getAppConfig = () => {
   return createEnv({

@@ -3,6 +3,7 @@ import debug from 'debug';
 
 import { type MCPToolCallResult } from '@/libs/mcp';
 import { truncateToolResult } from '@/server/utils/truncateToolResult';
+import { chatService } from '@/services/chat';
 import { mcpService } from '@/services/mcp';
 import { messageService } from '@/services/message';
 import { AI_RUNTIME_OPERATION_TYPES } from '@/store/chat/slices/operation';
@@ -308,6 +309,75 @@ export class PluginTypesActionImpl {
     );
 
     return truncatedContent;
+  };
+
+  invokeStandaloneTypePlugin = async (id: string, payload: ChatToolPayload): Promise<any> => {
+    const message = dbMessageSelectors.getDbMessageById(id)(this.#get());
+    const operationId = this.#get().messageOperationMap[id];
+    const operation = operationId ? this.#get().operations[operationId] : undefined;
+    const abortController = operation?.abortController;
+    const context = operationId ? { operationId } : undefined;
+
+    log(
+      '[invokeStandaloneTypePlugin] messageId=%s, plugin=%s/%s, operationId=%s, aborted=%s',
+      id,
+      payload.identifier,
+      payload.apiName,
+      operationId,
+      abortController?.signal.aborted,
+    );
+
+    try {
+      const response = await chatService.runPluginApi(payload, {
+        signal: abortController?.signal,
+        topicId: message?.topicId,
+      });
+      const rawContent = response.text || '';
+      const content = truncateToolResult(rawContent);
+      const parsed = safeParseJSON(rawContent);
+      const result =
+        parsed && typeof parsed === 'object' ? parsed : { content, error: null, success: true };
+
+      await this.#get().optimisticUpdateToolMessage(
+        id,
+        {
+          content,
+          pluginError: result?.error,
+          pluginState: result,
+        },
+        context,
+      );
+
+      return result;
+    } catch (error) {
+      console.error('[invokeStandaloneTypePlugin] Error:', error);
+      const err = error as Error;
+
+      if (err.message.includes('aborted') || err.message.includes('The user aborted a request.')) {
+        log(
+          '[invokeStandaloneTypePlugin] Request aborted: messageId=%s, plugin=%s/%s',
+          id,
+          payload.identifier,
+          payload.apiName,
+        );
+        return;
+      }
+
+      const result = await messageService.updateMessageError(id, error as any, {
+        agentId: message?.agentId,
+        topicId: message?.topicId,
+      });
+      if (result?.success && result.messages) {
+        this.#get().replaceMessages(result.messages, {
+          context: {
+            agentId: message?.agentId,
+            topicId: message?.topicId,
+          },
+        });
+      }
+
+      return { content: err.message, error: err.message, success: false };
+    }
   };
 
   internal_invokeRemoteToolPlugin = async (

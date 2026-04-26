@@ -1446,6 +1446,73 @@ describe('ChatPluginAction', () => {
       });
     });
 
+    describe('invokeStandaloneTypePlugin', () => {
+      it('should call standalone gateway and persist parsed tool result', async () => {
+        const mockResult = {
+          kind: 'aitutor.suite.run.result.v1',
+          mode: 'data',
+          route: '/schools',
+          success: true,
+        };
+
+        const standalonePayload: ChatToolPayload = {
+          ...payload,
+          apiName: 'suite_run',
+          arguments: JSON.stringify({ action: 'ui.read.dashboard', params: {} }),
+          identifier: 'aitutor-suite',
+          manifest: {
+            api: [{ name: 'suite_run', url: '/api/lobe/plugins/v1/gateway/suite.run' }],
+            gateway: '/api/lobe/plugins/v1/gateway/suite.run',
+            type: 'standalone',
+          } as any,
+          type: 'standalone',
+        };
+
+        const chatService = await import('@/services/chat');
+        vi.spyOn(chatService.chatService, 'runPluginApi').mockResolvedValue({
+          text: JSON.stringify(mockResult),
+        });
+
+        const optimisticUpdateToolMessageMock = vi.fn().mockResolvedValue(undefined);
+
+        act(() => {
+          useChatStore.setState({
+            activeAgentId: 'session-id',
+            messagesMap: { [messageMapKey({ agentId: 'session-id' })]: [] },
+            messageOperationMap: {},
+            operations: {},
+            optimisticUpdateToolMessage: optimisticUpdateToolMessageMock,
+            replaceMessages: vi.fn(),
+          });
+        });
+
+        const { result } = renderHook(() => useChatStore());
+
+        let returnValue: any;
+        await act(async () => {
+          returnValue = await result.current.invokeStandaloneTypePlugin(
+            messageId,
+            standalonePayload,
+          );
+        });
+
+        expect(chatService.chatService.runPluginApi).toHaveBeenCalledWith(
+          standalonePayload,
+          expect.objectContaining({ signal: undefined, topicId: undefined }),
+        );
+        expect(optimisticUpdateToolMessageMock).toHaveBeenCalledWith(
+          messageId,
+          {
+            content: JSON.stringify(mockResult),
+            pluginError: undefined,
+            pluginState: mockResult,
+          },
+          undefined,
+        );
+        expect(returnValue).toEqual(mockResult);
+      });
+    });
+
     describe('invokeKlavisTypePlugin', () => {
       it('should use optimisticUpdateToolMessage for successful result', async () => {
         const mockResult = {

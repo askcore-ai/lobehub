@@ -8,6 +8,7 @@ export interface InstallPluginParams {
   identifier: string;
   manifest: ToolManifest;
   settings?: Record<string, any>;
+  source?: 'builtin' | 'market' | 'user';
   type: 'plugin' | 'customPlugin';
 }
 

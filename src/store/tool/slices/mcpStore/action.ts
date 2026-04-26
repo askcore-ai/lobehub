@@ -563,6 +563,7 @@ export class PluginMCPStoreActionImpl {
         identifier: plugin.identifier,
         manifest,
         settings: normalizedConfig,
+        source: plugin.isOfficial ? 'builtin' : undefined,
         type: 'plugin',
       });
 

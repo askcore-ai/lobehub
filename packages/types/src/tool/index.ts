@@ -2,6 +2,8 @@ import type { ToolManifest, ToolManifestType } from './manifest';
 import type { CustomPluginParams } from './plugin';
 import type { LobeToolType } from './tool';
 
+export type LobeToolSource = LobeToolType | 'builtin' | 'market' | 'user';
+
 export interface LobeTool {
   customParams?: CustomPluginParams | null;
   identifier: string;
@@ -12,7 +14,7 @@ export interface LobeTool {
   runtimeType?: ToolManifestType;
   settings?: any;
   // TODO: remove type and then make it required
-  source?: LobeToolType;
+  source?: LobeToolSource;
   /**
    * need to be replaced with source
    * @deprecated

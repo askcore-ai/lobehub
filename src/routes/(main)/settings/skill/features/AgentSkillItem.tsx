@@ -13,16 +13,14 @@ import {
 } from '@lobehub/ui';
 import { SkillsIcon } from '@lobehub/ui/icons';
 import { App, Space } from 'antd';
-import { DownloadIcon, MoreHorizontalIcon, Plus, Trash2 } from 'lucide-react';
+import { MoreHorizontalIcon, Plus, Trash2 } from 'lucide-react';
 import { lazy, memo, Suspense, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import SkillSourceTag from '@/components/SkillSourceTag';
 import { createBuiltinAgentSkillDetailModal } from '@/features/SkillStore/SkillDetail';
-import { agentSkillService } from '@/services/skill';
 import { useToolStore } from '@/store/tool';
 import { builtinToolSelectors } from '@/store/tool/selectors';
-import { downloadFile } from '@/utils/client/downloadFile';
 
 import { styles } from './style';
 
@@ -38,7 +36,6 @@ interface AgentSkillItemProps {
 
 const AgentSkillItem = memo<AgentSkillItemProps>(({ skill }) => {
   const { t } = useTranslation('setting');
-  const { t: tc } = useTranslation('common');
   const { t: tp } = useTranslation('plugin');
   const { modal } = App.useApp();
   const [loading, setLoading] = useState(false);
@@ -61,19 +58,6 @@ const AgentSkillItem = memo<AgentSkillItemProps>(({ skill }) => {
   const avatar = isBuiltin ? skill.avatar : undefined;
 
   // ===== Handlers =====
-
-  const handleDownload = async () => {
-    if (isBuiltin || !skill.zipFileHash) return;
-    setLoading(true);
-    try {
-      const result = await agentSkillService.getZipUrl(skill.id);
-      if (result.url) {
-        await downloadFile(result.url, `${result.name || skill.name}.zip`);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleUninstall = () => {
     modal.confirm({
@@ -139,17 +123,6 @@ const AgentSkillItem = memo<AgentSkillItemProps>(({ skill }) => {
         <DropdownMenu
           placement="bottomRight"
           items={[
-            ...(skill.zipFileHash
-              ? [
-                  {
-                    icon: <DownloadIcon size={16} />,
-                    key: 'download',
-                    label: tc('download'),
-                    onClick: handleDownload,
-                  },
-                  { type: 'divider' as const },
-                ]
-              : []),
             {
               danger: true,
               icon: <Trash2 size={16} />,

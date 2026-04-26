@@ -8,7 +8,16 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { verifyPassword as defaultVerifyPassword } from 'better-auth/crypto';
 import { type BetterAuthOptions } from 'better-auth/minimal';
 import { betterAuth } from 'better-auth/minimal';
-import { admin, emailOTP, genericOAuth, magicLink } from 'better-auth/plugins';
+import { createAccessControl } from 'better-auth/plugins/access';
+import {
+  adminAc as platformAdminAc,
+  defaultStatements as platformAdminDefaultStatements,
+} from 'better-auth/plugins/admin/access';
+import {
+  defaultAc as defaultOrganizationAc,
+  defaultStatements as organizationDefaultStatements,
+} from 'better-auth/plugins/organization/access';
+import { admin, emailOTP, genericOAuth, magicLink, organization } from 'better-auth/plugins';
 import { type BetterAuthPlugin } from 'better-auth/types';
 import { emailHarmony } from 'better-auth-harmony';
 import { validateEmail } from 'better-auth-harmony/email';
@@ -83,6 +92,55 @@ const enableMagicLink = authEnv.AUTH_ENABLE_MAGIC_LINK;
 const enabledSSOProviders = parseSSOProviders(authEnv.AUTH_SSO_PROVIDERS);
 
 const { socialProviders, genericOAuthProviders } = initBetterAuthSSOProviders();
+
+const askCoreOrganizationStatements = {
+  ...organizationDefaultStatements,
+  organization: ['update'],
+  member: ['invite', 'update-role', 'remove'],
+  project: ['read', 'write'],
+} as const;
+
+const askCoreOrganizationAc = createAccessControl(askCoreOrganizationStatements);
+
+const askCoreOrganizationMemberRole = askCoreOrganizationAc.newRole({
+  project: ['read'],
+});
+
+const askCoreOrganizationAdminRole = askCoreOrganizationAc.newRole({
+  ...defaultOrganizationAc.statements,
+  organization: ['update'],
+  member: ['invite', 'update-role', 'remove'],
+  project: ['read', 'write'],
+});
+
+const askCoreOrganizationOwnerRole = askCoreOrganizationAc.newRole({
+  ...defaultOrganizationAc.statements,
+  organization: ['update'],
+  member: ['invite', 'update-role', 'remove'],
+  project: ['read', 'write'],
+});
+
+const askCorePlatformStatements = {
+  ...platformAdminDefaultStatements,
+  organization: ['update'],
+  member: ['invite', 'update-role', 'remove'],
+  project: ['read', 'write'],
+} as const;
+
+const askCorePlatformAc = createAccessControl(askCorePlatformStatements);
+
+const askCorePlatformUserRole = askCorePlatformAc.newRole({});
+
+const askCorePlatformAdminRole = askCorePlatformAc.newRole({
+  ...platformAdminAc.statements,
+});
+
+const askCoreSuperAdminRole = askCorePlatformAc.newRole({
+  ...platformAdminAc.statements,
+  organization: ['update'],
+  member: ['invite', 'update-role', 'remove'],
+  project: ['read', 'write'],
+});
 
 async function customEmailValidator(email: string): Promise<boolean> {
   return ENABLE_BUSINESS_FEATURES ? businessEmailValidator(email) : validateEmail(email);
@@ -225,6 +283,11 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
           required: false,
           type: 'string',
         },
+        role: {
+          input: false,
+          required: false,
+          type: 'string',
+        },
       },
       fields: {
         image: 'avatar',
@@ -264,7 +327,23 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
       emailWhitelist(),
       expo(),
       emailHarmony({ allowNormalizedSignin: false, validator: customEmailValidator }),
-      admin(),
+      admin({
+        ac: askCorePlatformAc,
+        adminRoles: ['admin', 'super_admin'],
+        roles: {
+          admin: askCorePlatformAdminRole,
+          super_admin: askCoreSuperAdminRole,
+          user: askCorePlatformUserRole,
+        },
+      }),
+      organization({
+        ac: askCoreOrganizationAc,
+        roles: {
+          admin: askCoreOrganizationAdminRole,
+          member: askCoreOrganizationMemberRole,
+          owner: askCoreOrganizationOwnerRole,
+        },
+      }),
       // Email OTP plugin for mobile verification
       emailOTP({
         expiresIn: OTP_EXPIRES_IN,
@@ -290,8 +369,8 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
         },
       }),
       passkey({
-        rpName: 'LobeHub',
-        // Extract rpID from auth URL (e.g., 'lobehub.com' from 'https://lobehub.com')
+        rpName: 'AskCore',
+        // Extract rpID from auth URL (e.g., 'askcore.cn' from 'https://askcore.cn')
         // Returns undefined if AUTH_URL is not set (e.g., in e2e tests)
         rpID: getPasskeyRpID(),
         // Support multiple origins: web + Android APK key hashes

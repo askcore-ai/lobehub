@@ -50,6 +50,31 @@ if (typeof globalThis.window === 'undefined') {
   });
 }
 
+const createMemoryStorage = () => {
+  const store = new Map<string, string>();
+
+  return {
+    clear: vi.fn(() => store.clear()),
+    getItem: vi.fn((key: string) => store.get(key) ?? null),
+    key: vi.fn((index: number) => Array.from(store.keys())[index] ?? null),
+    removeItem: vi.fn((key: string) => store.delete(key)),
+    setItem: vi.fn((key: string, value: string) => store.set(key, String(value))),
+    get length() {
+      return store.size;
+    },
+  };
+};
+
+for (const storageKey of ['localStorage', 'sessionStorage'] as const) {
+  if (typeof globalThis[storageKey]?.getItem !== 'function') {
+    Object.defineProperty(globalThis, storageKey, {
+      configurable: true,
+      value: createMemoryStorage(),
+      writable: true,
+    });
+  }
+}
+
 // remove antd hash on test
 theme.defaultConfig.hashed = false;
 

@@ -14,6 +14,8 @@ const pluginProcedure = authedProcedure.use(serverDatabase).use(async (opts) => 
   });
 });
 
+const pluginSourceSchema = z.enum(['builtin', 'market', 'user']);
+
 export const pluginRouter = router({
   createOrInstallPlugin: pluginProcedure
     .input(
@@ -22,6 +24,7 @@ export const pluginRouter = router({
         identifier: z.string(),
         manifest: z.any(),
         settings: z.any(),
+        source: pluginSourceSchema.optional(),
         type: z.enum(['plugin', 'customPlugin']),
       }),
     )
@@ -35,6 +38,7 @@ export const pluginRouter = router({
           identifier: input.identifier,
           manifest: input.manifest,
           settings: input.settings,
+          source: input.source,
           type: input.type,
         });
 
@@ -51,6 +55,7 @@ export const pluginRouter = router({
         customParams: z.any(),
         identifier: z.string(),
         manifest: z.any(),
+        source: pluginSourceSchema.optional(),
         type: z.enum(['plugin', 'customPlugin']),
       }),
     )
@@ -59,6 +64,7 @@ export const pluginRouter = router({
         customParams: input.customParams,
         identifier: input.identifier,
         manifest: input.manifest,
+        source: input.source,
         type: input.type,
       });
 

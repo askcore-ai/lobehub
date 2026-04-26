@@ -4,7 +4,7 @@ import { ActionIcon, Avatar, Block, DropdownMenu, Flexbox, Icon, Modal, Tag } fr
 import { SkillsIcon } from '@lobehub/ui/icons';
 import { App } from 'antd';
 import { createStaticStyles, cssVar } from 'antd-style';
-import { DownloadIcon, Loader2, MoreVerticalIcon, Plus, Trash2 } from 'lucide-react';
+import { Loader2, MoreVerticalIcon, Plus, Trash2 } from 'lucide-react';
 import { lazy, memo, Suspense, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -12,7 +12,6 @@ import { agentSkillService } from '@/services/skill';
 import { useToolStore } from '@/store/tool';
 import { agentSkillsSelectors } from '@/store/tool/selectors';
 import { type DiscoverSkillItem } from '@/types/discover';
-import { downloadFile } from '@/utils/client/downloadFile';
 
 import { itemStyles } from '../style';
 
@@ -38,10 +37,8 @@ const styles = createStaticStyles(({ css }) => ({
 
 const MarketSkillItem = memo<DiscoverSkillItem>(({ name, icon, description, identifier }) => {
   const { t } = useTranslation('plugin');
-  const { t: tc } = useTranslation('common');
   const [detailOpen, setDetailOpen] = useState(false);
   const [installing, setInstalling] = useState(false);
-  const [loading, setLoading] = useState(false);
   const { modal } = App.useApp();
 
   const installed = useToolStore(agentSkillsSelectors.isAgentSkill(identifier));
@@ -77,19 +74,6 @@ const MarketSkillItem = memo<DiscoverSkillItem>(({ name, icon, description, iden
     });
   }, [installedSkill, deleteAgentSkill, modal, t]);
 
-  const handleDownload = useCallback(async () => {
-    if (!installedSkill?.zipFileHash) return;
-    setLoading(true);
-    try {
-      const result = await agentSkillService.getZipUrl(installedSkill.id);
-      if (result.url) {
-        await downloadFile(result.url, `${result.name || name}.zip`);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [installedSkill, name]);
-
   const renderAction = () => {
     if (installed) {
       return (
@@ -97,17 +81,6 @@ const MarketSkillItem = memo<DiscoverSkillItem>(({ name, icon, description, iden
           nativeButton={false}
           placement="bottomRight"
           items={[
-            ...(installedSkill?.zipFileHash
-              ? [
-                  {
-                    icon: <Icon icon={DownloadIcon} />,
-                    key: 'download',
-                    label: tc('download'),
-                    onClick: handleDownload,
-                  },
-                  { type: 'divider' as const },
-                ]
-              : []),
             {
               danger: true,
               icon: <Icon icon={Trash2} />,
@@ -117,7 +90,7 @@ const MarketSkillItem = memo<DiscoverSkillItem>(({ name, icon, description, iden
             },
           ]}
         >
-          <ActionIcon icon={MoreVerticalIcon} loading={loading} />
+          <ActionIcon icon={MoreVerticalIcon} />
         </DropdownMenu>
       );
     }

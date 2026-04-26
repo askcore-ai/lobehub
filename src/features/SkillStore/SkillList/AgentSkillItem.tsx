@@ -4,15 +4,13 @@ import { ActionIcon, Block, DropdownMenu, Flexbox, Icon, Modal, Tag } from '@lob
 import { SkillsIcon } from '@lobehub/ui/icons';
 import { App } from 'antd';
 import { createStaticStyles, cssVar } from 'antd-style';
-import { DownloadIcon, MoreVerticalIcon, PackageSearch, Trash2 } from 'lucide-react';
+import { MoreVerticalIcon, PackageSearch, Trash2 } from 'lucide-react';
 import { lazy, memo, Suspense, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import SkillAvatar from '@/components/SkillAvatar';
-import { agentSkillService } from '@/services/skill';
 import { useToolStore } from '@/store/tool';
 import { type SkillListItem } from '@/types/index';
-import { downloadFile } from '@/utils/client/downloadFile';
 
 import { itemStyles } from './style';
 
@@ -43,26 +41,10 @@ interface AgentSkillItemProps {
 
 const AgentSkillItem = memo<AgentSkillItemProps>(({ skill }) => {
   const { t } = useTranslation('plugin');
-  const { t: tc } = useTranslation('common');
   const { modal } = App.useApp();
   const [detailOpen, setDetailOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
   const deleteAgentSkill = useToolStore((s) => s.deleteAgentSkill);
-
-  const handleDownload = async () => {
-    if (!skill.zipFileHash) return;
-
-    setLoading(true);
-    try {
-      const result = await agentSkillService.getZipUrl(skill.id);
-      if (result.url) {
-        await downloadFile(result.url, `${result.name || skill.name}.zip`);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleDelete = () => {
     modal.confirm({
@@ -111,17 +93,6 @@ const AgentSkillItem = memo<AgentSkillItemProps>(({ skill }) => {
               nativeButton={false}
               placement="bottomRight"
               items={[
-                ...(skill.zipFileHash
-                  ? [
-                      {
-                        icon: <Icon icon={DownloadIcon} />,
-                        key: 'download',
-                        label: tc('download'),
-                        onClick: handleDownload,
-                      },
-                      { type: 'divider' as const },
-                    ]
-                  : []),
                 {
                   danger: true,
                   icon: <Icon icon={Trash2} />,
@@ -131,7 +102,7 @@ const AgentSkillItem = memo<AgentSkillItemProps>(({ skill }) => {
                 },
               ]}
             >
-              <ActionIcon icon={MoreVerticalIcon} loading={loading} />
+              <ActionIcon icon={MoreVerticalIcon} />
             </DropdownMenu>
           </Flexbox>
         </Block>
