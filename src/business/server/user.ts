@@ -32,12 +32,12 @@ export function isBusinessFeatureEnabledForUser(user: BusinessFeatureUser = {}) 
 
 export async function getReferralStatus(userId: string): Promise<ReferralStatusString | undefined> {
   void userId;
-  return 'registered';
+  return undefined;
 }
 
 export async function getSubscriptionPlan(userId: string): Promise<Plans> {
   void userId;
-  return Plans.Starter;
+  return Plans.Free;
 }
 
 export async function initNewUserForBusiness(

@@ -14,6 +14,7 @@ export const config = {
     '/labs',
     '/eval',
     '/eval(.*)',
+    '/embed(.*)',
     '/agent',
     '/agent(.*)',
     '/group',
