@@ -41,9 +41,11 @@ describe('AskCore billing embed helpers', () => {
 
   it('keeps plan data backend-driven and resolves enabled providers', () => {
     const payload = normalizePlansPayload({
+      billing_periods: [{ id: 'yearly', label: 'Yearly' }],
       credit_packs: [{ credits: 100, display_name: 'Pack', id: 'pack', price_usd: 1 }],
       plans: [
         {
+          description: 'Local plan',
           display_name: 'Hobby',
           features: [],
           id: 'hobby',
@@ -55,6 +57,7 @@ describe('AskCore billing embed helpers', () => {
 
     expect(payload.plans.map((plan) => plan.id)).toEqual(['hobby']);
     expect(payload.creditPacks).toHaveLength(1);
+    expect(payload.billingPeriods).toEqual([{ id: 'yearly', label: 'Yearly' }]);
     expect(resolveDefaultProvider({ alipay: { enabled: true }, stripe: { enabled: false } })).toBe(
       'alipay',
     );
@@ -64,6 +67,8 @@ describe('AskCore billing embed helpers', () => {
     expect(normalizeBillingPath('/plans', { publicEndpoint: true })).toBe('/api/billing/v1/plans');
     expect(normalizeBillingPath('/account')).toBe('/api/askcore/billing/account');
     expect(normalizeBillingPath('usage')).toBe('/api/askcore/billing/usage');
+    expect(normalizeBillingPath('/credits/auto-topup')).toBe('/api/askcore/billing/credits/auto-topup');
+    expect(normalizeBillingPath('/referrals/backfill')).toBe('/api/askcore/billing/referrals/backfill');
   });
 
   it('validates billing page keys and external payment URLs', () => {
