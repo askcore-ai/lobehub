@@ -1,4 +1,3 @@
-import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
 import { form } from 'motion/react-m';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
@@ -24,13 +23,16 @@ export const useSignUp = () => {
   const enableEmailVerification = useAuthServerConfigStore(
     (s) => s.serverConfig.enableEmailVerification || false,
   );
+  const enableBusinessFeatures = useAuthServerConfigStore(
+    (s) => s.serverConfig.enableBusinessFeatures || false,
+  );
 
   const handleSignUp = async (values: SignUpFormValues) => {
     setLoading(true);
     await trackLoginOrSignupClicked({ spm: 'signup.submit.click' });
 
     try {
-      if (ENABLE_BUSINESS_FEATURES && !(await preSocialSignupCheck(values))) {
+      if (enableBusinessFeatures && !(await preSocialSignupCheck(values))) {
         setLoading(false);
         return;
       }

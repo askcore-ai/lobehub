@@ -1,5 +1,6 @@
-import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
+import { ENABLE_LOBEHUB_CLOUD_PROVIDER } from '@lobechat/business-const';
 
+import { isBusinessFeatureEnabledForUser } from '@/business/server/user';
 import { klavisEnv } from '@/config/klavis';
 import { isDesktop } from '@/const/version';
 import { appEnv, getAppConfig } from '@/envs/app';
@@ -18,6 +19,11 @@ import { parseAgentConfig } from './parseDefaultAgent';
 import { parseFilesConfig } from './parseFilesConfig';
 import { getPublicMemoryExtractionConfig } from './parseMemoryExtractionConfig';
 
+type ServerGlobalConfigUser = {
+  userEmail?: null | string;
+  userId?: null | string;
+};
+
 /**
  * Get Better-Auth SSO providers list
  * Parses AUTH_SSO_PROVIDERS and returns enabled providers
@@ -26,56 +32,61 @@ const getBetterAuthSSOProviders = () => {
   return parseSSOProviders(authEnv.AUTH_SSO_PROVIDERS);
 };
 
-export const getServerGlobalConfig = async () => {
+export const getServerGlobalConfig = async (user?: ServerGlobalConfigUser) => {
   const { DEFAULT_AGENT_CONFIG } = getAppConfig();
+  const enableBusinessFeatures = isBusinessFeatureEnabledForUser(user);
+  const aiProvider = await genServerAiProvidersConfig({
+    ...(ENABLE_LOBEHUB_CLOUD_PROVIDER
+      ? {
+          lobehub: {
+            enabled: true,
+          },
+        }
+      : {}),
+    azure: {
+      enabledKey: 'ENABLED_AZURE_OPENAI',
+      withDeploymentName: true,
+    },
+    bedrock: {
+      enabledKey: 'ENABLED_AWS_BEDROCK',
+      modelListKey: 'AWS_BEDROCK_MODEL_LIST',
+    },
+    giteeai: {
+      enabledKey: 'ENABLED_GITEE_AI',
+      modelListKey: 'GITEE_AI_MODEL_LIST',
+    },
+    lmstudio: {
+      fetchOnClient: isDesktop ? false : undefined,
+    },
+    ollama: {
+      enabled: isDesktop ? true : undefined,
+      fetchOnClient: isDesktop ? false : !process.env.OLLAMA_PROXY_URL,
+    },
+    ollamacloud: {
+      enabledKey: 'ENABLED_OLLAMA_CLOUD',
+    },
+    qwen: {
+      withDeploymentName: true,
+    },
+    tencentcloud: {
+      enabledKey: 'ENABLED_TENCENT_CLOUD',
+      modelListKey: 'TENCENT_CLOUD_MODEL_LIST',
+    },
+    volcengine: {
+      withDeploymentName: true,
+    },
+  });
+  if (!ENABLE_LOBEHUB_CLOUD_PROVIDER) {
+    delete (aiProvider as Record<string, unknown>).lobehub;
+  }
 
   const config: GlobalServerConfig = {
-    aiProvider: await genServerAiProvidersConfig({
-      ...(ENABLE_BUSINESS_FEATURES
-        ? {
-            lobehub: {
-              enabled: true,
-            },
-          }
-        : {}),
-      azure: {
-        enabledKey: 'ENABLED_AZURE_OPENAI',
-        withDeploymentName: true,
-      },
-      bedrock: {
-        enabledKey: 'ENABLED_AWS_BEDROCK',
-        modelListKey: 'AWS_BEDROCK_MODEL_LIST',
-      },
-      giteeai: {
-        enabledKey: 'ENABLED_GITEE_AI',
-        modelListKey: 'GITEE_AI_MODEL_LIST',
-      },
-      lmstudio: {
-        fetchOnClient: isDesktop ? false : undefined,
-      },
-      ollama: {
-        enabled: isDesktop ? true : undefined,
-        fetchOnClient: isDesktop ? false : !process.env.OLLAMA_PROXY_URL,
-      },
-      ollamacloud: {
-        enabledKey: 'ENABLED_OLLAMA_CLOUD',
-      },
-      qwen: {
-        withDeploymentName: true,
-      },
-      tencentcloud: {
-        enabledKey: 'ENABLED_TENCENT_CLOUD',
-        modelListKey: 'TENCENT_CLOUD_MODEL_LIST',
-      },
-      volcengine: {
-        withDeploymentName: true,
-      },
-    }),
+    aiProvider,
     defaultAgent: {
       config: parseAgentConfig(DEFAULT_AGENT_CONFIG),
     },
     disableEmailPassword: authEnv.AUTH_DISABLE_EMAIL_PASSWORD,
-    enableBusinessFeatures: ENABLE_BUSINESS_FEATURES,
+    enableBusinessFeatures,
     enableEmailVerification: authEnv.AUTH_EMAIL_VERIFICATION,
     enableKlavis: !!klavisEnv.KLAVIS_API_KEY,
     enableLobehubSkill: !!(appEnv.MARKET_TRUSTED_CLIENT_SECRET && appEnv.MARKET_TRUSTED_CLIENT_ID),

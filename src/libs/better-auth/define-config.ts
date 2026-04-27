@@ -1,6 +1,5 @@
 import { expo } from '@better-auth/expo';
 import { passkey } from '@better-auth/passkey';
-import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
 import { createNanoId, idGenerator, serverDB } from '@lobechat/database';
 import * as schema from '@lobechat/database/schemas';
 import bcrypt from 'bcryptjs';
@@ -8,6 +7,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { verifyPassword as defaultVerifyPassword } from 'better-auth/crypto';
 import { type BetterAuthOptions } from 'better-auth/minimal';
 import { betterAuth } from 'better-auth/minimal';
+import { admin, emailOTP, genericOAuth, magicLink, organization } from 'better-auth/plugins';
 import { createAccessControl, type Role } from 'better-auth/plugins/access';
 import {
   adminAc as platformAdminAc,
@@ -17,13 +17,13 @@ import {
   defaultAc as defaultOrganizationAc,
   defaultStatements as organizationDefaultStatements,
 } from 'better-auth/plugins/organization/access';
-import { admin, emailOTP, genericOAuth, magicLink, organization } from 'better-auth/plugins';
 import { type BetterAuthPlugin } from 'better-auth/types';
 import { emailHarmony } from 'better-auth-harmony';
 import { validateEmail } from 'better-auth-harmony/email';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
 
 import { businessEmailValidator } from '@/business/server/better-auth';
+import { isBusinessFeatureEnabledForUser } from '@/business/server/user';
 import { appEnv } from '@/envs/app';
 import { authEnv } from '@/envs/auth';
 import {
@@ -150,7 +150,9 @@ const askCoreSuperAdminRole = askCorePlatformAc.newRole({
 });
 
 async function customEmailValidator(email: string): Promise<boolean> {
-  return ENABLE_BUSINESS_FEATURES ? businessEmailValidator(email) : validateEmail(email);
+  return isBusinessFeatureEnabledForUser({ userEmail: email })
+    ? businessEmailValidator(email)
+    : validateEmail(email);
 }
 
 interface CustomBetterAuthOptions {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { checkBusinessFeatureAccess } from '@/business/server/trpc-middlewares/lambda';
 import { publicProcedure, router } from '@/libs/trpc/lambda';
 
 export const askCoreTopUpPacks = [
@@ -8,8 +9,10 @@ export const askCoreTopUpPacks = [
   { credits: 15000, id: 'scale-pack', name: 'Scale Pack', priceUsd: 120 },
 ] as const;
 
+const billingProcedure = publicProcedure.use(checkBusinessFeatureAccess);
+
 export const topUpRouter = router({
-  createCheckout: publicProcedure
+  createCheckout: billingProcedure
     .input(
       z.object({
         packId: z.string(),
@@ -22,5 +25,5 @@ export const topUpRouter = router({
       provider: input.provider,
       status: 'created',
     })),
-  listPacks: publicProcedure.query(() => askCoreTopUpPacks),
+  listPacks: billingProcedure.query(() => askCoreTopUpPacks),
 });

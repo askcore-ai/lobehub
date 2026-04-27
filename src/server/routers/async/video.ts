@@ -1,5 +1,4 @@
 import { ASYNC_TASK_TIMEOUT } from '@lobechat/business-config/server';
-import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
 import {
   buildMappedBusinessModelFields,
   resolveBusinessModelMapping,
@@ -9,6 +8,7 @@ import debug from 'debug';
 import { z } from 'zod';
 
 import { getProviderContentPolicyErrorMessage } from '@/business/server/getProviderContentPolicyErrorMessage';
+import { isBusinessFeatureEnabledForUser } from '@/business/server/user';
 import { chargeAfterGenerate } from '@/business/server/video-generation/chargeAfterGenerate';
 import { AsyncTaskModel } from '@/database/models/asyncTask';
 import { GenerationModel } from '@/database/models/generation';
@@ -205,7 +205,7 @@ export const videoRouter = router({
           status: AsyncTaskStatus.Success,
         });
 
-        if (ENABLE_BUSINESS_FEATURES && prechargeResult) {
+        if (isBusinessFeatureEnabledForUser({ userId: ctx.userId }) && prechargeResult) {
           try {
             await chargeAfterGenerate({
               computePriceParams: {
@@ -284,7 +284,7 @@ export const videoRouter = router({
 
       log('Task status updated to Error: %s', asyncTaskId);
 
-      if (prechargeResult && ENABLE_BUSINESS_FEATURES) {
+      if (prechargeResult && isBusinessFeatureEnabledForUser({ userId: ctx.userId })) {
         try {
           await chargeAfterGenerate({
             isError: true,

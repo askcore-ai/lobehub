@@ -1,5 +1,3 @@
-import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
-
 import { appEnv } from '@/envs/app';
 import { authEnv } from '@/envs/auth';
 import { parseSSOProviders } from '@/libs/better-auth/utils/server';
@@ -13,7 +11,7 @@ export const getServerAuthConfig = (): GlobalServerConfig => {
   return {
     aiProvider: {},
     disableEmailPassword: authEnv.AUTH_DISABLE_EMAIL_PASSWORD,
-    enableBusinessFeatures: ENABLE_BUSINESS_FEATURES,
+    enableBusinessFeatures: false,
     enableEmailVerification: authEnv.AUTH_EMAIL_VERIFICATION,
     enableMagicLink: authEnv.AUTH_ENABLE_MAGIC_LINK,
     enableMarketTrustedClient: !!(

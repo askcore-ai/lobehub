@@ -1,4 +1,4 @@
-import { BRANDING_PROVIDER, ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
+import { BRANDING_PROVIDER } from '@lobechat/business-const';
 import {
   DEFAULT_SEARCH_USER_MEMORY_TOP_K,
   DEFAULT_USER_MEMORY_EMBEDDING_DIMENSIONS,
@@ -27,6 +27,7 @@ import { and, asc, eq, gte, lte } from 'drizzle-orm';
 import pMap from 'p-map';
 import { z } from 'zod';
 
+import { isBusinessFeatureEnabledForUser } from '@/business/server/user';
 import {
   type IdentityEntryBasePayload,
   type IdentityEntryPayload,
@@ -170,7 +171,7 @@ const getEmbeddingRuntime = async (serverDB: LobeChatDatabase, userId: string) =
   const agentRuntime = await initModelRuntimeFromDB(
     serverDB,
     userId,
-    ENABLE_BUSINESS_FEATURES ? BRANDING_PROVIDER : provider,
+    isBusinessFeatureEnabledForUser({ userId }) ? BRANDING_PROVIDER : provider,
   );
 
   return { agentRuntime, embeddingModel };

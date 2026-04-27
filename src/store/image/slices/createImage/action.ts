@@ -1,5 +1,3 @@
-import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
-
 import { handleGenerationPromptModerationError } from '@/business/client/handleGenerationPromptModerationError';
 import { handleLobeHubModelDeprecatedError } from '@/business/client/handleLobeHubModelDeprecatedError';
 import { markUserValidAction } from '@/business/client/markUserValidAction';
@@ -81,7 +79,10 @@ export class CreateImageActionImpl {
         );
       }
 
-      if (ENABLE_BUSINESS_FEATURES) {
+      if (
+        typeof window !== 'undefined' &&
+        window.global_serverConfigStore?.getState().serverConfig.enableBusinessFeatures
+      ) {
         markUserValidAction();
       }
 

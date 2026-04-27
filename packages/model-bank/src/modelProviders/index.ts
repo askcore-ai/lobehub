@@ -1,4 +1,4 @@
-import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
+import { ENABLE_LOBEHUB_CLOUD_PROVIDER } from '@lobechat/business-const';
 
 import type { ChatModelCard, ModelProviderCard } from '@/types/llm';
 
@@ -141,7 +141,7 @@ export const LOBE_DEFAULT_MODEL_LIST: ChatModelCard[] = [
 ].flat();
 
 export const DEFAULT_MODEL_PROVIDER_LIST = [
-  ...(ENABLE_BUSINESS_FEATURES ? [LobeHubProvider] : []),
+  ...(ENABLE_LOBEHUB_CLOUD_PROVIDER ? [LobeHubProvider] : []),
   AnthropicProvider,
   GoogleProvider,
   GLMCodingPlanProvider,

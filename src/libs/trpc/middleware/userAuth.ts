@@ -12,6 +12,6 @@ export const userAuth = trpc.middleware(async (opts) => {
 
   return opts.next({
     // ✅ user value is known to be non-null now
-    ctx: { userId: ctx.userId },
+    ctx: { userEmail: ctx.userEmail, userId: ctx.userId },
   });
 });

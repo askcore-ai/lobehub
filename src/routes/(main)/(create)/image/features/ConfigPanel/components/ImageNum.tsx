@@ -1,14 +1,13 @@
 'use client';
 
-import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
 import { ActionIcon, Flexbox, InputNumber, Segmented } from '@lobehub/ui';
 import { Check, Plus, X } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useImageStore } from '@/store/image';
 import { imageGenerationConfigSelectors } from '@/store/image/selectors';
+import { serverConfigSelectors, useServerConfigStore } from '@/store/serverConfig';
 
-const DEFAULT_IMAGE_NUM_MAX = ENABLE_BUSINESS_FEATURES ? 8 : 50;
 const CUSTOM_VALUE = '__custom__';
 
 interface ImageNumSelectorProps {
@@ -19,7 +18,11 @@ interface ImageNumSelectorProps {
 }
 
 const ImageNum = memo<ImageNumSelectorProps>(
-  ({ presetCounts = [1, 2, 4, 8], min = 1, max = DEFAULT_IMAGE_NUM_MAX, disabled = false }) => {
+  ({ presetCounts = [1, 2, 4, 8], min = 1, max, disabled = false }) => {
+    const enableBusinessFeatures = useServerConfigStore(
+      serverConfigSelectors.enableBusinessFeatures,
+    );
+    const resolvedMax = max ?? (enableBusinessFeatures ? 8 : 50);
     const imageNum = useImageStore(imageGenerationConfigSelectors.imageNum);
     const setImageNum = useImageStore((s) => s.setImageNum);
     const [isEditing, setIsEditing] = useState(false);
@@ -75,8 +78,8 @@ const ImageNum = memo<ImageNumSelectorProps>(
         return;
       }
 
-      if (count > max) {
-        count = max;
+      if (count > resolvedMax) {
+        count = resolvedMax;
       } else if (count < min) {
         count = min;
       }
@@ -84,7 +87,7 @@ const ImageNum = memo<ImageNumSelectorProps>(
       setImageNum(count);
       setIsEditing(false);
       setCustomCount(null);
-    }, [min, max, setImageNum]);
+    }, [min, resolvedMax, setImageNum]);
 
     const handleCustomCancel = useCallback(() => {
       setIsEditing(false);

@@ -48,6 +48,9 @@ export const getAppConfig = () => {
       PLUGINS_INDEX_URL: z.string().url(),
       PLUGIN_SETTINGS: z.string().optional(),
 
+      ASKCORE_BILLING_ENABLED_EMAILS: z.string().optional(),
+      ASKCORE_BILLING_ENABLED_USER_IDS: z.string().optional(),
+
       APP_URL: z.string(),
       INTERNAL_APP_URL: z.string().optional(),
       VERCEL_EDGE_CONFIG: z.string().optional(),
@@ -102,6 +105,9 @@ export const getAppConfig = () => {
         : PLUGINS_INDEX_URL,
 
       PLUGIN_SETTINGS: process.env.PLUGIN_SETTINGS,
+
+      ASKCORE_BILLING_ENABLED_EMAILS: process.env.ASKCORE_BILLING_ENABLED_EMAILS,
+      ASKCORE_BILLING_ENABLED_USER_IDS: process.env.ASKCORE_BILLING_ENABLED_USER_IDS,
 
       VERCEL_EDGE_CONFIG: process.env.VERCEL_EDGE_CONFIG,
 

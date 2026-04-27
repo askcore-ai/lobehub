@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { checkBusinessFeatureAccess } from '@/business/server/trpc-middlewares/lambda';
 import { publicProcedure, router } from '@/libs/trpc/lambda';
 
 export const askCoreSubscriptionPlans = [
@@ -33,8 +34,10 @@ export const askCoreSubscriptionPlans = [
   },
 ] as const;
 
+const billingProcedure = publicProcedure.use(checkBusinessFeatureAccess);
+
 export const subscriptionRouter = router({
-  createCheckout: publicProcedure
+  createCheckout: billingProcedure
     .input(
       z.object({
         planId: z.string(),
@@ -51,7 +54,7 @@ export const subscriptionRouter = router({
       seats: input.seats,
       status: 'created',
     })),
-  current: publicProcedure.query(() => ({
+  current: billingProcedure.query(() => ({
     balanceCredits: 4280,
     mode: 'shadow',
     organization: {
@@ -61,5 +64,5 @@ export const subscriptionRouter = router({
     },
     planId: 'starter',
   })),
-  listPlans: publicProcedure.query(() => askCoreSubscriptionPlans),
+  listPlans: billingProcedure.query(() => askCoreSubscriptionPlans),
 });

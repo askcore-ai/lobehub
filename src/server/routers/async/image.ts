@@ -1,5 +1,4 @@
 import { ASYNC_TASK_TIMEOUT } from '@lobechat/business-config/server';
-import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
 import {
   buildMappedBusinessModelFields,
   resolveBusinessModelMapping,
@@ -20,6 +19,7 @@ import { getProviderContentPolicyErrorMessage } from '@/business/server/getProvi
 import { chargeAfterGenerate } from '@/business/server/image-generation/chargeAfterGenerate';
 import { notifyImageCompleted } from '@/business/server/image-generation/notifyImageCompleted';
 import { createImageBusinessMiddleware } from '@/business/server/trpc-middlewares/async';
+import { isBusinessFeatureEnabledForUser } from '@/business/server/user';
 import { AsyncTaskModel } from '@/database/models/asyncTask';
 import { FileModel } from '@/database/models/file';
 import { GenerationModel } from '@/database/models/generation';
@@ -391,7 +391,7 @@ export const imageRouter = router({
             console.error('[image-async] notification failed:', err);
           }
 
-          if (ENABLE_BUSINESS_FEATURES) {
+          if (isBusinessFeatureEnabledForUser({ userId: ctx.userId })) {
             await chargeAfterGenerate({
               metrics: { latency: duration },
               metadata: {

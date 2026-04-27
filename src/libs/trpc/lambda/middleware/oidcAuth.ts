@@ -6,7 +6,7 @@ export const oidcAuth = trpc.middleware(async (opts) => {
   // Check OIDC authentication
   if (ctx.oidcAuth) {
     return next({
-      ctx: { oidcAuth: ctx.oidcAuth, userId: ctx.oidcAuth.sub },
+      ctx: { oidcAuth: ctx.oidcAuth, userEmail: ctx.userEmail, userId: ctx.oidcAuth.sub },
     });
   }
 

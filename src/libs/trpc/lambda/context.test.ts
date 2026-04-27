@@ -159,9 +159,11 @@ describe('createLambdaContext', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockExtractTraceContext.mockReturnValue(undefined);
-    mockGetSession.mockResolvedValue({ user: { id: 'session-user' } });
+    mockGetSession.mockResolvedValue({
+      user: { email: 'session@example.com', id: 'session-user' },
+    });
     mockValidateOIDCJWT.mockResolvedValue({
-      tokenData: { sub: 'oidc-user' },
+      tokenData: { email: 'oidc@example.com', sub: 'oidc-user' },
       userId: 'oidc-user',
     });
     mockUpdateLastUsed.mockResolvedValue(undefined);
@@ -220,6 +222,20 @@ describe('createLambdaContext', () => {
     const context = await createLambdaContext(request);
 
     expect(context.userId).toBe('session-user');
+    expect(context.userEmail).toBe('session@example.com');
     expect(mockGetSession).toHaveBeenCalledOnce();
+  });
+
+  it('should include OIDC email when present', async () => {
+    const request = new NextRequest('https://example.com/trpc/lambda', {
+      headers: {
+        'Oidc-Auth': 'oidc-token',
+      },
+    });
+
+    const context = await createLambdaContext(request);
+
+    expect(context.userId).toBe('oidc-user');
+    expect(context.userEmail).toBe('oidc@example.com');
   });
 });

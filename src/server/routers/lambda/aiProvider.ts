@@ -20,7 +20,10 @@ import { type ProviderConfig } from '@/types/user/settings';
 const aiProviderProcedure = authedProcedure.use(serverDatabase).use(async (opts) => {
   const { ctx } = opts;
 
-  const { aiProvider } = await getServerGlobalConfig();
+  const { aiProvider } = await getServerGlobalConfig({
+    userEmail: ctx.userEmail,
+    userId: ctx.userId,
+  });
 
   const gateKeeper = await KeyVaultsGateKeeper.initWithEnvKey();
   return opts.next({

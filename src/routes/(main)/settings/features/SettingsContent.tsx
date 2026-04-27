@@ -18,6 +18,15 @@ const REDIRECT_MAP: Record<string, string> = {
   [SettingsTabs.Image]: SettingsTabs.ServiceModel,
 };
 
+const BUSINESS_SETTINGS_TABS = [
+  SettingsTabs.Plans,
+  SettingsTabs.Credits,
+  SettingsTabs.Billing,
+  SettingsTabs.Referral,
+  SettingsTabs.Usage,
+  SettingsTabs.Notification,
+];
+
 interface SettingsContentProps {
   activeTab?: string;
   mobile?: boolean;
@@ -31,7 +40,14 @@ const SettingsContent = ({ mobile, activeTab }: SettingsContentProps) => {
     if (activeTab && REDIRECT_MAP[activeTab]) {
       navigate(`/settings/${REDIRECT_MAP[activeTab]}`, { replace: true });
     }
-  }, [activeTab, navigate]);
+    if (
+      activeTab &&
+      !enableBusinessFeatures &&
+      BUSINESS_SETTINGS_TABS.includes(activeTab as SettingsTabs)
+    ) {
+      navigate(mobile ? '/me/settings' : '/settings/profile', { replace: true });
+    }
+  }, [activeTab, enableBusinessFeatures, mobile, navigate]);
 
   const renderComponent = (tab: string) => {
     const Component = componentMap[tab as keyof typeof componentMap] || componentMap.appearance;
@@ -47,9 +63,7 @@ const SettingsContent = ({ mobile, activeTab }: SettingsContentProps) => {
         SettingsTabs.Stats,
         SettingsTabs.Usage,
         SettingsTabs.Security,
-        ...(enableBusinessFeatures
-          ? [SettingsTabs.Plans, SettingsTabs.Credits, SettingsTabs.Billing, SettingsTabs.Referral]
-          : []),
+        ...(enableBusinessFeatures ? BUSINESS_SETTINGS_TABS : []),
       ].includes(tab as any)
     ) {
       componentProps.mobile = mobile;
@@ -59,6 +73,13 @@ const SettingsContent = ({ mobile, activeTab }: SettingsContentProps) => {
   };
 
   if (activeTab && REDIRECT_MAP[activeTab]) return null;
+  if (
+    activeTab &&
+    !enableBusinessFeatures &&
+    BUSINESS_SETTINGS_TABS.includes(activeTab as SettingsTabs)
+  ) {
+    return null;
+  }
 
   if (mobile) {
     return activeTab ? renderComponent(activeTab) : renderComponent(SettingsTabs.Profile);

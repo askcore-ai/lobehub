@@ -20,7 +20,10 @@ const aiModelProcedure = authedProcedure.use(serverDatabase).use(async (opts) =>
   const { ctx } = opts;
 
   const gateKeeper = await KeyVaultsGateKeeper.initWithEnvKey();
-  const { aiProvider } = await getServerGlobalConfig();
+  const { aiProvider } = await getServerGlobalConfig({
+    userEmail: ctx.userEmail,
+    userId: ctx.userId,
+  });
 
   return opts.next({
     ctx: {

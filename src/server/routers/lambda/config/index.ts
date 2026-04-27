@@ -63,7 +63,7 @@ export const configRouter = router({
     log('[GlobalConfig] Starting global config retrieval for user:', ctx.userId || 'anonymous');
 
     const [serverConfig, serverFeatureFlags, billboard] = await Promise.all([
-      getServerGlobalConfig(),
+      getServerGlobalConfig({ userEmail: ctx.userEmail, userId: ctx.userId }),
       getServerFeatureFlagsStateFromRuntimeConfig(ctx.userId || undefined),
       getActiveBillboard(),
     ]);

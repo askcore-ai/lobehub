@@ -5,7 +5,6 @@ import {
   AgentManagementIdentifier,
   createCallAgentManifest,
 } from '@lobechat/builtin-tool-agent-management';
-import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
 import { isDesktop, LOADING_FLAT } from '@lobechat/const';
 import { formatSelectedSkillsContext, formatSelectedToolsContext } from '@lobechat/context-engine';
 import { chainCompressContext } from '@lobechat/prompts';
@@ -836,7 +835,10 @@ export class ConversationLifecycleActionImpl {
       this.#get().updateOperationMetadata(operationId, { inputEditorTempState: null });
     }
 
-    if (ENABLE_BUSINESS_FEATURES) {
+    if (
+      typeof window !== 'undefined' &&
+      window.global_serverConfigStore?.getState().serverConfig.enableBusinessFeatures
+    ) {
       markUserValidAction();
     }
 

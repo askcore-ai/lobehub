@@ -1,6 +1,5 @@
 'use client';
 
-import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
 import { type DraggablePanelProps } from '@lobehub/ui';
 import { DraggablePanel, DraggablePanelContainer } from '@lobehub/ui';
 import { createStaticStyles, cssVar, useResponsive } from 'antd-style';
@@ -12,6 +11,7 @@ import UsageFooter from '@/business/client/features/FileSidePanel/UsageFooter';
 import { FOLDER_WIDTH } from '@/const/layoutTokens';
 import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors';
+import { serverConfigSelectors, useServerConfigStore } from '@/store/serverConfig';
 
 export const styles = createStaticStyles(({ css }) => ({
   panel: css`
@@ -22,6 +22,7 @@ export const styles = createStaticStyles(({ css }) => ({
 
 const FileSidePanel = memo<PropsWithChildren>(({ children }) => {
   const { md = true } = useResponsive();
+  const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
   const [filePanelWidth, showFilePanel, updateSystemStatus] = useGlobalStore((s) => [
     systemStatusSelectors.filePanelWidth(s),
     systemStatusSelectors.showFilePanel(s),
@@ -73,7 +74,7 @@ const FileSidePanel = memo<PropsWithChildren>(({ children }) => {
         }}
       >
         {children}
-        {ENABLE_BUSINESS_FEATURES && <UsageFooter />}
+        {enableBusinessFeatures && <UsageFooter />}
       </DraggablePanelContainer>
     </DraggablePanel>
   );

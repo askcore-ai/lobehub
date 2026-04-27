@@ -3,7 +3,7 @@ import {
   MemoryExecutionRuntime,
   type MemoryRuntimeService,
 } from '@lobechat/builtin-tool-memory/executionRuntime';
-import { BRANDING_PROVIDER, ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
+import { BRANDING_PROVIDER } from '@lobechat/business-const';
 import {
   DEFAULT_USER_MEMORY_EMBEDDING_DIMENSIONS,
   DEFAULT_USER_MEMORY_EMBEDDING_MODEL_ITEM,
@@ -36,6 +36,7 @@ import { LayersEnum, RequestTrigger } from '@lobechat/types';
 import { eq } from 'drizzle-orm';
 import type { z } from 'zod';
 
+import { isBusinessFeatureEnabledForUser } from '@/business/server/user';
 import {
   type IdentityEntryBasePayload,
   type IdentityEntryPayload,
@@ -89,7 +90,7 @@ const getEmbeddingRuntime = async (serverDB: LobeChatDatabase, userId: string) =
   const agentRuntime = await initModelRuntimeFromDB(
     serverDB,
     userId,
-    ENABLE_BUSINESS_FEATURES ? BRANDING_PROVIDER : provider,
+    isBusinessFeatureEnabledForUser({ userId }) ? BRANDING_PROVIDER : provider,
   );
 
   return { agentRuntime, embeddingModel };

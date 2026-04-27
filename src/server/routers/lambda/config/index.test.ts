@@ -16,12 +16,48 @@ let router: ReturnType<typeof createCaller>;
 
 beforeEach(async () => {
   vi.resetAllMocks();
+  delete process.env.ASKCORE_BILLING_ENABLED_EMAILS;
+  delete process.env.ASKCORE_BILLING_ENABLED_USER_IDS;
   ctx = await createContextInner();
   router = createCaller(ctx);
 });
 
 describe('configRouter', () => {
   describe('getGlobalConfig', () => {
+    describe('AskCore billing access', () => {
+      it('disables business features by default and does not expose LobeHub Cloud provider', async () => {
+        const response = await router.getGlobalConfig();
+
+        expect(response.serverConfig.enableBusinessFeatures).toBe(false);
+        expect(
+          (response.serverConfig.aiProvider as Record<string, unknown>)?.lobehub,
+        ).toBeUndefined();
+      });
+
+      it('enables business features only for allowlisted user ids', async () => {
+        process.env.ASKCORE_BILLING_ENABLED_USER_IDS = 'billing-user';
+        ctx = await createContextInner({ userId: 'billing-user' });
+        router = createCaller(ctx);
+
+        const response = await router.getGlobalConfig();
+
+        expect(response.serverConfig.enableBusinessFeatures).toBe(true);
+        expect(
+          (response.serverConfig.aiProvider as Record<string, unknown>)?.lobehub,
+        ).toBeUndefined();
+      });
+
+      it('enables business features only for allowlisted emails', async () => {
+        process.env.ASKCORE_BILLING_ENABLED_EMAILS = 'teacher@example.com';
+        ctx = await createContextInner({ userEmail: 'teacher@example.com', userId: 'teacher-1' });
+        router = createCaller(ctx);
+
+        const response = await router.getGlobalConfig();
+
+        expect(response.serverConfig.enableBusinessFeatures).toBe(true);
+      });
+    });
+
     describe('Model Provider env', () => {
       describe('OPENAI_MODEL_LIST', () => {
         it('custom deletion, addition, and renaming of models', async () => {
@@ -133,6 +169,8 @@ describe('configRouter', () => {
 
       describe('OPENROUTER_MODEL_LIST', () => {
         it('custom deletion, addition, and renaming of models', async () => {
+          const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
+          delete process.env.OPENROUTER_API_KEY;
           process.env.OPENROUTER_MODEL_LIST =
             '-all,+meta-llama/llama-3.1-8b-instruct:free,+google/gemma-2-9b-it:free';
 
@@ -144,6 +182,9 @@ describe('configRouter', () => {
           expect(result).toMatchSnapshot();
 
           process.env.OPENROUTER_MODEL_LIST = '';
+          if (originalOpenRouterApiKey) {
+            process.env.OPENROUTER_API_KEY = originalOpenRouterApiKey;
+          }
         });
       });
     });

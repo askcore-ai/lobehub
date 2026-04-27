@@ -72,6 +72,7 @@ export interface AuthContext {
   resHeaders?: Headers;
   traceContext?: OtContext;
   userAgent?: string;
+  userEmail?: string | null;
   userId?: string | null;
 }
 
@@ -85,6 +86,7 @@ export const createContextInner = async (params?: {
   oidcAuth?: OIDCAuth | null;
   traceContext?: OtContext;
   userAgent?: string;
+  userEmail?: string | null;
   userId?: string | null;
 }): Promise<AuthContext> => {
   log('createContextInner called with params: %O', params);
@@ -97,6 +99,7 @@ export const createContextInner = async (params?: {
     resHeaders: responseHeaders,
     traceContext: params?.traceContext,
     userAgent: params?.userAgent,
+    userEmail: params?.userEmail,
     userId: params?.userId,
   };
 };
@@ -177,6 +180,7 @@ export const createLambdaContext = async (request: NextRequest): Promise<LambdaC
       if (oidcAuthToken) {
         // Use direct JWT validation instead of database lookup
         const tokenInfo = await validateOIDCJWT(oidcAuthToken);
+        const tokenData = tokenInfo.tokenData as typeof tokenInfo.tokenData & { email?: unknown };
 
         oidcAuth = {
           payload: tokenInfo.tokenData,
@@ -192,6 +196,7 @@ export const createLambdaContext = async (request: NextRequest): Promise<LambdaC
           oidcAuth,
           ...commonContext,
           traceContext,
+          userEmail: typeof tokenData.email === 'string' ? tokenData.email : undefined,
           userId,
         });
       }
@@ -221,6 +226,8 @@ export const createLambdaContext = async (request: NextRequest): Promise<LambdaC
     return createContextInner({
       ...commonContext,
       traceContext,
+      userEmail:
+        typeof session?.user?.email === 'string' ? session.user.email : undefined,
       userId,
     });
   } catch (e) {

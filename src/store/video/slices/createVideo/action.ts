@@ -1,4 +1,3 @@
-import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
 import { t } from 'i18next';
 
 import { handleGenerationPromptModerationError } from '@/business/client/handleGenerationPromptModerationError';
@@ -94,7 +93,10 @@ export class CreateVideoActionImpl {
         );
       }
 
-      if (ENABLE_BUSINESS_FEATURES) {
+      if (
+        typeof window !== 'undefined' &&
+        window.global_serverConfigStore?.getState().serverConfig.enableBusinessFeatures
+      ) {
         markUserValidAction();
       }
 

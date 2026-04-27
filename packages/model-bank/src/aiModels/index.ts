@@ -1,4 +1,4 @@
-import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
+import { ENABLE_LOBEHUB_CLOUD_PROVIDER } from '@lobechat/business-const';
 
 import { type AiFullModelCard, type LobeDefaultAiModelListItem } from '../types/aiModel';
 import { default as ai21 } from './ai21';
@@ -138,7 +138,7 @@ export const LOBE_DEFAULT_MODEL_LIST = buildDefaultModelList({
   kimicodingplan,
   lmstudio,
   longcat,
-  ...(ENABLE_BUSINESS_FEATURES ? { lobehub } : {}),
+  ...(ENABLE_LOBEHUB_CLOUD_PROVIDER ? { lobehub } : {}),
   minimax,
   minimaxcodingplan,
   mistral,

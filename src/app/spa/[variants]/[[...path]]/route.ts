@@ -1,6 +1,7 @@
 import { BRANDING_NAME, ORG_NAME } from '@lobechat/business-const';
 import { OG_URL } from '@lobechat/const';
 
+import { auth } from '@/auth';
 import { getServerFeatureFlagsValue } from '@/config/featureFlags';
 import { OFFICIAL_URL } from '@/const/url';
 import { isCustomORG, isDesktop } from '@/const/version';
@@ -175,6 +176,17 @@ function buildClientEnv(): SPAClientEnv {
   };
 }
 
+async function getConfigUserFromRequest(request: Request) {
+  try {
+    const session = await auth.api.getSession({ headers: request.headers });
+    return session?.user?.id
+      ? { userEmail: session.user.email, userId: session.user.id }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function buildSeoMeta(locale: string): Promise<string> {
   const { t } = await translation('metadata', locale);
   const title = t('chat.title', { appName: BRANDING_NAME });
@@ -199,13 +211,13 @@ async function buildSeoMeta(locale: string): Promise<string> {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ path?: string[]; variants: string }> },
 ) {
   const { variants } = await params;
   const { locale, isMobile } = RouteVariants.deserializeVariants(variants);
 
-  const serverConfig = await getServerGlobalConfig();
+  const serverConfig = await getServerGlobalConfig(await getConfigUserFromRequest(request));
   const featureFlags = getServerFeatureFlagsValue();
   const analyticsConfig = buildAnalyticsConfig();
   const clientEnv = buildClientEnv();

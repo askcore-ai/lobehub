@@ -1,4 +1,3 @@
-import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
 import { Form } from 'antd';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -36,6 +35,9 @@ export const useSignIn = () => {
   const enableMagicLink = useAuthServerConfigStore((s) => s.serverConfig.enableMagicLink || false);
   const disableEmailPassword = useAuthServerConfigStore(
     (s) => s.serverConfig.disableEmailPassword || false,
+  );
+  const enableBusinessFeatures = useAuthServerConfigStore(
+    (s) => s.serverConfig.enableBusinessFeatures || false,
   );
   const [form] = Form.useForm<SignInFormValues>();
   const [loading, setLoading] = useState(false);
@@ -214,7 +216,7 @@ export const useSignIn = () => {
     });
 
     try {
-      if (ENABLE_BUSINESS_FEATURES && !(await preSocialSigninCheck())) {
+      if (enableBusinessFeatures && !(await preSocialSigninCheck())) {
         setSocialLoading(null);
         return;
       }
@@ -279,7 +281,7 @@ export const useSignIn = () => {
     }
   };
 
-  const resolvedProviders = ENABLE_BUSINESS_FEATURES ? ssoProviders : oAuthSSOProviders;
+  const resolvedProviders = enableBusinessFeatures ? ssoProviders : oAuthSSOProviders;
   const sortedProviders = lastAuthProvider
     ? [...resolvedProviders].sort((a, b) => {
         if (a === lastAuthProvider) return -1;
@@ -303,7 +305,7 @@ export const useSignIn = () => {
     lastAuthProvider,
     loading,
     oAuthSSOProviders: sortedProviders,
-    serverConfigInit: ENABLE_BUSINESS_FEATURES ? true : serverConfigInit,
+    serverConfigInit: enableBusinessFeatures ? true : serverConfigInit,
     socialLoading,
     step,
   };
