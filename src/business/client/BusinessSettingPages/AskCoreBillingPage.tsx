@@ -185,64 +185,31 @@ const styles = createStaticStyles(({ css }) => ({
   `,
 }));
 
-let pluginAccessToken: string | null = null;
-let pluginAccessTokenPromise: Promise<string | null> | null = null;
-
 export const isAskCoreBillingPageKey = (value: unknown): value is AskCoreBillingPageKey =>
   ASKCORE_BILLING_PAGE_KEYS.includes(value as AskCoreBillingPageKey);
 
-const normalizeBillingPath = (path: string) =>
-  path.startsWith('/api/') ? path : `/api/billing/v1${path.startsWith('/') ? path : `/${path}`}`;
-
-const requestPluginAccessToken = async (force = false): Promise<string | null> => {
-  if (!force && pluginAccessToken) return pluginAccessToken;
-  if (!force && pluginAccessTokenPromise) return pluginAccessTokenPromise;
-
-  pluginAccessTokenPromise = fetch('/api/plugin-auth/v1/token', {
-    credentials: 'include',
-  })
-    .then(async (response) => {
-      if (!response.ok) return null;
-      const payload = await response.json();
-      const token = typeof payload?.access_token === 'string' ? payload.access_token : null;
-      pluginAccessToken = token;
-      return token;
-    })
-    .catch(() => null)
-    .finally(() => {
-      pluginAccessTokenPromise = null;
-    });
-
-  return pluginAccessTokenPromise;
+export const normalizeBillingPath = (path: string, options: { publicEndpoint?: boolean } = {}) => {
+  if (path.startsWith('/api/')) return path;
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const prefix = options.publicEndpoint ? '/api/billing/v1' : '/api/askcore/billing';
+  return `${prefix}${normalizedPath}`;
 };
 
 const billingFetch = async (
   path: string,
   init: RequestInit = {},
-  options: { publicEndpoint?: boolean; refreshToken?: boolean } = {},
+  options: { publicEndpoint?: boolean } = {},
 ) => {
   const headers = new Headers(init.headers);
-  if (!options.publicEndpoint) {
-    const token = await requestPluginAccessToken(options.refreshToken);
-    if (!token) throw new Error('Billing session is unavailable');
-    headers.set('Authorization', `Bearer ${token}`);
-  }
   if (init.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(normalizeBillingPath(path), {
+  return fetch(normalizeBillingPath(path, options), {
     ...init,
     credentials: 'include',
     headers,
   });
-
-  if (response.status === 401 && !options.publicEndpoint && !options.refreshToken) {
-    pluginAccessToken = null;
-    return billingFetch(path, init, { ...options, refreshToken: true });
-  }
-
-  return response;
 };
 
 const billingJson = async <T,>(
@@ -252,6 +219,9 @@ const billingJson = async <T,>(
 ): Promise<T> => {
   const response = await billingFetch(path, init, options);
   if (!response.ok) {
+    if (response.status === 401 && !options.publicEndpoint) {
+      throw new Error('LobeHub billing session is unavailable. Please sign in to AskCore again.');
+    }
     const body = await response.text().catch(() => '');
     throw new Error(body || `Billing request failed: ${response.status}`);
   }
@@ -329,7 +299,8 @@ const paymentHostSuffixes = [
   'weixin.qq.com',
 ];
 
-const hostMatchesSuffix = (host: string, suffix: string) => host === suffix || host.endsWith(`.${suffix}`);
+const hostMatchesSuffix = (host: string, suffix: string) =>
+  host === suffix || host.endsWith(`.${suffix}`);
 
 export const isAllowedBillingExternalUrl = (
   rawUrl: string,
@@ -646,7 +617,10 @@ const BillingView = memo<{
   const organization = orgSeatsState.data || accountState.data?.organization || null;
   const columns: ColumnsType<AskCoreInvoiceRow> = useMemo(
     () => [
-      { dataIndex: 'provider_invoice_id', title: t('askcore.billing.invoice', { defaultValue: 'Invoice' }) },
+      {
+        dataIndex: 'provider_invoice_id',
+        title: t('askcore.billing.invoice', { defaultValue: 'Invoice' }),
+      },
       { dataIndex: 'provider', title: t('askcore.billing.provider', { defaultValue: 'Provider' }) },
       {
         dataIndex: 'amount_paid_usd',
@@ -677,7 +651,8 @@ const BillingView = memo<{
     }
   }, []);
 
-  if (accountState.loading || historyState.loading) return <Skeleton active paragraph={{ rows: 6 }} />;
+  if (accountState.loading || historyState.loading)
+    return <Skeleton active paragraph={{ rows: 6 }} />;
   if (accountState.error) return <Alert message={accountState.error} showIcon type="error" />;
 
   const rows = historyState.data?.items || [];
@@ -690,7 +665,10 @@ const BillingView = memo<{
         organization={organization}
         planNames={planNames}
       />
-      <Card className={styles.section} title={t('askcore.billing.history', { defaultValue: 'Billing history' })}>
+      <Card
+        className={styles.section}
+        title={t('askcore.billing.history', { defaultValue: 'Billing history' })}
+      >
         <Flexbox gap={12}>
           <Flexbox horizontal justify={'flex-end'}>
             <Button loading={portalLoading} onClick={handleCustomerPortal}>
@@ -772,8 +750,8 @@ const QuotaRule = memo<{ account?: AskCoreAccountPayload }>(({ account }) => {
       <Flexbox gap={8}>
         <Progress percent={percent} showInfo={false} />
         <Text type={'secondary'}>
-          Organization seat quota is charged first. When a user's seat is exhausted, AskCore
-          falls back to the user's personal credits.
+          Organization seat quota is charged first. When a user's seat is exhausted, AskCore falls
+          back to the user's personal credits.
         </Text>
       </Flexbox>
     </Card>

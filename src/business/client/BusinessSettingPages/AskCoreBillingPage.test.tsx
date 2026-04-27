@@ -5,6 +5,7 @@ import {
   buildAskCoreBillingEmbedUrl,
   isAllowedBillingExternalUrl,
   isAskCoreBillingPageKey,
+  normalizeBillingPath,
   normalizePlansPayload,
   resolveDefaultProvider,
 } from './AskCoreBillingPage';
@@ -25,7 +26,10 @@ describe('AskCore billing embed helpers', () => {
   });
 
   it('supports an explicit AskCore embed base URL', () => {
-    vi.stubEnv('NEXT_PUBLIC_ASKCORE_BILLING_EMBED_URL', 'https://billing.askcore.cn/embed/subscription');
+    vi.stubEnv(
+      'NEXT_PUBLIC_ASKCORE_BILLING_EMBED_URL',
+      'https://billing.askcore.cn/embed/subscription',
+    );
 
     const url = buildAskCoreBillingEmbedUrl({
       origin: 'https://askcore.cn',
@@ -38,12 +42,28 @@ describe('AskCore billing embed helpers', () => {
   it('keeps plan data backend-driven and resolves enabled providers', () => {
     const payload = normalizePlansPayload({
       credit_packs: [{ credits: 100, display_name: 'Pack', id: 'pack', price_usd: 1 }],
-      plans: [{ display_name: 'Hobby', features: [], id: 'hobby', monthly_credits: 1000, monthly_price_usd: 9 }],
+      plans: [
+        {
+          display_name: 'Hobby',
+          features: [],
+          id: 'hobby',
+          monthly_credits: 1000,
+          monthly_price_usd: 9,
+        },
+      ],
     });
 
     expect(payload.plans.map((plan) => plan.id)).toEqual(['hobby']);
     expect(payload.creditPacks).toHaveLength(1);
-    expect(resolveDefaultProvider({ alipay: { enabled: true }, stripe: { enabled: false } })).toBe('alipay');
+    expect(resolveDefaultProvider({ alipay: { enabled: true }, stripe: { enabled: false } })).toBe(
+      'alipay',
+    );
+  });
+
+  it('routes public plans directly and protected billing through the LobeHub proxy', () => {
+    expect(normalizeBillingPath('/plans', { publicEndpoint: true })).toBe('/api/billing/v1/plans');
+    expect(normalizeBillingPath('/account')).toBe('/api/askcore/billing/account');
+    expect(normalizeBillingPath('usage')).toBe('/api/askcore/billing/usage');
   });
 
   it('validates billing page keys and external payment URLs', () => {
