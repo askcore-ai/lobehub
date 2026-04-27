@@ -6,9 +6,9 @@ import { fetchSSE, standardizeAnimationStyle } from '@lobechat/fetch-sse';
 import type { ChatCompletionErrorPayload } from '@lobechat/model-runtime';
 import { AgentRuntimeError, responsesAPIModels } from '@lobechat/model-runtime';
 import {
+  type PluginRequestPayload,
   type RuntimeInitialContext,
   type RuntimeStepContext,
-  type PluginRequestPayload,
   type TracePayload,
   type UIChatMessage,
 } from '@lobechat/types';
