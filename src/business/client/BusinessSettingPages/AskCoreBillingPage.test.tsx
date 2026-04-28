@@ -63,15 +63,19 @@ describe('AskCore billing embed helpers', () => {
     expect(payload.plans.map((plan) => plan.id)).toEqual(['hobby']);
     expect(payload.creditPacks).toHaveLength(1);
     expect(payload.billingPeriods).toEqual([{ id: 'yearly', label: 'Yearly' }]);
-    expect(resolveDefaultProvider({ alipay: { enabled: true }, stripe: { enabled: false } })).toBe(
-      'alipay',
-    );
+    expect(resolveDefaultProvider({ alipay: { enabled: true }, stripe: { enabled: false } })).toBeNull();
     expect(
       resolveDefaultProvider(
         { stripe: { enabled: true }, wechat: { enabled: true } },
         { isChinese: true },
       ),
     ).toBe('wechat');
+    expect(
+      resolveDefaultProvider(
+        { stripe: { enabled: true }, wechat: { checkout_available: false, enabled: true } },
+        { isChinese: true },
+      ),
+    ).toBeNull();
     expect(
       resolveDefaultProvider(
         { stripe: { enabled: true }, wechat: { enabled: true } },

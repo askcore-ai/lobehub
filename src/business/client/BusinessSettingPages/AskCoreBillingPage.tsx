@@ -154,7 +154,7 @@ interface AskCorePlansPayload {
   };
   plan_comparison?: PlanComparisonGroup[];
   plans: AskCoreBillingPlan[];
-  providers?: Partial<Record<BillingProvider, { enabled: boolean }>>;
+  providers?: Partial<Record<BillingProvider, { checkout_available?: boolean; enabled: boolean }>>;
 }
 
 interface AskCorePersonalAccount {
@@ -415,6 +415,7 @@ const enCopy = {
     succeeded: 'Payment completed',
     title: 'WeChat Pay',
     waiting: 'Waiting for payment',
+    wechatUnavailable: 'WeChat Pay is not ready for this account.',
   },
   page: {
     subtitle: 'Usage, subscription management, credits, billing, and referral rewards.',
@@ -612,6 +613,7 @@ const zhCopy: typeof enCopy = {
     succeeded: '支付完成',
     title: '微信支付',
     waiting: '等待支付',
+    wechatUnavailable: '微信支付尚未为当前账号启用。',
   },
   page: {
     subtitle: '用量、订阅管理、积分、账单与推荐奖励。',
@@ -1057,16 +1059,27 @@ export const resolveDefaultProvider = (
   providers?: AskCorePlansPayload['providers'],
   options: { isChinese?: boolean } = {},
 ): BillingProvider | null => {
-  const candidates: BillingProvider[] = options.isChinese
-    ? ['wechat', 'alipay', 'stripe']
-    : ['stripe', 'alipay'];
-  return candidates.find((provider) => providers?.[provider]?.enabled) || null;
+  const candidates: BillingProvider[] = options.isChinese ? ['wechat'] : ['stripe'];
+  return (
+    candidates.find((provider) => {
+      const config = providers?.[provider];
+      return Boolean(config?.enabled) && config?.checkout_available !== false;
+    }) || null
+  );
 };
 
 export const isWechatQrCheckout = (checkout?: CheckoutResponse | null) =>
-  checkout?.provider === 'wechat' && checkout.checkout_type === 'qrcode' && Boolean(checkout.code_url);
+  checkout?.provider === 'wechat' &&
+  checkout.checkout_type === 'qrcode' &&
+  Boolean(checkout.code_url);
 
-const terminalPaymentStatuses = new Set(['closed', 'failed', 'refunded', 'shadow', 'succeeded']);
+const terminalPaymentStatuses = new Set([
+  'closed',
+  'failed',
+  'refunded',
+  'shadow',
+  'succeeded',
+]);
 
 const isTerminalPaymentStatus = (status: string | null | undefined) =>
   terminalPaymentStatuses.has(String(status || '').toLowerCase());
@@ -1577,6 +1590,8 @@ const PlansView = memo<{
         );
         if (isWechatQrCheckout(checkout)) {
           setWechatCheckout(checkout);
+        } else if (checkout.provider === 'wechat') {
+          throw new Error(copy.payment.wechatUnavailable);
         } else {
           requestParentOpenUrl(checkout.url);
         }
@@ -1586,7 +1601,7 @@ const PlansView = memo<{
         setCheckoutPlanId(null);
       }
     },
-    [copy.errors.checkoutFailed, period, provider],
+    [copy.errors.checkoutFailed, copy.payment.wechatUnavailable, period, provider],
   );
 
   const modelColumns: ColumnsType<ModelPricingRow> = useMemo(
@@ -1970,6 +1985,8 @@ const CreditsView = memo<{
         });
         if (isWechatQrCheckout(checkout)) {
           setWechatCheckout(checkout);
+        } else if (checkout.provider === 'wechat') {
+          throw new Error(copy.payment.wechatUnavailable);
         } else {
           requestParentOpenUrl(checkout.url);
         }
@@ -1979,7 +1996,7 @@ const CreditsView = memo<{
         setCheckoutPackId(null);
       }
     },
-    [copy.errors.checkoutFailed, provider],
+    [copy.errors.checkoutFailed, copy.payment.wechatUnavailable, provider],
   );
 
   const handleSaveAutoTopup = useCallback(async () => {
