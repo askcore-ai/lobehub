@@ -39,6 +39,7 @@ import {
   WalletCards,
 } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 
 import OrgSeats from './OrgSeats';
@@ -59,6 +60,7 @@ type BillingPeriodId = 'monthly' | 'payonce' | 'yearly';
 
 export interface AskCoreBillingPlan {
   badge?: string;
+  badge_zh?: string;
   benefits?: {
     advanced?: Record<string, boolean>;
     cloud?: Record<string, boolean>;
@@ -73,27 +75,39 @@ export interface AskCoreBillingPlan {
   };
   credit_examples?: { messages?: number; model: string }[];
   description?: string;
+  description_zh?: string;
   display_name: string;
+  display_name_zh?: string;
   features: string[];
   file_storage_gb?: number;
   id: string;
   monthly_credits: number;
+  monthly_price_cny?: number;
   monthly_price_usd: number;
+  one_time_price_cny?: number | null;
   one_time_price_usd?: number | null;
   support?: string;
+  support_zh?: string;
+  topup_unit_price_cny?: number;
   topup_unit_price_usd?: number;
   vector_storage_entries?: number;
+  yearly_discount_percent_cny?: number;
   yearly_discount_percent?: number;
+  yearly_monthly_price_cny?: number | null;
   yearly_monthly_price_usd?: number | null;
+  yearly_price_cny?: number | null;
   yearly_price_usd?: number | null;
 }
 
 export interface AskCoreCreditPack {
   credits: number;
   display_name: string;
+  display_name_zh?: string;
   id: string;
+  price_cny?: number;
   price_usd: number;
   source?: string;
+  unit_price_cny_per_million?: number;
   unit_price_usd_per_million?: number;
   validity_months?: number;
 }
@@ -291,11 +305,14 @@ interface ResourceState<T> {
   loading: boolean;
 }
 
-const currencyFormatter = new Intl.NumberFormat('en-US', {
-  currency: 'USD',
-  maximumFractionDigits: 2,
-  style: 'currency',
-});
+const isChineseLanguage = (language?: string) => language?.toLowerCase().startsWith('zh') ?? false;
+
+const createMoneyFormatter = (isChinese: boolean) =>
+  new Intl.NumberFormat(isChinese ? 'zh-CN' : 'en-US', {
+    currency: isChinese ? 'CNY' : 'USD',
+    maximumFractionDigits: 2,
+    style: 'currency',
+  });
 
 const numberFormatter = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 0,
@@ -305,6 +322,325 @@ const compactNumberFormatter = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 1,
   notation: 'compact',
 });
+
+const enCopy = {
+  actions: {
+    bind: 'Confirm Binding',
+    copy: 'Copy',
+    copyLink: 'Copy Link',
+    currentPlan: 'Current Plan',
+    getStarted: 'Get Started',
+    manageSubscription: 'Manage Subscription',
+    purchase: 'Purchase',
+    purchaseNow: 'Purchase Now',
+    save: 'Save',
+  },
+  billing: {
+    amount: 'Amount',
+    billingCycle: 'Billing Cycle',
+    billingHistory: 'Billing History',
+    billingSummary: 'Billing Summary',
+    currentPlan: 'Current Plan',
+    endDate: 'End Date',
+    intervalFallback: 'month',
+    nextPayment: 'Next Payment',
+    orderNumber: 'Order Number',
+    paymentDate: 'Payment Date',
+    paymentGateway: 'Payment Gateway',
+    startDate: 'Start Date',
+    status: 'Status',
+    transactionStatus: 'Transaction Status',
+  },
+  credits: {
+    autoTopup: 'Auto Top-Up',
+    autoTopupNoPayment:
+      'No payment method on file. Auto top-up will stay shadow-safe until a customer portal payment method exists.',
+    autoTopupSaved: 'Auto top-up settings saved',
+    balance: 'Balance',
+    currentPlan: 'Current Plan',
+    disabled: 'Disabled',
+    enabled: 'Enabled',
+    expiresAt: 'Expires At',
+    freeNeedsPaidPlan: 'Free users need to subscribe to a paid plan before topping up credits.',
+    monthlyLimit: 'Monthly Limit',
+    myPackages: 'My Credit Packages',
+    noPacks: 'No credit packs are currently available.',
+    noPackages: 'No credit packages',
+    purchaseCredits: 'Purchase Credits',
+    purchasedOn: 'Purchased On',
+    source: 'Source',
+    status: 'Status',
+    subscriptionCredits: 'Subscription Credits',
+    targetBalance: 'Target Balance',
+    threshold: 'Threshold',
+    topupBalance: 'Top-up Credits Balance',
+    unitPriceFallback: 'Unit price follows local catalog',
+    validityMonths: 'months validity',
+  },
+  errors: {
+    bindFailed: 'Binding failed',
+    checkoutFailed: 'Checkout failed',
+    customerPortalFailed: 'Customer portal failed',
+    saveAutoTopupFailed: 'Failed to save auto top-up settings',
+    sessionUnavailable: 'LobeHub billing session is unavailable. Please sign in to AskCore again.',
+    updateFailed: 'Update failed',
+  },
+  messages: {
+    bindSuccess: 'Invite code bound',
+    copied: 'Copied',
+    referralSaved: 'Referral code saved',
+  },
+  page: {
+    subtitle: 'Usage, subscription management, credits, billing, and referral rewards.',
+    titles: {
+      billing: 'Billing',
+      credits: 'Credits',
+      plans: 'Plans',
+      referral: 'Referral Rewards',
+      usage: 'Usage',
+    },
+  },
+  plans: {
+    available: 'available',
+    comparison: 'Plan Comparison',
+    currentPlan: 'Current Plan',
+    detailPayOnce: 'One-time payment',
+    detailYearly: 'per year',
+    faq: 'Frequently Asked Questions',
+    fileStorage: 'File Storage',
+    noProvider: 'No payment provider is enabled.',
+    perMonth: 'per month',
+    perMonthBilledYearly: 'per month, billed yearly',
+    planPricing: 'Plans & Pricing',
+    pricingSubtitle: 'Start with AskCore local billing. No official cloud dependency.',
+    supportFallback: 'Community support',
+    textModelPricing: 'Text Model Pricing',
+    vectorStorage: 'Vector Storage',
+  },
+  periods: {
+    monthly: 'Monthly',
+    oneTime: 'One-time',
+    yearly: 'Yearly',
+    yearlyOff: 'off',
+  },
+  quota: {
+    description:
+      "Organization seat quota is charged first. When the user's seat is exhausted, AskCore falls back to personal credits.",
+    title: 'Credit consumption priority',
+  },
+  referral: {
+    availableBalance: 'Available Balance',
+    backfillDescription: 'Forgot to enter an invite code? Bind it here before reward expiry.',
+    backfillTitle: 'Backfill Invite Code',
+    codeDescription: 'Share your exclusive referral code to invite friends to register.',
+    codePattern: 'Use 2-8 letters, numbers or underscores',
+    codeTitle: 'My Referral Code',
+    history: 'Referral History',
+    inviteeEmail: 'Invitee Email',
+    linkDescription:
+      'Copy the link and share with friends. Complete registration to receive rewards.',
+    linkTitle: 'Referral Link',
+    myReward: 'My Reward',
+    noHistory: 'No referral history',
+    notEnabled: 'Referral rewards are not currently enabled.',
+    placeholder: 'Enter invite code or link',
+    programRules: 'Program Rules',
+    registrationTime: 'Registration Time',
+    status: 'Status',
+    totalInvites: 'Total Invites',
+    validConversions: 'Valid Conversions',
+  },
+  tables: {
+    createdAt: 'Created At',
+    credits: 'Credits',
+    inputTokens: 'Input 1M Tokens',
+    model: 'Model',
+    outputTokens: 'Output 1M Tokens',
+    provider: 'Provider',
+    tokenUsage: 'Token Usage',
+    trigger: 'Trigger',
+    type: 'Type',
+  },
+  units: {
+    approx: 'approx',
+    credits: 'Credits',
+    creditsPerMonth: 'Credits / Month',
+    entries: 'entries',
+    messages: 'messages',
+    month: 'month',
+    oneTime: 'one time',
+    perMillionCredits: '/ 1M Credits',
+  },
+  usage: {
+    detail: 'Computing Credits Usage Details',
+    fileStorage: 'File Storage',
+    onDemand: 'On-demand',
+    overview: 'Usage Overview',
+    planUsage: 'Plan Usage',
+    thisMonth: 'This Month Usage',
+    tokenUsage: 'Token Usage',
+    vectorStorage: 'Vector Storage',
+  },
+};
+
+const zhCopy: typeof enCopy = {
+  actions: {
+    bind: '确认绑定',
+    copy: '复制',
+    copyLink: '复制链接',
+    currentPlan: '当前套餐',
+    getStarted: '开始使用',
+    manageSubscription: '管理订阅',
+    purchase: '购买',
+    purchaseNow: '立即购买',
+    save: '保存',
+  },
+  billing: {
+    amount: '金额',
+    billingCycle: '计费周期',
+    billingHistory: '账单记录',
+    billingSummary: '账单概览',
+    currentPlan: '当前套餐',
+    endDate: '结束日期',
+    intervalFallback: '月',
+    nextPayment: '下次付款',
+    orderNumber: '订单号',
+    paymentDate: '付款时间',
+    paymentGateway: '支付渠道',
+    startDate: '开始日期',
+    status: '状态',
+    transactionStatus: '交易状态',
+  },
+  credits: {
+    autoTopup: '自动充值',
+    autoTopupNoPayment: '当前没有可用支付方式。添加支付方式前，自动充值会保持影子模式安全状态。',
+    autoTopupSaved: '自动充值设置已保存',
+    balance: '余额',
+    currentPlan: '当前套餐',
+    disabled: '已关闭',
+    enabled: '已开启',
+    expiresAt: '过期时间',
+    freeNeedsPaidPlan: '免费用户需要先订阅付费套餐，才能购买充值积分。',
+    monthlyLimit: '月度限额',
+    myPackages: '我的积分包',
+    noPacks: '当前没有可购买的积分包。',
+    noPackages: '暂无积分包',
+    purchaseCredits: '购买积分',
+    purchasedOn: '购买时间',
+    source: '来源',
+    status: '状态',
+    subscriptionCredits: '订阅积分',
+    targetBalance: '目标余额',
+    threshold: '触发阈值',
+    topupBalance: '充值积分余额',
+    unitPriceFallback: '单价以本地目录为准',
+    validityMonths: '个月有效期',
+  },
+  errors: {
+    bindFailed: '绑定失败',
+    checkoutFailed: '结算失败',
+    customerPortalFailed: '客户门户打开失败',
+    saveAutoTopupFailed: '保存自动充值设置失败',
+    sessionUnavailable: 'LobeHub 账单会话不可用，请重新登录 AskCore。',
+    updateFailed: '更新失败',
+  },
+  messages: {
+    bindSuccess: '邀请码绑定成功',
+    copied: '已复制',
+    referralSaved: '推荐码已保存',
+  },
+  page: {
+    subtitle: '用量、订阅管理、积分、账单与推荐奖励。',
+    titles: {
+      billing: '账单',
+      credits: '积分',
+      plans: '套餐',
+      referral: '推荐奖励',
+      usage: '用量',
+    },
+  },
+  plans: {
+    available: '可用',
+    comparison: '套餐对比',
+    currentPlan: '当前套餐',
+    detailPayOnce: '一次性付款',
+    detailYearly: '每年',
+    faq: '常见问题',
+    fileStorage: '文件存储',
+    noProvider: '当前未启用支付渠道。',
+    perMonth: '每月',
+    perMonthBilledYearly: '每月，按年支付',
+    planPricing: '套餐与价格',
+    pricingSubtitle: '使用 AskCore 本地账单，无官方云依赖。',
+    supportFallback: '社区支持',
+    textModelPricing: '文本模型价格',
+    vectorStorage: '向量存储',
+  },
+  periods: {
+    monthly: '按月',
+    oneTime: '一次性',
+    yearly: '按年',
+    yearlyOff: '优惠',
+  },
+  quota: {
+    description: '组织席位额度会优先扣减。席位额度耗尽后，AskCore 会回退使用个人积分。',
+    title: '积分扣减优先级',
+  },
+  referral: {
+    availableBalance: '可用余额',
+    backfillDescription: '忘记填写邀请码？可在奖励过期前在这里绑定。',
+    backfillTitle: '补填邀请码',
+    codeDescription: '分享你的专属推荐码，邀请好友注册。',
+    codePattern: '请输入 2-8 位字母、数字或下划线',
+    codeTitle: '我的推荐码',
+    history: '推荐记录',
+    inviteeEmail: '被邀请人邮箱',
+    linkDescription: '复制链接并分享给好友，完成注册即可获得奖励。',
+    linkTitle: '推荐链接',
+    myReward: '我的奖励',
+    noHistory: '暂无推荐记录',
+    notEnabled: '推荐奖励当前未启用。',
+    placeholder: '请输入邀请码或链接',
+    programRules: '计划规则',
+    registrationTime: '注册时间',
+    status: '状态',
+    totalInvites: '邀请总数',
+    validConversions: '有效转化',
+  },
+  tables: {
+    createdAt: '创建时间',
+    credits: '积分',
+    inputTokens: '输入 100 万 Token',
+    model: '模型',
+    outputTokens: '输出 100 万 Token',
+    provider: '提供商',
+    tokenUsage: 'Token 用量',
+    trigger: '触发来源',
+    type: '类型',
+  },
+  units: {
+    approx: '约',
+    credits: '积分',
+    creditsPerMonth: '积分 / 月',
+    entries: '条目',
+    messages: '条消息',
+    month: '月',
+    oneTime: '一次性',
+    perMillionCredits: '/ 100 万积分',
+  },
+  usage: {
+    detail: '算力积分用量明细',
+    fileStorage: '文件存储',
+    onDemand: '按需用量',
+    overview: '用量概览',
+    planUsage: '套餐用量',
+    thisMonth: '本月用量',
+    tokenUsage: 'Token 用量',
+    vectorStorage: '向量存储',
+  },
+};
+
+type BillingCopy = typeof enCopy;
 
 const styles = createStaticStyles(({ css }) => ({
   cardGrid: css`
@@ -357,10 +693,6 @@ const styles = createStaticStyles(({ css }) => ({
   subtle: css`
     color: ${cssVar.colorTextSecondary};
   `,
-  tabBar: css`
-    width: 100%;
-    overflow-x: auto;
-  `,
 }));
 
 export const isAskCoreBillingPageKey = (value: unknown): value is AskCoreBillingPageKey =>
@@ -398,10 +730,18 @@ const billingJson = async <T,>(
   const response = await billingFetch(path, init, options);
   if (!response.ok) {
     if (response.status === 401 && !options.publicEndpoint) {
-      throw new Error('LobeHub billing session is unavailable. Please sign in to AskCore again.');
+      throw new Error(enCopy.errors.sessionUnavailable);
     }
     const body = await response.text().catch(() => '');
-    throw new Error(body || `Billing request failed: ${response.status}`);
+    let detail = body;
+    try {
+      const json = JSON.parse(body) as { detail?: unknown; message?: unknown };
+      const parsedDetail = typeof json.detail === 'string' ? json.detail : json.message;
+      if (typeof parsedDetail === 'string' && parsedDetail) detail = parsedDetail;
+    } catch {
+      detail = body;
+    }
+    throw new Error(detail || `Billing request failed: ${response.status}`);
   }
   return response.json() as Promise<T>;
 };
@@ -503,8 +843,8 @@ const requestParentOpenUrl = (url: string) => {
   window.open(url, '_blank', 'noopener,noreferrer');
 };
 
-const formatCredits = (value?: number | null) =>
-  `${compactNumberFormatter.format(Number(value || 0))} Credits`;
+const formatCredits = (value: number | null | undefined, copy: BillingCopy) =>
+  `${compactNumberFormatter.format(Number(value || 0))} ${copy.units.credits}`;
 
 const formatDate = (value?: string | null) => {
   if (!value) return '-';
@@ -513,59 +853,132 @@ const formatDate = (value?: string | null) => {
   return date.toLocaleDateString();
 };
 
-const planPrice = (plan: AskCoreBillingPlan, period: BillingPeriodId) => {
-  if (period === 'yearly' && plan.yearly_monthly_price_usd !== undefined && plan.yearly_monthly_price_usd !== null) {
+const localPlanName = (plan: AskCoreBillingPlan | undefined, isChinese: boolean) =>
+  (isChinese ? plan?.display_name_zh : plan?.display_name) || plan?.display_name || '';
+
+const localPlanDescription = (plan: AskCoreBillingPlan | undefined, isChinese: boolean) =>
+  (isChinese ? plan?.description_zh : plan?.description) || plan?.description || '';
+
+const localPlanSupport = (plan: AskCoreBillingPlan, isChinese: boolean, copy: BillingCopy) =>
+  (isChinese ? plan.support_zh : plan.support) || plan.support || copy.plans.supportFallback;
+
+const localPlanBadge = (plan: AskCoreBillingPlan, isChinese: boolean) =>
+  (isChinese ? plan.badge_zh : plan.badge) || plan.badge;
+
+const localPackName = (pack: AskCoreCreditPack, isChinese: boolean) =>
+  (isChinese ? pack.display_name_zh : pack.display_name) || pack.display_name;
+
+const moneyValue = (
+  usdValue: number | null | undefined,
+  cnyValue: number | null | undefined,
+  isChinese: boolean,
+) => Number((isChinese ? cnyValue : usdValue) ?? usdValue ?? cnyValue ?? 0);
+
+const planPrice = (
+  plan: AskCoreBillingPlan,
+  period: BillingPeriodId,
+  isChinese: boolean,
+  copy: BillingCopy,
+  moneyFormatter: Intl.NumberFormat,
+) => {
+  const yearlyMonthlyPrice = moneyValue(
+    plan.yearly_monthly_price_usd,
+    plan.yearly_monthly_price_cny,
+    isChinese,
+  );
+  const yearlyPrice = moneyValue(plan.yearly_price_usd, plan.yearly_price_cny, isChinese);
+  const yearlyAvailable =
+    (isChinese ? plan.yearly_monthly_price_cny : plan.yearly_monthly_price_usd) !== undefined &&
+    (isChinese ? plan.yearly_monthly_price_cny : plan.yearly_monthly_price_usd) !== null;
+  if (period === 'yearly' && yearlyAvailable) {
     return {
-      detail: plan.yearly_price_usd ? `${currencyFormatter.format(plan.yearly_price_usd)} / year` : '',
-      price: plan.yearly_monthly_price_usd,
-      suffix: 'per month, billed yearly',
+      detail: yearlyPrice
+        ? `${moneyFormatter.format(yearlyPrice)} / ${copy.plans.detailYearly}`
+        : '',
+      price: yearlyMonthlyPrice,
+      suffix: copy.plans.perMonthBilledYearly,
     };
   }
-  if (period === 'payonce' && plan.one_time_price_usd !== undefined && plan.one_time_price_usd !== null) {
-    return { detail: 'One-time payment', price: plan.one_time_price_usd, suffix: 'one time' };
+  const oneTimeAvailable =
+    (isChinese ? plan.one_time_price_cny : plan.one_time_price_usd) !== undefined &&
+    (isChinese ? plan.one_time_price_cny : plan.one_time_price_usd) !== null;
+  if (period === 'payonce' && oneTimeAvailable) {
+    return {
+      detail: copy.plans.detailPayOnce,
+      price: moneyValue(plan.one_time_price_usd, plan.one_time_price_cny, isChinese),
+      suffix: copy.units.oneTime,
+    };
   }
-  return { detail: '', price: plan.monthly_price_usd, suffix: 'per month' };
+  return {
+    detail: '',
+    price: moneyValue(plan.monthly_price_usd, plan.monthly_price_cny, isChinese),
+    suffix: copy.plans.perMonth,
+  };
 };
 
-const pageTitle = (page: AskCoreBillingPageKey) => {
-  if (page === 'plans') return 'Plans';
-  if (page === 'credits') return 'Credits';
-  if (page === 'usage') return 'Usage';
-  if (page === 'referral') return 'Referral Rewards';
-  return 'Billing';
+const pageTitle = (page: AskCoreBillingPageKey, copy: BillingCopy) => copy.page.titles[page];
+
+const comparisonTitle = (group: PlanComparisonGroup, isChinese: boolean) => {
+  if (!isChinese) return group.title;
+  if (group.key === 'credits') return '算力积分';
+  if (group.key === 'knowledge') return '文件与知识库';
+  if (group.key === 'support') return '服务支持';
+  return group.title;
 };
 
-const BillingTabs = memo<{ page: AskCoreBillingPageKey }>(({ page }) => {
-  const options = [
-    { label: 'Plans', value: 'plans' },
-    { label: 'Usage', value: 'usage' },
-    { label: 'Credits', value: 'credits' },
-    { label: 'Billing', value: 'billing' },
-    { label: 'Referral Rewards', value: 'referral' },
+const comparisonRowLabel = (label: string, isChinese: boolean) => {
+  if (!isChinese) return label;
+  const labels: Record<string, string> = {
+    'File Storage': '文件存储',
+    'Monthly credit usage': '每月积分额度',
+    'Support Channels': '支持渠道',
+    'Top up Credits': '充值积分',
+    'Vector Storage': '向量存储',
+  };
+  return labels[label] || label;
+};
+
+const comparisonUnit = (unit: string | undefined, isChinese: boolean) => {
+  if (!unit || !isChinese) return unit;
+  const units: Record<string, string> = {
+    'approx messages': '条消息',
+    'credits / month': '积分 / 月',
+    'entries': '条目',
+  };
+  return units[unit] || unit;
+};
+
+const localizedFaq = (
+  items: AskCorePlansPayload['faq'] | undefined,
+  isChinese: boolean,
+): { answer: string; question: string }[] => {
+  if (!isChinese) return items || [];
+  return [
+    {
+      question: '什么是算力积分？',
+      answer: '积分用于衡量模型用量。不同文本、图像、语音和向量模型会按不同费率消耗积分。',
+    },
+    {
+      question: '积分用完后怎么办？',
+      answer: '可以升级套餐或购买积分包。组织工作区会先消耗已分配席位额度，再回退到个人积分。',
+    },
+    {
+      question: '如何变更或取消订阅？',
+      answer: '请在账单页进入客户门户处理。影子模式下 AskCore 只记录请求，不产生真实支付副作用。',
+    },
+    {
+      question: '当前有哪些套餐？',
+      answer: '本地 AskCore 目录会展示当前启用的套餐，具体价格和额度以本页为准。',
+    },
   ];
-
-  const handleChange = useCallback((value: string | number) => {
-    if (typeof window === 'undefined') return;
-    const nextPage = value as AskCoreBillingPageKey;
-    const target = new URL(window.location.href);
-    target.pathname = target.pathname.replace(/\/embed\/subscription\/[^/]+$/, `/embed/subscription/${nextPage}`);
-    window.location.href = target.toString();
-  }, []);
-
-  return (
-    <div className={styles.tabBar}>
-      <Segmented block onChange={handleChange} options={options} value={page} />
-    </div>
-  );
-});
-
-BillingTabs.displayName = 'BillingTabs';
+};
 
 const PageHeader = memo<{
   account?: AskCoreAccountPayload;
+  copy: BillingCopy;
   page: AskCoreBillingPageKey;
   plansPayload?: AskCorePlansPayload;
-}>(({ account, page, plansPayload }) => {
+}>(({ account, copy, page, plansPayload }) => {
   const mode = account?.mode || plansPayload?.mode;
 
   return (
@@ -574,12 +987,10 @@ const PageHeader = memo<{
         <Flexbox align={'center'} gap={10} horizontal>
           <OpenAI size={26} />
           <Text as={'h2'} style={{ fontSize: 22, fontWeight: 650, margin: 0 }}>
-            {pageTitle(page)}
+            {pageTitle(page, copy)}
           </Text>
         </Flexbox>
-        <Text type={'secondary'}>
-          Usage, subscription management, credits, billing, and referral rewards.
-        </Text>
+        <Text type={'secondary'}>{copy.page.subtitle}</Text>
       </Flexbox>
       {mode && <Tag color={mode === 'enforce' ? 'green' : 'blue'}>{mode}</Tag>}
     </Flexbox>
@@ -590,23 +1001,27 @@ PageHeader.displayName = 'PageHeader';
 
 const CurrentPlanCard = memo<{
   account?: AskCoreAccountPayload;
+  copy: BillingCopy;
+  isChinese: boolean;
   plans: AskCoreBillingPlan[];
-}>(({ account, plans }) => {
+}>(({ account, copy, isChinese, plans }) => {
   const planId = account?.personal.plan_id || 'free';
   const plan = plans.find((item) => item.id === planId);
 
   return (
-    <Card className={styles.section} title="Current Plan">
+    <Card className={styles.section} title={copy.plans.currentPlan}>
       <Flexbox gap={14}>
         <Flexbox align={'center'} horizontal justify={'space-between'}>
           <Flexbox align={'center'} gap={10} horizontal>
             <Icon icon={Sparkles} />
-            <Text style={{ fontSize: 18, fontWeight: 650 }}>{plan?.display_name || planId}</Text>
+            <Text style={{ fontSize: 18, fontWeight: 650 }}>
+              {localPlanName(plan, isChinese) || planId}
+            </Text>
           </Flexbox>
           <Badge status="processing" text={account?.personal.subscription_status || 'free'} />
         </Flexbox>
         <Text type={'secondary'}>
-          {plan?.description || 'See all features and compare plans below.'}
+          {localPlanDescription(plan, isChinese) || copy.plans.pricingSubtitle}
         </Text>
         <Progress
           percent={Math.min(
@@ -620,8 +1035,12 @@ const CurrentPlanCard = memo<{
           showInfo={false}
         />
         <Flexbox horizontal justify={'space-between'}>
-          <Text type={'secondary'}>{formatCredits(account?.personal.balance_credits)} available</Text>
-          <Text type={'secondary'}>{formatCredits(plan?.monthly_credits)} / month</Text>
+          <Text type={'secondary'}>
+            {formatCredits(account?.personal.balance_credits, copy)} {copy.plans.available}
+          </Text>
+          <Text type={'secondary'}>
+            {formatCredits(plan?.monthly_credits, copy)} / {copy.units.month}
+          </Text>
         </Flexbox>
       </Flexbox>
     </Card>
@@ -632,9 +1051,12 @@ CurrentPlanCard.displayName = 'CurrentPlanCard';
 
 const PlansView = memo<{
   account?: AskCoreAccountPayload;
+  copy: BillingCopy;
+  isChinese: boolean;
+  moneyFormatter: Intl.NumberFormat;
   plansPayload?: AskCorePlansPayload;
   state: ResourceState<AskCorePlansPayload>;
-}>(({ account, plansPayload, state }) => {
+}>(({ account, copy, isChinese, moneyFormatter, plansPayload, state }) => {
   const { plans } = normalizePlansPayload(plansPayload);
   const [period, setPeriod] = useState<BillingPeriodId>('yearly');
   const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null);
@@ -646,18 +1068,28 @@ const PlansView = memo<{
     const periods = plansPayload?.billing_periods?.length
       ? plansPayload.billing_periods
       : [
-          { id: 'yearly' as const, label: 'Yearly' },
-          { id: 'monthly' as const, label: 'Monthly' },
-          { id: 'payonce' as const, label: 'One-time' },
+          { id: 'yearly' as const, label: copy.periods.yearly },
+          { id: 'monthly' as const, label: copy.periods.monthly },
+          { id: 'payonce' as const, label: copy.periods.oneTime },
         ];
     return periods.map((item) => ({
       label:
         item.id === 'yearly'
-          ? `${item.label} ${Math.max(...plans.map((plan) => plan.yearly_discount_percent || 0), 0)}% off`
-          : item.label,
+          ? `${copy.periods.yearly} ${Math.max(
+              ...plans.map((plan) =>
+                isChinese
+                  ? plan.yearly_discount_percent_cny || 0
+                  : plan.yearly_discount_percent || 0,
+              ),
+            )}% ${copy.periods.yearlyOff}`
+          : item.id === 'monthly'
+            ? copy.periods.monthly
+            : item.id === 'payonce'
+              ? copy.periods.oneTime
+              : item.label,
       value: item.id,
     }));
-  }, [plans, plansPayload?.billing_periods]);
+  }, [copy, isChinese, plans, plansPayload?.billing_periods]);
 
   const handleCheckout = useCallback(
     async (plan: AskCoreBillingPlan) => {
@@ -681,30 +1113,30 @@ const PlansView = memo<{
         );
         requestParentOpenUrl(checkout.url);
       } catch (error) {
-        setCheckoutError(error instanceof Error ? error.message : 'Checkout failed');
+        setCheckoutError(error instanceof Error ? error.message : copy.errors.checkoutFailed);
       } finally {
         setCheckoutPlanId(null);
       }
     },
-    [period, provider],
+    [copy.errors.checkoutFailed, period, provider],
   );
 
   const modelColumns: ColumnsType<ModelPricingRow> = useMemo(
     () => [
-      { dataIndex: 'provider', title: 'Provider' },
-      { dataIndex: 'model', title: 'Model' },
+      { dataIndex: 'provider', title: copy.tables.provider },
+      { dataIndex: 'model', title: copy.tables.model },
       {
         dataIndex: 'input_credits_per_1m',
-        render: (value: number) => formatCredits(value),
-        title: 'Input 1M Tokens',
+        render: (value: number) => formatCredits(value, copy),
+        title: copy.tables.inputTokens,
       },
       {
         dataIndex: 'output_credits_per_1m',
-        render: (value: number) => formatCredits(value),
-        title: 'Output 1M Tokens',
+        render: (value: number) => formatCredits(value, copy),
+        title: copy.tables.outputTokens,
       },
     ],
-    [],
+    [copy],
   );
 
   if (state.loading) return <Skeleton active paragraph={{ rows: 8 }} />;
@@ -713,14 +1145,14 @@ const PlansView = memo<{
 
   return (
     <Flexbox gap={16}>
-      <CurrentPlanCard account={account} plans={plans} />
+      <CurrentPlanCard account={account} copy={copy} isChinese={isChinese} plans={plans} />
       {checkoutError && <Alert message={checkoutError} showIcon type="error" />}
       <Card className={styles.section}>
         <Flexbox gap={18}>
           <Flexbox align={'center'} horizontal justify={'space-between'}>
             <Flexbox gap={4}>
-              <Text style={{ fontSize: 20, fontWeight: 650 }}>Plans & Pricing</Text>
-              <Text type={'secondary'}>Start with AskCore local billing. No official cloud dependency.</Text>
+              <Text style={{ fontSize: 20, fontWeight: 650 }}>{copy.plans.planPricing}</Text>
+              <Text type={'secondary'}>{copy.plans.pricingSubtitle}</Text>
             </Flexbox>
             <Segmented
               onChange={(value) => setPeriod(value as BillingPeriodId)}
@@ -731,7 +1163,7 @@ const PlansView = memo<{
           <div className={styles.cardGrid}>
             {plans.map((plan) => {
               const current = plan.id === currentPlanId;
-              const price = planPrice(plan, period);
+              const price = planPrice(plan, period, isChinese, copy, moneyFormatter);
               const planExamples = plan.credit_examples || plan.benefits?.credits?.examples || [];
               return (
                 <Card className={styles.planCard} key={plan.id}>
@@ -740,31 +1172,47 @@ const PlansView = memo<{
                       <Flexbox gap={4}>
                         <Flexbox align={'center'} gap={8} horizontal>
                           <Icon icon={plan.id === 'ultimate' ? ShieldCheck : Sparkles} />
-                          <Text style={{ fontSize: 18, fontWeight: 650 }}>{plan.display_name}</Text>
+                          <Text style={{ fontSize: 18, fontWeight: 650 }}>
+                            {localPlanName(plan, isChinese)}
+                          </Text>
                         </Flexbox>
-                        <Text type={'secondary'}>{plan.description}</Text>
+                        <Text type={'secondary'}>{localPlanDescription(plan, isChinese)}</Text>
                       </Flexbox>
-                      {plan.badge && <Tag color="gold">{plan.badge}</Tag>}
+                      {localPlanBadge(plan, isChinese) && (
+                        <Tag color="gold">{localPlanBadge(plan, isChinese)}</Tag>
+                      )}
                     </Flexbox>
                     <Flexbox gap={4}>
                       <Flexbox align={'baseline'} gap={6} horizontal>
-                        <span className={styles.price}>{currencyFormatter.format(price.price || 0)}</span>
+                        <span className={styles.price}>
+                          {moneyFormatter.format(price.price || 0)}
+                        </span>
                         <Text type={'secondary'}>{price.suffix}</Text>
                       </Flexbox>
                       {price.detail && <Text type={'secondary'}>{price.detail}</Text>}
                     </Flexbox>
                     <Flexbox gap={8}>
-                      <Text strong>{formatCredits(plan.monthly_credits)} / Month</Text>
+                      <Text strong>
+                        {formatCredits(plan.monthly_credits, copy)} / {copy.units.month}
+                      </Text>
                       {planExamples.slice(0, 3).map((example) => (
                         <Text key={example.model} type={'secondary'}>
-                          {example.model}: approx {numberFormatter.format(example.messages || 0)} messages
+                          {example.model}: {copy.units.approx}{' '}
+                          {numberFormatter.format(example.messages || 0)} {copy.units.messages}
                         </Text>
                       ))}
                     </Flexbox>
                     <ul className={styles.planFeatures}>
-                      <li>File Storage: {numberFormatter.format(plan.file_storage_gb || 0)} GB</li>
-                      <li>Vector Storage: {numberFormatter.format(plan.vector_storage_entries || 0)} entries</li>
-                      <li>{plan.support || 'Community support'}</li>
+                      <li>
+                        {copy.plans.fileStorage}:{' '}
+                        {numberFormatter.format(plan.file_storage_gb || 0)} GB
+                      </li>
+                      <li>
+                        {copy.plans.vectorStorage}:{' '}
+                        {numberFormatter.format(plan.vector_storage_entries || 0)}{' '}
+                        {copy.units.entries}
+                      </li>
+                      <li>{localPlanSupport(plan, isChinese, copy)}</li>
                     </ul>
                     <Button
                       block
@@ -773,9 +1221,14 @@ const PlansView = memo<{
                       onClick={() => handleCheckout(plan)}
                       type={current ? 'default' : 'primary'}
                     >
-                      {current ? 'Current Plan' : plan.monthly_price_usd === 0 ? 'Get Started' : 'Purchase'}
+                      {current
+                        ? copy.actions.currentPlan
+                        : moneyValue(plan.monthly_price_usd, plan.monthly_price_cny, isChinese) ===
+                            0
+                          ? copy.actions.getStarted
+                          : copy.actions.purchase}
                     </Button>
-                    {!provider && <Text type={'secondary'}>No payment provider is enabled.</Text>}
+                    {!provider && <Text type={'secondary'}>{copy.plans.noProvider}</Text>}
                   </Flexbox>
                 </Card>
               );
@@ -783,9 +1236,13 @@ const PlansView = memo<{
           </div>
         </Flexbox>
       </Card>
-      <Card className={styles.section} title="Text Model Pricing">
+      <Card className={styles.section} title={copy.plans.textModelPricing}>
         <Flexbox gap={12}>
-          <Text type={'secondary'}>{plansPayload?.model_pricing?.description}</Text>
+          <Text type={'secondary'}>
+            {isChinese
+              ? 'AskCore 使用积分衡量 AI 模型用量，并按输入、输出 Token 分别计费。'
+              : plansPayload?.model_pricing?.description}
+          </Text>
           <Table
             columns={modelColumns}
             dataSource={plansPayload?.model_pricing?.text || []}
@@ -795,27 +1252,46 @@ const PlansView = memo<{
           />
         </Flexbox>
       </Card>
-      <Card className={styles.section} title="Plan Comparison">
+      <Card className={styles.section} title={copy.plans.comparison}>
         <Collapse
           defaultActiveKey={plansPayload?.plan_comparison?.map((group) => group.key)}
           items={(plansPayload?.plan_comparison || []).map((group) => ({
             children: (
               <Table
                 columns={[
-                  { dataIndex: 'label', fixed: 'left', title: group.title, width: 220 },
+                  {
+                    dataIndex: 'label',
+                    fixed: 'left',
+                    render: (value: string) => comparisonRowLabel(value, isChinese),
+                    title: comparisonTitle(group, isChinese),
+                    width: 220,
+                  },
                   ...plans
                     .filter((plan) => plan.id !== 'free')
                     .map((plan) => ({
                       className: styles.compareCell,
                       dataIndex: plan.id,
                       render: (_: unknown, row: PlanComparisonGroup['rows'][number]) => {
+                        if (row.label === 'Support Channels')
+                          return localPlanSupport(plan, isChinese, copy);
+                        if (row.label === 'Top up Credits') {
+                          const unitPrice = moneyValue(
+                            plan.topup_unit_price_usd,
+                            plan.topup_unit_price_cny,
+                            isChinese,
+                          );
+                          return unitPrice
+                            ? `${moneyFormatter.format(unitPrice)} ${copy.units.perMillionCredits}`
+                            : copy.credits.unitPriceFallback;
+                        }
                         const value = row.values[plan.id];
                         if (typeof value === 'number') {
-                          return `${numberFormatter.format(value)}${row.unit ? ` ${row.unit}` : ''}`;
+                          const unit = comparisonUnit(row.unit, isChinese);
+                          return `${numberFormatter.format(value)}${unit ? ` ${unit}` : ''}`;
                         }
                         return value || '-';
                       },
-                      title: plan.display_name,
+                      title: localPlanName(plan, isChinese),
                     })),
                 ]}
                 dataSource={group.rows}
@@ -826,13 +1302,13 @@ const PlansView = memo<{
               />
             ),
             key: group.key,
-            label: group.title,
+            label: comparisonTitle(group, isChinese),
           }))}
         />
       </Card>
-      <Card className={styles.section} title="Frequently Asked Questions">
+      <Card className={styles.section} title={copy.plans.faq}>
         <Collapse
-          items={(plansPayload?.faq || []).map((item) => ({
+          items={localizedFaq(plansPayload?.faq, isChinese).map((item) => ({
             children: <Text type={'secondary'}>{item.answer}</Text>,
             key: item.question,
             label: item.question,
@@ -847,28 +1323,29 @@ PlansView.displayName = 'PlansView';
 
 const UsageView = memo<{
   account?: AskCoreAccountPayload;
+  copy: BillingCopy;
   plansPayload?: AskCorePlansPayload;
-}>(({ account, plansPayload }) => {
+}>(({ account, copy, plansPayload }) => {
   const state = useBillingJson<AskCoreUsagePayload>('/usage');
   const plan = plansPayload?.plans.find((item) => item.id === account?.personal.plan_id);
   const columns: ColumnsType<AskCoreUsageRow> = useMemo(
     () => [
-      { dataIndex: 'created_at', render: formatDate, title: 'Created At' },
-      { dataIndex: 'type', title: 'Type' },
-      { dataIndex: 'trigger', title: 'Trigger' },
-      { dataIndex: 'model', title: 'Model' },
+      { dataIndex: 'created_at', render: formatDate, title: copy.tables.createdAt },
+      { dataIndex: 'type', title: copy.tables.type },
+      { dataIndex: 'trigger', title: copy.tables.trigger },
+      { dataIndex: 'model', title: copy.tables.model },
       {
         dataIndex: 'tokens_total',
         render: (value: number | null) => numberFormatter.format(Number(value || 0)),
-        title: 'Token Usage',
+        title: copy.tables.tokenUsage,
       },
       {
         dataIndex: 'amount_credits',
-        render: (value: number) => `${Number(value || 0).toFixed(2)} Credits`,
-        title: 'Credits',
+        render: (value: number) => `${Number(value || 0).toFixed(2)} ${copy.units.credits}`,
+        title: copy.tables.credits,
       },
     ],
-    [],
+    [copy],
   );
 
   if (state.loading) return <Skeleton active paragraph={{ rows: 6 }} />;
@@ -878,7 +1355,10 @@ const UsageView = memo<{
   const includedUsed = Number(summary?.by_scope?.org_seat || 0);
   const personalUsed = Number(summary?.by_scope?.user || 0);
   const total = Number(plan?.monthly_credits || account?.personal.balance_credits || 1);
-  const percent = Math.min(100, Math.round(((includedUsed + personalUsed) / Math.max(total, 1)) * 100));
+  const percent = Math.min(
+    100,
+    Math.round(((includedUsed + personalUsed) / Math.max(total, 1)) * 100),
+  );
 
   return (
     <Flexbox gap={16}>
@@ -886,44 +1366,56 @@ const UsageView = memo<{
         <Card>
           <Statistic
             prefix={<Icon icon={Sparkles} />}
-            title="This Month Usage"
+            title={copy.usage.thisMonth}
             value={summary?.total_credits_used || 0}
-            suffix="Credits"
+            suffix={copy.units.credits}
           />
         </Card>
         <Card>
           <Statistic
             prefix={<Icon icon={FileText} />}
-            title="Token Usage"
+            title={copy.usage.tokenUsage}
             value={summary?.total_tokens || 0}
           />
         </Card>
         <Card>
           <Statistic
             prefix={<Icon icon={Database} />}
-            title="File Storage"
+            title={copy.usage.fileStorage}
             value={plan?.file_storage_gb || 0}
             suffix="GB"
           />
         </Card>
       </div>
-      <Card className={styles.section} title="Usage Overview">
+      <Card className={styles.section} title={copy.usage.overview}>
         <Flexbox gap={12}>
           <Progress percent={percent} />
           <div className={styles.metricGrid}>
             <Card size="small">
-              <Statistic title="Plan Usage" value={includedUsed} suffix="Credits" />
+              <Statistic
+                title={copy.usage.planUsage}
+                value={includedUsed}
+                suffix={copy.units.credits}
+              />
             </Card>
             <Card size="small">
-              <Statistic title="On-demand" value={personalUsed} suffix="Credits" />
+              <Statistic
+                title={copy.usage.onDemand}
+                value={personalUsed}
+                suffix={copy.units.credits}
+              />
             </Card>
             <Card size="small">
-              <Statistic title="Vector Storage" value={plan?.vector_storage_entries || 0} suffix="entries" />
+              <Statistic
+                title={copy.usage.vectorStorage}
+                value={plan?.vector_storage_entries || 0}
+                suffix={copy.units.entries}
+              />
             </Card>
           </div>
         </Flexbox>
       </Card>
-      <Card className={styles.section} title="Computing Credits Usage Details">
+      <Card className={styles.section} title={copy.usage.detail}>
         <Table
           columns={columns}
           dataSource={state.data?.items || []}
@@ -941,11 +1433,18 @@ UsageView.displayName = 'UsageView';
 
 const CreditsView = memo<{
   accountState: ResourceState<AskCoreAccountPayload>;
+  copy: BillingCopy;
+  isChinese: boolean;
+  moneyFormatter: Intl.NumberFormat;
   plansPayload?: AskCorePlansPayload;
-}>(({ accountState, plansPayload }) => {
+}>(({ accountState, copy, isChinese, moneyFormatter, plansPayload }) => {
   const [refreshKey, setRefreshKey] = useState(0);
   const creditState = useBillingJson<AskCoreCreditPackagesPayload>('/credits', false, refreshKey);
-  const autoTopupState = useBillingJson<AskCoreAutoTopupPayload>('/credits/auto-topup', false, refreshKey);
+  const autoTopupState = useBillingJson<AskCoreAutoTopupPayload>(
+    '/credits/auto-topup',
+    false,
+    refreshKey,
+  );
   const [checkoutPackId, setCheckoutPackId] = useState<string | null>(null);
   const [savingAutoTopup, setSavingAutoTopup] = useState(false);
   const [form] = Form.useForm<AskCoreAutoTopupPayload>();
@@ -974,12 +1473,12 @@ const CreditsView = memo<{
         });
         requestParentOpenUrl(checkout.url);
       } catch (error) {
-        message.error(error instanceof Error ? error.message : 'Checkout failed');
+        message.error(error instanceof Error ? error.message : copy.errors.checkoutFailed);
       } finally {
         setCheckoutPackId(null);
       }
     },
-    [provider],
+    [copy.errors.checkoutFailed, provider],
   );
 
   const handleSaveAutoTopup = useCallback(async () => {
@@ -990,16 +1489,17 @@ const CreditsView = memo<{
         body: JSON.stringify(values),
         method: 'PUT',
       });
-      message.success('Auto top-up settings saved');
+      message.success(copy.credits.autoTopupSaved);
       setRefreshKey((key) => key + 1);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Failed to save auto top-up settings');
+      message.error(error instanceof Error ? error.message : copy.errors.saveAutoTopupFailed);
     } finally {
       setSavingAutoTopup(false);
     }
-  }, [form]);
+  }, [copy.credits.autoTopupSaved, copy.errors.saveAutoTopupFailed, form]);
 
-  if (accountState.loading || creditState.loading) return <Skeleton active paragraph={{ rows: 6 }} />;
+  if (accountState.loading || creditState.loading)
+    return <Skeleton active paragraph={{ rows: 6 }} />;
   if (accountState.error) return <Alert message={accountState.error} showIcon type="error" />;
   if (creditState.error) return <Alert message={creditState.error} showIcon type="error" />;
 
@@ -1008,18 +1508,20 @@ const CreditsView = memo<{
     : plansPayload?.credit_packs || [];
 
   const packageColumns: ColumnsType<AskCoreCreditPackageRow> = [
-    { dataIndex: 'purchased_at', render: formatDate, title: 'Purchased On' },
-    { dataIndex: 'source', title: 'Source' },
+    { dataIndex: 'purchased_at', render: formatDate, title: copy.credits.purchasedOn },
+    { dataIndex: 'source', title: copy.credits.source },
     {
       dataIndex: 'remaining_credits',
-      render: (value: number) => formatCredits(value),
-      title: 'Balance',
+      render: (value: number) => formatCredits(value, copy),
+      title: copy.credits.balance,
     },
-    { dataIndex: 'expires_at', render: formatDate, title: 'Expires At' },
+    { dataIndex: 'expires_at', render: formatDate, title: copy.credits.expiresAt },
     {
       dataIndex: 'status',
-      render: (value: string) => <Badge status={value === 'active' ? 'success' : 'default'} text={value} />,
-      title: 'Status',
+      render: (value: string) => (
+        <Badge status={value === 'active' ? 'success' : 'default'} text={value} />
+      ),
+      title: copy.credits.status,
     },
   ];
 
@@ -1027,42 +1529,55 @@ const CreditsView = memo<{
     <Flexbox gap={16}>
       <div className={styles.metricGrid}>
         <Card>
-          <Statistic title="Top-up Credits Balance" value={creditState.data?.balance_credits || 0} suffix="Credits" />
+          <Statistic
+            title={copy.credits.topupBalance}
+            value={creditState.data?.balance_credits || 0}
+            suffix={copy.units.credits}
+          />
         </Card>
         <Card>
-          <Statistic title="Subscription Credits" value={plan?.monthly_credits || 0} suffix="Credits" />
+          <Statistic
+            title={copy.credits.subscriptionCredits}
+            value={plan?.monthly_credits || 0}
+            suffix={copy.units.credits}
+          />
         </Card>
         <Card>
-          <Statistic title="Current Plan" value={plan?.display_name || account?.personal.plan_id || 'free'} />
+          <Statistic
+            title={copy.credits.currentPlan}
+            value={localPlanName(plan, isChinese) || account?.personal.plan_id || 'free'}
+          />
         </Card>
       </div>
-      {!isPaid && (
-        <Alert
-          message="Free users need to subscribe to a paid plan before topping up credits."
-          showIcon
-          type="info"
-        />
-      )}
-      <Card className={styles.section} title="Purchase Credits">
+      {!isPaid && <Alert message={copy.credits.freeNeedsPaidPlan} showIcon type="info" />}
+      <Card className={styles.section} title={copy.credits.purchaseCredits}>
         {packages.length === 0 ? (
-          <Empty description="No credit packs are currently available." />
+          <Empty description={copy.credits.noPacks} />
         ) : (
           <div className={styles.cardGrid}>
             {packages.map((pack) => (
               <Card key={pack.id} size="small">
                 <Flexbox gap={12}>
                   <Flexbox align={'center'} horizontal justify={'space-between'}>
-                    <Text strong>{pack.display_name}</Text>
-                    <Tag>{pack.validity_months || 6} months validity</Tag>
+                    <Text strong>{localPackName(pack, isChinese)}</Text>
+                    <Tag>
+                      {pack.validity_months || 6} {copy.credits.validityMonths}
+                    </Tag>
                   </Flexbox>
-                  <Text type={'secondary'}>{formatCredits(pack.credits)}</Text>
+                  <Text type={'secondary'}>{formatCredits(pack.credits, copy)}</Text>
                   <Text style={{ fontSize: 22, fontWeight: 700 }}>
-                    {currencyFormatter.format(pack.price_usd)}
+                    {moneyFormatter.format(moneyValue(pack.price_usd, pack.price_cny, isChinese))}
                   </Text>
                   <Text type={'secondary'}>
-                    {pack.unit_price_usd_per_million
-                      ? `${currencyFormatter.format(pack.unit_price_usd_per_million)} / 1M Credits`
-                      : 'Unit price follows local catalog'}
+                    {(isChinese ? pack.unit_price_cny_per_million : pack.unit_price_usd_per_million)
+                      ? `${moneyFormatter.format(
+                          moneyValue(
+                            pack.unit_price_usd_per_million,
+                            pack.unit_price_cny_per_million,
+                            isChinese,
+                          ),
+                        )} ${copy.units.perMillionCredits}`
+                      : copy.credits.unitPriceFallback}
                   </Text>
                   <Button
                     disabled={!provider || !isPaid}
@@ -1070,7 +1585,7 @@ const CreditsView = memo<{
                     onClick={() => handleTopUp(pack)}
                     type="primary"
                   >
-                    Purchase Now
+                    {copy.actions.purchaseNow}
                   </Button>
                 </Flexbox>
               </Card>
@@ -1078,45 +1593,44 @@ const CreditsView = memo<{
           </div>
         )}
       </Card>
-      <Card className={styles.section} title="Auto Top-Up">
+      <Card className={styles.section} title={copy.credits.autoTopup}>
         {autoTopupState.error ? (
           <Alert message={autoTopupState.error} showIcon type="warning" />
         ) : (
           <Form form={form} layout="vertical">
             <div className={styles.metricGrid}>
               <Form.Item name="enabled" valuePropName="checked">
-                <Switch checkedChildren="Enabled" unCheckedChildren="Disabled" />
+                <Switch
+                  checkedChildren={copy.credits.enabled}
+                  unCheckedChildren={copy.credits.disabled}
+                />
               </Form.Item>
-              <Form.Item label="Threshold" name="threshold_credits">
+              <Form.Item label={copy.credits.threshold} name="threshold_credits">
                 <InputNumber min={0} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item label="Target Balance" name="target_credits">
+              <Form.Item label={copy.credits.targetBalance} name="target_credits">
                 <InputNumber min={0} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item label="Monthly Limit" name="monthly_limit_usd">
-                <InputNumber min={0} prefix="$" style={{ width: '100%' }} />
+              <Form.Item label={copy.credits.monthlyLimit} name="monthly_limit_usd">
+                <InputNumber min={0} prefix={isChinese ? '¥' : '$'} style={{ width: '100%' }} />
               </Form.Item>
             </div>
             {!autoTopupState.data?.has_payment_method && (
-              <Alert
-                message="No payment method on file. Auto top-up will stay shadow-safe until a customer portal payment method exists."
-                showIcon
-                type="warning"
-              />
+              <Alert message={copy.credits.autoTopupNoPayment} showIcon type="warning" />
             )}
             <Flexbox horizontal justify={'flex-end'} style={{ marginTop: 12 }}>
               <Button loading={savingAutoTopup} onClick={handleSaveAutoTopup} type="primary">
-                Save
+                {copy.actions.save}
               </Button>
             </Flexbox>
           </Form>
         )}
       </Card>
-      <Card className={styles.section} title="My Credit Packages">
+      <Card className={styles.section} title={copy.credits.myPackages}>
         <Table
           columns={packageColumns}
           dataSource={creditState.data?.items || []}
-          locale={{ emptyText: <Empty description="No credit packages" /> }}
+          locale={{ emptyText: <Empty description={copy.credits.noPackages} /> }}
           pagination={false}
           rowKey="id"
           scroll={{ x: true }}
@@ -1130,8 +1644,11 @@ CreditsView.displayName = 'CreditsView';
 
 const BillingView = memo<{
   accountState: ResourceState<AskCoreAccountPayload>;
+  copy: BillingCopy;
+  isChinese: boolean;
+  moneyFormatter: Intl.NumberFormat;
   plansPayload?: AskCorePlansPayload;
-}>(({ accountState, plansPayload }) => {
+}>(({ accountState, copy, isChinese, moneyFormatter, plansPayload }) => {
   const historyState = useBillingJson<AskCoreBillingHistoryPayload>('/billing-history');
   const orgId = accountState.data?.organization?.auth_org_id;
   const orgSeatsState = useBillingJson<AskCoreBillingOrganization>(
@@ -1142,27 +1659,27 @@ const BillingView = memo<{
   const planNames = useMemo(
     () =>
       Object.fromEntries(
-        (plansPayload?.plans || []).map((plan) => [plan.id, plan.display_name]),
+        (plansPayload?.plans || []).map((plan) => [plan.id, localPlanName(plan, isChinese)]),
       ) as Record<string, string>,
-    [plansPayload?.plans],
+    [isChinese, plansPayload?.plans],
   );
   const organization = orgSeatsState.data || accountState.data?.organization || null;
 
   const columns: ColumnsType<AskCoreInvoiceRow> = [
-    { dataIndex: 'provider_invoice_id', title: 'Order Number' },
-    { dataIndex: 'provider', title: 'Payment Gateway' },
+    { dataIndex: 'provider_invoice_id', title: copy.billing.orderNumber },
+    { dataIndex: 'provider', title: copy.billing.paymentGateway },
     {
       dataIndex: 'amount_paid_usd',
-      render: (value: number) => currencyFormatter.format(value || 0),
-      title: 'Amount',
+      render: (value: number) => moneyFormatter.format(value || 0),
+      title: copy.billing.amount,
     },
-    { dataIndex: 'created_at', render: formatDate, title: 'Payment Date' },
+    { dataIndex: 'created_at', render: formatDate, title: copy.billing.paymentDate },
     {
       dataIndex: 'status',
       render: (value: string) => (
         <Badge color={value === 'paid' ? 'green' : 'blue'} text={value || 'pending'} />
       ),
-      title: 'Transaction Status',
+      title: copy.billing.transactionStatus,
     },
   ];
 
@@ -1173,13 +1690,14 @@ const BillingView = memo<{
       const portal = await billingJson<{ url: string }>('/customer-portal');
       requestParentOpenUrl(portal.url);
     } catch (error) {
-      setPortalError(error instanceof Error ? error.message : 'Customer portal failed');
+      setPortalError(error instanceof Error ? error.message : copy.errors.customerPortalFailed);
     } finally {
       setPortalLoading(false);
     }
-  }, []);
+  }, [copy.errors.customerPortalFailed]);
 
-  if (accountState.loading || historyState.loading) return <Skeleton active paragraph={{ rows: 6 }} />;
+  if (accountState.loading || historyState.loading)
+    return <Skeleton active paragraph={{ rows: 6 }} />;
   if (accountState.error) return <Alert message={accountState.error} showIcon type="error" />;
   if (historyState.error) return <Alert message={historyState.error} showIcon type="error" />;
 
@@ -1187,26 +1705,46 @@ const BillingView = memo<{
 
   return (
     <Flexbox gap={16}>
-      <Card className={styles.section} title="Billing Summary">
+      <Card className={styles.section} title={copy.billing.billingSummary}>
         <Flexbox gap={12}>
           <Descriptions
             column={{ lg: 3, md: 2, sm: 1, xs: 1 }}
             items={[
-              { key: 'plan', label: 'Current Plan', children: planNames[summary?.plan_id || ''] || summary?.plan_id || 'free' },
-              { key: 'status', label: 'Status', children: summary?.status || 'free' },
-              { key: 'interval', label: 'Billing Cycle', children: summary?.interval || 'month' },
-              { key: 'start', label: 'Start Date', children: formatDate(summary?.current_period_start) },
-              { key: 'end', label: 'End Date', children: formatDate(summary?.current_period_end) },
+              {
+                key: 'plan',
+                label: copy.billing.currentPlan,
+                children: planNames[summary?.plan_id || ''] || summary?.plan_id || 'free',
+              },
+              { key: 'status', label: copy.billing.status, children: summary?.status || 'free' },
+              {
+                key: 'interval',
+                label: copy.billing.billingCycle,
+                children: summary?.interval || copy.billing.intervalFallback,
+              },
+              {
+                key: 'start',
+                label: copy.billing.startDate,
+                children: formatDate(summary?.current_period_start),
+              },
+              {
+                key: 'end',
+                label: copy.billing.endDate,
+                children: formatDate(summary?.current_period_end),
+              },
               {
                 key: 'next',
-                label: 'Next Payment',
-                children: currencyFormatter.format(summary?.next_payment?.amount_due_usd || 0),
+                label: copy.billing.nextPayment,
+                children: moneyFormatter.format(summary?.next_payment?.amount_due_usd || 0),
               },
             ]}
           />
           <Flexbox horizontal justify={'flex-end'}>
-            <Button icon={<Icon icon={Receipt} />} loading={portalLoading} onClick={handleCustomerPortal}>
-              Manage Subscription
+            <Button
+              icon={<Icon icon={Receipt} />}
+              loading={portalLoading}
+              onClick={handleCustomerPortal}
+            >
+              {copy.actions.manageSubscription}
             </Button>
           </Flexbox>
           {portalError && <Alert message={portalError} showIcon type="error" />}
@@ -1218,11 +1756,11 @@ const BillingView = memo<{
         organization={organization}
         planNames={planNames}
       />
-      <Card className={styles.section} title="Billing History">
+      <Card className={styles.section} title={copy.billing.billingHistory}>
         <Table
           columns={columns}
           dataSource={historyState.data?.items || []}
-          locale={{ emptyText: <Empty description="No billing history" /> }}
+          locale={{ emptyText: <Empty description={copy.billing.billingHistory} /> }}
           pagination={false}
           rowKey={'id'}
           scroll={{ x: true }}
@@ -1234,7 +1772,7 @@ const BillingView = memo<{
 
 BillingView.displayName = 'BillingView';
 
-const ReferralView = memo(() => {
+const ReferralView = memo<{ copy: BillingCopy }>(({ copy }) => {
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useBillingJson<AskCoreReferralPayload>('/referrals', false, refreshKey);
   const [editForm] = Form.useForm<{ referral_code: string }>();
@@ -1242,14 +1780,18 @@ const ReferralView = memo(() => {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (state.data?.referral_code) editForm.setFieldsValue({ referral_code: state.data.referral_code });
+    if (state.data?.referral_code)
+      editForm.setFieldsValue({ referral_code: state.data.referral_code });
   }, [editForm, state.data?.referral_code]);
 
-  const copyText = useCallback(async (value?: string) => {
-    if (!value) return;
-    await navigator.clipboard?.writeText(value);
-    message.success('Copied');
-  }, []);
+  const copyText = useCallback(
+    async (value?: string) => {
+      if (!value) return;
+      await navigator.clipboard?.writeText(value);
+      message.success(copy.messages.copied);
+    },
+    [copy.messages.copied],
+  );
 
   const saveReferralCode = useCallback(async () => {
     setSaving(true);
@@ -1259,14 +1801,14 @@ const ReferralView = memo(() => {
         body: JSON.stringify(values),
         method: 'PATCH',
       });
-      message.success('Referral code saved');
+      message.success(copy.messages.referralSaved);
       setRefreshKey((key) => key + 1);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Update failed');
+      message.error(error instanceof Error ? error.message : copy.errors.updateFailed);
     } finally {
       setSaving(false);
     }
-  }, [editForm]);
+  }, [copy.errors.updateFailed, copy.messages.referralSaved, editForm]);
 
   const backfillReferralCode = useCallback(async () => {
     setSaving(true);
@@ -1276,35 +1818,37 @@ const ReferralView = memo(() => {
         body: JSON.stringify(values),
         method: 'POST',
       });
-      message.success('Invite code bound');
+      message.success(copy.messages.bindSuccess);
       backfillForm.resetFields();
       setRefreshKey((key) => key + 1);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Binding failed');
+      message.error(error instanceof Error ? error.message : copy.errors.bindFailed);
     } finally {
       setSaving(false);
     }
-  }, [backfillForm]);
+  }, [backfillForm, copy.errors.bindFailed, copy.messages.bindSuccess]);
 
   if (state.loading) return <Skeleton active paragraph={{ rows: 6 }} />;
   if (state.error) return <Alert message={state.error} showIcon type="error" />;
   if (!state.data?.enabled) {
-    return <Empty description="Referral rewards are not currently enabled." />;
+    return <Empty description={copy.referral.notEnabled} />;
   }
 
   const data = state.data;
   const columns: ColumnsType<AskCoreReferralPayload['items'][number]> = [
-    { dataIndex: 'created_at', render: formatDate, title: 'Registration Time' },
-    { dataIndex: 'invitee_email', title: 'Invitee Email' },
+    { dataIndex: 'created_at', render: formatDate, title: copy.referral.registrationTime },
+    { dataIndex: 'invitee_email', title: copy.referral.inviteeEmail },
     {
       dataIndex: 'reward_credits',
-      render: (value: number) => formatCredits(value),
-      title: 'My Reward',
+      render: (value: number) => formatCredits(value, copy),
+      title: copy.referral.myReward,
     },
     {
       dataIndex: 'status',
-      render: (value: string) => <Badge status={value === 'rewarded' ? 'success' : 'processing'} text={value} />,
-      title: 'Status',
+      render: (value: string) => (
+        <Badge status={value === 'rewarded' ? 'success' : 'processing'} text={value} />
+      ),
+      title: copy.referral.status,
     },
   ];
 
@@ -1312,64 +1856,72 @@ const ReferralView = memo(() => {
     <Flexbox gap={16}>
       <div className={styles.metricGrid}>
         <Card>
-          <Statistic prefix={<Icon icon={Users} />} title="Total Invites" value={data.total_invites} />
+          <Statistic
+            prefix={<Icon icon={Users} />}
+            title={copy.referral.totalInvites}
+            value={data.total_invites}
+          />
         </Card>
         <Card>
-          <Statistic prefix={<Icon icon={Gift} />} title="Valid Conversions" value={data.total_rewarded} />
+          <Statistic
+            prefix={<Icon icon={Gift} />}
+            title={copy.referral.validConversions}
+            value={data.total_rewarded}
+          />
         </Card>
         <Card>
           <Statistic
             prefix={<Icon icon={WalletCards} />}
-            title="Available Balance"
+            title={copy.referral.availableBalance}
             value={data.available_balance || 0}
-            suffix="Credits"
+            suffix={copy.units.credits}
           />
         </Card>
       </div>
       <div className={styles.cardGrid}>
-        <Card title="My Referral Code">
+        <Card title={copy.referral.codeTitle}>
           <Flexbox gap={12}>
-            <Text type={'secondary'}>Share your exclusive referral code to invite friends to register.</Text>
+            <Text type={'secondary'}>{copy.referral.codeDescription}</Text>
             <Form form={editForm} layout="inline">
               <Form.Item
                 name="referral_code"
-                rules={[{ message: 'Use 2-8 letters, numbers or underscores', pattern: /^[A-Za-z0-9_]{2,8}$/ }]}
+                rules={[{ message: copy.referral.codePattern, pattern: /^[A-Za-z0-9_]{2,8}$/ }]}
               >
                 <Input />
               </Form.Item>
               <Button icon={<Icon icon={Copy} />} onClick={() => copyText(data.referral_code)}>
-                Copy
+                {copy.actions.copy}
               </Button>
               <Button loading={saving} onClick={saveReferralCode} type="primary">
-                Save
+                {copy.actions.save}
               </Button>
             </Form>
           </Flexbox>
         </Card>
-        <Card title="Referral Link">
+        <Card title={copy.referral.linkTitle}>
           <Flexbox gap={12}>
-            <Text type={'secondary'}>Copy the link and share with friends. Complete registration to receive rewards.</Text>
+            <Text type={'secondary'}>{copy.referral.linkDescription}</Text>
             <Input readOnly value={data.referral_link} />
             <Button icon={<Icon icon={Link} />} onClick={() => copyText(data.referral_link)}>
-              Copy Link
+              {copy.actions.copyLink}
             </Button>
           </Flexbox>
         </Card>
       </div>
-      <Card className={styles.section} title="Backfill Invite Code">
+      <Card className={styles.section} title={copy.referral.backfillTitle}>
         <Flexbox gap={12}>
-          <Text type={'secondary'}>Forgot to enter an invite code? Bind it here before reward expiry.</Text>
+          <Text type={'secondary'}>{copy.referral.backfillDescription}</Text>
           <Form form={backfillForm} layout="inline">
             <Form.Item name="referral_code" rules={[{ required: true }]}>
-              <Input placeholder="Enter invite code or link" />
+              <Input placeholder={copy.referral.placeholder} />
             </Form.Item>
             <Button loading={saving} onClick={backfillReferralCode} type="primary">
-              Confirm Binding
+              {copy.actions.bind}
             </Button>
           </Form>
         </Flexbox>
       </Card>
-      <Card className={styles.section} title="Program Rules">
+      <Card className={styles.section} title={copy.referral.programRules}>
         <List
           dataSource={Object.entries(data.rules || {})}
           renderItem={([key, value]) => (
@@ -1383,11 +1935,11 @@ const ReferralView = memo(() => {
           )}
         />
       </Card>
-      <Card className={styles.section} title="Referral History">
+      <Card className={styles.section} title={copy.referral.history}>
         <Table
           columns={columns}
           dataSource={data.items}
-          locale={{ emptyText: <Empty description="No referral history" /> }}
+          locale={{ emptyText: <Empty description={copy.referral.noHistory} /> }}
           pagination={false}
           rowKey={(row) => row.invitee_user_id}
           scroll={{ x: true }}
@@ -1399,52 +1951,81 @@ const ReferralView = memo(() => {
 
 ReferralView.displayName = 'ReferralView';
 
-const QuotaRule = memo<{ account?: AskCoreAccountPayload }>(({ account }) => {
-  const seat = account?.organization?.current_user_seat;
-  const total = Number(seat?.quota_credits_total || 0);
-  const used = Number(seat?.quota_credits_used || 0);
-  const percent = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
+const QuotaRule = memo<{ account?: AskCoreAccountPayload; copy: BillingCopy }>(
+  ({ account, copy }) => {
+    const seat = account?.organization?.current_user_seat;
+    const total = Number(seat?.quota_credits_total || 0);
+    const used = Number(seat?.quota_credits_used || 0);
+    const percent = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
 
-  return (
-    <Card className={styles.section}>
-      <Flexbox gap={8}>
-        <Flexbox align={'center'} gap={8} horizontal>
-          <Icon icon={CircleDollarSign} />
-          <Text strong>Credit consumption priority</Text>
+    return (
+      <Card className={styles.section}>
+        <Flexbox gap={8}>
+          <Flexbox align={'center'} gap={8} horizontal>
+            <Icon icon={CircleDollarSign} />
+            <Text strong>{copy.quota.title}</Text>
+          </Flexbox>
+          <Progress percent={percent} showInfo={false} />
+          <Text type={'secondary'}>{copy.quota.description}</Text>
         </Flexbox>
-        <Progress percent={percent} showInfo={false} />
-        <Text type={'secondary'}>
-          Organization seat quota is charged first. When the user's seat is exhausted, AskCore falls back to personal credits.
-        </Text>
-      </Flexbox>
-    </Card>
-  );
-});
+      </Card>
+    );
+  },
+);
 
 QuotaRule.displayName = 'QuotaRule';
 
 const AskCoreBillingPage = memo<{ page: AskCoreBillingPageKey }>(({ page }) => {
+  const { i18n } = useTranslation('subscription');
+  const isChinese = isChineseLanguage(i18n.language);
+  const copy = isChinese ? zhCopy : enCopy;
+  const moneyFormatter = useMemo(() => createMoneyFormatter(isChinese), [isChinese]);
   const plansState = useBillingJson<AskCorePlansPayload>('/plans', true);
   const accountState = useBillingJson<AskCoreAccountPayload>('/account');
 
   return (
     <Flexbox className={styles.page} gap={20}>
       <Flexbox className={styles.pageInner} gap={20}>
-        <PageHeader account={accountState.data} page={page} plansPayload={plansState.data} />
-        <BillingTabs page={page} />
+        <PageHeader
+          account={accountState.data}
+          copy={copy}
+          page={page}
+          plansPayload={plansState.data}
+        />
         {page === 'plans' && (
-          <PlansView account={accountState.data} plansPayload={plansState.data} state={plansState} />
+          <PlansView
+            account={accountState.data}
+            copy={copy}
+            isChinese={isChinese}
+            moneyFormatter={moneyFormatter}
+            plansPayload={plansState.data}
+            state={plansState}
+          />
         )}
-        {page === 'usage' && <UsageView account={accountState.data} plansPayload={plansState.data} />}
+        {page === 'usage' && (
+          <UsageView account={accountState.data} copy={copy} plansPayload={plansState.data} />
+        )}
         {page === 'credits' && (
-          <CreditsView accountState={accountState} plansPayload={plansState.data} />
+          <CreditsView
+            accountState={accountState}
+            copy={copy}
+            isChinese={isChinese}
+            moneyFormatter={moneyFormatter}
+            plansPayload={plansState.data}
+          />
         )}
         {page === 'billing' && (
-          <BillingView accountState={accountState} plansPayload={plansState.data} />
+          <BillingView
+            accountState={accountState}
+            copy={copy}
+            isChinese={isChinese}
+            moneyFormatter={moneyFormatter}
+            plansPayload={plansState.data}
+          />
         )}
-        {page === 'referral' && <ReferralView />}
+        {page === 'referral' && <ReferralView copy={copy} />}
         {!isAskCoreBillingPageKey(page) && <Empty />}
-        <QuotaRule account={accountState.data} />
+        <QuotaRule account={accountState.data} copy={copy} />
       </Flexbox>
     </Flexbox>
   );

@@ -19,17 +19,47 @@ const numberFormatter = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 0,
 });
 
+const orgSeatCopy = (language?: string) => {
+  const isChinese = language?.toLowerCase().startsWith('zh') ?? false;
+  return isChinese
+    ? {
+        active: '生效中',
+        empty: '暂无已分配的组织席位。',
+        emptyOrganization: '当前没有可用的组织账单账户。',
+        exhausted: '已启用回退',
+        plan: '席位套餐',
+        quota: '额度',
+        rule: '席位是独立额度桶。席位额度耗尽后，会回退使用成员的个人套餐。',
+        status: '状态',
+        title: '组织席位',
+        user: '成员',
+      }
+    : {
+        active: 'Active',
+        empty: 'No organization seats have been assigned.',
+        emptyOrganization: 'No active organization billing account.',
+        exhausted: 'Fallback active',
+        plan: 'Seat plan',
+        quota: 'Quota',
+        rule: 'Seats are independent quota buckets. Exhausted seats fall back to the member personal plan.',
+        status: 'Status',
+        title: 'Organization seats',
+        user: 'Member',
+      };
+};
+
 const OrgSeats = memo<OrgSeatsProps>(({ error, loading, organization, planNames = {} }) => {
-  const { t } = useTranslation('subscription');
+  const { i18n } = useTranslation('subscription');
+  const copy = useMemo(() => orgSeatCopy(i18n.language), [i18n.language]);
   const rows = organization?.seats || [];
 
   const columns: ColumnsType<AskCoreOrganizationSeat> = useMemo(
     () => [
-      { dataIndex: 'user_id', title: t('askcore.seats.user', { defaultValue: 'Member' }) },
+      { dataIndex: 'user_id', title: copy.user },
       {
         dataIndex: 'plan_id',
         render: (value: string) => planNames[value] || value,
-        title: t('askcore.seats.plan', { defaultValue: 'Seat plan' }),
+        title: copy.plan,
       },
       {
         render: (_, row) => {
@@ -51,7 +81,7 @@ const OrgSeats = memo<OrgSeatsProps>(({ error, loading, organization, planNames 
             </Flexbox>
           );
         },
-        title: t('askcore.seats.quota', { defaultValue: 'Quota' }),
+        title: copy.quota,
       },
       {
         dataIndex: 'status',
@@ -59,48 +89,31 @@ const OrgSeats = memo<OrgSeatsProps>(({ error, loading, organization, planNames 
           const exhausted = Number(row.quota_credits_remaining || 0) <= 0;
           return (
             <Tag color={exhausted ? 'warning' : 'success'}>
-              {exhausted
-                ? t('askcore.seats.exhausted', { defaultValue: 'Fallback active' })
-                : value || t('askcore.seats.active', { defaultValue: 'Active' })}
+              {exhausted ? copy.exhausted : value || copy.active}
             </Tag>
           );
         },
-        title: t('askcore.seats.status', { defaultValue: 'Status' }),
+        title: copy.status,
       },
     ],
-    [planNames, t],
+    [copy, planNames],
   );
 
   return (
-    <Card title={t('askcore.seats.title', { defaultValue: 'Organization seats' })}>
+    <Card title={copy.title}>
       <Flexbox gap={16}>
         {loading ? (
           <Skeleton active paragraph={{ rows: 4 }} />
         ) : error && !organization ? (
           <Alert message={error} showIcon type="warning" />
         ) : !organization ? (
-          <Empty
-            description={t('askcore.seats.emptyOrganization', {
-              defaultValue: 'No active organization billing account.',
-            })}
-          />
+          <Empty description={copy.emptyOrganization} />
         ) : rows.length === 0 ? (
-          <Empty
-            description={t('askcore.seats.empty', {
-              defaultValue: 'No organization seats have been assigned.',
-            })}
-          />
+          <Empty description={copy.empty} />
         ) : (
           <Table columns={columns} dataSource={rows} pagination={false} rowKey={'seat_id'} />
         )}
-        {organization && (
-          <Text type={'secondary'}>
-            {t('askcore.seats.rule', {
-              defaultValue:
-                'Seats are independent quota buckets. Exhausted seats fall back to the member personal plan.',
-            })}
-          </Text>
-        )}
+        {organization && <Text type={'secondary'}>{copy.rule}</Text>}
       </Flexbox>
     </Card>
   );
