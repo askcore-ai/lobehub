@@ -3,8 +3,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ASKCORE_BILLING_OPEN_URL_MESSAGE,
   buildAskCoreBillingEmbedUrl,
+  formatBillingInterval,
+  formatBillingStatus,
+  getBillingCopy,
   isAllowedBillingExternalUrl,
   isAskCoreBillingPageKey,
+  localizeReferralRules,
   normalizeBillingPath,
   normalizePlansPayload,
   resolveDefaultProvider,
@@ -67,8 +71,12 @@ describe('AskCore billing embed helpers', () => {
     expect(normalizeBillingPath('/plans', { publicEndpoint: true })).toBe('/api/billing/v1/plans');
     expect(normalizeBillingPath('/account')).toBe('/api/askcore/billing/account');
     expect(normalizeBillingPath('usage')).toBe('/api/askcore/billing/usage');
-    expect(normalizeBillingPath('/credits/auto-topup')).toBe('/api/askcore/billing/credits/auto-topup');
-    expect(normalizeBillingPath('/referrals/backfill')).toBe('/api/askcore/billing/referrals/backfill');
+    expect(normalizeBillingPath('/credits/auto-topup')).toBe(
+      '/api/askcore/billing/credits/auto-topup',
+    );
+    expect(normalizeBillingPath('/referrals/backfill')).toBe(
+      '/api/askcore/billing/referrals/backfill',
+    );
   });
 
   it('validates billing page keys and external payment URLs', () => {
@@ -87,5 +95,27 @@ describe('AskCore billing embed helpers', () => {
         embedOrigin: 'https://askcore.cn',
       }),
     ).toBe(false);
+  });
+
+  it('localizes billing intervals, statuses, and referral rule keys', () => {
+    const zhCopy = getBillingCopy('zh-CN');
+    const enCopy = getBillingCopy('en-US');
+
+    expect(formatBillingInterval('month', zhCopy)).toBe('每月');
+    expect(formatBillingInterval('yearly', zhCopy)).toBe('每年');
+    expect(formatBillingInterval('payonce', enCopy)).toBe('One-time');
+    expect(formatBillingStatus('free', zhCopy)).toBe('免费版');
+    expect(formatBillingStatus('pending_reward', zhCopy)).toBe('审核中');
+
+    const rules = localizeReferralRules(
+      { registration: 'registration', reward: 'reward', rewardDelay: 'rewardDelay' },
+      1_000_000,
+      zhCopy,
+    );
+
+    expect(rules.map((item) => item.text).join('\n')).toContain('注册方式');
+    expect(rules.map((item) => item.text).join('\n')).toContain('奖励');
+    expect(rules.map((item) => item.text).join('\n')).not.toContain('registration');
+    expect(rules.map((item) => item.text).join('\n')).not.toContain('rewardDelay');
   });
 });
