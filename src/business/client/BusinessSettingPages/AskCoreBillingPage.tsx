@@ -879,6 +879,24 @@ const styles = createStaticStyles(({ css }) => ({
   planCard: css`
     height: 100%;
     border-radius: 8px;
+
+    .ant-card-body {
+      display: flex;
+      height: 100%;
+    }
+  `,
+  planCardContent: css`
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-height: 100%;
+  `,
+  planActionButton: css`
+    height: 40px;
+  `,
+  planActionSlot: css`
+    margin-top: auto;
+    padding-top: 12px;
   `,
   currentPlanActions: css`
     display: flex;
@@ -1455,7 +1473,7 @@ const PlansView = memo<{
               const planExamples = plan.credit_examples || plan.benefits?.credits?.examples || [];
               return (
                 <Card className={styles.planCard} key={plan.id}>
-                  <Flexbox gap={16}>
+                  <Flexbox className={styles.planCardContent} gap={16}>
                     <Flexbox align={'flex-start'} horizontal justify={'space-between'}>
                       <Flexbox gap={4}>
                         <Flexbox align={'center'} gap={8} horizontal>
@@ -1502,21 +1520,27 @@ const PlansView = memo<{
                       </li>
                       <li>{localPlanSupport(plan, isChinese, copy)}</li>
                     </ul>
-                    <Button
-                      block
-                      disabled={current || !provider}
-                      loading={checkoutPlanId === plan.id}
-                      onClick={() => handleCheckout(plan)}
-                      type={current ? 'default' : 'primary'}
-                    >
-                      {current
-                        ? copy.actions.currentPlan
-                        : moneyValue(plan.monthly_price_usd, plan.monthly_price_cny, isChinese) ===
-                            0
-                          ? copy.actions.getStarted
-                          : copy.actions.purchase}
-                    </Button>
-                    {!provider && <Text type={'secondary'}>{copy.plans.noProvider}</Text>}
+                    <Flexbox className={styles.planActionSlot} gap={8}>
+                      <Button
+                        block
+                        className={styles.planActionButton}
+                        disabled={current || !provider}
+                        loading={checkoutPlanId === plan.id}
+                        onClick={() => handleCheckout(plan)}
+                        type={current ? 'default' : 'primary'}
+                      >
+                        {current
+                          ? copy.actions.currentPlan
+                          : moneyValue(
+                                plan.monthly_price_usd,
+                                plan.monthly_price_cny,
+                                isChinese,
+                              ) === 0
+                            ? copy.actions.getStarted
+                            : copy.actions.purchase}
+                      </Button>
+                      {!provider && <Text type={'secondary'}>{copy.plans.noProvider}</Text>}
+                    </Flexbox>
                   </Flexbox>
                 </Card>
               );
