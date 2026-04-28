@@ -8,6 +8,7 @@ import {
   getBillingCopy,
   isAllowedBillingExternalUrl,
   isAskCoreBillingPageKey,
+  isWechatQrCheckout,
   localizeReferralRules,
   normalizeBillingPath,
   normalizePlansPayload,
@@ -65,6 +66,47 @@ describe('AskCore billing embed helpers', () => {
     expect(resolveDefaultProvider({ alipay: { enabled: true }, stripe: { enabled: false } })).toBe(
       'alipay',
     );
+    expect(
+      resolveDefaultProvider(
+        { stripe: { enabled: true }, wechat: { enabled: true } },
+        { isChinese: true },
+      ),
+    ).toBe('wechat');
+    expect(
+      resolveDefaultProvider(
+        { stripe: { enabled: true }, wechat: { enabled: true } },
+        { isChinese: false },
+      ),
+    ).toBe('stripe');
+    expect(resolveDefaultProvider({ wechat: { enabled: true } }, { isChinese: false })).toBeNull();
+  });
+
+  it('detects WeChat Native QR checkout responses', () => {
+    expect(
+      isWechatQrCheckout({
+        checkout_id: 'p33w_checkout',
+        checkout_type: 'qrcode',
+        code_url: 'weixin://wxpay/bizpayurl?pr=test',
+        live_payment: true,
+        mode: 'enforce',
+        provider: 'wechat',
+        purpose: 'subscription',
+        status: 'pending',
+        url: 'https://askcore.cn/settings/billing?p33_checkout=p33w_checkout',
+      }),
+    ).toBe(true);
+    expect(
+      isWechatQrCheckout({
+        checkout_id: 'p33s_checkout',
+        checkout_type: 'redirect',
+        live_payment: true,
+        mode: 'enforce',
+        provider: 'stripe',
+        purpose: 'subscription',
+        status: 'pending',
+        url: 'https://checkout.stripe.com/pay/cs_test',
+      }),
+    ).toBe(false);
   });
 
   it('routes public plans directly and protected billing through the LobeHub proxy', () => {

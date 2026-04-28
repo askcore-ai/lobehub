@@ -13,14 +13,16 @@ import {
   Input,
   InputNumber,
   List,
+  message,
+  Modal,
   Progress,
+  QRCode,
   Segmented,
   Skeleton,
   Space,
   Statistic,
   Switch,
   Table,
-  message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { createStaticStyles, cssVar } from 'antd-style';
@@ -36,7 +38,7 @@ import {
   Users,
   WalletCards,
 } from 'lucide-react';
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 
@@ -89,8 +91,8 @@ export interface AskCoreBillingPlan {
   topup_unit_price_cny?: number;
   topup_unit_price_usd?: number;
   vector_storage_entries?: number;
-  yearly_discount_percent_cny?: number;
   yearly_discount_percent?: number;
+  yearly_discount_percent_cny?: number;
   yearly_monthly_price_cny?: number | null;
   yearly_monthly_price_usd?: number | null;
   yearly_price_cny?: number | null;
@@ -244,9 +246,12 @@ interface AskCoreAutoTopupPayload {
 }
 
 interface AskCoreInvoiceRow {
+  amount_due_cny?: number | null;
   amount_due_usd: number;
+  amount_paid_cny?: number | null;
   amount_paid_usd: number;
   created_at?: string | null;
+  currency?: string | null;
   hosted_invoice_url?: string | null;
   id: number;
   provider: string;
@@ -261,7 +266,11 @@ interface AskCoreBillingHistoryPayload {
     current_period_end?: string | null;
     current_period_start?: string | null;
     interval?: string;
-    next_payment?: { amount_due_usd?: number; due_at?: string | null };
+    next_payment?: {
+      amount_due_cny?: number | null;
+      amount_due_usd?: number;
+      due_at?: string | null;
+    };
     plan_id?: string;
     status?: string;
     subscription_id?: string | null;
@@ -288,10 +297,17 @@ interface AskCoreReferralPayload {
 }
 
 interface CheckoutResponse {
+  amount?: { currency: string; display: string; total: number };
   checkout_id: string;
+  checkout_type?: 'qrcode' | 'redirect';
+  code_url?: string | null;
+  expires_at?: string | null;
   live_payment: boolean;
   mode: string;
+  paid_at?: string | null;
+  poll_url?: string | null;
   provider: BillingProvider;
+  provider_transaction_id?: string | null;
   purpose: string;
   status: string;
   url: string;
@@ -387,6 +403,18 @@ const enCopy = {
     bindSuccess: 'Invite code bound',
     copied: 'Copied',
     referralSaved: 'Referral code saved',
+  },
+  payment: {
+    close: 'Cancel Payment',
+    closed: 'Order closed',
+    expiresAt: 'Expires At',
+    failed: 'Payment failed',
+    pollFailed: 'Unable to refresh payment status',
+    refunded: 'Refunded',
+    scanHint: 'Scan with WeChat to complete payment.',
+    succeeded: 'Payment completed',
+    title: 'WeChat Pay',
+    waiting: 'Waiting for payment',
   },
   page: {
     subtitle: 'Usage, subscription management, credits, billing, and referral rewards.',
@@ -572,6 +600,18 @@ const zhCopy: typeof enCopy = {
     bindSuccess: '邀请码绑定成功',
     copied: '已复制',
     referralSaved: '推荐码已保存',
+  },
+  payment: {
+    close: '取消支付',
+    closed: '订单已关闭',
+    expiresAt: '过期时间',
+    failed: '支付失败',
+    pollFailed: '无法刷新支付状态',
+    refunded: '已退款',
+    scanHint: '请使用微信扫一扫完成支付。',
+    succeeded: '支付完成',
+    title: '微信支付',
+    waiting: '等待支付',
   },
   page: {
     subtitle: '用量、订阅管理、积分、账单与推荐奖励。',
@@ -776,7 +816,7 @@ export const formatBillingInterval = (
   copy: BillingCopy,
 ): string => {
   if (!value) return copy.billing.intervalFallback;
-  const normalized = value.toLowerCase().replace(/[\s_-]/g, '');
+  const normalized = value.toLowerCase().replaceAll(/[\s_-]/g, '');
   if (normalized === 'month' || normalized === 'monthly') return copy.intervals.monthly;
   if (
     normalized === 'year' ||
@@ -795,12 +835,12 @@ export const formatBillingStatus = (
   copy: BillingCopy,
 ): string => {
   if (!value) return '-';
-  const normalized = value.toLowerCase().replace(/-/g, '_') as keyof BillingCopy['statuses'];
+  const normalized = value.toLowerCase().replaceAll('-', '_') as keyof BillingCopy['statuses'];
   return copy.statuses[normalized] || value;
 };
 
 const applyCopyTemplate = (template: string, values: Record<string, string>) =>
-  template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => values[key] || '');
+  template.replaceAll(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => values[key] || '');
 
 const formatReferralRewardMillions = (credits: number | null | undefined) => {
   const value = Number(credits || 0) / 1_000_000;
@@ -829,7 +869,7 @@ export const localizeReferralRules = (
     const hasRule =
       rawEntries.length === 0 ||
       rawEntries.some(([key]) => {
-        const normalized = key.toLowerCase().replace(/[\s_-]/g, '');
+        const normalized = key.toLowerCase().replaceAll(/[\s_-]/g, '');
         if (normalized === item.id.toLowerCase()) {
           knownRules.add(key);
           return true;
@@ -1015,10 +1055,21 @@ export const normalizePlansPayload = (payload: Partial<AskCorePlansPayload> | un
 
 export const resolveDefaultProvider = (
   providers?: AskCorePlansPayload['providers'],
+  options: { isChinese?: boolean } = {},
 ): BillingProvider | null => {
-  const candidates: BillingProvider[] = ['stripe', 'alipay', 'wechat'];
+  const candidates: BillingProvider[] = options.isChinese
+    ? ['wechat', 'alipay', 'stripe']
+    : ['stripe', 'alipay'];
   return candidates.find((provider) => providers?.[provider]?.enabled) || null;
 };
+
+export const isWechatQrCheckout = (checkout?: CheckoutResponse | null) =>
+  checkout?.provider === 'wechat' && checkout.checkout_type === 'qrcode' && Boolean(checkout.code_url);
+
+const terminalPaymentStatuses = new Set(['closed', 'failed', 'refunded', 'shadow', 'succeeded']);
+
+const isTerminalPaymentStatus = (status: string | null | undefined) =>
+  terminalPaymentStatuses.has(String(status || '').toLowerCase());
 
 export const buildAskCoreBillingEmbedUrl = ({
   language,
@@ -1076,6 +1127,117 @@ const requestParentOpenUrl = (url: string) => {
   }
   window.open(url, '_blank', 'noopener,noreferrer');
 };
+
+const WECHAT_PAYMENT_POLL_INTERVAL_MS = 2500;
+
+const paymentStatusText = (status: string | null | undefined, copy: BillingCopy) => {
+  const normalized = String(status || '').toLowerCase();
+  if (normalized === 'succeeded') return copy.payment.succeeded;
+  if (normalized === 'closed') return copy.payment.closed;
+  if (normalized === 'failed') return copy.payment.failed;
+  if (normalized === 'refunded') return copy.payment.refunded;
+  return copy.payment.waiting;
+};
+
+const closePaymentPath = (checkout: CheckoutResponse) =>
+  `${(checkout.poll_url || `/payments/${checkout.checkout_id}`).replace(/\/$/, '')}/close`;
+
+const WechatCheckoutModal = memo<{
+  checkout: CheckoutResponse | null;
+  copy: BillingCopy;
+  onClose: () => void;
+  onSuccess: () => void;
+}>(({ checkout, copy, onClose, onSuccess }) => {
+  const [pollError, setPollError] = useState<string | null>(null);
+  const [status, setStatus] = useState(checkout?.status || 'pending');
+  const reportedSuccessRef = useRef<string | null>(null);
+  const open = isWechatQrCheckout(checkout);
+
+  useEffect(() => {
+    setPollError(null);
+    setStatus(checkout?.status || 'pending');
+    reportedSuccessRef.current = null;
+  }, [checkout?.checkout_id, checkout?.status]);
+
+  useEffect(() => {
+    if (!checkout || !isWechatQrCheckout(checkout)) return;
+
+    let closed = false;
+    let timer: number | undefined;
+    const pollPath = checkout.poll_url || `/payments/${checkout.checkout_id}`;
+
+    const poll = async () => {
+      try {
+        const next = await billingJson<CheckoutResponse>(pollPath);
+        if (closed) return;
+        setPollError(null);
+        setStatus(next.status);
+        if (
+          next.status === 'succeeded' &&
+          reportedSuccessRef.current !== checkout.checkout_id
+        ) {
+          reportedSuccessRef.current = checkout.checkout_id;
+          message.success(copy.payment.succeeded);
+          onSuccess();
+        }
+        if (!isTerminalPaymentStatus(next.status)) {
+          timer = window.setTimeout(poll, WECHAT_PAYMENT_POLL_INTERVAL_MS);
+        }
+      } catch (error) {
+        if (closed) return;
+        setPollError(error instanceof Error ? error.message : copy.payment.pollFailed);
+        timer = window.setTimeout(poll, WECHAT_PAYMENT_POLL_INTERVAL_MS);
+      }
+    };
+
+    if (!isTerminalPaymentStatus(checkout.status)) {
+      timer = window.setTimeout(poll, WECHAT_PAYMENT_POLL_INTERVAL_MS);
+    }
+
+    return () => {
+      closed = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [checkout, copy.payment.pollFailed, copy.payment.succeeded, onSuccess]);
+
+  const handleClose = useCallback(async () => {
+    if (checkout && !isTerminalPaymentStatus(status)) {
+      await billingFetch(closePaymentPath(checkout), { method: 'POST' }).catch(() => undefined);
+    }
+    onClose();
+  }, [checkout, onClose, status]);
+
+  return (
+    <Modal
+      open={open}
+      title={copy.payment.title}
+      footer={
+        <Button type={isTerminalPaymentStatus(status) ? 'primary' : 'default'} onClick={handleClose}>
+          {copy.payment.close}
+        </Button>
+      }
+      onCancel={handleClose}
+    >
+      <Flexbox align={'center'} gap={12}>
+        <QRCode size={220} value={checkout?.code_url || ' '} />
+        <Text type={'secondary'}>{copy.payment.scanHint}</Text>
+        <Text strong>{checkout?.amount?.display}</Text>
+        <Badge
+          status={status === 'succeeded' ? 'success' : 'processing'}
+          text={paymentStatusText(status, copy)}
+        />
+        {checkout?.expires_at && (
+          <Text type={'secondary'}>
+            {copy.payment.expiresAt}: {formatDate(checkout.expires_at)}
+          </Text>
+        )}
+        {pollError && <Alert showIcon message={pollError || copy.payment.pollFailed} type="warning" />}
+      </Flexbox>
+    </Modal>
+  );
+});
+
+WechatCheckoutModal.displayName = 'WechatCheckoutModal';
 
 const formatCredits = (value: number | null | undefined, copy: BillingCopy) =>
   `${compactNumberFormatter.format(Number(value || 0))} ${copy.units.credits}`;
@@ -1252,9 +1414,9 @@ const PageHeader = memo<{
   const mode = account?.mode || plansPayload?.mode;
 
   return (
-    <Flexbox className={styles.header} horizontal>
+    <Flexbox horizontal className={styles.header}>
       <Flexbox gap={8}>
-        <Flexbox align={'center'} gap={10} horizontal>
+        <Flexbox horizontal align={'center'} gap={10}>
           <ProductLogo size={26} />
           <Text as={'h2'} style={{ fontSize: 22, fontWeight: 650, margin: 0 }}>
             {pageTitle(page, copy)}
@@ -1291,8 +1453,8 @@ const CurrentPlanCard = memo<{
   return (
     <Card className={styles.currentPlanCard} title={copy.plans.currentPlan}>
       <Flexbox gap={10}>
-        <Flexbox align={'center'} horizontal justify={'space-between'}>
-          <Flexbox align={'center'} gap={10} horizontal>
+        <Flexbox horizontal align={'center'} justify={'space-between'}>
+          <Flexbox horizontal align={'center'} gap={10}>
             <Icon icon={Sparkles} />
             <Text style={{ fontSize: 18, fontWeight: 650 }}>
               {localPlanName(plan, isChinese) || planId}
@@ -1307,6 +1469,7 @@ const CurrentPlanCard = memo<{
           {localPlanDescription(plan, isChinese) || copy.plans.pricingSubtitle}
         </Text>
         <Progress
+          showInfo={false}
           percent={Math.min(
             100,
             Math.round(
@@ -1315,7 +1478,6 @@ const CurrentPlanCard = memo<{
                 100,
             ),
           )}
-          showInfo={false}
         />
         <Flexbox horizontal justify={'space-between'}>
           <Text type={'secondary'}>
@@ -1326,13 +1488,13 @@ const CurrentPlanCard = memo<{
           </Text>
         </Flexbox>
         <div className={styles.currentPlanActions}>
-          <Button onClick={onBrowsePlans} size="small" type="primary">
+          <Button size="small" type="primary" onClick={onBrowsePlans}>
             {copy.actions.changePlan}
           </Button>
-          <Button onClick={() => navigateSubscriptionEmbedPage('credits')} size="small">
+          <Button size="small" onClick={() => navigateSubscriptionEmbedPage('credits')}>
             {copy.credits.purchaseCredits}
           </Button>
-          <Button onClick={() => navigateSubscriptionEmbedPage('billing')} size="small" type="link">
+          <Button size="small" type="link" onClick={() => navigateSubscriptionEmbedPage('billing')}>
             {copy.actions.viewBilling}
           </Button>
         </div>
@@ -1348,15 +1510,17 @@ const PlansView = memo<{
   copy: BillingCopy;
   isChinese: boolean;
   moneyFormatter: Intl.NumberFormat;
+  onCheckoutSuccess: () => void;
   plansPayload?: AskCorePlansPayload;
   state: ResourceState<AskCorePlansPayload>;
-}>(({ account, copy, isChinese, moneyFormatter, plansPayload, state }) => {
+}>(({ account, copy, isChinese, moneyFormatter, onCheckoutSuccess, plansPayload, state }) => {
   const { plans } = normalizePlansPayload(plansPayload);
   const [period, setPeriod] = useState<BillingPeriodId>('yearly');
   const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [wechatCheckout, setWechatCheckout] = useState<CheckoutResponse | null>(null);
   const currentPlanId = account?.personal?.plan_id || 'free';
-  const provider = resolveDefaultProvider(plansPayload?.providers);
+  const provider = resolveDefaultProvider(plansPayload?.providers, { isChinese });
   const handleBrowsePlans = useCallback(() => {
     if (typeof document === 'undefined') return;
     document
@@ -1411,7 +1575,11 @@ const PlansView = memo<{
           },
           {},
         );
-        requestParentOpenUrl(checkout.url);
+        if (isWechatQrCheckout(checkout)) {
+          setWechatCheckout(checkout);
+        } else {
+          requestParentOpenUrl(checkout.url);
+        }
       } catch (error) {
         setCheckoutError(error instanceof Error ? error.message : copy.errors.checkoutFailed);
       } finally {
@@ -1440,30 +1608,36 @@ const PlansView = memo<{
   );
 
   if (state.loading) return <Skeleton active paragraph={{ rows: 8 }} />;
-  if (state.error) return <Alert message={state.error} showIcon type="error" />;
+  if (state.error) return <Alert showIcon message={state.error} type="error" />;
   if (plans.length === 0) return <Empty />;
 
   return (
     <Flexbox gap={16}>
+      <WechatCheckoutModal
+        checkout={wechatCheckout}
+        copy={copy}
+        onClose={() => setWechatCheckout(null)}
+        onSuccess={onCheckoutSuccess}
+      />
       <CurrentPlanCard
         account={account}
         copy={copy}
         isChinese={isChinese}
-        onBrowsePlans={handleBrowsePlans}
         plans={plans}
+        onBrowsePlans={handleBrowsePlans}
       />
-      {checkoutError && <Alert message={checkoutError} showIcon type="error" />}
+      {checkoutError && <Alert showIcon message={checkoutError} type="error" />}
       <Card className={styles.section} id="askcore-plan-pricing">
         <Flexbox gap={18}>
-          <Flexbox align={'center'} horizontal justify={'space-between'}>
+          <Flexbox horizontal align={'center'} justify={'space-between'}>
             <Flexbox gap={4}>
               <Text style={{ fontSize: 20, fontWeight: 650 }}>{copy.plans.planPricing}</Text>
               <Text type={'secondary'}>{copy.plans.pricingSubtitle}</Text>
             </Flexbox>
             <Segmented
-              onChange={(value) => setPeriod(value as BillingPeriodId)}
               options={billingPeriodOptions}
               value={period}
+              onChange={(value) => setPeriod(value as BillingPeriodId)}
             />
           </Flexbox>
           <div className={styles.cardGrid}>
@@ -1474,9 +1648,9 @@ const PlansView = memo<{
               return (
                 <Card className={styles.planCard} key={plan.id}>
                   <Flexbox className={styles.planCardContent} gap={16}>
-                    <Flexbox align={'flex-start'} horizontal justify={'space-between'}>
+                    <Flexbox horizontal align={'flex-start'} justify={'space-between'}>
                       <Flexbox gap={4}>
-                        <Flexbox align={'center'} gap={8} horizontal>
+                        <Flexbox horizontal align={'center'} gap={8}>
                           <Icon icon={plan.id === 'ultimate' ? ShieldCheck : Sparkles} />
                           <Text style={{ fontSize: 18, fontWeight: 650 }}>
                             {localPlanName(plan, isChinese)}
@@ -1489,7 +1663,7 @@ const PlansView = memo<{
                       )}
                     </Flexbox>
                     <Flexbox gap={4}>
-                      <Flexbox align={'baseline'} gap={6} horizontal>
+                      <Flexbox horizontal align={'baseline'} gap={6}>
                         <span className={styles.price}>
                           {moneyFormatter.format(price.price || 0)}
                         </span>
@@ -1526,8 +1700,8 @@ const PlansView = memo<{
                         className={styles.planActionButton}
                         disabled={current || !provider}
                         loading={checkoutPlanId === plan.id}
-                        onClick={() => handleCheckout(plan)}
                         type={current ? 'default' : 'primary'}
+                        onClick={() => handleCheckout(plan)}
                       >
                         {current
                           ? copy.actions.currentPlan
@@ -1578,6 +1752,11 @@ const PlansView = memo<{
           items={(plansPayload?.plan_comparison || []).map((group) => ({
             children: (
               <Table
+                dataSource={group.rows}
+                pagination={false}
+                rowKey="label"
+                scroll={{ x: true }}
+                size="small"
                 columns={[
                   {
                     dataIndex: 'label',
@@ -1614,11 +1793,6 @@ const PlansView = memo<{
                       title: localPlanName(plan, isChinese),
                     })),
                 ]}
-                dataSource={group.rows}
-                pagination={false}
-                rowKey="label"
-                scroll={{ x: true }}
-                size="small"
               />
             ),
             key: group.key,
@@ -1669,7 +1843,7 @@ const UsageView = memo<{
   );
 
   if (state.loading) return <Skeleton active paragraph={{ rows: 6 }} />;
-  if (state.error) return <Alert message={state.error} showIcon type="error" />;
+  if (state.error) return <Alert showIcon message={state.error} type="error" />;
 
   const summary = state.data?.summary;
   const includedUsed = Number(summary?.by_scope?.org_seat || 0);
@@ -1686,9 +1860,9 @@ const UsageView = memo<{
         <Card>
           <Statistic
             prefix={<Icon icon={Sparkles} />}
+            suffix={copy.units.credits}
             title={copy.usage.thisMonth}
             value={summary?.total_credits_used || 0}
-            suffix={copy.units.credits}
           />
         </Card>
         <Card>
@@ -1701,9 +1875,9 @@ const UsageView = memo<{
         <Card>
           <Statistic
             prefix={<Icon icon={Database} />}
+            suffix="GB"
             title={copy.usage.fileStorage}
             value={plan?.file_storage_gb || 0}
-            suffix="GB"
           />
         </Card>
       </div>
@@ -1713,23 +1887,23 @@ const UsageView = memo<{
           <div className={styles.metricGrid}>
             <Card size="small">
               <Statistic
+                suffix={copy.units.credits}
                 title={copy.usage.planUsage}
                 value={includedUsed}
-                suffix={copy.units.credits}
               />
             </Card>
             <Card size="small">
               <Statistic
+                suffix={copy.units.credits}
                 title={copy.usage.onDemand}
                 value={personalUsed}
-                suffix={copy.units.credits}
               />
             </Card>
             <Card size="small">
               <Statistic
+                suffix={copy.units.entries}
                 title={copy.usage.vectorStorage}
                 value={plan?.vector_storage_entries || 0}
-                suffix={copy.units.entries}
               />
             </Card>
           </div>
@@ -1756,8 +1930,9 @@ const CreditsView = memo<{
   copy: BillingCopy;
   isChinese: boolean;
   moneyFormatter: Intl.NumberFormat;
+  onCheckoutSuccess: () => void;
   plansPayload?: AskCorePlansPayload;
-}>(({ accountState, copy, isChinese, moneyFormatter, plansPayload }) => {
+}>(({ accountState, copy, isChinese, moneyFormatter, onCheckoutSuccess, plansPayload }) => {
   const [refreshKey, setRefreshKey] = useState(0);
   const creditState = useBillingJson<AskCoreCreditPackagesPayload>('/credits', false, refreshKey);
   const autoTopupState = useBillingJson<AskCoreAutoTopupPayload>(
@@ -1766,9 +1941,10 @@ const CreditsView = memo<{
     refreshKey,
   );
   const [checkoutPackId, setCheckoutPackId] = useState<string | null>(null);
+  const [wechatCheckout, setWechatCheckout] = useState<CheckoutResponse | null>(null);
   const [savingAutoTopup, setSavingAutoTopup] = useState(false);
   const [form] = Form.useForm<AskCoreAutoTopupPayload>();
-  const provider = resolveDefaultProvider(plansPayload?.providers);
+  const provider = resolveDefaultProvider(plansPayload?.providers, { isChinese });
   const account = accountState.data;
   const plan = plansPayload?.plans.find((item) => item.id === account?.personal.plan_id);
   const isPaid = account?.personal.plan_id && account.personal.plan_id !== 'free';
@@ -1784,6 +1960,7 @@ const CreditsView = memo<{
       try {
         const checkout = await billingJson<CheckoutResponse>('/checkout/topup', {
           body: JSON.stringify({
+            interval: 'payonce',
             pack_id: pack.id,
             provider,
             purpose: 'topup',
@@ -1791,7 +1968,11 @@ const CreditsView = memo<{
           }),
           method: 'POST',
         });
-        requestParentOpenUrl(checkout.url);
+        if (isWechatQrCheckout(checkout)) {
+          setWechatCheckout(checkout);
+        } else {
+          requestParentOpenUrl(checkout.url);
+        }
       } catch (error) {
         message.error(error instanceof Error ? error.message : copy.errors.checkoutFailed);
       } finally {
@@ -1818,10 +1999,15 @@ const CreditsView = memo<{
     }
   }, [copy.credits.autoTopupSaved, copy.errors.saveAutoTopupFailed, form]);
 
+  const handleCheckoutSuccess = useCallback(() => {
+    setRefreshKey((key) => key + 1);
+    onCheckoutSuccess();
+  }, [onCheckoutSuccess]);
+
   if (accountState.loading || creditState.loading)
     return <Skeleton active paragraph={{ rows: 6 }} />;
-  if (accountState.error) return <Alert message={accountState.error} showIcon type="error" />;
-  if (creditState.error) return <Alert message={creditState.error} showIcon type="error" />;
+  if (accountState.error) return <Alert showIcon message={accountState.error} type="error" />;
+  if (creditState.error) return <Alert showIcon message={creditState.error} type="error" />;
 
   const packages = creditState.data?.available_packs?.length
     ? creditState.data.available_packs
@@ -1850,19 +2036,25 @@ const CreditsView = memo<{
 
   return (
     <Flexbox gap={16}>
+      <WechatCheckoutModal
+        checkout={wechatCheckout}
+        copy={copy}
+        onClose={() => setWechatCheckout(null)}
+        onSuccess={handleCheckoutSuccess}
+      />
       <div className={styles.metricGrid}>
         <Card>
           <Statistic
+            suffix={copy.units.credits}
             title={copy.credits.topupBalance}
             value={creditState.data?.balance_credits || 0}
-            suffix={copy.units.credits}
           />
         </Card>
         <Card>
           <Statistic
+            suffix={copy.units.credits}
             title={copy.credits.subscriptionCredits}
             value={plan?.monthly_credits || 0}
-            suffix={copy.units.credits}
           />
         </Card>
         <Card>
@@ -1872,7 +2064,7 @@ const CreditsView = memo<{
           />
         </Card>
       </div>
-      {!isPaid && <Alert message={copy.credits.freeNeedsPaidPlan} showIcon type="info" />}
+      {!isPaid && <Alert showIcon message={copy.credits.freeNeedsPaidPlan} type="info" />}
       <Card className={styles.section} title={copy.credits.purchaseCredits}>
         {packages.length === 0 ? (
           <Empty description={copy.credits.noPacks} />
@@ -1881,7 +2073,7 @@ const CreditsView = memo<{
             {packages.map((pack) => (
               <Card key={pack.id} size="small">
                 <Flexbox gap={12}>
-                  <Flexbox align={'center'} horizontal justify={'space-between'}>
+                  <Flexbox horizontal align={'center'} justify={'space-between'}>
                     <Text strong>{localPackName(pack, isChinese)}</Text>
                     <Tag>
                       {pack.validity_months || 6} {copy.credits.validityMonths}
@@ -1905,8 +2097,8 @@ const CreditsView = memo<{
                   <Button
                     disabled={!provider || !isPaid}
                     loading={checkoutPackId === pack.id}
-                    onClick={() => handleTopUp(pack)}
                     type="primary"
+                    onClick={() => handleTopUp(pack)}
                   >
                     {copy.actions.purchaseNow}
                   </Button>
@@ -1918,7 +2110,7 @@ const CreditsView = memo<{
       </Card>
       <Card className={styles.section} title={copy.credits.autoTopup}>
         {autoTopupState.error ? (
-          <Alert message={autoTopupState.error} showIcon type="warning" />
+          <Alert showIcon message={autoTopupState.error} type="warning" />
         ) : (
           <Form form={form} layout="vertical">
             <div className={styles.metricGrid}>
@@ -1939,10 +2131,10 @@ const CreditsView = memo<{
               </Form.Item>
             </div>
             {!autoTopupState.data?.has_payment_method && (
-              <Alert message={copy.credits.autoTopupNoPayment} showIcon type="warning" />
+              <Alert showIcon message={copy.credits.autoTopupNoPayment} type="warning" />
             )}
             <Flexbox horizontal justify={'flex-end'} style={{ marginTop: 12 }}>
-              <Button loading={savingAutoTopup} onClick={handleSaveAutoTopup} type="primary">
+              <Button loading={savingAutoTopup} type="primary" onClick={handleSaveAutoTopup}>
                 {copy.actions.save}
               </Button>
             </Flexbox>
@@ -1986,7 +2178,8 @@ const BillingView = memo<{
     { dataIndex: 'provider', title: copy.billing.paymentGateway },
     {
       dataIndex: 'amount_paid_usd',
-      render: (value: number) => moneyFormatter.format(value || 0),
+      render: (_value: number, row) =>
+        moneyFormatter.format(moneyValue(row.amount_paid_usd, row.amount_paid_cny, isChinese)),
       title: copy.billing.amount,
     },
     { dataIndex: 'created_at', render: formatDate, title: copy.billing.paymentDate },
@@ -2004,8 +2197,8 @@ const BillingView = memo<{
 
   if (accountState.loading || historyState.loading)
     return <Skeleton active paragraph={{ rows: 6 }} />;
-  if (accountState.error) return <Alert message={accountState.error} showIcon type="error" />;
-  if (historyState.error) return <Alert message={historyState.error} showIcon type="error" />;
+  if (accountState.error) return <Alert showIcon message={accountState.error} type="error" />;
+  if (historyState.error) return <Alert showIcon message={historyState.error} type="error" />;
 
   const summary = historyState.data?.summary;
 
@@ -2048,7 +2241,13 @@ const BillingView = memo<{
               {
                 key: 'next',
                 label: copy.billing.nextPayment,
-                children: moneyFormatter.format(summary?.next_payment?.amount_due_usd || 0),
+                children: moneyFormatter.format(
+                  moneyValue(
+                    summary?.next_payment?.amount_due_usd,
+                    summary?.next_payment?.amount_due_cny,
+                    isChinese,
+                  ),
+                ),
               },
             ]}
           />
@@ -2127,7 +2326,7 @@ const ReferralView = memo<{ copy: BillingCopy }>(({ copy }) => {
   }, [backfillForm, copy.errors.bindFailed, copy.messages.bindSuccess]);
 
   if (state.loading) return <Skeleton active paragraph={{ rows: 6 }} />;
-  if (state.error) return <Alert message={state.error} showIcon type="error" />;
+  if (state.error) return <Alert showIcon message={state.error} type="error" />;
   if (!state.data?.enabled) {
     return <Empty description={copy.referral.notEnabled} />;
   }
@@ -2174,9 +2373,9 @@ const ReferralView = memo<{ copy: BillingCopy }>(({ copy }) => {
         <Card>
           <Statistic
             prefix={<Icon icon={WalletCards} />}
+            suffix={copy.units.credits}
             title={copy.referral.availableBalance}
             value={data.available_balance || 0}
-            suffix={copy.units.credits}
           />
         </Card>
       </div>
@@ -2187,14 +2386,14 @@ const ReferralView = memo<{ copy: BillingCopy }>(({ copy }) => {
             <Form form={editForm} layout="inline">
               <Form.Item
                 name="referral_code"
-                rules={[{ message: copy.referral.codePattern, pattern: /^[A-Za-z0-9_]{2,8}$/ }]}
+                rules={[{ message: copy.referral.codePattern, pattern: /^\w{2,8}$/ }]}
               >
                 <Input />
               </Form.Item>
               <Button icon={<Icon icon={Copy} />} onClick={() => copyText(data.referral_code)}>
                 {copy.actions.copy}
               </Button>
-              <Button loading={saving} onClick={saveReferralCode} type="primary">
+              <Button loading={saving} type="primary" onClick={saveReferralCode}>
                 {copy.actions.save}
               </Button>
             </Form>
@@ -2217,7 +2416,7 @@ const ReferralView = memo<{ copy: BillingCopy }>(({ copy }) => {
             <Form.Item name="referral_code" rules={[{ required: true }]}>
               <Input placeholder={copy.referral.placeholder} />
             </Form.Item>
-            <Button loading={saving} onClick={backfillReferralCode} type="primary">
+            <Button loading={saving} type="primary" onClick={backfillReferralCode}>
               {copy.actions.bind}
             </Button>
           </Form>
@@ -2261,8 +2460,10 @@ const AskCoreBillingPage = memo<{ page: AskCoreBillingPageKey }>(({ page }) => {
     [i18n.language, translate],
   );
   const moneyFormatter = useMemo(() => createMoneyFormatter(isChinese), [isChinese]);
+  const [accountRefreshKey, setAccountRefreshKey] = useState(0);
+  const handleCheckoutSuccess = useCallback(() => setAccountRefreshKey((key) => key + 1), []);
   const plansState = useBillingJson<AskCorePlansPayload>('/plans', true);
-  const accountState = useBillingJson<AskCoreAccountPayload>('/account');
+  const accountState = useBillingJson<AskCoreAccountPayload>('/account', false, accountRefreshKey);
 
   return (
     <Flexbox className={styles.page} gap={20}>
@@ -2281,6 +2482,7 @@ const AskCoreBillingPage = memo<{ page: AskCoreBillingPageKey }>(({ page }) => {
             moneyFormatter={moneyFormatter}
             plansPayload={plansState.data}
             state={plansState}
+            onCheckoutSuccess={handleCheckoutSuccess}
           />
         )}
         {page === 'usage' && (
@@ -2293,6 +2495,7 @@ const AskCoreBillingPage = memo<{ page: AskCoreBillingPageKey }>(({ page }) => {
             isChinese={isChinese}
             moneyFormatter={moneyFormatter}
             plansPayload={plansState.data}
+            onCheckoutSuccess={handleCheckoutSuccess}
           />
         )}
         {page === 'billing' && (
