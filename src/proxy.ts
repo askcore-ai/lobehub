@@ -15,6 +15,8 @@ export const config = {
     '/eval',
     '/eval(.*)',
     '/embed(.*)',
+    '/askcore',
+    '/askcore(.*)',
     '/agent',
     '/agent(.*)',
     '/group',
