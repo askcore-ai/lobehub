@@ -36,6 +36,40 @@
   color: inherit;
 }
 
+.brand :global(.lobe-brand-loading path),
+.brand :global(.lobe-brand-loading text) {
+  fill: currentcolor;
+  fill-opacity: 0;
+  stroke: currentcolor;
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  stroke-width: 0.25em;
+
+  animation:
+    brand-loading-draw 2s cubic-bezier(0.4, 0, 0.2, 1) infinite,
+    brand-loading-fill 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes brand-loading-draw {
+  0% {
+    stroke-dashoffset: 1000;
+  }
+
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes brand-loading-fill {
+  30% {
+    fill-opacity: 0.05;
+  }
+
+  100% {
+    fill-opacity: 1;
+  }
+}
+
 .debug {
   display: flex;
   flex-direction: column;
