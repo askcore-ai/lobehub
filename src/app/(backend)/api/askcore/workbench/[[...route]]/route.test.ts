@@ -12,6 +12,7 @@ vi.mock('@/auth', () => ({
     api: {
       getFullOrganization: vi.fn(),
       getSession: vi.fn(),
+      listOrganizations: vi.fn(),
     },
   },
 }));
@@ -19,6 +20,7 @@ vi.mock('@/auth', () => ({
 const authApi = auth.api as typeof auth.api & {
   getFullOrganization: ReturnType<typeof vi.fn>;
   getSession: ReturnType<typeof vi.fn>;
+  listOrganizations: ReturnType<typeof vi.fn>;
 };
 
 const routeContext = (route: string[] = ['dashboard']) => ({
@@ -112,5 +114,53 @@ describe('AskCore workbench proxy route', () => {
     expect(payload.active_org_name).toBe('AskCore School');
     expect(payload.organization_role).toBe('owner');
     expect(payload.scopes).toEqual(['plugin.invoke', 'plugin.read']);
+  });
+
+  it('falls back to the only organization when the session has no active organization', async () => {
+    vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'test-lobehub-workbench');
+    vi.stubEnv('AITUTOR_API_BASE_URL', 'http://api:8000');
+    authApi.getSession.mockResolvedValue({
+      session: {},
+      user: { email: 'teacher@askcore.cn', id: 'user-1' },
+    } as any);
+    authApi.listOrganizations.mockResolvedValue([{ id: 'org-1', name: 'AskCore School' }]);
+    authApi.getFullOrganization.mockResolvedValue({
+      id: 'org-1',
+      members: [{ role: 'owner', userId: 'user-1' }],
+      name: 'AskCore School',
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ counts: { schools: 1 } }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await GET(
+      new NextRequest('https://askcore.cn/api/askcore/workbench/dashboard'),
+      routeContext(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(authApi.listOrganizations).toHaveBeenCalledWith({ headers: expect.any(Headers) });
+    expect(authApi.getFullOrganization).toHaveBeenCalledWith({
+      headers: expect.any(Headers),
+      query: { membersLimit: 100, organizationId: 'org-1' },
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    const assertion = (init.headers as Headers).get('X-AskCore-Billing-Assertion');
+    const { payload } = await jwtVerify(
+      assertion!,
+      new TextEncoder().encode('test-lobehub-workbench'),
+      {
+        audience: 'aitutor-billing',
+        issuer: 'askcore-lobehub',
+      },
+    );
+    expect(payload.active_org_id).toBe('org-1');
+    expect(payload.organization_role).toBe('owner');
   });
 });

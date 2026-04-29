@@ -16,6 +16,7 @@ type GetFullOrganization = (input: {
   headers: Headers;
   query?: { membersLimit?: number; organizationId?: string };
 }) => Promise<unknown>;
+type ListOrganizations = (input: { headers: Headers }) => Promise<unknown>;
 
 const DEFAULT_API_BASE_URL = 'http://api:8000';
 const DEFAULT_ASSERTION_ISSUER = 'askcore-lobehub';
@@ -86,6 +87,36 @@ const getFullOrganization = async (
   } catch {
     return undefined;
   }
+};
+
+const getSingleOrganization = async (headers: Headers): Promise<SessionRecord | undefined> => {
+  const api = auth.api as typeof auth.api & { listOrganizations?: ListOrganizations };
+  if (!api.listOrganizations) return undefined;
+
+  try {
+    const organizations = await api.listOrganizations({ headers });
+    if (!Array.isArray(organizations) || organizations.length !== 1) return undefined;
+    return recordValue(organizations[0]);
+  } catch {
+    return undefined;
+  }
+};
+
+const resolveFullOrganization = async (
+  headers: Headers,
+  session: SessionRecord,
+): Promise<SessionRecord | undefined> => {
+  const activeOrganizationId = activeOrganizationIdFromSession(session);
+  if (activeOrganizationId) {
+    const fullOrganization = await getFullOrganization(headers, activeOrganizationId);
+    if (fullOrganization) return fullOrganization;
+  }
+
+  const singleOrganization = await getSingleOrganization(headers);
+  const singleOrganizationId = stringValue(singleOrganization?.id);
+  if (!singleOrganizationId) return undefined;
+
+  return (await getFullOrganization(headers, singleOrganizationId)) ?? singleOrganization;
 };
 
 export const resolveBillingPrincipalClaims = (
@@ -188,7 +219,7 @@ const forwardBillingRequest = async (request: NextRequest, context: RouteContext
 
   const session = (await auth.api.getSession({ headers: request.headers })) as SessionRecord | null;
   const fullOrganization = session
-    ? await getFullOrganization(request.headers, activeOrganizationIdFromSession(session))
+    ? await resolveFullOrganization(request.headers, session)
     : undefined;
   const claims = session ? resolveBillingPrincipalClaims(session, fullOrganization) : null;
   if (!claims) return jsonError(401, 'LobeHub session is required for billing');
