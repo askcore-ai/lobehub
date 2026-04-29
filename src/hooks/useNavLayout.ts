@@ -1,4 +1,4 @@
-import { BriefcaseBusiness, HomeIcon, SearchIcon } from 'lucide-react';
+import { BriefcaseBusiness, Building2, HomeIcon, SearchIcon } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -65,6 +65,12 @@ export const useNavLayout = (): NavLayout => {
           key: SidebarTabKey.Pages,
           title: t('tab.pages'),
           url: '/page',
+        },
+        {
+          icon: Building2,
+          key: SidebarTabKey.Organization,
+          title: t('tab.organization'),
+          url: '/organization',
         },
         {
           icon: BriefcaseBusiness,

@@ -1,41 +1,56 @@
 // @vitest-environment node
 import { jwtVerify } from 'jose';
 import { NextRequest } from 'next/server';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { auth } from '@/auth';
-
-import { GET } from './route';
+const authApi = vi.hoisted(() => ({
+  getFullOrganization: vi.fn(),
+  getSession: vi.fn(),
+  listOrganizations: vi.fn(),
+}));
 
 vi.mock('@/auth', () => ({
   auth: {
-    api: {
-      getFullOrganization: vi.fn(),
-      getSession: vi.fn(),
-      listOrganizations: vi.fn(),
-    },
+    api: authApi,
   },
 }));
 
-const authApi = auth.api as typeof auth.api & {
-  getFullOrganization: ReturnType<typeof vi.fn>;
-  getSession: ReturnType<typeof vi.fn>;
-  listOrganizations: ReturnType<typeof vi.fn>;
-};
+const askCoreOrganizationMock = vi.hoisted(() => ({
+  persistedActiveOrganizationIdFromSession: vi.fn(async () => undefined),
+}));
+
+vi.mock('@/server/services/askcoreOrganization', () => ({
+  persistedActiveOrganizationIdFromSession:
+    askCoreOrganizationMock.persistedActiveOrganizationIdFromSession,
+}));
 
 const routeContext = (route: string[] = ['dashboard']) => ({
   params: Promise.resolve({ route }),
 });
 
+const loadRoute = () => import('./route');
+
 describe('AskCore workbench proxy route', () => {
+  beforeEach(() => {
+    (globalThis as Record<string, unknown>).__ASKCORE_WORKBENCH_ROUTE_AUTH__ = {
+      api: authApi,
+    };
+    (globalThis as Record<string, unknown>).__ASKCORE_WORKBENCH_ROUTE_PERSISTED_ACTIVE_ORG_ID__ =
+      askCoreOrganizationMock.persistedActiveOrganizationIdFromSession;
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
+    delete (globalThis as Record<string, unknown>).__ASKCORE_WORKBENCH_ROUTE_AUTH__;
+    delete (globalThis as Record<string, unknown>).__ASKCORE_WORKBENCH_ROUTE_PERSISTED_ACTIVE_ORG_ID__;
+    askCoreOrganizationMock.persistedActiveOrganizationIdFromSession.mockResolvedValue(undefined);
   });
 
   it('returns 401 when the LobeHub session is missing', async () => {
     authApi.getSession.mockResolvedValue(null);
+    const { GET } = await loadRoute();
 
     const response = await GET(
       new NextRequest('https://askcore.cn/api/askcore/workbench/dashboard'),
@@ -60,6 +75,7 @@ describe('AskCore workbench proxy route', () => {
       members: [{ role: 'owner', userId: 'user-1' }],
       name: 'AskCore School',
     });
+    const { GET } = await loadRoute();
 
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ counts: { schools: 1 } }), {
@@ -129,6 +145,7 @@ describe('AskCore workbench proxy route', () => {
       members: [{ role: 'owner', userId: 'user-1' }],
       name: 'AskCore School',
     });
+    const { GET } = await loadRoute();
 
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ counts: { schools: 1 } }), {

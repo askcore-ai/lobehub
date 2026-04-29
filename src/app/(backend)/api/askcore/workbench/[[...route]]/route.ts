@@ -3,8 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { SignJWT } from 'jose';
 import { type NextRequest, NextResponse } from 'next/server';
 
-import { auth } from '@/auth';
-
 type RouteContext = {
   params: Promise<{
     route?: string[];
@@ -17,6 +15,20 @@ type GetFullOrganization = (input: {
   query?: { membersLimit?: number; organizationId?: string };
 }) => Promise<unknown>;
 type ListOrganizations = (input: { headers: Headers }) => Promise<unknown>;
+type GetSession = (input: { headers: Headers }) => Promise<SessionRecord | null>;
+type AskCoreWorkbenchRouteAuthApi = {
+  getFullOrganization?: GetFullOrganization;
+  getSession: GetSession;
+  listOrganizations?: ListOrganizations;
+};
+type AskCoreWorkbenchRouteTestGlobal = typeof globalThis & {
+  __ASKCORE_WORKBENCH_ROUTE_AUTH__?: {
+    api: AskCoreWorkbenchRouteAuthApi;
+  };
+  __ASKCORE_WORKBENCH_ROUTE_PERSISTED_ACTIVE_ORG_ID__?: (
+    session: SessionRecord,
+  ) => Promise<string | undefined>;
+};
 
 const DEFAULT_API_BASE_URL = 'http://api:8000';
 const DEFAULT_ASSERTION_ISSUER = 'askcore-lobehub';
@@ -38,6 +50,26 @@ const arrayValue = (value: unknown): string[] | undefined =>
   Array.isArray(value)
     ? value.filter((item): item is string => typeof item === 'string' && !!item)
     : undefined;
+
+const getAuthApi = async (): Promise<AskCoreWorkbenchRouteAuthApi> => {
+  const testAuth = (globalThis as AskCoreWorkbenchRouteTestGlobal)
+    .__ASKCORE_WORKBENCH_ROUTE_AUTH__;
+  if (testAuth) return testAuth.api;
+
+  const { auth } = await import('@/auth');
+  return auth.api as typeof auth.api & AskCoreWorkbenchRouteAuthApi;
+};
+
+const getPersistedActiveOrganizationId = async (session: SessionRecord) => {
+  const testResolver = (globalThis as AskCoreWorkbenchRouteTestGlobal)
+    .__ASKCORE_WORKBENCH_ROUTE_PERSISTED_ACTIVE_ORG_ID__;
+  if (testResolver) return testResolver(session);
+
+  const { persistedActiveOrganizationIdFromSession } = await import(
+    '@/server/services/askcoreOrganization'
+  );
+  return persistedActiveOrganizationIdFromSession(session).catch(() => undefined);
+};
 
 const compactClaims = (claims: Record<string, unknown>) =>
   Object.fromEntries(
@@ -75,7 +107,7 @@ const getFullOrganization = async (
 ): Promise<SessionRecord | undefined> => {
   if (!organizationId) return undefined;
 
-  const api = auth.api as typeof auth.api & { getFullOrganization?: GetFullOrganization };
+  const api = await getAuthApi();
   if (!api.getFullOrganization) return undefined;
 
   try {
@@ -91,7 +123,7 @@ const getFullOrganization = async (
 };
 
 const getSingleOrganization = async (headers: Headers): Promise<SessionRecord | undefined> => {
-  const api = auth.api as typeof auth.api & { listOrganizations?: ListOrganizations };
+  const api = await getAuthApi();
   if (!api.listOrganizations) return undefined;
 
   try {
@@ -107,7 +139,8 @@ const resolveFullOrganization = async (
   headers: Headers,
   session: SessionRecord,
 ): Promise<SessionRecord | undefined> => {
-  const activeOrganizationId = activeOrganizationIdFromSession(session);
+  const persistedActiveOrganizationId = await getPersistedActiveOrganizationId(session);
+  const activeOrganizationId = persistedActiveOrganizationId ?? activeOrganizationIdFromSession(session);
   if (activeOrganizationId) {
     const fullOrganization = await getFullOrganization(headers, activeOrganizationId);
     if (fullOrganization) return fullOrganization;
@@ -138,7 +171,7 @@ export const resolveWorkbenchPrincipalClaims = (
     recordValue(session.member) ??
     recordValue(session.activeMember) ??
     findFullOrganizationMember(fullOrganization, userId);
-  const activeOrgId = activeOrganizationIdFromSession(session) ?? stringValue(organization?.id);
+  const activeOrgId = stringValue(organization?.id) ?? activeOrganizationIdFromSession(session);
 
   return compactClaims({
     active_org_id: activeOrgId,
@@ -222,7 +255,8 @@ const forwardWorkbenchRequest = async (request: NextRequest, context: RouteConte
     return jsonError(403, 'Cross-origin workbench writes are not allowed');
   }
 
-  const session = (await auth.api.getSession({ headers: request.headers })) as SessionRecord | null;
+  const authApi = await getAuthApi();
+  const session = await authApi.getSession({ headers: request.headers });
   const fullOrganization = session
     ? await resolveFullOrganization(request.headers, session)
     : undefined;

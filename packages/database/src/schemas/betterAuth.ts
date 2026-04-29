@@ -127,6 +127,34 @@ export const invitation = pgTable(
   ],
 );
 
+export const askcoreOrganizationInvites = pgTable(
+  'askcore_organization_invites',
+  {
+    channel: text('channel').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdByUserId: text('created_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    email: text('email'),
+    expiresAt: timestamp('expires_at').notNull(),
+    id: text('id').primaryKey(),
+    lastUsedAt: timestamp('last_used_at'),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    revokedAt: timestamp('revoked_at'),
+    role: text('role').default('member').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    useCount: integer('use_count').default(0).notNull(),
+  },
+  (table) => [
+    uniqueIndex('askcore_organization_invites_token_hash_unique').on(table.tokenHash),
+    index('askcore_organization_invites_organization_id_idx').on(table.organizationId),
+    index('askcore_organization_invites_email_idx').on(table.email),
+    index('askcore_organization_invites_expires_at_idx').on(table.expiresAt),
+  ],
+);
+
 export const verification = pgTable(
   'verifications',
   {
@@ -192,6 +220,7 @@ export const usersRelations = relations(users, ({ many }) => ({
 }));
 
 export const organizationRelations = relations(organization, ({ many }) => ({
+  askcoreInvites: many(askcoreOrganizationInvites),
   invitations: many(invitation),
   members: many(member),
 }));
@@ -231,6 +260,20 @@ export const invitationRelations = relations(invitation, ({ one }) => ({
     references: [organization.id],
   }),
 }));
+
+export const askcoreOrganizationInviteRelations = relations(
+  askcoreOrganizationInvites,
+  ({ one }) => ({
+    createdBy: one(users, {
+      fields: [askcoreOrganizationInvites.createdByUserId],
+      references: [users.id],
+    }),
+    organization: one(organization, {
+      fields: [askcoreOrganizationInvites.organizationId],
+      references: [organization.id],
+    }),
+  }),
+);
 
 export const twoFactorRelations = relations(twoFactor, ({ one }) => ({
   users: one(users, {

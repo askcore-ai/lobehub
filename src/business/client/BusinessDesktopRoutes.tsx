@@ -3,6 +3,13 @@ import { type RouteObject } from 'react-router-dom';
 export const BusinessDesktopRoutesWithMainLayout: RouteObject[] = [
   {
     lazy: async () => {
+      const route = await import('./AskCoreOrganization');
+      return { Component: route.AskCoreOrganizationRoute };
+    },
+    path: 'organization',
+  },
+  {
+    lazy: async () => {
       const route = await import('./AskCoreWorkbench');
       return { Component: route.AskCoreWorkbenchRoute };
     },
@@ -11,6 +18,13 @@ export const BusinessDesktopRoutesWithMainLayout: RouteObject[] = [
 ];
 export const BusinessDesktopRoutesWithSettingsLayout: RouteObject[] = [];
 export const BusinessDesktopRoutesWithoutMainLayout: RouteObject[] = [
+  {
+    lazy: async () => {
+      const route = await import('./AskCoreOrganization/OrganizationJoinRoute');
+      return { Component: route.AskCoreOrganizationJoinRoute };
+    },
+    path: '/join/organization/:token',
+  },
   {
     lazy: async () => {
       const route = await import('./BusinessSettingPages/AskCoreBillingPage');
