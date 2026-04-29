@@ -1516,6 +1516,67 @@ describe('ChatPluginAction', () => {
         );
         expect(returnValue).toEqual(mockResult);
       });
+
+      it('should hydrate standalone manifest from installed plugin store before calling gateway', async () => {
+        const gateway = '/api/lobe/plugins/v1/gateway/suite.run';
+        const standalonePayload: ChatToolPayload = {
+          ...payload,
+          apiName: 'suite_run',
+          arguments: JSON.stringify({ action: 'ui.read.dashboard', params: {} }),
+          identifier: 'aitutor-suite',
+          type: 'standalone',
+        };
+
+        act(() => {
+          useToolStore.setState({
+            installedPlugins: [
+              {
+                identifier: 'aitutor-suite',
+                manifest: {
+                  api: [{ name: 'suite_run', url: gateway }],
+                  gateway,
+                  identifier: 'aitutor-suite',
+                  meta: { title: 'AskCore' },
+                  type: 'standalone',
+                } as any,
+                type: 'plugin',
+              },
+            ],
+          });
+        });
+
+        const chatService = await import('@/services/chat');
+        const runPluginApiSpy = vi
+          .spyOn(chatService.chatService, 'runPluginApi')
+          .mockResolvedValue({ text: JSON.stringify({ success: true }) });
+
+        const optimisticUpdateToolMessageMock = vi.fn().mockResolvedValue(undefined);
+
+        act(() => {
+          useChatStore.setState({
+            activeAgentId: 'session-id',
+            messageOperationMap: {},
+            messagesMap: { [messageMapKey({ agentId: 'session-id' })]: [] },
+            operations: {},
+            optimisticUpdateToolMessage: optimisticUpdateToolMessageMock,
+            replaceMessages: vi.fn(),
+          });
+        });
+
+        const { result } = renderHook(() => useChatStore());
+
+        await act(async () => {
+          await result.current.invokeStandaloneTypePlugin(messageId, standalonePayload);
+        });
+
+        expect(runPluginApiSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            identifier: 'aitutor-suite',
+            manifest: expect.objectContaining({ gateway }),
+          }),
+          expect.any(Object),
+        );
+      });
     });
 
     describe('invokeKlavisTypePlugin', () => {

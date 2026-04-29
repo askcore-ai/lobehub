@@ -1,4 +1,8 @@
-import { type ChatToolPayload, type RuntimeStepContext } from '@lobechat/types';
+import {
+  type ChatToolPayload,
+  type PluginRequestPayload,
+  type RuntimeStepContext,
+} from '@lobechat/types';
 import debug from 'debug';
 
 import { type MCPToolCallResult } from '@/libs/mcp';
@@ -9,6 +13,7 @@ import { messageService } from '@/services/message';
 import { AI_RUNTIME_OPERATION_TYPES } from '@/store/chat/slices/operation';
 import { type ChatStore } from '@/store/chat/store';
 import { useToolStore } from '@/store/tool';
+import { pluginSelectors } from '@/store/tool/selectors';
 import { hasExecutor } from '@/store/tool/slices/builtin/executors';
 import { type StoreSetter } from '@/store/types';
 import { safeParseJSON } from '@/utils/safeParseJSON';
@@ -328,7 +333,14 @@ export class PluginTypesActionImpl {
     );
 
     try {
-      const response = await chatService.runPluginApi(payload, {
+      const manifest =
+        (payload as PluginRequestPayload).manifest ??
+        pluginSelectors.getToolManifestById(payload.identifier)(useToolStore.getState());
+      const requestPayload = (
+        manifest ? { ...payload, manifest } : payload
+      ) as PluginRequestPayload;
+
+      const response = await chatService.runPluginApi(requestPayload, {
         signal: abortController?.signal,
         topicId: message?.topicId,
       });
