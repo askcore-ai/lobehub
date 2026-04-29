@@ -4,10 +4,13 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('proxy matcher', () => {
-  it('routes AskCore workbench deep links through the SPA middleware', async () => {
+  it('routes AskCore first-party deep links through the SPA middleware', async () => {
     const source = await readFile(path.join(process.cwd(), 'src/proxy.ts'), 'utf8');
 
     expect(source).toContain("'/askcore'");
     expect(source).toContain("'/askcore(.*)'");
+    expect(source).toContain("'/organization'");
+    expect(source).toContain("'/organization(.*)'");
+    expect(source).toContain("'/join/organization(.*)'");
   });
 });
