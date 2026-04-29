@@ -2,6 +2,8 @@ import { getBuiltinRender } from '@lobechat/builtin-tools/renders';
 import { type ChatPluginPayload } from '@lobechat/types';
 import { memo } from 'react';
 
+import AskCoreWorkbenchToolCta from '@/business/client/AskCoreWorkbench/AskCoreWorkbenchToolCta';
+
 import CustomRender from './CustomRender';
 import { FallbackArgumentRender } from './FallbacktArgumentRender';
 
@@ -20,22 +22,28 @@ const ToolRender = memo<ToolRenderProps>(
 
     if (hasCustomRender && showCustomToolRender) {
       return (
-        <CustomRender
-          content={content}
-          messageId={messageId}
-          plugin={plugin}
-          pluginState={pluginState}
-          toolCallId={toolCallId}
-        />
+        <>
+          <AskCoreWorkbenchToolCta plugin={plugin} pluginState={pluginState} />
+          <CustomRender
+            content={content}
+            messageId={messageId}
+            plugin={plugin}
+            pluginState={pluginState}
+            toolCallId={toolCallId}
+          />
+        </>
       );
     }
 
     return (
-      <FallbackArgumentRender
-        content={content}
-        requestArgs={plugin?.arguments}
-        toolCallId={toolCallId}
-      />
+      <>
+        <AskCoreWorkbenchToolCta plugin={plugin} pluginState={pluginState} />
+        <FallbackArgumentRender
+          content={content}
+          requestArgs={plugin?.arguments}
+          toolCallId={toolCallId}
+        />
+      </>
     );
   },
 );

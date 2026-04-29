@@ -38,7 +38,13 @@ const AgentList = memo<{ onMoreClick?: () => void }>(({ onMoreClick }) => {
     };
   }, [pinnedList?.length, customList?.length, defaultList?.length]);
 
-  if (!isInit) return <SkeletonList rows={6} />;
+  if (!isInit)
+    return (
+      <>
+        <InboxItem style={{ minHeight: 36 }} />
+        <SkeletonList rows={5} />
+      </>
+    );
 
   return (
     <>

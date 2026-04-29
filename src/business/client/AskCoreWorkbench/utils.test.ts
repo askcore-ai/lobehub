@@ -1,0 +1,47 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  askCoreWorkbenchTabFromRoute,
+  buildAskCoreWorkbenchUrl,
+  getAskCoreWorkbenchRouteFromState,
+  isAskCoreSuiteRunResult,
+  normalizeAskCoreWorkbenchTab,
+} from './utils';
+
+describe('AskCoreWorkbench utils', () => {
+  it('normalizes invalid tabs to overview', () => {
+    expect(normalizeAskCoreWorkbenchTab('schools')).toBe('schools');
+    expect(normalizeAskCoreWorkbenchTab('unknown')).toBe('overview');
+    expect(normalizeAskCoreWorkbenchTab(null)).toBe('overview');
+  });
+
+  it('maps plugin routes to first-party workbench tabs', () => {
+    expect(askCoreWorkbenchTabFromRoute('/assignments/12')).toBe('assignments');
+    expect(askCoreWorkbenchTabFromRoute('/submissions/7')).toBe('submissions');
+    expect(askCoreWorkbenchTabFromRoute('/operations')).toBe('ops');
+    expect(askCoreWorkbenchTabFromRoute('/missing')).toBe('overview');
+  });
+
+  it('builds deep links with route query preserved', () => {
+    expect(buildAskCoreWorkbenchUrl({ route: '/submissions/7' })).toBe(
+      '/askcore/workbench?tab=submissions&route=%2Fsubmissions%2F7',
+    );
+    expect(buildAskCoreWorkbenchUrl({ tab: 'teachers' })).toBe('/askcore/workbench?tab=teachers');
+  });
+
+  it('detects AskCore standalone suite.run UI results', () => {
+    const state = {
+      kind: 'aitutor.suite.run.result.v1',
+      success: true,
+      ui: { route: '/schools' },
+    };
+
+    expect(getAskCoreWorkbenchRouteFromState(state)).toBe('/schools');
+    expect(
+      isAskCoreSuiteRunResult({ apiName: 'suite_run', identifier: 'aitutor-suite', state }),
+    ).toBe(true);
+    expect(isAskCoreSuiteRunResult({ apiName: 'other', identifier: 'aitutor-suite', state })).toBe(
+      false,
+    );
+  });
+});
