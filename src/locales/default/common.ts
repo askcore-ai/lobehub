@@ -503,6 +503,7 @@ export default {
     'Signaling server connection failed, and peer-to-peer communication channel cannot be established. Please check the network and try again.',
   'tab.image': 'Image',
   'tab.audio': 'Audio',
+  'tab.askcoreWorkbench': 'Teaching Workbench',
   'tab.chat': 'Chat',
   'recents': 'Recents',
   'tab.community': 'Community',

@@ -1,7 +1,8 @@
-import { HomeIcon, SearchIcon } from 'lucide-react';
+import { BriefcaseBusiness, HomeIcon, SearchIcon } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { ASKCORE_WORKBENCH_PATH } from '@/business/client/AskCoreWorkbench/config';
 import { getRouteById } from '@/config/routes';
 import { useGlobalStore } from '@/store/global';
 import { SidebarTabKey } from '@/store/global/initialState';
@@ -64,6 +65,12 @@ export const useNavLayout = (): NavLayout => {
           key: SidebarTabKey.Pages,
           title: t('tab.pages'),
           url: '/page',
+        },
+        {
+          icon: BriefcaseBusiness,
+          key: SidebarTabKey.AskCore,
+          title: t('tab.askcoreWorkbench'),
+          url: ASKCORE_WORKBENCH_PATH,
         },
       ] as NavItem[],
     [t, toggleCommandMenu, enableAgentTask],

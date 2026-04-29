@@ -23,7 +23,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { ActionIcon, Button, Flexbox, Icon, Text, Tooltip } from '@lobehub/ui';
 import { Modal } from '@lobehub/ui/base-ui';
 import { createStaticStyles, cssVar, cx } from 'antd-style';
-import { Eye, EyeOff, GripVertical, PinIcon, RotateCcw } from 'lucide-react';
+import { BriefcaseBusiness, Eye, EyeOff, GripVertical, PinIcon, RotateCcw } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
@@ -42,14 +42,16 @@ const ACCORDION_GROUP_ID = 'accordion-group';
 
 interface SidebarItemConfig {
   alwaysVisible?: boolean;
+  icon?: any;
   id: string;
   labelKey: string;
   routeId?: string;
 }
 
 const ALL_SIDEBAR_ITEMS: SidebarItemConfig[] = [
-  { id: 'tasks', labelKey: 'tab.tasks', routeId: 'tasks' },
   { id: 'pages', labelKey: 'tab.pages', routeId: 'page' },
+  { icon: BriefcaseBusiness, id: 'askcore', labelKey: 'tab.askcoreWorkbench' },
+  { id: 'tasks', labelKey: 'tab.tasks', routeId: 'tasks' },
   { id: 'recents', labelKey: 'recents' },
   { alwaysVisible: true, id: 'agent', labelKey: 'navPanel.agent' },
   { id: 'image', labelKey: 'tab.generation', routeId: 'image' },
@@ -135,6 +137,7 @@ const SortableItem = memo<{
   if (!item) return null;
 
   const route = item.routeId ? getRouteById(item.routeId) : undefined;
+  const itemIcon = route?.icon || item.icon;
   const isHidden = !item.alwaysVisible && hiddenSections.includes(id);
 
   return (
@@ -160,7 +163,7 @@ const SortableItem = memo<{
         >
           <Icon icon={GripVertical} size={14} style={{ color: cssVar.colorTextQuaternary }} />
         </Flexbox>
-        {route?.icon && <Icon icon={route.icon} size={18} />}
+        {itemIcon && <Icon icon={itemIcon} size={18} />}
         <Text>{t(item.labelKey as any)}</Text>
       </Flexbox>
       {item.alwaysVisible ? (
@@ -220,11 +223,12 @@ const OverlayItem = memo<{ id: string }>(({ id }) => {
   const item = ITEM_MAP.get(id);
   if (!item) return null;
   const route = item.routeId ? getRouteById(item.routeId) : undefined;
+  const itemIcon = route?.icon || item.icon;
 
   return (
     <Flexbox horizontal align={'center'} className={styles.overlay} gap={8}>
       <Icon icon={GripVertical} size={14} style={{ color: cssVar.colorTextQuaternary }} />
-      {route?.icon && <Icon icon={route.icon} size={18} />}
+      {itemIcon && <Icon icon={itemIcon} size={18} />}
       <Text>{t(item.labelKey as any)}</Text>
     </Flexbox>
   );

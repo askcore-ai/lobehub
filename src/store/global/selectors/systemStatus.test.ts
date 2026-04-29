@@ -129,6 +129,7 @@ describe('systemStatusSelectors', () => {
         'agent',
         'recents',
         'pages',
+        'askcore',
         'tasks',
         'image',
         'community',
@@ -141,18 +142,22 @@ describe('systemStatusSelectors', () => {
       expect(systemStatusSelectors.sidebarItems(s)).toEqual(custom);
     });
 
-    it('should append missing known keys to the end', () => {
+    it('should insert missing known keys at default relative positions', () => {
       const s: GlobalState = merge(initialState, {
-        status: { sidebarItems: ['agent', 'recents'] },
+        status: { sidebarItems: ['pages', 'tasks', 'recents', 'agent', 'community', 'resource'] },
       });
       const items = systemStatusSelectors.sidebarItems(s);
-      // stored order preserved at the front
-      expect(items.slice(0, 2)).toEqual(['agent', 'recents']);
-      // every known key is present
-      expect(items).toContain('pages');
-      expect(items).toContain('community');
-      expect(items).toContain('resource');
-      expect(items).toContain('memory');
+      expect(items).toEqual([
+        'pages',
+        'askcore',
+        'tasks',
+        'recents',
+        'agent',
+        'image',
+        'community',
+        'resource',
+        'memory',
+      ]);
     });
 
     it('should migrate legacy `sidebarSectionOrder` accordion order into the default layout', () => {
@@ -162,8 +167,9 @@ describe('systemStatusSelectors', () => {
       const items = systemStatusSelectors.sidebarItems(s);
       // accordion slot in the default list now uses the user's legacy order
       expect(items).toEqual([
-        'tasks',
         'pages',
+        'askcore',
+        'tasks',
         'agent',
         'recents',
         'image',
@@ -189,6 +195,17 @@ describe('systemStatusSelectors', () => {
         },
       });
       const items = systemStatusSelectors.sidebarItems(s);
+      expect(items).toEqual([
+        'pages',
+        'askcore',
+        'tasks',
+        'recents',
+        'agent',
+        'image',
+        'community',
+        'resource',
+        'memory',
+      ]);
       expect(items.indexOf('recents')).toBeLessThan(items.indexOf('agent'));
     });
   });

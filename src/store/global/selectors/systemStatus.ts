@@ -44,8 +44,9 @@ const hiddenSidebarSections = (s: GlobalState): string[] =>
   s.status.hiddenSidebarSections ?? DEFAULT_HIDDEN_SECTIONS;
 
 export const DEFAULT_SIDEBAR_ITEMS: string[] = [
-  'tasks',
   'pages',
+  'askcore',
+  'tasks',
   'recents',
   'agent',
   'image',
@@ -57,11 +58,38 @@ export const DEFAULT_SIDEBAR_ITEMS: string[] = [
 /** Items that must stay contiguous in the sidebar list (accordion block). */
 export const SIDEBAR_ACCORDION_KEYS = new Set(['recents', 'agent']);
 
-/** Append any known keys missing from `order` so new items don't disappear on upgrade. */
+/** Insert any known keys missing from `order` at their default relative positions. */
 const withAllKnownKeys = (order: string[]): string[] => {
-  const present = new Set(order);
-  const missing = DEFAULT_SIDEBAR_ITEMS.filter((k) => !present.has(k));
-  return missing.length === 0 ? order : [...order, ...missing];
+  const next = [...order];
+
+  for (const key of DEFAULT_SIDEBAR_ITEMS) {
+    if (next.includes(key)) continue;
+
+    const defaultIndex = DEFAULT_SIDEBAR_ITEMS.indexOf(key);
+    const nextKnownIndices: number[] = [];
+
+    for (let i = defaultIndex + 1; i < DEFAULT_SIDEBAR_ITEMS.length; i++) {
+      const nextKnownIndex = next.indexOf(DEFAULT_SIDEBAR_ITEMS[i]);
+      if (nextKnownIndex >= 0) nextKnownIndices.push(nextKnownIndex);
+    }
+
+    if (nextKnownIndices.length > 0) {
+      next.splice(Math.min(...nextKnownIndices), 0, key);
+      continue;
+    }
+
+    const previousKnownIndices: number[] = [];
+    for (let i = defaultIndex - 1; i >= 0; i--) {
+      const previousKnownIndex = next.indexOf(DEFAULT_SIDEBAR_ITEMS[i]);
+      if (previousKnownIndex >= 0) previousKnownIndices.push(previousKnownIndex);
+    }
+
+    const previousIndex =
+      previousKnownIndices.length > 0 ? Math.max(...previousKnownIndices) : -1;
+    next.splice(previousIndex >= 0 ? previousIndex + 1 : next.length, 0, key);
+  }
+
+  return next;
 };
 
 const accordionIndices = (items: string[]): number[] => {
