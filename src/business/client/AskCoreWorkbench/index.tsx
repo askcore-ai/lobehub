@@ -25,7 +25,7 @@ import {
   Search,
   SlidersHorizontal,
 } from 'lucide-react';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import {
@@ -34,7 +34,6 @@ import {
   askCoreWorkbenchResourceUrl,
   emptyAskCoreWorkbenchDashboard,
   emptyAskCoreWorkbenchList,
-  fetchAskCorePluginToken,
   fetchAskCoreWorkbenchJson,
 } from './api';
 import { ASKCORE_WORKBENCH_TAB_OPTIONS, ASKCORE_WORKBENCH_TABS } from './config';
@@ -408,7 +407,6 @@ const AskCoreWorkbenchPage = memo(() => {
   const activeTab = normalizeAskCoreWorkbenchTab(query.get('tab') || routeTab);
   const activeConfig = ASKCORE_WORKBENCH_TABS.find((tab) => tab.key === activeTab)!;
 
-  const tokenRef = useRef('');
   const [dashboard, setDashboard] = useState<AskCoreWorkbenchDashboardPayload>(
     emptyAskCoreWorkbenchDashboard,
   );
@@ -419,14 +417,6 @@ const AskCoreWorkbenchPage = memo(() => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRecord, setSelectedRecord] = useState<AskCoreWorkbenchRecord | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-
-  const refreshToken = useCallback(async () => {
-    const token = await fetchAskCorePluginToken();
-    tokenRef.current = token;
-    return token;
-  }, []);
-
-  const ensureToken = useCallback(async () => tokenRef.current || refreshToken(), [refreshToken]);
 
   const navigateToTab = useCallback(
     (tab: AskCoreWorkbenchTab) => {
@@ -440,13 +430,9 @@ const AskCoreWorkbenchPage = memo(() => {
     setError(undefined);
 
     try {
-      const token = await ensureToken();
-
       if (!activeConfig.resource) {
         const payload = await fetchAskCoreWorkbenchJson<AskCoreWorkbenchDashboardPayload>(
           askCoreWorkbenchDashboardUrl(),
-          token,
-          refreshToken,
         );
         setDashboard(payload || emptyAskCoreWorkbenchDashboard());
         setList(null);
@@ -455,8 +441,6 @@ const AskCoreWorkbenchPage = memo(() => {
 
       const payload = await fetchAskCoreWorkbenchJson<AskCoreWorkbenchListPayload>(
         askCoreWorkbenchResourceUrl(activeConfig.resource, page, PAGE_SIZE),
-        token,
-        refreshToken,
       );
       setList(payload || emptyAskCoreWorkbenchList(activeConfig.resource, page, PAGE_SIZE));
     } catch (err) {
@@ -467,7 +451,7 @@ const AskCoreWorkbenchPage = memo(() => {
     } finally {
       setLoading(false);
     }
-  }, [activeConfig.resource, ensureToken, page, refreshToken]);
+  }, [activeConfig.resource, page]);
 
   useEffect(() => {
     setSearchQuery('');
@@ -500,11 +484,8 @@ const AskCoreWorkbenchPage = memo(() => {
     const loadDetail = async () => {
       setDetailLoading(true);
       try {
-        const token = await ensureToken();
         const payload = await fetchAskCoreWorkbenchJson<{ item?: AskCoreWorkbenchRecord }>(
           askCoreWorkbenchItemUrl(activeConfig.resource!, selection.id),
-          token,
-          refreshToken,
         );
         if (!ignore) setSelectedRecord(payload.item || null);
       } catch {
@@ -518,7 +499,7 @@ const AskCoreWorkbenchPage = memo(() => {
     return () => {
       ignore = true;
     };
-  }, [activeConfig.resource, ensureToken, list?.items, refreshToken, routeQuery]);
+  }, [activeConfig.resource, list?.items, routeQuery]);
 
   const filteredItems = useMemo(
     () => filterRecords(list?.items || [], searchQuery),
