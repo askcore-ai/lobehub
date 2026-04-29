@@ -91,21 +91,10 @@ const styles = createStaticStyles(({ css }) => ({
 
     background: ${cssVar.colorBgContainer};
   `,
-  header: css`
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-
-    height: 72px;
-    padding-block: 0;
-    padding-inline: 32px;
-    border-block-end: 1px solid ${cssVar.colorBorderSecondary};
-
-    background: ${cssVar.colorBgContainer};
-  `,
-  headerActions: css`
-    display: flex;
-    gap: 10px;
+  muted: css`
+    font-size: 13px;
+    line-height: 1.4;
+    color: ${cssVar.colorTextDescription};
   `,
   page: css`
     overflow: auto;
@@ -157,11 +146,6 @@ const styles = createStaticStyles(({ css }) => ({
     font-weight: 650;
     line-height: 1.1;
     color: ${cssVar.colorText};
-  `,
-  subtitle: css`
-    font-size: 13px;
-    line-height: 1.4;
-    color: ${cssVar.colorTextDescription};
   `,
   table: css`
     overflow: hidden;
@@ -229,17 +213,6 @@ const styles = createStaticStyles(({ css }) => ({
       font-weight: 500;
       color: ${cssVar.colorText};
     }
-  `,
-  title: css`
-    display: flex;
-    gap: 10px;
-    align-items: baseline;
-
-    font-size: 24px;
-    font-weight: 650;
-    line-height: 1;
-    color: ${cssVar.colorText};
-    letter-spacing: 0;
   `,
   toolbar: css`
     display: flex;
@@ -338,7 +311,7 @@ const getNestedPreview = (value: any): string => {
 
 const formatCellValue = (value: any, column?: AskCoreWorkbenchColumn) => {
   if (value === null || value === undefined || value === '')
-    return <span className={styles.subtitle}>--</span>;
+    return <span className={styles.muted}>--</span>;
 
   if (column?.isStatus || typeof value === 'boolean') {
     const label =
@@ -729,18 +702,6 @@ const AskCoreWorkbenchPage = memo(() => {
 
   return (
     <div className={styles.page}>
-      <div className={styles.header}>
-        <div className={styles.title}>
-          教学工作台 <span className={styles.subtitle}>{activeConfig.label}</span>
-        </div>
-        <div className={styles.headerActions}>
-          <Button className={styles.secondary}>批量操作</Button>
-          <Button className={styles.primary} icon={<Plus size={14} />}>
-            新建
-          </Button>
-        </div>
-      </div>
-
       <div className={styles.body}>
         <Segmented
           block
