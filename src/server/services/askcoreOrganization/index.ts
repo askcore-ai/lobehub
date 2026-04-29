@@ -66,6 +66,7 @@ type UserSession = {
   displayName: string;
   email: string;
   id: string;
+  role?: string;
   sessionId?: string;
   sessionToken?: string;
 };
@@ -175,6 +176,7 @@ export const userFromSession = (session: AskCoreSessionRecord | null): UserSessi
     displayName: buildDisplayName(user),
     email,
     id,
+    role: stringValue(user.role),
     sessionId: stringValue(sessionData?.id) ?? stringValue(session?.sessionId),
     sessionToken: stringValue(sessionData?.token) ?? stringValue(session?.sessionToken),
   };
@@ -262,13 +264,16 @@ export class AskCoreOrganizationService {
       return this.payloadForUser(user, organizationId);
     }
 
-    const organizations = await this.listOrganizationsForUser(user.id);
-    if (organizations.length === 0) {
+    const memberships = await this.listOrganizationsForUser(user.id);
+    if (memberships.length === 0) {
       const organizationId = await this.createDefaultOrganization(user);
       await this.setActiveOrganizationForSession(user, organizationId);
       return this.payloadForUser(user, organizationId);
     }
 
+    const organizations = await this.listOrganizationsForUser(user.id, {
+      includeAll: this.isSuperAdmin(user),
+    });
     const activeId =
       (await this.persistedActiveOrganizationId(session)) ?? activeOrganizationIdFromSessionRecord(session);
     const activeIsValid = activeId && organizations.some((item) => item.id === activeId);
@@ -311,7 +316,7 @@ export class AskCoreOrganizationService {
 
   async setActive(session: AskCoreSessionRecord, organizationId: string): Promise<AskCoreOrganizationPayload> {
     const user = userFromSession(session);
-    await this.requireMembership(user.id, organizationId);
+    await this.requireMembership(user, organizationId);
     await this.setActiveOrganizationForSession(user, organizationId);
     return this.payloadForUser(user, organizationId);
   }
@@ -322,7 +327,7 @@ export class AskCoreOrganizationService {
     input: { contact?: string; description?: string; logo?: string | null; name?: string },
   ): Promise<AskCoreOrganizationPayload> {
     const user = userFromSession(session);
-    await this.requireAdmin(user.id, organizationId);
+    await this.requireAdmin(user, organizationId);
 
     const current = await this.getOrganization(organizationId);
     const metadata = {
@@ -345,7 +350,7 @@ export class AskCoreOrganizationService {
 
   async listMembers(session: AskCoreSessionRecord, organizationId: string) {
     const user = userFromSession(session);
-    await this.requireMembership(user.id, organizationId);
+    await this.requireMembership(user, organizationId);
     return this.membersForOrganization(organizationId);
   }
 
@@ -356,12 +361,12 @@ export class AskCoreOrganizationService {
     role: AskCoreOrganizationRole,
   ) {
     const user = userFromSession(session);
-    const actor = await this.requireAdmin(user.id, organizationId);
+    const actor = await this.requireAdmin(user, organizationId);
     const target = await this.getMember(memberId, organizationId);
     if (!['owner', 'admin', 'member'].includes(role)) {
       throw new AskCoreOrganizationError(400, 'Unsupported member role');
     }
-    if (actor.role !== 'owner' && (target.role === 'owner' || role === 'owner')) {
+    if (!this.isSuperAdmin(user) && actor.role !== 'owner' && (target.role === 'owner' || role === 'owner')) {
       throw new AskCoreOrganizationError(403, 'Only owners can modify owner membership');
     }
     if (target.role === 'owner' && role !== 'owner') await this.assertMoreThanOneOwner(organizationId);
@@ -372,10 +377,10 @@ export class AskCoreOrganizationService {
 
   async removeMember(session: AskCoreSessionRecord, organizationId: string, memberId: string) {
     const user = userFromSession(session);
-    const actor = await this.requireAdmin(user.id, organizationId);
+    const actor = await this.requireAdmin(user, organizationId);
     const target = await this.getMember(memberId, organizationId);
     if (target.role === 'owner') {
-      if (actor.role !== 'owner') {
+      if (!this.isSuperAdmin(user) && actor.role !== 'owner') {
         throw new AskCoreOrganizationError(403, 'Only owners can remove owner membership');
       }
       await this.assertMoreThanOneOwner(organizationId);
@@ -391,7 +396,7 @@ export class AskCoreOrganizationService {
     input: { channel?: string; email?: string; expiresIn?: string; role?: string },
   ): Promise<AskCoreInvitePayload> {
     const user = userFromSession(session);
-    await this.requireAdmin(user.id, organizationId);
+    await this.requireAdmin(user, organizationId);
     const org = await this.getOrganization(organizationId);
     const channel = normalizeInviteChannel(input.channel);
     const expiresIn = normalizeInviteExpiry(input.expiresIn);
@@ -507,7 +512,9 @@ export class AskCoreOrganizationService {
       session: { id: user.sessionId, token: user.sessionToken },
       user,
     }));
-    const organizations = await this.listOrganizationsForUser(user.id);
+    const organizations = await this.listOrganizationsForUser(user.id, {
+      includeAll: this.isSuperAdmin(user),
+    });
     const selectedOrganizationId = persistedActiveId ?? organizations[0]?.id;
     const withActive = organizations.map((item) => ({
       ...item,
@@ -515,7 +522,7 @@ export class AskCoreOrganizationService {
     }));
     const current = withActive.find((item) => item.isActive) ?? withActive[0] ?? null;
     const role = current?.role;
-    const canManage = role === 'owner' || role === 'admin';
+    const canManage = this.isSuperAdmin(user) || role === 'owner' || role === 'admin';
     const members = current ? await this.membersForOrganization(current.id) : [];
 
     return {
@@ -530,21 +537,38 @@ export class AskCoreOrganizationService {
     };
   }
 
-  private async listOrganizationsForUser(userId: string) {
-    const rows = await this.db
-      .select({
-        createdAt: organization.createdAt,
-        id: organization.id,
-        logo: organization.logo,
-        metadata: organization.metadata,
-        name: organization.name,
-        role: member.role,
-        slug: organization.slug,
-      })
-      .from(member)
-      .innerJoin(organization, eq(member.organizationId, organization.id))
-      .where(eq(member.userId, userId))
-      .orderBy(asc(member.createdAt));
+  private async listOrganizationsForUser(userId: string, options: { includeAll?: boolean } = {}) {
+    const rows = options.includeAll
+      ? await this.db
+          .select({
+            createdAt: organization.createdAt,
+            id: organization.id,
+            logo: organization.logo,
+            metadata: organization.metadata,
+            name: organization.name,
+            role: sql<string>`coalesce(${member.role}, 'owner')`,
+            slug: organization.slug,
+          })
+          .from(organization)
+          .leftJoin(
+            member,
+            and(eq(member.organizationId, organization.id), eq(member.userId, userId)),
+          )
+          .orderBy(asc(organization.createdAt))
+      : await this.db
+          .select({
+            createdAt: organization.createdAt,
+            id: organization.id,
+            logo: organization.logo,
+            metadata: organization.metadata,
+            name: organization.name,
+            role: member.role,
+            slug: organization.slug,
+          })
+          .from(member)
+          .innerJoin(organization, eq(member.organizationId, organization.id))
+          .where(eq(member.userId, userId))
+          .orderBy(asc(member.createdAt));
 
     return rows.map((row) => ({ ...organizationFromRow(row), isActive: false }));
   }
@@ -617,18 +641,31 @@ export class AskCoreOrganizationService {
     return { ...row, role: normalizeRole(row.role) };
   }
 
-  private async requireMembership(userId: string, organizationId: string) {
+  private isSuperAdmin(user: UserSession) {
+    return user.role === 'super_admin';
+  }
+
+  private async requireMembership(user: UserSession, organizationId: string) {
+    if (this.isSuperAdmin(user)) {
+      await this.getOrganization(organizationId);
+      return {
+        id: `super_admin:${user.id}`,
+        organizationId,
+        role: 'owner' as AskCoreOrganizationRole,
+        userId: user.id,
+      };
+    }
     const [row] = await this.db
       .select()
       .from(member)
-      .where(and(eq(member.organizationId, organizationId), eq(member.userId, userId)))
+      .where(and(eq(member.organizationId, organizationId), eq(member.userId, user.id)))
       .limit(1);
     if (!row) throw new AskCoreOrganizationError(403, 'User is not a member of the organization');
     return { ...row, role: normalizeRole(row.role) };
   }
 
-  private async requireAdmin(userId: string, organizationId: string) {
-    const row = await this.requireMembership(userId, organizationId);
+  private async requireAdmin(user: UserSession, organizationId: string) {
+    const row = await this.requireMembership(user, organizationId);
     if (row.role !== 'owner' && row.role !== 'admin') {
       throw new AskCoreOrganizationError(403, 'Organization admin permission is required');
     }
