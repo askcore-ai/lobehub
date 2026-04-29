@@ -142,7 +142,9 @@ const buildDisplayName = (user: Record<string, unknown>): string => {
   const fullName = stringValue(user.fullName) ?? stringValue(user.name);
   if (fullName) return fullName;
 
-  const composed = [stringValue(user.firstName), stringValue(user.lastName)].filter(Boolean).join('');
+  const composed = [stringValue(user.firstName), stringValue(user.lastName)]
+    .filter(Boolean)
+    .join('');
   if (composed) return composed;
 
   const username = stringValue(user.username);
@@ -170,7 +172,8 @@ export const userFromSession = (session: AskCoreSessionRecord | null): UserSessi
   const sessionData = recordValue(session?.session);
   const id = stringValue(user?.id);
   const email = stringValue(user?.email);
-  if (!user || !id || !email) throw new AskCoreOrganizationError(401, 'LobeHub session is required');
+  if (!user || !id || !email)
+    throw new AskCoreOrganizationError(401, 'LobeHub session is required');
 
   return {
     displayName: buildDisplayName(user),
@@ -184,7 +187,8 @@ export const userFromSession = (session: AskCoreSessionRecord | null): UserSessi
 
 export const activeOrganizationIdFromSessionRecord = (session: AskCoreSessionRecord) => {
   const sessionData = recordValue(session.session);
-  const organizationRecord = recordValue(session.organization) ?? recordValue(session.activeOrganization);
+  const organizationRecord =
+    recordValue(session.organization) ?? recordValue(session.activeOrganization);
 
   return (
     stringValue(sessionData?.activeOrganizationId) ??
@@ -242,20 +246,25 @@ const organizationFromRow = (row: {
 
 export class AskCoreOrganizationService {
   private db: LobeChatDatabase;
-  private emailService: EmailService;
+  private emailService?: EmailService;
   private origin: string;
 
-  constructor(options: {
-    db?: LobeChatDatabase;
-    emailService?: EmailService;
-    origin?: string;
-  } = {}) {
+  constructor(
+    options: {
+      db?: LobeChatDatabase;
+      emailService?: EmailService;
+      origin?: string;
+    } = {},
+  ) {
     this.db = options.db ?? serverDB;
-    this.emailService = options.emailService ?? new EmailService();
+    this.emailService = options.emailService;
     this.origin = options.origin ?? 'https://askcore.cn';
   }
 
-  async bootstrap(session: AskCoreSessionRecord, inviteToken?: string): Promise<AskCoreOrganizationPayload> {
+  async bootstrap(
+    session: AskCoreSessionRecord,
+    inviteToken?: string,
+  ): Promise<AskCoreOrganizationPayload> {
     const user = userFromSession(session);
 
     if (inviteToken) {
@@ -275,7 +284,8 @@ export class AskCoreOrganizationService {
       includeAll: this.isSuperAdmin(user),
     });
     const activeId =
-      (await this.persistedActiveOrganizationId(session)) ?? activeOrganizationIdFromSessionRecord(session);
+      (await this.persistedActiveOrganizationId(session)) ??
+      activeOrganizationIdFromSessionRecord(session);
     const activeIsValid = activeId && organizations.some((item) => item.id === activeId);
     const organizationId = activeIsValid ? activeId : organizations[0].id;
     if (!activeIsValid) await this.setActiveOrganizationForSession(user, organizationId);
@@ -285,7 +295,8 @@ export class AskCoreOrganizationService {
   async list(session: AskCoreSessionRecord): Promise<AskCoreOrganizationPayload> {
     const user = userFromSession(session);
     const activeId =
-      (await this.persistedActiveOrganizationId(session)) ?? activeOrganizationIdFromSessionRecord(session);
+      (await this.persistedActiveOrganizationId(session)) ??
+      activeOrganizationIdFromSessionRecord(session);
     return this.payloadForUser(user, activeId);
   }
 
@@ -314,7 +325,10 @@ export class AskCoreOrganizationService {
     return this.payloadForUser(user, organizationId);
   }
 
-  async setActive(session: AskCoreSessionRecord, organizationId: string): Promise<AskCoreOrganizationPayload> {
+  async setActive(
+    session: AskCoreSessionRecord,
+    organizationId: string,
+  ): Promise<AskCoreOrganizationPayload> {
     const user = userFromSession(session);
     await this.requireMembership(user, organizationId);
     await this.setActiveOrganizationForSession(user, organizationId);
@@ -339,7 +353,7 @@ export class AskCoreOrganizationService {
     await this.db
       .update(organization)
       .set({
-        logo: input.logo === null ? null : stringValue(input.logo) ?? current.logo,
+        logo: input.logo === null ? null : (stringValue(input.logo) ?? current.logo),
         metadata: JSON.stringify(metadata),
         name: stringValue(input.name) || current.name,
       })
@@ -366,10 +380,15 @@ export class AskCoreOrganizationService {
     if (!['owner', 'admin', 'member'].includes(role)) {
       throw new AskCoreOrganizationError(400, 'Unsupported member role');
     }
-    if (!this.isSuperAdmin(user) && actor.role !== 'owner' && (target.role === 'owner' || role === 'owner')) {
+    if (
+      !this.isSuperAdmin(user) &&
+      actor.role !== 'owner' &&
+      (target.role === 'owner' || role === 'owner')
+    ) {
       throw new AskCoreOrganizationError(403, 'Only owners can modify owner membership');
     }
-    if (target.role === 'owner' && role !== 'owner') await this.assertMoreThanOneOwner(organizationId);
+    if (target.role === 'owner' && role !== 'owner')
+      await this.assertMoreThanOneOwner(organizationId);
 
     await this.db.update(member).set({ role }).where(eq(member.id, memberId));
     return this.membersForOrganization(organizationId);
@@ -402,14 +421,15 @@ export class AskCoreOrganizationService {
     const expiresIn = normalizeInviteExpiry(input.expiresIn);
     const role = normalizeInviteRole(input.role);
     const email = cleanEmail(input.email);
-    if (channel === 'email' && !email) throw new AskCoreOrganizationError(400, 'Invite email is required');
+    if (channel === 'email' && !email)
+      throw new AskCoreOrganizationError(400, 'Invite email is required');
 
     const token = randomBytes(32).toString('base64url');
     const expiresAt = new Date(Date.now() + INVITE_EXPIRY_MS[expiresIn]);
     await this.db.insert(askcoreOrganizationInvites).values({
       channel,
       createdByUserId: user.id,
-      email: channel === 'email' ? email! : email ?? null,
+      email: channel === 'email' ? email! : (email ?? null),
       expiresAt,
       id: `orginv_${id()}`,
       organizationId,
@@ -419,7 +439,7 @@ export class AskCoreOrganizationService {
 
     const link = `${this.origin.replace(/\/$/, '')}/join/organization/${encodeURIComponent(token)}`;
     if (channel === 'email' && email) {
-      await this.emailService.sendMail({
+      await this.getEmailService().sendMail({
         html: `<p>${user.displayName} 邀请你加入 ${org.name}。</p><p><a href="${link}">点击加入组织</a></p><p>该邀请将在 ${this.expiryLabel(expiresIn)} 后过期。</p>`,
         subject: `邀请加入 ${org.name}`,
         text: `${user.displayName} 邀请你加入 ${org.name}。\n${link}\n该邀请将在 ${this.expiryLabel(expiresIn)} 后过期。`,
@@ -467,7 +487,8 @@ export class AskCoreOrganizationService {
       .from(askcoreOrganizationInvites)
       .where(eq(askcoreOrganizationInvites.tokenHash, hashInviteToken(token)))
       .limit(1);
-    if (!invite || invite.revokedAt) throw new AskCoreOrganizationError(404, 'Invitation is not available');
+    if (!invite || invite.revokedAt)
+      throw new AskCoreOrganizationError(404, 'Invitation is not available');
     if (invite.expiresAt.getTime() <= Date.now()) {
       throw new AskCoreOrganizationError(410, 'Invitation has expired');
     }
@@ -508,10 +529,12 @@ export class AskCoreOrganizationService {
     user: UserSession,
     activeOrganizationId?: string,
   ): Promise<AskCoreOrganizationPayload> {
-    const persistedActiveId = activeOrganizationId || (await this.persistedActiveOrganizationId({
-      session: { id: user.sessionId, token: user.sessionToken },
-      user,
-    }));
+    const persistedActiveId =
+      activeOrganizationId ||
+      (await this.persistedActiveOrganizationId({
+        session: { id: user.sessionId, token: user.sessionToken },
+        user,
+      }));
     const organizations = await this.listOrganizationsForUser(user.id, {
       includeAll: this.isSuperAdmin(user),
     });
@@ -573,7 +596,9 @@ export class AskCoreOrganizationService {
     return rows.map((row) => ({ ...organizationFromRow(row), isActive: false }));
   }
 
-  private async membersForOrganization(organizationId: string): Promise<AskCoreOrganizationMember[]> {
+  private async membersForOrganization(
+    organizationId: string,
+  ): Promise<AskCoreOrganizationMember[]> {
     const rows = await this.db
       .select({
         avatar: users.avatar,
@@ -603,7 +628,11 @@ export class AskCoreOrganizationService {
     }));
   }
 
-  private async addMembership(organizationId: string, userId: string, role: AskCoreOrganizationRole) {
+  private async addMembership(
+    organizationId: string,
+    userId: string,
+    role: AskCoreOrganizationRole,
+  ) {
     const [existing] = await this.db
       .select({ id: member.id })
       .from(member)
@@ -643,6 +672,11 @@ export class AskCoreOrganizationService {
 
   private isSuperAdmin(user: UserSession) {
     return user.role === 'super_admin';
+  }
+
+  private getEmailService() {
+    this.emailService ??= new EmailService();
+    return this.emailService;
   }
 
   private async requireMembership(user: UserSession, organizationId: string) {
