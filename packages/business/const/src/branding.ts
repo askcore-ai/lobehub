@@ -5,7 +5,7 @@
 export const LOBE_CHAT_CLOUD = 'AskCore AI';
 
 export const BRANDING_NAME = 'AskCore';
-export const BRANDING_LOGO_URL = '/askcore-logo.png';
+export const BRANDING_LOGO_URL = '/avatars/lobe-ai.png';
 
 export const ORG_NAME = 'AskCore AI';
 
