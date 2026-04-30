@@ -3,13 +3,13 @@
 import {
   Alert,
   Button,
+  Checkbox,
   Descriptions,
   Empty,
   Form,
   Input,
   InputNumber,
   message,
-  Modal,
   Popconfirm,
   Progress,
   Segmented,
@@ -22,20 +22,34 @@ import {
   Upload,
 } from 'antd';
 import { type ColumnsType } from 'antd/es/table';
-import { createStaticStyles, cssVar } from 'antd-style';
+import { createStaticStyles, cssVar, cx } from 'antd-style';
 import {
   ArrowLeft,
   Download,
+  Eye,
+  FileImage,
   FileScan,
+  GripVertical,
   Pencil,
   Plus,
   Printer,
   RefreshCw,
+  Save,
   Search,
   Trash2,
   UploadCloud,
 } from 'lucide-react';
-import { type Key, memo, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  type DragEvent,
+  type Key,
+  memo,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import type { AskCoreWorkbenchApiClient } from './api';
@@ -45,6 +59,23 @@ import {
   emptyAskCoreWorkbenchList,
 } from './api';
 import { ASKCORE_WORKBENCH_TAB_OPTIONS, ASKCORE_WORKBENCH_TABS } from './config';
+import {
+  buildQuestionPreviewDataFromModel,
+  buildQuestionPreviewDataFromPayload,
+  createEmptyQuestionForm,
+  deserializeQuestionPayload,
+  getNextSubQuestionId,
+  isJsonRecord,
+  type QuestionFormModel,
+  type QuestionPreviewData,
+  serializeQuestionForm,
+} from './questionModel';
+import {
+  MarkdownPreview,
+  QuestionCompactPreview,
+  QuestionMarkdownPreview,
+  QuestionSummaryPreview,
+} from './questionPreview';
 import {
   buildResourceBasePath,
   buildResourceEntityPath,
@@ -115,10 +146,33 @@ const styles = createStaticStyles(({ css }) => ({
   `,
   detailTitle: css`
     margin: 0;
+
     font-size: 22px;
     font-weight: 650;
     line-height: 1.25;
     color: ${cssVar.colorText};
+  `,
+  dragHandle: css`
+    cursor: grab;
+    display: inline-flex;
+    align-items: center;
+    color: ${cssVar.colorTextDescription};
+  `,
+  dropZone: css`
+    height: 10px;
+    border-radius: 999px;
+  `,
+  dropZoneActive: css`
+    background: ${cssVar.colorPrimaryBg};
+  `,
+  editorGrid: css`
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+
+    @media (width <= 760px) {
+      grid-template-columns: 1fr;
+    }
   `,
   error: css`
     margin-block-start: 16px;
@@ -156,6 +210,33 @@ const styles = createStaticStyles(({ css }) => ({
     border-radius: 8px;
     background: ${cssVar.colorBgContainer};
   `,
+  imageCard: css`
+    overflow: hidden;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 8px;
+    background: ${cssVar.colorBgContainer};
+  `,
+  imagePreview: css`
+    display: block;
+
+    width: 100%;
+    max-height: 460px;
+
+    object-fit: contain;
+    background: ${cssVar.colorFillQuaternary};
+  `,
+  inlineEditor: css`
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+
+    margin-block-start: 12px;
+    padding: 14px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 8px;
+
+    background: ${cssVar.colorFillQuaternary};
+  `,
   muted: css`
     font-size: 13px;
     line-height: 1.4;
@@ -174,11 +255,21 @@ const styles = createStaticStyles(({ css }) => ({
     background: ${cssVar.colorBgContainer};
   `,
   panelTitle: css`
-    margin: 0 0 12px;
+    margin-block: 0 12px;
+    margin-inline: 0;
+
     font-size: 15px;
     font-weight: 600;
     line-height: 1.35;
     color: ${cssVar.colorText};
+  `,
+  previewBox: css`
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 8px;
+
+    background: ${cssVar.colorBgContainer};
   `,
   primary: css`
     border-color: ${cssVar.colorText};
@@ -199,6 +290,21 @@ const styles = createStaticStyles(({ css }) => ({
     color: ${cssVar.colorText};
     background: ${cssVar.colorBgContainer};
   `,
+  splitWorkspace: css`
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.85fr);
+    gap: 16px;
+    align-items: start;
+
+    @media (width <= 1100px) {
+      grid-template-columns: 1fr;
+    }
+  `,
+  stack: css`
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  `,
   statGrid: css`
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -213,6 +319,7 @@ const styles = createStaticStyles(({ css }) => ({
     padding-inline: 16px;
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 8px;
+
     background: ${cssVar.colorBgContainer};
   `,
   statTitle: css`
@@ -240,9 +347,11 @@ const styles = createStaticStyles(({ css }) => ({
       padding-block: 0;
       padding-inline: 18px;
       border-block-end: 1px solid ${cssVar.colorBorderSecondary};
+
       font-size: 12px;
       font-weight: 500;
       color: ${cssVar.colorTextDescription};
+
       background: ${cssVar.colorBgContainer};
     }
 
@@ -251,8 +360,14 @@ const styles = createStaticStyles(({ css }) => ({
       padding-block: 9px;
       padding-inline: 18px;
       border-block-end: 1px solid ${cssVar.colorFillQuaternary};
+
       font-size: 13px;
       color: ${cssVar.colorText};
+    }
+  `,
+  tightTable: css`
+    .ant-table-tbody > tr > td {
+      vertical-align: top;
     }
   `,
   tabs: css`
@@ -261,6 +376,7 @@ const styles = createStaticStyles(({ css }) => ({
     padding-block: 4px;
     padding-inline: 4px;
     border-radius: 999px;
+
     background: ${cssVar.colorFillTertiary};
 
     .ant-segmented-item {
@@ -280,6 +396,7 @@ const styles = createStaticStyles(({ css }) => ({
     flex-wrap: wrap;
     gap: 10px;
     justify-content: space-between;
+
     margin-block: 16px 10px;
   `,
   toolbarLeft: css`
@@ -287,6 +404,33 @@ const styles = createStaticStyles(({ css }) => ({
     flex-wrap: wrap;
     gap: 10px;
     align-items: center;
+  `,
+  questionCard: css`
+    padding: 12px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 8px;
+    background: ${cssVar.colorBgContainer};
+  `,
+  questionCardActive: css`
+    border-color: ${cssVar.colorPrimaryBorder};
+    background: ${cssVar.colorPrimaryBg};
+  `,
+  questionCardHeader: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+
+    margin-block-end: 10px;
+  `,
+  questionPreviewCell: css`
+    min-width: 280px;
+    max-width: 560px;
+  `,
+  stickyRail: css`
+    position: sticky;
+    inset-block-start: 16px;
   `,
   value: css`
     max-width: 720px;
@@ -357,10 +501,15 @@ const statusLabelMap: Record<string, string> = {
 
 const statusColor = (value: string) => {
   const normalized = value.toLowerCase();
-  if (['succeeded', 'completed', 'published', 'ready', 'active', 'enabled', 'true'].includes(normalized)) {
+  if (
+    ['succeeded', 'completed', 'published', 'ready', 'active', 'enabled', 'true'].includes(
+      normalized,
+    )
+  ) {
     return 'green';
   }
-  if (['pending', 'processing', 'running', 'submitted', 'manual'].includes(normalized)) return 'blue';
+  if (['pending', 'processing', 'running', 'submitted', 'manual'].includes(normalized))
+    return 'blue';
   if (['failed', 'cancelled', 'error'].includes(normalized)) return 'red';
   if (['draft', 'disabled', 'false'].includes(normalized)) return 'default';
   return 'gold';
@@ -373,7 +522,8 @@ const compactDate = (value: string) => {
 
 const getNestedPreview = (value: unknown): string => {
   if (!value || typeof value !== 'object') return String(value ?? '');
-  if (Array.isArray(value)) return value.map(getNestedPreview).filter(Boolean).slice(0, 3).join(', ');
+  if (Array.isArray(value))
+    return value.map(getNestedPreview).filter(Boolean).slice(0, 3).join(', ');
   const record = value as JsonRecord;
   return String(
     record.title ||
@@ -398,7 +548,11 @@ const formatCellValue = (value: unknown, column?: AskCoreWorkbenchColumn) => {
           : '否'
         : statusLabelMap[String(value).toLowerCase()] || String(value);
     return (
-      <Tag bordered={false} color={statusColor(String(value))} style={{ borderRadius: 999, margin: 0 }}>
+      <Tag
+        bordered={false}
+        color={statusColor(String(value))}
+        style={{ borderRadius: 999, margin: 0 }}
+      >
         {label}
       </Tag>
     );
@@ -427,8 +581,28 @@ const displayNode = (value: unknown) => {
 
 const compactJsonRecord = (value: Record<string, unknown>): JsonRecord =>
   Object.fromEntries(
-    Object.entries(value).filter(([, entry]) => entry !== undefined && entry !== null && entry !== ''),
+    Object.entries(value).filter(
+      ([, entry]) => entry !== undefined && entry !== null && entry !== '',
+    ),
   ) as JsonRecord;
+
+const asError = (reason: unknown) =>
+  reason instanceof Error ? reason.message : String(reason || '操作失败');
+
+const readRecordArray = (value: unknown): JsonRecord[] =>
+  Array.isArray(value) ? value.filter(isJsonRecord) : [];
+
+const splitTags = (value: string) =>
+  value
+    .split(/[,\n，、]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+const parseOptionalNumeric = (value: unknown) => {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
 const getRecordId = (resource: ResourceKey, record: AskCoreWorkbenchRecord) => {
   const idKey = getResourceIdKey(resource);
@@ -463,7 +637,11 @@ const parseWorkbenchRoute = (
   if (!path) {
     if (activeTab === 'overview') return { kind: 'dashboard', path: '/dashboard' };
     if (activeTab === 'ops') return { kind: 'ops', path: '/ops' };
-    return { kind: 'list', path: buildResourceBasePath(activeTab as ResourceKey), resource: activeTab as ResourceKey };
+    return {
+      kind: 'list',
+      path: buildResourceBasePath(activeTab as ResourceKey),
+      resource: activeTab as ResourceKey,
+    };
   }
   if (path === '/dashboard') return { kind: 'dashboard', path };
   if (path === '/ops' || path.startsWith('/ops/')) return { kind: 'ops', path };
@@ -504,7 +682,8 @@ const invocationColumns: ColumnsType<AskCoreWorkbenchRecord> = [
   {
     dataIndex: 'state',
     key: 'state',
-    render: (value) => formatCellValue(value, { dataIndex: 'state', isStatus: true, title: '状态' }),
+    render: (value) =>
+      formatCellValue(value, { dataIndex: 'state', isStatus: true, title: '状态' }),
     title: '状态',
     width: 120,
   },
@@ -594,7 +773,9 @@ const ResourceForm = ({
               key={field.key}
               label={field.label}
               name={field.key}
-              rules={field.required ? [{ message: `请输入${field.label}`, required: true }] : undefined}
+              rules={
+                field.required ? [{ message: `请输入${field.label}`, required: true }] : undefined
+              }
             >
               {field.kind === 'select' ? (
                 <Select
@@ -658,6 +839,467 @@ const FileListPanel = ({
   );
 };
 
+const QUESTION_TYPE_OPTIONS = [
+  { label: '单选题', value: 'single_choice' },
+  { label: '多选题', value: 'multiple_choice' },
+  { label: '填空题', value: 'fill_in_blank' },
+  { label: '解答题', value: 'problem_solving' },
+];
+
+const OPTION_CODE_BASE = 'A'.charCodeAt(0);
+
+const createOptionCode = (index: number) =>
+  index < 26 ? String.fromCharCode(OPTION_CODE_BASE + index) : `选项${index + 1}`;
+
+const getNextOptionCode = (options: QuestionFormModel['options']) => {
+  let maxIndex = -1;
+  options.forEach((option) => {
+    [option.id, option.label].forEach((rawValue) => {
+      const value = rawValue.trim().toUpperCase();
+      if (!/^[A-Z]$/.test(value)) return;
+      maxIndex = Math.max(maxIndex, value.charCodeAt(0) - OPTION_CODE_BASE);
+    });
+  });
+  return createOptionCode(maxIndex + 1);
+};
+
+const QuestionEditor = ({
+  lookups,
+  model,
+  onChange,
+  showRelationFields = true,
+}: {
+  lookups: LookupCollections;
+  model: QuestionFormModel;
+  onChange: (next: QuestionFormModel) => void;
+  showRelationFields?: boolean;
+}) => {
+  const hasSubQuestions = model.subQuestions.length > 0;
+  const isChoice =
+    model.questionType === 'single_choice' || model.questionType === 'multiple_choice';
+  const setModel = (next: Partial<QuestionFormModel>) => onChange({ ...model, ...next });
+  const setOption = (index: number, updates: Partial<QuestionFormModel['options'][number]>) => {
+    setModel({
+      options: model.options.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, ...updates } : row,
+      ),
+    });
+  };
+  const setSubQuestion = (
+    index: number,
+    key: keyof QuestionFormModel['subQuestions'][number],
+    value: string,
+  ) => {
+    setModel({
+      subQuestions: model.subQuestions.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, [key]: value } : row,
+      ),
+    });
+  };
+
+  const addSubQuestion = () => {
+    const nextRow = {
+      answerText: hasSubQuestions ? '' : model.answerText,
+      id: getNextSubQuestionId(model.subQuestions),
+      points: hasSubQuestions ? '' : model.points,
+      prompt: '',
+      thinking: hasSubQuestions ? '' : model.thinking,
+    };
+    setModel({
+      answerText: hasSubQuestions ? model.answerText : '',
+      points: hasSubQuestions ? model.points : '',
+      subQuestions: [...model.subQuestions, nextRow],
+      thinking: hasSubQuestions ? model.thinking : '',
+    });
+  };
+
+  return (
+    <div className={styles.stack}>
+      <div className={styles.formPanel}>
+        <h4 className={styles.panelTitle}>基础信息</h4>
+        <div className={styles.editorGrid}>
+          <label>
+            <div className={styles.muted}>题型</div>
+            <Select
+              options={QUESTION_TYPE_OPTIONS}
+              style={{ width: '100%' }}
+              value={model.questionType}
+              onChange={(value) =>
+                setModel({
+                  options:
+                    value === 'single_choice' || value === 'multiple_choice'
+                      ? model.options.length
+                        ? model.options
+                        : createEmptyQuestionForm({
+                            questionType: value as QuestionFormModel['questionType'],
+                          }).options
+                      : model.options,
+                  questionType: value as QuestionFormModel['questionType'],
+                })
+              }
+            />
+          </label>
+          {showRelationFields ? (
+            <>
+              <label>
+                <div className={styles.muted}>科目</div>
+                <Select
+                  allowClear
+                  options={fieldOptions(
+                    { key: 'subject_id', kind: 'select', label: '科目', optionsFrom: 'subjects' },
+                    lookups,
+                  )}
+                  style={{ width: '100%' }}
+                  value={model.subjectId || undefined}
+                  onChange={(value) => setModel({ subjectId: value || '' })}
+                />
+              </label>
+              <label>
+                <div className={styles.muted}>年级</div>
+                <Select
+                  allowClear
+                  options={fieldOptions(
+                    { key: 'grade_id', kind: 'select', label: '年级', optionsFrom: 'grades' },
+                    lookups,
+                  )}
+                  style={{ width: '100%' }}
+                  value={model.gradeId || undefined}
+                  onChange={(value) => setModel({ gradeId: value || '' })}
+                />
+              </label>
+            </>
+          ) : null}
+          <label>
+            <div className={styles.muted}>难度</div>
+            <Input
+              placeholder="0.0 - 1.0"
+              value={model.difficulty}
+              onChange={(event) => setModel({ difficulty: event.target.value })}
+            />
+          </label>
+          <label style={{ gridColumn: '1 / -1' }}>
+            <div className={styles.muted}>知识点</div>
+            <Input
+              placeholder="用逗号分隔，例如 函数, 集合"
+              value={model.knowledgePoints.join(', ')}
+              onChange={(event) => setModel({ knowledgePoints: splitTags(event.target.value) })}
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className={styles.formPanel}>
+        <h4 className={styles.panelTitle}>题干结构</h4>
+        <Input.TextArea
+          placeholder="输入题目背景、条件与整体说明，支持 Markdown + LaTeX"
+          rows={4}
+          value={model.stem}
+          onChange={(event) => setModel({ stem: event.target.value })}
+        />
+      </div>
+
+      {isChoice ? (
+        <div className={styles.formPanel}>
+          <div className={styles.actionBar}>
+            <h4 className={styles.panelTitle}>选项</h4>
+            <Button
+              className={styles.secondary}
+              icon={<Plus size={14} />}
+              size="small"
+              onClick={() => {
+                const code = getNextOptionCode(model.options);
+                setModel({ options: [...model.options, { content: '', id: code, label: code }] });
+              }}
+            >
+              添加选项
+            </Button>
+          </div>
+          <div className={styles.stack}>
+            {model.options.map((option, index) => (
+              <div className={styles.previewBox} key={`${option.id}-${index}`}>
+                <div className={styles.editorGrid}>
+                  <label>
+                    <div className={styles.muted}>选项编号</div>
+                    <Input
+                      value={option.label}
+                      onChange={(event) => {
+                        const normalized =
+                          event.target.value.trim().toUpperCase() || createOptionCode(index);
+                        setOption(index, { id: normalized, label: normalized });
+                      }}
+                    />
+                  </label>
+                  <label>
+                    <div className={styles.muted}>选项内容</div>
+                    <Input.TextArea
+                      rows={2}
+                      value={option.content}
+                      onChange={(event) => setOption(index, { content: event.target.value })}
+                    />
+                  </label>
+                </div>
+                <Button
+                  danger
+                  disabled={model.options.length <= 2}
+                  icon={<Trash2 size={14} />}
+                  size="small"
+                  style={{ marginTop: 8 }}
+                  onClick={() =>
+                    setModel({ options: model.options.filter((_, rowIndex) => rowIndex !== index) })
+                  }
+                >
+                  删除选项
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className={styles.formPanel}>
+        <div className={styles.actionBar}>
+          <h4 className={styles.panelTitle}>小问</h4>
+          <Button
+            className={styles.secondary}
+            icon={<Plus size={14} />}
+            size="small"
+            onClick={addSubQuestion}
+          >
+            添加小问
+          </Button>
+        </div>
+        {model.subQuestions.length ? (
+          <div className={styles.stack}>
+            {model.subQuestions.map((subQuestion, index) => (
+              <div className={styles.previewBox} key={`${subQuestion.id}-${index}`}>
+                <Space align="start" style={{ width: '100%' }}>
+                  <div style={{ flex: 1 }}>
+                    <div className={styles.editorGrid}>
+                      <label>
+                        <div className={styles.muted}>小问 ID</div>
+                        <Input
+                          value={subQuestion.id}
+                          onChange={(event) => setSubQuestion(index, 'id', event.target.value)}
+                        />
+                      </label>
+                      <label>
+                        <div className={styles.muted}>分值</div>
+                        <Input
+                          value={subQuestion.points}
+                          onChange={(event) => setSubQuestion(index, 'points', event.target.value)}
+                        />
+                      </label>
+                      <label style={{ gridColumn: '1 / -1' }}>
+                        <div className={styles.muted}>小问题干</div>
+                        <Input.TextArea
+                          rows={3}
+                          value={subQuestion.prompt}
+                          onChange={(event) => setSubQuestion(index, 'prompt', event.target.value)}
+                        />
+                      </label>
+                      <label>
+                        <div className={styles.muted}>答案</div>
+                        <Input.TextArea
+                          rows={2}
+                          value={subQuestion.answerText}
+                          onChange={(event) =>
+                            setSubQuestion(index, 'answerText', event.target.value)
+                          }
+                        />
+                      </label>
+                      <label>
+                        <div className={styles.muted}>解析</div>
+                        <Input.TextArea
+                          rows={2}
+                          value={subQuestion.thinking}
+                          onChange={(event) =>
+                            setSubQuestion(index, 'thinking', event.target.value)
+                          }
+                        />
+                      </label>
+                    </div>
+                  </div>
+                  <Button
+                    danger
+                    icon={<Trash2 size={14} />}
+                    onClick={() =>
+                      setModel({
+                        subQuestions: model.subQuestions.filter(
+                          (_, rowIndex) => rowIndex !== index,
+                        ),
+                      })
+                    }
+                  />
+                </Space>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className={styles.editorGrid}>
+            <label>
+              <div className={styles.muted}>分值</div>
+              <Input
+                value={model.points}
+                onChange={(event) => setModel({ points: event.target.value })}
+              />
+            </label>
+            <label>
+              <div className={styles.muted}>答案</div>
+              <Input.TextArea
+                rows={2}
+                value={model.answerText}
+                onChange={(event) => setModel({ answerText: event.target.value })}
+              />
+            </label>
+            <label style={{ gridColumn: '1 / -1' }}>
+              <div className={styles.muted}>解析</div>
+              <Input.TextArea
+                rows={3}
+                value={model.thinking}
+                onChange={(event) => setModel({ thinking: event.target.value })}
+              />
+            </label>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const isImageFile = (file: FileDescriptor) => {
+  const mediaType = String(file.media_type || '').toLowerCase();
+  if (mediaType.startsWith('image/')) return true;
+  return /\.(?:png|jpe?g|webp|gif|bmp|tiff?)$/i.test(file.name || file.object_key);
+};
+
+const ImageReferenceRail = ({
+  client,
+  files,
+  title = '原始图片对照',
+}: {
+  client: AskCoreWorkbenchApiClient;
+  files: FileDescriptor[];
+  title?: string;
+}) => {
+  const imageFiles = useMemo(() => files.filter(isImageFile), [files]);
+  const nonImageFiles = useMemo(() => files.filter((file) => !isImageFile(file)), [files]);
+  const [previews, setPreviews] = useState<
+    Array<FileDescriptor & { error?: string | null; url?: string | null }>
+  >([]);
+  const [loading, setLoading] = useState(false);
+  const objectUrlsRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    objectUrlsRef.current = [];
+    setPreviews([]);
+
+    if (!imageFiles.length) {
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    Promise.all(
+      imageFiles.map(async (file) => {
+        try {
+          const url = await client.fetchPreviewBlobUrl(file.object_key);
+          return { ...file, error: null, url };
+        } catch (reason) {
+          return { ...file, error: asError(reason), url: null };
+        }
+      }),
+    ).then((next) => {
+      if (cancelled) {
+        next.forEach((item) => {
+          if (item.url) URL.revokeObjectURL(item.url);
+        });
+        return;
+      }
+      objectUrlsRef.current = next
+        .map((item) => item.url)
+        .filter((url): url is string => Boolean(url));
+      setPreviews(next);
+      setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+      objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      objectUrlsRef.current = [];
+    };
+  }, [client, imageFiles]);
+
+  return (
+    <div className={styles.stack}>
+      <div className={styles.panel}>
+        <div className={styles.actionBar}>
+          <h3 className={styles.panelTitle}>{title}</h3>
+          <Tag bordered={false}>{previews.length || imageFiles.length} 张</Tag>
+        </div>
+        {loading ? <Skeleton active paragraph={{ rows: 5 }} /> : null}
+        {!loading && !imageFiles.length ? (
+          <Empty description="暂无原始图片" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        ) : null}
+        <div className={styles.stack}>
+          {previews.map((file) => (
+            <div className={styles.imageCard} key={file.object_key}>
+              {file.url ? (
+                <img
+                  alt={file.name || file.object_key}
+                  className={styles.imagePreview}
+                  src={file.url}
+                />
+              ) : (
+                <Alert showIcon message={file.error || '图片预览失败'} type="warning" />
+              )}
+              <div className={styles.actionBar} style={{ padding: 10 }}>
+                <Space>
+                  <FileImage size={14} />
+                  <span className={styles.muted}>{file.name || file.object_key}</span>
+                </Space>
+                <Space>
+                  <Button
+                    className={styles.secondary}
+                    disabled={!file.url}
+                    icon={<Eye size={14} />}
+                    size="small"
+                    onClick={() => {
+                      if (file.url) window.open(file.url, '_blank', 'noopener,noreferrer');
+                    }}
+                  >
+                    打开原图
+                  </Button>
+                  <Button
+                    className={styles.secondary}
+                    icon={<Download size={14} />}
+                    size="small"
+                    onClick={async () => {
+                      const result = await client.fetchPreviewBlob(file.object_key, {
+                        download: true,
+                      });
+                      downloadBlob(result.blob, result.filename);
+                    }}
+                  >
+                    下载
+                  </Button>
+                </Space>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {nonImageFiles.length ? (
+        <div className={styles.panel}>
+          <h3 className={styles.panelTitle}>附件</h3>
+          <FileListPanel client={client} files={nonImageFiles} />
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
 const RunStatusPanel = ({
   invocation,
   title = '运行状态',
@@ -673,7 +1315,14 @@ const RunStatusPanel = ({
         size="small"
         items={[
           { children: invocation.invocation_id, label: 'Invocation' },
-          { children: formatCellValue(invocation.state, { dataIndex: 'state', isStatus: true, title: '状态' }), label: '状态' },
+          {
+            children: formatCellValue(invocation.state, {
+              dataIndex: 'state',
+              isStatus: true,
+              title: '状态',
+            }),
+            label: '状态',
+          },
           { children: invocation.progress_stage || '--', label: '阶段' },
           { children: invocation.failure_reason || '--', label: '错误' },
         ]}
@@ -683,6 +1332,98 @@ const RunStatusPanel = ({
     )}
   </div>
 );
+
+type AssignmentDetailQuestionItem = {
+  assignmentQuestionId: number | null;
+  clientKey: string;
+  draftModel: QuestionFormModel;
+  extraData: JsonRecord;
+  isDirty: boolean;
+  isDraft: boolean;
+  question: JsonRecord | null;
+  questionId: number | null;
+  scoreValue: string;
+};
+
+const createAssignmentQuestionDraftKey = () =>
+  `draft-question-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+const buildAssignmentQuestionPayload = (row: JsonRecord, gradeId: string, subjectId: string) => {
+  const nestedQuestion = isJsonRecord(row.question) ? row.question : null;
+  if (nestedQuestion) return nestedQuestion;
+  return compactJsonRecord({
+    answer: row.answer,
+    content: row.content || row.question_content || row.stem,
+    difficulty: row.difficulty,
+    extra_data: row.extra_data,
+    grade_id: row.grade_id || gradeId,
+    knowledge_points: row.knowledge_points,
+    question_id: row.question_id,
+    question_type: row.question_type || row.type,
+    subject_id: row.subject_id || subjectId,
+    thinking: row.thinking || row.explanation,
+  });
+};
+
+const buildAssignmentQuestionItem = ({
+  gradeId,
+  index,
+  row,
+  subjectId,
+}: {
+  gradeId: string;
+  index: number;
+  row: JsonRecord;
+  subjectId: string;
+}): AssignmentDetailQuestionItem => {
+  const question = buildAssignmentQuestionPayload(row, gradeId, subjectId);
+  const score = parseOptionalNumeric(row.score);
+  return {
+    assignmentQuestionId: Number(row.assignment_question_id || row.id || 0) || null,
+    clientKey: `assignment-question-${String(row.assignment_question_id || row.id || row.question_id || index)}`,
+    draftModel: deserializeQuestionPayload(question),
+    extraData: isJsonRecord(row.extra_data) ? row.extra_data : {},
+    isDirty: false,
+    isDraft: false,
+    question,
+    questionId: Number(question.question_id || row.question_id || 0) || null,
+    scoreValue: score === null ? '' : String(score),
+  };
+};
+
+const buildAssignmentQuestionDraft = ({
+  gradeId,
+  subjectId,
+}: {
+  gradeId: string;
+  subjectId: string;
+}): AssignmentDetailQuestionItem => ({
+  assignmentQuestionId: null,
+  clientKey: createAssignmentQuestionDraftKey(),
+  draftModel: createEmptyQuestionForm({ gradeId, subjectId }),
+  extraData: {},
+  isDirty: true,
+  isDraft: true,
+  question: null,
+  questionId: null,
+  scoreValue: '',
+});
+
+const deriveAssignmentQuestionScore = (payload: JsonRecord) => {
+  const content = isJsonRecord(payload.content) ? payload.content : {};
+  const subQuestions = Array.isArray(content.sub_questions)
+    ? content.sub_questions.filter(isJsonRecord)
+    : [];
+  if (subQuestions.length) {
+    const total = subQuestions.reduce((sum, row) => {
+      const points = parseOptionalNumeric(row.points);
+      return points && points > 0 ? sum + points : sum;
+    }, 0);
+    return total > 0 ? total : null;
+  }
+  const points = parseOptionalNumeric(content.points);
+  return points && points > 0 ? points : null;
+};
 
 const AssignmentDetailView = ({
   client,
@@ -697,75 +1438,481 @@ const AssignmentDetailView = ({
   lookups: LookupCollections;
   onBack: () => void;
   onEdit: () => void;
-  onReload: () => void;
+  onReload: () => Promise<void> | void;
 }) => {
   const assignment = hydrateLookupLabels(detail.assignment, lookups);
   const assignmentId = Number(assignment.assignment_id || assignment.id || 0) || 0;
-  const [questionOpen, setQuestionOpen] = useState(false);
-  const [studentOpen, setStudentOpen] = useState(false);
-  const [questionForm] = Form.useForm();
-  const [studentForm] = Form.useForm();
+  const gradeId = String(detail.grade?.grade_id || assignment.grade_id || '');
+  const subjectId = String(detail.subject?.subject_id || assignment.subject_id || '');
+  const [questionItems, setQuestionItems] = useState<AssignmentDetailQuestionItem[]>(() =>
+    detail.questions.map((row, index) =>
+      buildAssignmentQuestionItem({ gradeId, index, row, subjectId }),
+    ),
+  );
+  const [activeQuestionKey, setActiveQuestionKey] = useState<string | null>(null);
+  const [questionSelectedKeys, setQuestionSelectedKeys] = useState<string[]>([]);
+  const [questionSaving, setQuestionSaving] = useState(false);
+  const [questionNotice, setQuestionNotice] = useState<string | null>(null);
+  const [questionError, setQuestionError] = useState<string | null>(null);
+  const [draggingQuestionKey, setDraggingQuestionKey] = useState<string | null>(null);
+  const [questionDropIndex, setQuestionDropIndex] = useState<number | null>(null);
+  const [recipientItems, setRecipientItems] = useState<JsonRecord[]>(() => detail.students);
+  const [recipientSelectedIds, setRecipientSelectedIds] = useState<number[]>([]);
+  const [recipientBusy, setRecipientBusy] = useState(false);
+  const [selectedClassId, setSelectedClassId] = useState('');
+  const [selectedStudentId, setSelectedStudentId] = useState('');
 
-  const questionColumns: ColumnsType<JsonRecord> = [
-    { dataIndex: 'order_index', key: 'order_index', title: '题号', width: 90 },
-    {
-      dataIndex: 'content',
-      key: 'content',
-      render: (_, row) => getNestedPreview(row.content || row.question_content || row.question || row),
-      title: '题目',
-    },
-    {
-      dataIndex: 'question_type',
-      key: 'question_type',
-      render: (_, row) => getNestedPreview(row.question_type || row.type || '--'),
-      title: '题型',
-      width: 130,
-    },
-    {
-      dataIndex: 'score',
-      key: 'score',
-      render: (value) => value ?? '--',
-      title: '分值',
-      width: 100,
-    },
-    {
-      key: 'actions',
-      render: (_, row) => {
-        const id = Number(row.assignment_question_id || row.id || 0) || 0;
-        return (
-          <Space>
-            <Button
-              size="small"
-              onClick={() => {
-                questionForm.setFieldsValue({
-                  assignment_question_id: id,
-                  order_index: row.order_index,
-                  score: row.score,
-                });
-                setQuestionOpen(true);
-              }}
-            >
-              编辑
-            </Button>
-            <Popconfirm
-              title="删除该题目关联？"
-              onConfirm={async () => {
-                await client.deleteAssignmentDetailResource('assignment-questions', id);
-                message.success('题目关联已删除');
-                onReload();
-              }}
-            >
-              <Button danger size="small">
-                删除
-              </Button>
-            </Popconfirm>
-          </Space>
+  useEffect(() => {
+    setQuestionItems(
+      detail.questions.map((row, index) =>
+        buildAssignmentQuestionItem({ gradeId, index, row, subjectId }),
+      ),
+    );
+    setActiveQuestionKey(null);
+    setQuestionSelectedKeys([]);
+    setQuestionNotice(null);
+    setQuestionError(null);
+    setRecipientItems(detail.students);
+    setRecipientSelectedIds([]);
+  }, [detail.questions, detail.students, gradeId, subjectId]);
+
+  const questionSelectedKeySet = useMemo(
+    () => new Set(questionSelectedKeys),
+    [questionSelectedKeys],
+  );
+  const recipientSelectedIdSet = useMemo(
+    () => new Set(recipientSelectedIds),
+    [recipientSelectedIds],
+  );
+  const dirtyQuestionCount = useMemo(
+    () => questionItems.filter((item) => item.isDirty || item.isDraft).length,
+    [questionItems],
+  );
+
+  const updateQuestionItem = (
+    clientKey: string,
+    updater: (item: AssignmentDetailQuestionItem) => AssignmentDetailQuestionItem,
+  ) => {
+    setQuestionItems((current) =>
+      current.map((item) => (item.clientKey === clientKey ? updater(item) : item)),
+    );
+    setQuestionError(null);
+    setQuestionNotice(null);
+  };
+
+  const syncQuestionOrder = async (items: AssignmentDetailQuestionItem[]) => {
+    await Promise.all(
+      items.map((item, index) =>
+        item.assignmentQuestionId && !item.isDraft
+          ? client.updateAssignmentDetailResource(
+              'assignment-questions',
+              item.assignmentQuestionId,
+              {
+                order_index: index + 1,
+              },
+            )
+          : Promise.resolve(null),
+      ),
+    );
+  };
+
+  const moveQuestionItem = async (clientKey: string, targetIndex: number) => {
+    const sourceIndex = questionItems.findIndex((item) => item.clientKey === clientKey);
+    if (sourceIndex < 0) return;
+    const next = [...questionItems];
+    const [moving] = next.splice(sourceIndex, 1);
+    let insertIndex = targetIndex;
+    if (sourceIndex < targetIndex) insertIndex -= 1;
+    next.splice(Math.max(0, Math.min(insertIndex, next.length)), 0, moving);
+    setQuestionItems(next);
+    setQuestionSaving(true);
+    try {
+      await syncQuestionOrder(next);
+      setQuestionNotice('题目顺序已更新。');
+      void onReload();
+    } catch (reason) {
+      setQuestionError(`排序同步失败：${asError(reason)}`);
+    } finally {
+      setQuestionSaving(false);
+    }
+  };
+
+  const handleQuestionDragStart = (event: DragEvent<HTMLDivElement>, clientKey: string) => {
+    setDraggingQuestionKey(clientKey);
+    setQuestionDropIndex(null);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', clientKey);
+  };
+
+  const saveActiveQuestion = async () => {
+    if (!assignmentId || !activeQuestionKey) return;
+    const index = questionItems.findIndex((item) => item.clientKey === activeQuestionKey);
+    const current = questionItems[index];
+    if (!current || questionSaving) return;
+    const payload = serializeQuestionForm(current.draftModel);
+    const score =
+      parseOptionalNumeric(current.scoreValue) ?? deriveAssignmentQuestionScore(payload);
+
+    setQuestionSaving(true);
+    setQuestionError(null);
+    setQuestionNotice(null);
+    try {
+      if (current.isDraft) {
+        const created = await client.createAssignmentDetailResource(
+          'assignment-questions',
+          compactJsonRecord({
+            assignment_id: assignmentId,
+            order_index: index + 1,
+            question_payload: payload,
+            score,
+          }),
         );
-      },
-      title: '操作',
-      width: 160,
-    },
-  ];
+        const saved = buildAssignmentQuestionItem({
+          gradeId,
+          index,
+          row: created.item,
+          subjectId,
+        });
+        setQuestionItems((items) =>
+          items.map((item) => (item.clientKey === current.clientKey ? saved : item)),
+        );
+        setActiveQuestionKey(saved.clientKey);
+      } else {
+        if (current.questionId) {
+          await client.updateResource('questions', current.questionId, payload);
+        }
+        if (current.assignmentQuestionId) {
+          await client.updateAssignmentDetailResource(
+            'assignment-questions',
+            current.assignmentQuestionId,
+            compactJsonRecord({
+              order_index: index + 1,
+              score,
+            }),
+          );
+        }
+        setQuestionItems((items) =>
+          items.map((item) =>
+            item.clientKey === current.clientKey
+              ? {
+                  ...item,
+                  isDirty: false,
+                  question: compactJsonRecord({
+                    ...payload,
+                    question_id: item.questionId || undefined,
+                  }),
+                  scoreValue: score === null ? '' : String(score),
+                }
+              : item,
+          ),
+        );
+      }
+      setQuestionNotice('题目已保存。');
+      void onReload();
+    } catch (reason) {
+      setQuestionError(asError(reason));
+    } finally {
+      setQuestionSaving(false);
+    }
+  };
+
+  const deleteQuestionItems = async (clientKeys: string[]) => {
+    const targets = questionItems.filter((item) => clientKeys.includes(item.clientKey));
+    if (!targets.length) return;
+    setQuestionSaving(true);
+    setQuestionError(null);
+    try {
+      for (const item of targets) {
+        if (item.assignmentQuestionId) {
+          await client.deleteAssignmentDetailResource(
+            'assignment-questions',
+            item.assignmentQuestionId,
+          );
+        }
+      }
+      setQuestionItems((items) => items.filter((item) => !clientKeys.includes(item.clientKey)));
+      setQuestionSelectedKeys((keys) => keys.filter((key) => !clientKeys.includes(key)));
+      if (activeQuestionKey && clientKeys.includes(activeQuestionKey)) setActiveQuestionKey(null);
+      setQuestionNotice(`已删除 ${targets.length} 道题目。`);
+      void onReload();
+    } catch (reason) {
+      setQuestionError(asError(reason));
+    } finally {
+      setQuestionSaving(false);
+    }
+  };
+
+  const addRecipients = async () => {
+    if (!assignmentId) return;
+    const existingStudentIds = new Set(
+      recipientItems.map((row) => Number(row.student_id || 0) || 0).filter((id) => id > 0),
+    );
+    const selectedStudents = selectedStudentId
+      ? lookups.students.filter(
+          (student) => String(student.student_id || student.id) === selectedStudentId,
+        )
+      : lookups.students.filter((student) => String(student.class_id || '') === selectedClassId);
+    const studentsToCreate = selectedStudents.filter((student) => {
+      const studentId = Number(student.student_id || student.id || 0) || 0;
+      return studentId > 0 && !existingStudentIds.has(studentId);
+    });
+    if (!studentsToCreate.length) {
+      message.info('没有新的发布对象可添加');
+      return;
+    }
+    setRecipientBusy(true);
+    try {
+      const created: JsonRecord[] = [];
+      for (const student of studentsToCreate) {
+        const studentId = Number(student.student_id || student.id || 0) || 0;
+        const result = await client.createAssignmentDetailResource('assignment-students', {
+          assignment_id: assignmentId,
+          student_id: studentId,
+        });
+        created.push(result.item);
+      }
+      setRecipientItems((items) => [...items, ...created]);
+      setSelectedClassId('');
+      setSelectedStudentId('');
+      message.success(`已新增 ${created.length} 个发布对象`);
+      void onReload();
+    } catch (reason) {
+      message.error(asError(reason));
+    } finally {
+      setRecipientBusy(false);
+    }
+  };
+
+  const removeRecipients = async (ids: number[]) => {
+    if (!ids.length) return;
+    setRecipientBusy(true);
+    try {
+      for (const id of ids) {
+        await client.deleteAssignmentDetailResource('assignment-students', id);
+      }
+      setRecipientItems((items) =>
+        items.filter((row) => !ids.includes(Number(row.assignment_student_id || row.id || 0) || 0)),
+      );
+      setRecipientSelectedIds((current) => current.filter((id) => !ids.includes(id)));
+      message.success(`已移除 ${ids.length} 个发布对象`);
+      void onReload();
+    } catch (reason) {
+      message.error(asError(reason));
+    } finally {
+      setRecipientBusy(false);
+    }
+  };
+
+  const questionWorkspace = (
+    <div className={styles.panel}>
+      <div className={styles.actionBar}>
+        <div>
+          <h3 className={styles.panelTitle}>题目列表</h3>
+          <div className={styles.muted}>
+            左侧查看和编辑题目，支持 Markdown + LaTeX 预览、插入、删除、拖拽排序和批量删除。
+          </div>
+        </div>
+        <Space wrap>
+          <Button
+            className={styles.secondary}
+            icon={<Plus size={14} />}
+            onClick={() => {
+              const draft = buildAssignmentQuestionDraft({ gradeId, subjectId });
+              setQuestionItems((items) => [...items, draft]);
+              setActiveQuestionKey(draft.clientKey);
+            }}
+          >
+            添加题目
+          </Button>
+          <Popconfirm
+            disabled={!questionSelectedKeys.length}
+            title={`删除已选 ${questionSelectedKeys.length} 道题目？`}
+            onConfirm={() => deleteQuestionItems(questionSelectedKeys)}
+          >
+            <Button danger disabled={!questionSelectedKeys.length} icon={<Trash2 size={14} />}>
+              批量删除
+            </Button>
+          </Popconfirm>
+        </Space>
+      </div>
+      {questionError ? <Alert showIcon message={questionError} type="error" /> : null}
+      {questionNotice ? <Alert showIcon message={questionNotice} type="success" /> : null}
+      {!questionItems.length ? (
+        <Empty description="暂无题目" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      ) : null}
+      <div className={styles.stack}>
+        {questionItems.map((item, index) => {
+          const active = activeQuestionKey === item.clientKey;
+          const preview =
+            item.isDirty || item.isDraft
+              ? buildQuestionPreviewDataFromModel(item.draftModel)
+              : buildQuestionPreviewDataFromPayload(item.question);
+          return (
+            <div key={item.clientKey}>
+              <div
+                className={cx(
+                  styles.dropZone,
+                  questionDropIndex === index ? styles.dropZoneActive : undefined,
+                )}
+                onDragOver={(event) => {
+                  if (!draggingQuestionKey) return;
+                  event.preventDefault();
+                  setQuestionDropIndex(index);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (draggingQuestionKey) void moveQuestionItem(draggingQuestionKey, index);
+                  setDraggingQuestionKey(null);
+                  setQuestionDropIndex(null);
+                }}
+              />
+              <div
+                className={cx(styles.questionCard, active ? styles.questionCardActive : undefined)}
+                draggable={!questionSaving}
+                onDragStart={(event) => handleQuestionDragStart(event, item.clientKey)}
+                onDragEnd={() => {
+                  setDraggingQuestionKey(null);
+                  setQuestionDropIndex(null);
+                }}
+              >
+                <div className={styles.questionCardHeader}>
+                  <Space wrap>
+                    <span className={styles.dragHandle} title="拖拽排序">
+                      <GripVertical size={16} />
+                    </span>
+                    <Checkbox
+                      checked={questionSelectedKeySet.has(item.clientKey)}
+                      onChange={(event) =>
+                        setQuestionSelectedKeys((keys) =>
+                          event.target.checked
+                            ? [...keys, item.clientKey]
+                            : keys.filter((key) => key !== item.clientKey),
+                        )
+                      }
+                    />
+                    <strong>第 {index + 1} 题</strong>
+                    <Tag bordered={false}>{preview.questionType}</Tag>
+                    {item.scoreValue ? (
+                      <span className={styles.muted}>分值 {item.scoreValue}</span>
+                    ) : null}
+                    {item.isDirty || item.isDraft ? <Tag color="gold">未保存</Tag> : null}
+                  </Space>
+                  <Space>
+                    <Button
+                      className={styles.secondary}
+                      size="small"
+                      onClick={() => setActiveQuestionKey(active ? null : item.clientKey)}
+                    >
+                      {active ? '收起编辑' : '编辑'}
+                    </Button>
+                    <Popconfirm
+                      title="删除该题目？"
+                      onConfirm={() => deleteQuestionItems([item.clientKey])}
+                    >
+                      <Button danger icon={<Trash2 size={14} />} size="small">
+                        删除
+                      </Button>
+                    </Popconfirm>
+                  </Space>
+                </div>
+                {active ? (
+                  <div className={styles.inlineEditor}>
+                    <div className={styles.editorGrid}>
+                      <label>
+                        <div className={styles.muted}>题目分值</div>
+                        <Input
+                          value={item.scoreValue}
+                          onChange={(event) =>
+                            updateQuestionItem(item.clientKey, (current) => ({
+                              ...current,
+                              isDirty: true,
+                              scoreValue: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                    </div>
+                    <QuestionEditor
+                      showRelationFields
+                      lookups={lookups}
+                      model={item.draftModel}
+                      onChange={(nextModel) =>
+                        updateQuestionItem(item.clientKey, (current) => ({
+                          ...current,
+                          draftModel: nextModel,
+                          isDirty: true,
+                        }))
+                      }
+                    />
+                    <div className={styles.previewBox}>
+                      <h4 className={styles.panelTitle}>实时预览</h4>
+                      <QuestionMarkdownPreview
+                        preview={buildQuestionPreviewDataFromModel(item.draftModel)}
+                      />
+                    </div>
+                    <Space>
+                      <Button
+                        className={styles.primary}
+                        icon={<Save size={14} />}
+                        loading={questionSaving}
+                        onClick={saveActiveQuestion}
+                      >
+                        保存题目
+                      </Button>
+                      <Button
+                        className={styles.secondary}
+                        onClick={() => setActiveQuestionKey(null)}
+                      >
+                        取消
+                      </Button>
+                    </Space>
+                  </div>
+                ) : (
+                  <QuestionCompactPreview preview={preview} />
+                )}
+              </div>
+            </div>
+          );
+        })}
+        <div
+          className={cx(
+            styles.dropZone,
+            questionDropIndex === questionItems.length ? styles.dropZoneActive : undefined,
+          )}
+          onDragOver={(event) => {
+            if (!draggingQuestionKey) return;
+            event.preventDefault();
+            setQuestionDropIndex(questionItems.length);
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            if (draggingQuestionKey)
+              void moveQuestionItem(draggingQuestionKey, questionItems.length);
+            setDraggingQuestionKey(null);
+            setQuestionDropIndex(null);
+          }}
+        />
+      </div>
+      <div className={styles.footer}>
+        <span>
+          共 {questionItems.length} 道题，{dirtyQuestionCount} 道未保存。
+        </span>
+        <Button
+          className={styles.secondary}
+          disabled={!questionItems.length}
+          icon={<Plus size={14} />}
+          size="small"
+          onClick={() => {
+            const draft = buildAssignmentQuestionDraft({ gradeId, subjectId });
+            setQuestionItems((items) => [...items, draft]);
+            setActiveQuestionKey(draft.clientKey);
+          }}
+        >
+          末尾插入
+        </Button>
+      </div>
+    </div>
+  );
 
   return (
     <div className={styles.view}>
@@ -787,9 +1934,26 @@ const AssignmentDetailView = ({
           column={2}
           size="small"
           items={[
-            { children: displayNode(assignment.subject_name || detail.subject?.name || assignment.subject_id), label: '学科' },
-            { children: displayNode(assignment.grade_name || detail.grade?.name || assignment.grade_id), label: '年级' },
-            { children: formatCellValue(assignment.creation_type, { dataIndex: 'creation_type', isStatus: true, title: '来源' }), label: '来源' },
+            {
+              children: displayNode(
+                assignment.subject_name || detail.subject?.name || assignment.subject_id,
+              ),
+              label: '学科',
+            },
+            {
+              children: displayNode(
+                assignment.grade_name || detail.grade?.name || assignment.grade_id,
+              ),
+              label: '年级',
+            },
+            {
+              children: formatCellValue(assignment.creation_type, {
+                dataIndex: 'creation_type',
+                isStatus: true,
+                title: '来源',
+              }),
+              label: '来源',
+            },
             { children: stringifyDetailValue(assignment.assign_date), label: '布置日期' },
             { children: stringifyDetailValue(assignment.due_date), label: '截止日期' },
             { children: stringifyDetailValue(assignment.created_at), label: '创建时间' },
@@ -797,169 +1961,308 @@ const AssignmentDetailView = ({
         />
       </div>
 
-      <div className={styles.panel}>
-        <div className={styles.actionBar}>
-          <h3 className={styles.panelTitle}>题目</h3>
-          <Button
-            className={styles.secondary}
-            icon={<Plus size={14} />}
-            onClick={() => {
-              questionForm.resetFields();
-              questionForm.setFieldsValue({ assignment_id: assignmentId });
-              setQuestionOpen(true);
-            }}
-          >
-            添加题目
-          </Button>
+      <div className={styles.splitWorkspace}>
+        {questionWorkspace}
+        <div className={styles.stickyRail}>
+          <ImageReferenceRail client={client} files={detail.files} />
         </div>
-        <Table
-          columns={questionColumns}
-          dataSource={detail.questions}
-          pagination={false}
-          rowKey={(row) => String(row.assignment_question_id || row.id || row.question_id)}
-          size="small"
-        />
       </div>
 
       <div className={styles.panel}>
         <div className={styles.actionBar}>
-          <h3 className={styles.panelTitle}>发布对象</h3>
-          <Button
-            className={styles.secondary}
-            icon={<Plus size={14} />}
-            onClick={() => {
-              studentForm.resetFields();
-              studentForm.setFieldsValue({ assignment_id: assignmentId });
-              setStudentOpen(true);
-            }}
-          >
-            添加学生/班级
-          </Button>
+          <div>
+            <h3 className={styles.panelTitle}>发布对象</h3>
+            <div className={styles.muted}>
+              按班级一次性增加发布对象，也可以添加单个学生；支持勾选后批量移除。
+            </div>
+          </div>
+          <Space wrap>
+            <Select
+              allowClear
+              options={fieldOptions(
+                { key: 'class_id', kind: 'select', label: '班级', optionsFrom: 'classes' },
+                lookups,
+              )}
+              placeholder="选择班级"
+              style={{ width: 180 }}
+              value={selectedClassId || undefined}
+              onChange={(value) => setSelectedClassId(value || '')}
+            />
+            <Select
+              allowClear
+              options={fieldOptions(
+                { key: 'student_id', kind: 'select', label: '学生', optionsFrom: 'students' },
+                lookups,
+              )}
+              placeholder="或选择单个学生"
+              style={{ width: 180 }}
+              value={selectedStudentId || undefined}
+              onChange={(value) => setSelectedStudentId(value || '')}
+            />
+            <Button
+              className={styles.secondary}
+              disabled={!selectedClassId && !selectedStudentId}
+              icon={<Plus size={14} />}
+              loading={recipientBusy}
+              onClick={addRecipients}
+            >
+              添加学生/班级
+            </Button>
+            <Popconfirm
+              disabled={!recipientSelectedIds.length}
+              title={`移除已选 ${recipientSelectedIds.length} 个发布对象？`}
+              onConfirm={() => removeRecipients(recipientSelectedIds)}
+            >
+              <Button danger disabled={!recipientSelectedIds.length} icon={<Trash2 size={14} />}>
+                批量移除
+              </Button>
+            </Popconfirm>
+          </Space>
         </div>
-        <Table
-          dataSource={detail.students}
-          pagination={false}
-          rowKey={(row) => String(row.assignment_student_id || row.id || row.student_id)}
-          size="small"
-          columns={[
-            { dataIndex: 'student_name', key: 'student_name', title: '学生' },
-            { dataIndex: 'class_name', key: 'class_name', title: '班级' },
-            { dataIndex: 'status', key: 'status', render: (value) => formatCellValue(value, { dataIndex: 'status', isStatus: true, title: '状态' }), title: '状态' },
-            {
-              key: 'actions',
-              render: (_, row: JsonRecord) => {
-                const id = Number(row.assignment_student_id || row.id || 0) || 0;
-                return (
-                  <Popconfirm
-                    title="移除该发布对象？"
-                    onConfirm={async () => {
-                      await client.deleteAssignmentDetailResource('assignment-students', id);
-                      message.success('发布对象已移除');
-                      onReload();
-                    }}
-                  >
-                    <Button danger size="small">
-                      移除
-                    </Button>
-                  </Popconfirm>
-                );
+        {recipientItems.length ? (
+          <Table
+            className={styles.tightTable}
+            dataSource={recipientItems}
+            pagination={false}
+            rowKey={(row) => String(row.assignment_student_id || row.id || row.student_id)}
+            size="small"
+            columns={[
+              {
+                key: 'select',
+                render: (_, row) => {
+                  const id = Number(row.assignment_student_id || row.id || 0) || 0;
+                  return (
+                    <Checkbox
+                      checked={recipientSelectedIdSet.has(id)}
+                      onChange={(event) =>
+                        setRecipientSelectedIds((ids) =>
+                          event.target.checked ? [...ids, id] : ids.filter((entry) => entry !== id),
+                        )
+                      }
+                    />
+                  );
+                },
+                width: 52,
               },
-              title: '操作',
-              width: 120,
-            },
-          ]}
-        />
+              {
+                dataIndex: 'student_name',
+                key: 'student_name',
+                render: (value, row) => displayNode(value || row.student_number || row.student_id),
+                title: '学生',
+              },
+              {
+                dataIndex: 'class_name',
+                key: 'class_name',
+                render: (value, row) => displayNode(value || row.class_id),
+                title: '班级',
+              },
+              {
+                dataIndex: 'status',
+                key: 'status',
+                render: (value) =>
+                  formatCellValue(value, { dataIndex: 'status', isStatus: true, title: '状态' }),
+                title: '状态',
+              },
+              {
+                key: 'actions',
+                render: (_, row: JsonRecord) => {
+                  const id = Number(row.assignment_student_id || row.id || 0) || 0;
+                  return (
+                    <Popconfirm title="移除该发布对象？" onConfirm={() => removeRecipients([id])}>
+                      <Button danger size="small">
+                        移除
+                      </Button>
+                    </Popconfirm>
+                  );
+                },
+                title: '操作',
+                width: 120,
+              },
+            ]}
+          />
+        ) : (
+          <Empty description="暂无发布对象" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        )}
       </div>
+    </div>
+  );
+};
 
-      <div className={styles.panel}>
-        <h3 className={styles.panelTitle}>文件</h3>
-        <FileListPanel client={client} files={detail.files} />
+type SubmissionAssignmentQuestionCandidate = {
+  assignmentQuestionId: number | null;
+  orderIndex: number;
+  question: JsonRecord | null;
+  questionId: number;
+  score: number | null;
+};
+
+type SubmissionDetailQuestionItem = {
+  clientKey: string;
+  feedback: string;
+  isCorrectValue: string;
+  isDirty: boolean;
+  isDraft: boolean;
+  maxScoreValue: string;
+  orderIndex: number;
+  question: JsonRecord | null;
+  questionId: string;
+  scoreValue: string;
+  studentAnswer: string;
+  subResults: JsonRecord[];
+  submissionQuestionId: number | null;
+};
+
+const createSubmissionQuestionDraftKey = () =>
+  `draft-submission-question-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+const buildSubmissionCandidateMap = (assignmentQuestions: JsonRecord[]) => {
+  const map = new Map<number, SubmissionAssignmentQuestionCandidate>();
+  assignmentQuestions.forEach((row, index) => {
+    const question = isJsonRecord(row.question)
+      ? row.question
+      : buildAssignmentQuestionPayload(
+          row,
+          String(row.grade_id || ''),
+          String(row.subject_id || ''),
+        );
+    const questionId = Number(row.question_id || question.question_id || 0) || 0;
+    if (!questionId) return;
+    map.set(questionId, {
+      assignmentQuestionId: Number(row.assignment_question_id || row.id || 0) || null,
+      orderIndex: Number(row.order_index || index + 1) || index + 1,
+      question,
+      questionId,
+      score: parseOptionalNumeric(row.score),
+    });
+  });
+  return map;
+};
+
+const buildSubmissionQuestionItem = ({
+  candidateByQuestionId,
+  index,
+  row,
+}: {
+  candidateByQuestionId: Map<number, SubmissionAssignmentQuestionCandidate>;
+  index: number;
+  row: JsonRecord;
+}): SubmissionDetailQuestionItem => {
+  const questionId =
+    Number(row.question_id || (isJsonRecord(row.question) ? row.question.question_id : 0) || 0) ||
+    0;
+  const candidate = questionId ? candidateByQuestionId.get(questionId) || null : null;
+  return {
+    clientKey: `submission-question-${String(row.submission_question_id || row.id || index)}`,
+    feedback: typeof row.feedback === 'string' ? row.feedback : '',
+    isCorrectValue: row.is_correct === true ? 'true' : row.is_correct === false ? 'false' : '',
+    isDirty: false,
+    isDraft: false,
+    maxScoreValue:
+      row.max_score === undefined || row.max_score === null ? '' : String(row.max_score),
+    orderIndex: Number(row.order_index || index + 1) || index + 1,
+    question: isJsonRecord(row.question) ? row.question : candidate?.question || null,
+    questionId: questionId ? String(questionId) : '',
+    scoreValue: row.score === undefined || row.score === null ? '' : String(row.score),
+    studentAnswer: typeof row.student_answer === 'string' ? row.student_answer : '',
+    subResults: readRecordArray(row.sub_results),
+    submissionQuestionId: Number(row.submission_question_id || row.id || 0) || null,
+  };
+};
+
+const buildSubmissionQuestionDraft = (): SubmissionDetailQuestionItem => ({
+  clientKey: createSubmissionQuestionDraftKey(),
+  feedback: '',
+  isCorrectValue: '',
+  isDirty: true,
+  isDraft: true,
+  maxScoreValue: '',
+  orderIndex: 1,
+  question: null,
+  questionId: '',
+  scoreValue: '',
+  studentAnswer: '',
+  subResults: [],
+  submissionQuestionId: null,
+});
+
+const submissionSubResultStatus = (row: JsonRecord) => {
+  if (row.is_correct === true) return '正确';
+  if (row.is_correct === false) return '待改进';
+  const score = parseOptionalNumeric(row.score);
+  const maxScore = parseOptionalNumeric(row.max_score);
+  if (score !== null && maxScore !== null && maxScore > 0)
+    return score < maxScore ? '待改进' : '正确';
+  return '未设置';
+};
+
+const SubmissionSubResultPreview = ({
+  referencePreview,
+  subResults,
+}: {
+  referencePreview: QuestionPreviewData | null;
+  subResults: JsonRecord[];
+}) => {
+  if (!subResults.length) return null;
+  const referenceById = new Map(
+    referencePreview?.subQuestions.map((item) => [item.id, item]) || [],
+  );
+  return (
+    <div className={styles.previewBox}>
+      <h4 className={styles.panelTitle}>小问批改结果</h4>
+      <div className={styles.stack}>
+        {subResults.map((row, index) => {
+          const subQuestionId = String(row.sub_question_id || '').trim();
+          const subQuestionIndex = Number(row.sub_question_index || index + 1) || index + 1;
+          const reference = referenceById.get(subQuestionId) || null;
+          return (
+            <div className={styles.questionCard} key={subQuestionId || `sub-result-${index}`}>
+              <Space wrap>
+                <strong>小问 {subQuestionIndex}</strong>
+                <Tag bordered={false}>{submissionSubResultStatus(row)}</Tag>
+                {row.score !== undefined || row.max_score !== undefined ? (
+                  <span className={styles.muted}>
+                    得分 {displayNode(row.score)} / {displayNode(row.max_score)}
+                  </span>
+                ) : null}
+                {row.error_type ? (
+                  <span className={styles.muted}>{String(row.error_type)}</span>
+                ) : null}
+              </Space>
+              {reference?.prompt ? (
+                <div className={styles.previewBox} style={{ marginTop: 8 }}>
+                  <div className={styles.muted}>题干</div>
+                  <MarkdownPreview content={reference.prompt} empty="暂无小问题干" />
+                </div>
+              ) : null}
+              <div className={styles.previewBox} style={{ marginTop: 8 }}>
+                <div className={styles.muted}>学生作答</div>
+                <MarkdownPreview
+                  content={typeof row.student_answer === 'string' ? row.student_answer : ''}
+                  empty="暂无学生作答"
+                />
+              </div>
+              {reference?.answerText ? (
+                <div className={styles.previewBox} style={{ marginTop: 8 }}>
+                  <div className={styles.muted}>参考答案</div>
+                  <MarkdownPreview content={reference.answerText} empty="暂无参考答案" />
+                </div>
+              ) : null}
+              {row.feedback ? (
+                <div className={styles.previewBox} style={{ marginTop: 8 }}>
+                  <div className={styles.muted}>批改反馈</div>
+                  <MarkdownPreview content={String(row.feedback)} empty="暂无批改反馈" />
+                </div>
+              ) : null}
+              {reference?.thinking ? (
+                <div className={styles.previewBox} style={{ marginTop: 8 }}>
+                  <div className={styles.muted}>参考思路</div>
+                  <MarkdownPreview content={reference.thinking} empty="暂无参考思路" />
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
-
-      <Modal
-        destroyOnClose
-        open={questionOpen}
-        title="维护作业题目"
-        onCancel={() => setQuestionOpen(false)}
-        onOk={async () => {
-          const values = await questionForm.validateFields();
-          const id = Number(values.assignment_question_id || 0) || 0;
-          if (id) {
-            await client.updateAssignmentDetailResource('assignment-questions', id, compactJsonRecord({
-              order_index: Number(values.order_index || 0) || undefined,
-              score: values.score === undefined || values.score === '' ? undefined : Number(values.score),
-            }));
-          } else {
-            const questionPayload = values.question_payload
-              ? safeJsonParse(values.question_payload, {})
-              : {
-                  content: values.content,
-                  question_type: values.question_type || 'problem_solving',
-                };
-            await client.createAssignmentDetailResource('assignment-questions', compactJsonRecord({
-              assignment_id: assignmentId,
-              order_index: Number(values.order_index || 0) || undefined,
-              question_id: values.question_id ? Number(values.question_id) : undefined,
-              question_payload: values.question_id ? undefined : questionPayload,
-              score: values.score === undefined || values.score === '' ? undefined : Number(values.score),
-            }));
-          }
-          setQuestionOpen(false);
-          message.success('题目已保存');
-          onReload();
-        }}
-      >
-        <Form form={questionForm} layout="vertical">
-          <Form.Item hidden name="assignment_question_id">
-            <Input />
-          </Form.Item>
-          <Form.Item label="题号" name="order_index">
-            <InputNumber style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item label="分值" name="score">
-            <InputNumber style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item label="已有题目 ID" name="question_id">
-            <InputNumber style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item label="新题目题干" name="content">
-            <Input.TextArea rows={3} />
-          </Form.Item>
-          <Form.Item label="新题目题型" name="question_type">
-            <Input placeholder="problem_solving" />
-          </Form.Item>
-          <Form.Item extra="可直接粘贴插件 UI 使用的 question_payload JSON。" label="高级 JSON" name="question_payload">
-            <Input.TextArea rows={5} />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      <Modal
-        destroyOnClose
-        open={studentOpen}
-        title="添加发布对象"
-        onCancel={() => setStudentOpen(false)}
-        onOk={async () => {
-          const values = await studentForm.validateFields();
-          await client.createAssignmentDetailResource('assignment-students', compactJsonRecord({
-            assignment_id: assignmentId,
-            class_id: values.class_id ? Number(values.class_id) : undefined,
-            student_id: values.student_id ? Number(values.student_id) : undefined,
-          }));
-          setStudentOpen(false);
-          message.success('发布对象已添加');
-          onReload();
-        }}
-      >
-        <Form form={studentForm} layout="vertical">
-          <Form.Item label="班级" name="class_id">
-            <Select allowClear options={fieldOptions({ key: 'class_id', kind: 'select', label: '班级', optionsFrom: 'classes' }, lookups)} />
-          </Form.Item>
-          <Form.Item label="单个学生" name="student_id">
-            <Select allowClear options={fieldOptions({ key: 'student_id', kind: 'select', label: '学生', optionsFrom: 'students' }, lookups)} />
-          </Form.Item>
-        </Form>
-      </Modal>
     </div>
   );
 };
@@ -977,26 +2280,533 @@ const SubmissionDetailView = ({
   lookups: LookupCollections;
   onBack: () => void;
   onEdit: () => void;
-  onReload: () => void;
+  onReload: () => Promise<void> | void;
 }) => {
   const submission = hydrateLookupLabels(detail.submission, lookups);
   const submissionId = Number(submission.submission_id || submission.id || 0) || 0;
+  const assignmentQuestions = useMemo(
+    () => readRecordArray(detail.assignment_questions),
+    [detail.assignment_questions],
+  );
+  const candidateByQuestionId = useMemo(
+    () => buildSubmissionCandidateMap(assignmentQuestions),
+    [assignmentQuestions],
+  );
+  const [questionItems, setQuestionItems] = useState<SubmissionDetailQuestionItem[]>(() =>
+    readRecordArray(detail.questions).map((row, index) =>
+      buildSubmissionQuestionItem({ candidateByQuestionId, index, row }),
+    ),
+  );
+  const [activeQuestionKey, setActiveQuestionKey] = useState<string | null>(null);
+  const [questionSelectedKeys, setQuestionSelectedKeys] = useState<string[]>([]);
+  const [questionSaving, setQuestionSaving] = useState(false);
+  const [questionError, setQuestionError] = useState<string | null>(null);
+  const [questionNotice, setQuestionNotice] = useState<string | null>(null);
+  const [draggingQuestionKey, setDraggingQuestionKey] = useState<string | null>(null);
+  const [questionDropIndex, setQuestionDropIndex] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [binding, setBinding] = useState(String(submission.assignment_student_id || ''));
+
+  useEffect(() => {
+    setQuestionItems(
+      readRecordArray(detail.questions).map((row, index) =>
+        buildSubmissionQuestionItem({ candidateByQuestionId, index, row }),
+      ),
+    );
+    setActiveQuestionKey(null);
+    setQuestionSelectedKeys([]);
+    setQuestionError(null);
+    setQuestionNotice(null);
+  }, [candidateByQuestionId, detail.questions]);
+
+  const questionSelectedKeySet = useMemo(
+    () => new Set(questionSelectedKeys),
+    [questionSelectedKeys],
+  );
+  const candidateOptions = useMemo(
+    () =>
+      assignmentQuestions
+        .map((row, index) => {
+          const question = isJsonRecord(row.question)
+            ? row.question
+            : buildAssignmentQuestionPayload(
+                row,
+                String(row.grade_id || ''),
+                String(row.subject_id || ''),
+              );
+          const questionId = Number(row.question_id || question.question_id || 0) || 0;
+          if (!questionId) return null;
+          const preview = buildQuestionPreviewDataFromPayload(question);
+          const orderIndex = Number(row.order_index || index + 1) || index + 1;
+          return {
+            label: `第 ${orderIndex} 题 · ${preview.summaryMarkdown.replaceAll(/\s+/g, ' ').slice(0, 80)}`,
+            value: String(questionId),
+          };
+        })
+        .filter((entry): entry is { label: string; value: string } => Boolean(entry)),
+    [assignmentQuestions],
+  );
 
   const runAction = async (action: string, params: JsonRecord) => {
     setBusy(true);
     try {
       await client.invokeAction(action, params);
       message.success('后台任务已提交');
-      onReload();
+      void onReload();
     } finally {
       setBusy(false);
     }
   };
 
+  const updateQuestionItem = (
+    clientKey: string,
+    updater: (item: SubmissionDetailQuestionItem) => SubmissionDetailQuestionItem,
+  ) => {
+    setQuestionItems((items) =>
+      items.map((item) => (item.clientKey === clientKey ? updater(item) : item)),
+    );
+    setQuestionError(null);
+    setQuestionNotice(null);
+  };
+
+  const updateQuestionBinding = (clientKey: string, questionIdValue: string) => {
+    const questionId = Number(questionIdValue || 0) || 0;
+    const candidate = questionId ? candidateByQuestionId.get(questionId) || null : null;
+    updateQuestionItem(clientKey, (item) => ({
+      ...item,
+      isDirty: true,
+      maxScoreValue:
+        item.maxScoreValue || (candidate?.score == null ? '' : String(candidate.score)),
+      question: candidate?.question || null,
+      questionId: questionIdValue,
+    }));
+  };
+
+  const syncQuestionOrder = async (items: SubmissionDetailQuestionItem[]) => {
+    await Promise.all(
+      items.map((item, index) =>
+        item.submissionQuestionId && !item.isDraft
+          ? client.updateResource('submission-questions', item.submissionQuestionId, {
+              order_index: index + 1,
+            })
+          : Promise.resolve(null),
+      ),
+    );
+  };
+
+  const moveQuestionItem = async (clientKey: string, targetIndex: number) => {
+    const sourceIndex = questionItems.findIndex((item) => item.clientKey === clientKey);
+    if (sourceIndex < 0) return;
+    const next = [...questionItems];
+    const [moving] = next.splice(sourceIndex, 1);
+    let insertIndex = targetIndex;
+    if (sourceIndex < targetIndex) insertIndex -= 1;
+    next.splice(Math.max(0, Math.min(insertIndex, next.length)), 0, moving);
+    const reindexed = next.map((item, index) => ({ ...item, orderIndex: index + 1 }));
+    setQuestionItems(reindexed);
+    setQuestionSaving(true);
+    try {
+      await syncQuestionOrder(reindexed);
+      setQuestionNotice('题目顺序已更新。');
+      void onReload();
+    } catch (reason) {
+      setQuestionError(`排序同步失败：${asError(reason)}`);
+    } finally {
+      setQuestionSaving(false);
+    }
+  };
+
+  const saveActiveQuestion = async () => {
+    if (!submissionId || !activeQuestionKey) return;
+    const index = questionItems.findIndex((item) => item.clientKey === activeQuestionKey);
+    const current = questionItems[index];
+    if (!current || questionSaving) return;
+    const questionId = Number(current.questionId || 0) || 0;
+    if (!questionId) {
+      setQuestionError('保存前请先绑定当前作业中的一道题目。');
+      return;
+    }
+    if (!candidateByQuestionId.has(questionId)) {
+      setQuestionError('只能绑定到当前作业范围内的题目。');
+      return;
+    }
+
+    const payload: JsonRecord = {
+      feedback: current.feedback,
+      is_correct: current.isCorrectValue === '' ? null : current.isCorrectValue === 'true',
+      max_score: current.maxScoreValue.trim() ? Number(current.maxScoreValue) : null,
+      order_index: index + 1,
+      question_id: questionId,
+      score: current.scoreValue.trim() ? Number(current.scoreValue) : null,
+      student_answer: current.studentAnswer,
+      submission_id: submissionId,
+    };
+
+    setQuestionSaving(true);
+    setQuestionError(null);
+    setQuestionNotice(null);
+    try {
+      if (current.isDraft) {
+        const created = await client.createResource('submission-questions', payload);
+        const saved = buildSubmissionQuestionItem({
+          candidateByQuestionId,
+          index,
+          row: created.item,
+        });
+        setQuestionItems((items) =>
+          items.map((item) => (item.clientKey === current.clientKey ? saved : item)),
+        );
+        setActiveQuestionKey(saved.clientKey);
+      } else if (current.submissionQuestionId) {
+        const updated = await client.updateResource(
+          'submission-questions',
+          current.submissionQuestionId,
+          payload,
+        );
+        const saved = buildSubmissionQuestionItem({
+          candidateByQuestionId,
+          index,
+          row: updated.item,
+        });
+        setQuestionItems((items) =>
+          items.map((item) => (item.clientKey === current.clientKey ? saved : item)),
+        );
+        setActiveQuestionKey(saved.clientKey);
+      }
+      setQuestionNotice('题目作答与批改结果已保存。');
+      void onReload();
+    } catch (reason) {
+      setQuestionError(asError(reason));
+    } finally {
+      setQuestionSaving(false);
+    }
+  };
+
+  const deleteQuestionItems = async (clientKeys: string[]) => {
+    const targets = questionItems.filter((item) => clientKeys.includes(item.clientKey));
+    if (!targets.length) return;
+    setQuestionSaving(true);
+    try {
+      for (const item of targets) {
+        if (item.submissionQuestionId)
+          await client.deleteResource('submission-questions', item.submissionQuestionId);
+      }
+      setQuestionItems((items) => items.filter((item) => !clientKeys.includes(item.clientKey)));
+      setQuestionSelectedKeys((keys) => keys.filter((key) => !clientKeys.includes(key)));
+      if (activeQuestionKey && clientKeys.includes(activeQuestionKey)) setActiveQuestionKey(null);
+      setQuestionNotice(`已删除 ${targets.length} 条题目结果。`);
+      void onReload();
+    } catch (reason) {
+      setQuestionError(asError(reason));
+    } finally {
+      setQuestionSaving(false);
+    }
+  };
+
+  const handleQuestionDragStart = (event: DragEvent<HTMLDivElement>, clientKey: string) => {
+    setDraggingQuestionKey(clientKey);
+    setQuestionDropIndex(null);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', clientKey);
+  };
+
   const report = detail.report;
   const reportObjectKey = report?.object_key || '';
+
+  const questionWorkspace = (
+    <div className={styles.panel}>
+      <div className={styles.actionBar}>
+        <div>
+          <h3 className={styles.panelTitle}>题目工作区</h3>
+          <div className={styles.muted}>
+            左侧维护题目、学生作答、批改结果与讲评反馈；右侧保留原始图片对照。
+          </div>
+        </div>
+        <Space wrap>
+          <Button
+            className={styles.secondary}
+            icon={<Plus size={14} />}
+            onClick={() => {
+              const draft = {
+                ...buildSubmissionQuestionDraft(),
+                orderIndex: questionItems.length + 1,
+              };
+              setQuestionItems((items) => [...items, draft]);
+              setActiveQuestionKey(draft.clientKey);
+            }}
+          >
+            添加题目结果
+          </Button>
+          <Popconfirm
+            disabled={!questionSelectedKeys.length}
+            title={`删除已选 ${questionSelectedKeys.length} 条题目结果？`}
+            onConfirm={() => deleteQuestionItems(questionSelectedKeys)}
+          >
+            <Button danger disabled={!questionSelectedKeys.length} icon={<Trash2 size={14} />}>
+              批量删除
+            </Button>
+          </Popconfirm>
+        </Space>
+      </div>
+      {questionError ? <Alert showIcon message={questionError} type="error" /> : null}
+      {questionNotice ? <Alert showIcon message={questionNotice} type="success" /> : null}
+      {!questionItems.length ? (
+        <Empty description="暂无题目结果" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      ) : null}
+      <div className={styles.stack}>
+        {questionItems.map((item, index) => {
+          const active = activeQuestionKey === item.clientKey;
+          const referencePreview = item.question
+            ? buildQuestionPreviewDataFromPayload(item.question)
+            : null;
+          return (
+            <div key={item.clientKey}>
+              <div
+                className={cx(
+                  styles.dropZone,
+                  questionDropIndex === index ? styles.dropZoneActive : undefined,
+                )}
+                onDragOver={(event) => {
+                  if (!draggingQuestionKey) return;
+                  event.preventDefault();
+                  setQuestionDropIndex(index);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (draggingQuestionKey) void moveQuestionItem(draggingQuestionKey, index);
+                  setDraggingQuestionKey(null);
+                  setQuestionDropIndex(null);
+                }}
+              />
+              <div
+                className={cx(styles.questionCard, active ? styles.questionCardActive : undefined)}
+                draggable={!questionSaving}
+                onDragStart={(event) => handleQuestionDragStart(event, item.clientKey)}
+                onDragEnd={() => {
+                  setDraggingQuestionKey(null);
+                  setQuestionDropIndex(null);
+                }}
+              >
+                <div className={styles.questionCardHeader}>
+                  <Space wrap>
+                    <span className={styles.dragHandle} title="拖拽排序">
+                      <GripVertical size={16} />
+                    </span>
+                    <Checkbox
+                      checked={questionSelectedKeySet.has(item.clientKey)}
+                      onChange={(event) =>
+                        setQuestionSelectedKeys((keys) =>
+                          event.target.checked
+                            ? [...keys, item.clientKey]
+                            : keys.filter((key) => key !== item.clientKey),
+                        )
+                      }
+                    />
+                    <strong>第 {index + 1} 题</strong>
+                    {item.scoreValue || item.maxScoreValue ? (
+                      <span className={styles.muted}>
+                        得分 {item.scoreValue || '--'} / {item.maxScoreValue || '--'}
+                      </span>
+                    ) : null}
+                    {item.isCorrectValue ? (
+                      <Tag
+                        bordered={false}
+                        color={item.isCorrectValue === 'true' ? 'green' : 'gold'}
+                      >
+                        {item.isCorrectValue === 'true' ? '正确' : '待改进'}
+                      </Tag>
+                    ) : null}
+                    {item.isDirty || item.isDraft ? <Tag color="gold">未保存</Tag> : null}
+                  </Space>
+                  <Space>
+                    <Button
+                      className={styles.secondary}
+                      size="small"
+                      onClick={() => setActiveQuestionKey(active ? null : item.clientKey)}
+                    >
+                      {active ? '收起编辑' : '编辑'}
+                    </Button>
+                    <Popconfirm
+                      title="删除该题目结果？"
+                      onConfirm={() => deleteQuestionItems([item.clientKey])}
+                    >
+                      <Button danger icon={<Trash2 size={14} />} size="small">
+                        删除
+                      </Button>
+                    </Popconfirm>
+                  </Space>
+                </div>
+
+                {active ? (
+                  <div className={styles.inlineEditor}>
+                    <label>
+                      <div className={styles.muted}>绑定题目</div>
+                      <Select
+                        options={candidateOptions}
+                        placeholder="选择当前作业题目"
+                        style={{ width: '100%' }}
+                        value={item.questionId || undefined}
+                        onChange={(value) => updateQuestionBinding(item.clientKey, value || '')}
+                      />
+                    </label>
+                    {item.question ? (
+                      <div className={styles.previewBox}>
+                        <h4 className={styles.panelTitle}>题目</h4>
+                        <QuestionCompactPreview
+                          preview={buildQuestionPreviewDataFromPayload(item.question)}
+                        />
+                      </div>
+                    ) : null}
+                    <div className={styles.previewBox}>
+                      <h4 className={styles.panelTitle}>学生作答</h4>
+                      <Input.TextArea
+                        rows={4}
+                        value={item.studentAnswer}
+                        onChange={(event) =>
+                          updateQuestionItem(item.clientKey, (current) => ({
+                            ...current,
+                            isDirty: true,
+                            studentAnswer: event.target.value,
+                          }))
+                        }
+                      />
+                      <div style={{ marginTop: 10 }}>
+                        <MarkdownPreview content={item.studentAnswer} empty="暂无学生作答" />
+                      </div>
+                    </div>
+                    <div className={styles.editorGrid}>
+                      <label>
+                        <div className={styles.muted}>得分</div>
+                        <Input
+                          value={item.scoreValue}
+                          onChange={(event) =>
+                            updateQuestionItem(item.clientKey, (current) => ({
+                              ...current,
+                              isDirty: true,
+                              scoreValue: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        <div className={styles.muted}>满分</div>
+                        <Input
+                          value={item.maxScoreValue}
+                          onChange={(event) =>
+                            updateQuestionItem(item.clientKey, (current) => ({
+                              ...current,
+                              isDirty: true,
+                              maxScoreValue: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        <div className={styles.muted}>正确性</div>
+                        <Select
+                          value={item.isCorrectValue}
+                          options={[
+                            { label: '未设置', value: '' },
+                            { label: '正确', value: 'true' },
+                            { label: '错误', value: 'false' },
+                          ]}
+                          onChange={(value) =>
+                            updateQuestionItem(item.clientKey, (current) => ({
+                              ...current,
+                              isCorrectValue: value,
+                              isDirty: true,
+                            }))
+                          }
+                        />
+                      </label>
+                    </div>
+                    <div className={styles.previewBox}>
+                      <h4 className={styles.panelTitle}>讲评反馈</h4>
+                      <Input.TextArea
+                        rows={3}
+                        value={item.feedback}
+                        onChange={(event) =>
+                          updateQuestionItem(item.clientKey, (current) => ({
+                            ...current,
+                            feedback: event.target.value,
+                            isDirty: true,
+                          }))
+                        }
+                      />
+                      <div style={{ marginTop: 10 }}>
+                        <MarkdownPreview content={item.feedback} empty="暂无讲评反馈" />
+                      </div>
+                    </div>
+                    <SubmissionSubResultPreview
+                      referencePreview={
+                        item.question ? buildQuestionPreviewDataFromPayload(item.question) : null
+                      }
+                      subResults={item.subResults}
+                    />
+                    <Space>
+                      <Button
+                        className={styles.primary}
+                        icon={<Save size={14} />}
+                        loading={questionSaving}
+                        onClick={saveActiveQuestion}
+                      >
+                        保存题目结果
+                      </Button>
+                      <Button
+                        className={styles.secondary}
+                        onClick={() => setActiveQuestionKey(null)}
+                      >
+                        取消
+                      </Button>
+                    </Space>
+                  </div>
+                ) : (
+                  <div className={styles.stack}>
+                    {referencePreview ? (
+                      <div className={styles.previewBox}>
+                        <h4 className={styles.panelTitle}>题目</h4>
+                        <QuestionCompactPreview preview={referencePreview} />
+                      </div>
+                    ) : null}
+                    <div className={styles.previewBox}>
+                      <h4 className={styles.panelTitle}>学生作答</h4>
+                      <MarkdownPreview content={item.studentAnswer} empty="暂无学生作答" />
+                    </div>
+                    <div className={styles.previewBox}>
+                      <h4 className={styles.panelTitle}>讲评反馈</h4>
+                      <MarkdownPreview content={item.feedback} empty="暂无讲评反馈" />
+                    </div>
+                    <SubmissionSubResultPreview
+                      referencePreview={referencePreview}
+                      subResults={item.subResults}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        <div
+          className={cx(
+            styles.dropZone,
+            questionDropIndex === questionItems.length ? styles.dropZoneActive : undefined,
+          )}
+          onDragOver={(event) => {
+            if (!draggingQuestionKey) return;
+            event.preventDefault();
+            setQuestionDropIndex(questionItems.length);
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            if (draggingQuestionKey)
+              void moveQuestionItem(draggingQuestionKey, questionItems.length);
+            setDraggingQuestionKey(null);
+            setQuestionDropIndex(null);
+          }}
+        />
+      </div>
+    </div>
+  );
 
   return (
     <div className={styles.view}>
@@ -1027,9 +2837,26 @@ const SubmissionDetailView = ({
           column={2}
           size="small"
           items={[
-            { children: displayNode(detail.assignment?.title || submission.assignment_title || submission.assignment_id), label: '作业' },
-            { children: displayNode(detail.student?.name || submission.student_name || submission.student_id), label: '学生' },
-            { children: formatCellValue(submission.status, { dataIndex: 'status', isStatus: true, title: '状态' }), label: '状态' },
+            {
+              children: displayNode(
+                detail.assignment?.title || submission.assignment_title || submission.assignment_id,
+              ),
+              label: '作业',
+            },
+            {
+              children: displayNode(
+                detail.student?.name || submission.student_name || submission.student_id,
+              ),
+              label: '学生',
+            },
+            {
+              children: formatCellValue(submission.status, {
+                dataIndex: 'status',
+                isStatus: true,
+                title: '状态',
+              }),
+              label: '状态',
+            },
             { children: stringifyDetailValue(submission.score), label: '得分' },
             { children: stringifyDetailValue(submission.total_score), label: '总分' },
             { children: stringifyDetailValue(submission.submitted_at), label: '提交时间' },
@@ -1054,7 +2881,7 @@ const SubmissionDetailView = ({
                 assignment_student_id: Number(binding),
               });
               message.success('绑定已更新');
-              onReload();
+              void onReload();
             }}
           >
             保存绑定
@@ -1080,7 +2907,12 @@ const SubmissionDetailView = ({
             <Button
               className={styles.secondary}
               disabled={!submissionId || busy}
-              onClick={() => runAction('submission.report.generate', { force: true, submission_id: submissionId })}
+              onClick={() =>
+                runAction('submission.report.generate', {
+                  force: true,
+                  submission_id: submissionId,
+                })
+              }
             >
               生成报告
             </Button>
@@ -1098,7 +2930,16 @@ const SubmissionDetailView = ({
           column={2}
           size="small"
           items={[
-            { children: report?.status ? formatCellValue(report.status, { dataIndex: 'status', isStatus: true, title: '状态' }) : '--', label: '状态' },
+            {
+              children: report?.status
+                ? formatCellValue(report.status, {
+                    dataIndex: 'status',
+                    isStatus: true,
+                    title: '状态',
+                  })
+                : '--',
+              label: '状态',
+            },
             { children: report?.name || report?.object_key || '--', label: '文件' },
             { children: report?.generated_at || '--', label: '生成时间' },
             { children: report?.error || '--', label: '错误' },
@@ -1106,42 +2947,11 @@ const SubmissionDetailView = ({
         />
       </div>
 
-      <div className={styles.panel}>
-        <h3 className={styles.panelTitle}>题目结果</h3>
-        <Table
-          dataSource={detail.questions}
-          pagination={false}
-          rowKey={(row) => String(row.submission_question_id || row.id || row.question_id)}
-          size="small"
-          columns={[
-            { dataIndex: 'order_index', key: 'order_index', title: '题号', width: 80 },
-            { dataIndex: 'student_answer', key: 'student_answer', render: (value) => getNestedPreview(value), title: '学生作答' },
-            { dataIndex: 'score', key: 'score', title: '得分', width: 100 },
-            { dataIndex: 'max_score', key: 'max_score', title: '满分', width: 100 },
-            { dataIndex: 'is_correct', key: 'is_correct', render: (value) => formatCellValue(value, { dataIndex: 'is_correct', isStatus: true, title: '是否正确' }), title: '正确', width: 100 },
-            {
-              key: 'actions',
-              render: (_, row: JsonRecord) => (
-                <Button
-                  size="small"
-                  onClick={() => {
-                    const id = Number(row.submission_question_id || row.id || 0) || 0;
-                    if (id) window.location.href = routeFor('submissions', `/submissions/questions/${id}/edit`);
-                  }}
-                >
-                  编辑
-                </Button>
-              ),
-              title: '操作',
-              width: 100,
-            },
-          ]}
-        />
-      </div>
-
-      <div className={styles.panel}>
-        <h3 className={styles.panelTitle}>原始文件</h3>
-        <FileListPanel client={client} files={detail.files} />
+      <div className={styles.splitWorkspace}>
+        {questionWorkspace}
+        <div className={styles.stickyRail}>
+          <ImageReferenceRail client={client} files={detail.files} />
+        </div>
       </div>
     </div>
   );
@@ -1177,7 +2987,12 @@ const StudentDetailView = ({
           items={[
             { children: displayNode(student.student_number), label: '学号' },
             { children: displayNode(student.name), label: '姓名' },
-            { children: displayNode(detail.classroom?.name || student.class_name || student.class_id), label: '班级' },
+            {
+              children: displayNode(
+                detail.classroom?.name || student.class_name || student.class_id,
+              ),
+              label: '班级',
+            },
             { children: displayNode(detail.school?.name), label: '学校' },
             { children: displayNode(student.gender), label: '性别' },
             { children: displayNode(student.created_at), label: '创建时间' },
@@ -1196,7 +3011,17 @@ const StudentDetailView = ({
                 columns={[
                   { dataIndex: 'name', key: 'name', title: '提交' },
                   { dataIndex: 'assignment_title', key: 'assignment_title', title: '作业' },
-                  { dataIndex: 'status', key: 'status', render: (value) => formatCellValue(value, { dataIndex: 'status', isStatus: true, title: '状态' }), title: '状态' },
+                  {
+                    dataIndex: 'status',
+                    key: 'status',
+                    render: (value) =>
+                      formatCellValue(value, {
+                        dataIndex: 'status',
+                        isStatus: true,
+                        title: '状态',
+                      }),
+                    title: '状态',
+                  },
                   { dataIndex: 'score', key: 'score', title: '得分' },
                 ]}
               />
@@ -1288,7 +3113,11 @@ const AssignmentManualCreateView = ({
 
   return (
     <div className={styles.view}>
-      <DetailHeader subtitle="使用插件 UI 的 durable action 创建草稿并发布。" title="手动创建作业" onBack={onBack} />
+      <DetailHeader
+        subtitle="使用插件 UI 的 durable action 创建草稿并发布。"
+        title="手动创建作业"
+        onBack={onBack}
+      />
       <div className={styles.formPanel}>
         <Form
           form={form}
@@ -1299,7 +3128,9 @@ const AssignmentManualCreateView = ({
               const result = await client.invokeAction('assignment.draft.create_manual', {
                 draft: {
                   grade_id: Number(values.grade_id),
-                  questions: safeJsonParse(values.questions_json || '{"questions":[]}', { questions: [] }),
+                  questions: safeJsonParse(values.questions_json || '{"questions":[]}', {
+                    questions: [],
+                  }),
                   subject_id: Number(values.subject_id),
                   title: values.title,
                 },
@@ -1317,13 +3148,27 @@ const AssignmentManualCreateView = ({
               <Input />
             </Form.Item>
             <Form.Item label="学科" name="subject_id" rules={[{ required: true }]}>
-              <Select options={fieldOptions({ key: 'subject_id', kind: 'select', label: '学科', optionsFrom: 'subjects' }, lookups)} />
+              <Select
+                options={fieldOptions(
+                  { key: 'subject_id', kind: 'select', label: '学科', optionsFrom: 'subjects' },
+                  lookups,
+                )}
+              />
             </Form.Item>
             <Form.Item label="年级" name="grade_id" rules={[{ required: true }]}>
-              <Select options={fieldOptions({ key: 'grade_id', kind: 'select', label: '年级', optionsFrom: 'grades' }, lookups)} />
+              <Select
+                options={fieldOptions(
+                  { key: 'grade_id', kind: 'select', label: '年级', optionsFrom: 'grades' },
+                  lookups,
+                )}
+              />
             </Form.Item>
           </div>
-          <Form.Item extra="保留插件 UI 的 JSON 草稿入口，可粘贴 questions 数组。" label="题目 JSON" name="questions_json">
+          <Form.Item
+            extra="保留插件 UI 的 JSON 草稿入口，可粘贴 questions 数组。"
+            label="题目 JSON"
+            name="questions_json"
+          >
             <Input.TextArea placeholder='{"questions":[]}' rows={8} />
           </Form.Item>
           <Button className={styles.primary} htmlType="submit" loading={busy}>
@@ -1357,7 +3202,11 @@ const UploadActionView = ({
 
   return (
     <div className={styles.view}>
-      <DetailHeader subtitle="上传图片后复用插件 UI 的 OCR durable action。" title={title} onBack={onBack} />
+      <DetailHeader
+        subtitle="上传图片后复用插件 UI 的 OCR durable action。"
+        title={title}
+        onBack={onBack}
+      />
       <div className={styles.formPanel}>
         <Form
           form={form}
@@ -1385,7 +3234,9 @@ const UploadActionView = ({
                     })
                   : compactJsonRecord({
                       assignment_id: Number(values.assignment_id),
-                      pages_per_student: values.pages_per_student ? Number(values.pages_per_student) : undefined,
+                      pages_per_student: values.pages_per_student
+                        ? Number(values.pages_per_student)
+                        : undefined,
                       scan_refs: refs,
                     });
               const result = await client.invokeAction(action, params);
@@ -1412,7 +3263,12 @@ const UploadActionView = ({
             </Upload>
           </Form.Item>
           {busy || progress > 0 ? <Progress percent={progress} /> : null}
-          <Button className={styles.primary} htmlType="submit" icon={<FileScan size={14} />} loading={busy}>
+          <Button
+            className={styles.primary}
+            htmlType="submit"
+            icon={<FileScan size={14} />}
+            loading={busy}
+          >
             开始 OCR
           </Button>
         </Form>
@@ -1441,10 +3297,22 @@ const AssignmentOcrCreateView = ({
           <Input />
         </Form.Item>
         <Form.Item label="学科" name="subject_id">
-          <Select allowClear options={fieldOptions({ key: 'subject_id', kind: 'select', label: '学科', optionsFrom: 'subjects' }, lookups)} />
+          <Select
+            allowClear
+            options={fieldOptions(
+              { key: 'subject_id', kind: 'select', label: '学科', optionsFrom: 'subjects' },
+              lookups,
+            )}
+          />
         </Form.Item>
         <Form.Item label="年级" name="grade_id">
-          <Select allowClear options={fieldOptions({ key: 'grade_id', kind: 'select', label: '年级', optionsFrom: 'grades' }, lookups)} />
+          <Select
+            allowClear
+            options={fieldOptions(
+              { key: 'grade_id', kind: 'select', label: '年级', optionsFrom: 'grades' },
+              lookups,
+            )}
+          />
         </Form.Item>
       </div>
     }
@@ -1485,7 +3353,10 @@ const AskCoreWorkbenchPage = memo(() => {
   const routeTab = routeQuery ? askCoreWorkbenchTabFromRoute(routeQuery) : undefined;
   const activeTab = normalizeAskCoreWorkbenchTab(query.get('tab') || routeTab);
   const activeConfig = ASKCORE_WORKBENCH_TABS.find((tab) => tab.key === activeTab)!;
-  const currentRoute = useMemo(() => parseWorkbenchRoute(routeQuery, activeTab), [activeTab, routeQuery]);
+  const currentRoute = useMemo(
+    () => parseWorkbenchRoute(routeQuery, activeTab),
+    [activeTab, routeQuery],
+  );
 
   const [dashboard, setDashboard] = useState<AskCoreWorkbenchDashboardPayload>(
     emptyAskCoreWorkbenchDashboard,
@@ -1531,12 +3402,20 @@ const AskCoreWorkbenchPage = memo(() => {
 
   const reloadListOrDashboard = useCallback(async () => {
     setError(undefined);
-    if (currentRoute.kind !== 'list' && currentRoute.kind !== 'dashboard' && currentRoute.kind !== 'ops') {
+    if (
+      currentRoute.kind !== 'list' &&
+      currentRoute.kind !== 'dashboard' &&
+      currentRoute.kind !== 'ops'
+    ) {
       return;
     }
     setLoading(true);
     try {
-      if (currentRoute.kind === 'dashboard' || currentRoute.kind === 'ops' || !activeConfig.resource) {
+      if (
+        currentRoute.kind === 'dashboard' ||
+        currentRoute.kind === 'ops' ||
+        !activeConfig.resource
+      ) {
         const payload = await askCoreWorkbenchClient.getDashboard();
         setDashboard(payload || emptyAskCoreWorkbenchDashboard());
         setList(null);
@@ -1569,15 +3448,30 @@ const AskCoreWorkbenchPage = memo(() => {
     try {
       if (currentRoute.resource === 'assignments') {
         const payload = await askCoreWorkbenchClient.getAssignmentDetail(currentRoute.entityId);
-        setDetail({ detail: payload, item: hydrateLookupLabels(payload.assignment, lookups), kind: 'assignment' });
+        setDetail({
+          detail: payload,
+          item: hydrateLookupLabels(payload.assignment, lookups),
+          kind: 'assignment',
+        });
       } else if (currentRoute.resource === 'submissions') {
         const payload = await askCoreWorkbenchClient.getSubmissionDetail(currentRoute.entityId);
-        setDetail({ detail: payload, item: hydrateLookupLabels(payload.submission, lookups), kind: 'submission' });
+        setDetail({
+          detail: payload,
+          item: hydrateLookupLabels(payload.submission, lookups),
+          kind: 'submission',
+        });
       } else if (currentRoute.resource === 'students') {
         const payload = await askCoreWorkbenchClient.getStudentDetail(currentRoute.entityId);
-        setDetail({ detail: payload, item: hydrateLookupLabels(payload.student, lookups), kind: 'student' });
+        setDetail({
+          detail: payload,
+          item: hydrateLookupLabels(payload.student, lookups),
+          kind: 'student',
+        });
       } else {
-        const payload = await askCoreWorkbenchClient.getResource(currentRoute.resource, currentRoute.entityId);
+        const payload = await askCoreWorkbenchClient.getResource(
+          currentRoute.resource,
+          currentRoute.entityId,
+        );
         setDetail({ item: hydrateLookupLabels(payload.item, lookups), kind: 'generic' });
       }
     } catch (err) {
@@ -1662,7 +3556,11 @@ const AskCoreWorkbenchPage = memo(() => {
             >
               导入提交
             </Button>
-            <Button className={styles.secondary} icon={<RefreshCw size={14} />} onClick={reloadListOrDashboard}>
+            <Button
+              className={styles.secondary}
+              icon={<RefreshCw size={14} />}
+              onClick={reloadListOrDashboard}
+            >
               刷新
             </Button>
           </Space>
@@ -1679,15 +3577,30 @@ const AskCoreWorkbenchPage = memo(() => {
     const columns: ColumnsType<AskCoreWorkbenchRecord> = [
       ...(config.columns || []).map((column) => ({
         dataIndex: column.displayIndex || column.dataIndex,
-        ellipsis: true,
+        ellipsis: resource === 'questions' && column.dataIndex === 'content' ? false : true,
         key: column.displayIndex || column.dataIndex,
         render: (_value: unknown, row: AskCoreWorkbenchRecord) => {
-          const primary = column.displayIndex ? row[column.displayIndex] || row[column.dataIndex] : row[column.dataIndex];
-          const secondary = column.displayIndex ? row[column.dataIndex] : column.secondaryIndex ? row[column.secondaryIndex] : undefined;
+          if (resource === 'questions' && column.dataIndex === 'content') {
+            return (
+              <div className={styles.questionPreviewCell}>
+                <QuestionSummaryPreview preview={buildQuestionPreviewDataFromPayload(row)} />
+              </div>
+            );
+          }
+          const primary = column.displayIndex
+            ? row[column.displayIndex] || row[column.dataIndex]
+            : row[column.dataIndex];
+          const secondary = column.displayIndex
+            ? row[column.dataIndex]
+            : column.secondaryIndex
+              ? row[column.secondaryIndex]
+              : undefined;
           return (
             <span>
               {formatCellValue(primary, column)}
-              {secondary && primary !== secondary ? <span className={styles.muted}> #{String(secondary)}</span> : null}
+              {secondary && primary !== secondary ? (
+                <span className={styles.muted}> #{String(secondary)}</span>
+              ) : null}
             </span>
           );
         },
@@ -1704,7 +3617,9 @@ const AskCoreWorkbenchPage = memo(() => {
               event.stopPropagation();
               const id = getRecordId(resource, record);
               if (!id) return;
-              navigate(routeFor(resource as AskCoreWorkbenchTab, buildResourceEntityPath(resource, id)));
+              navigate(
+                routeFor(resource as AskCoreWorkbenchTab, buildResourceEntityPath(resource, id)),
+              );
             }}
           >
             管理
@@ -1736,7 +3651,9 @@ const AskCoreWorkbenchPage = memo(() => {
                   placeholder={field.label}
                   style={{ width: 160 }}
                   value={filterForm[field.key] || undefined}
-                  onChange={(value) => setFilterForm((current) => ({ ...current, [field.key]: value || '' }))}
+                  onChange={(value) =>
+                    setFilterForm((current) => ({ ...current, [field.key]: value || '' }))
+                  }
                 />
               ) : (
                 <Input
@@ -1751,26 +3668,54 @@ const AskCoreWorkbenchPage = memo(() => {
                 />
               ),
             )}
-            <Button className={styles.secondary} onClick={() => { setPage(1); void reloadListOrDashboard(); }}>
+            <Button
+              className={styles.secondary}
+              onClick={() => {
+                setPage(1);
+                void reloadListOrDashboard();
+              }}
+            >
               筛选
             </Button>
           </div>
           <Space wrap>
             {resource === 'assignments' ? (
               <>
-                <Button className={styles.secondary} onClick={() => navigate(routeFor('assignments', '/assignments/new/ocr'))}>
+                <Button
+                  className={styles.secondary}
+                  onClick={() => navigate(routeFor('assignments', '/assignments/new/ocr'))}
+                >
                   OCR 创建
                 </Button>
-                <Button className={styles.primary} icon={<Plus size={14} />} onClick={() => navigate(routeFor('assignments', '/assignments/new/manual'))}>
+                <Button
+                  className={styles.primary}
+                  icon={<Plus size={14} />}
+                  onClick={() => navigate(routeFor('assignments', '/assignments/new/manual'))}
+                >
                   手动创建
                 </Button>
               </>
             ) : resource === 'submissions' ? (
-              <Button className={styles.primary} icon={<FileScan size={14} />} onClick={() => navigate(routeFor('submissions', '/submissions/new/ocr'))}>
+              <Button
+                className={styles.primary}
+                icon={<FileScan size={14} />}
+                onClick={() => navigate(routeFor('submissions', '/submissions/new/ocr'))}
+              >
                 OCR 录入
               </Button>
             ) : (
-              <Button className={styles.primary} icon={<Plus size={14} />} onClick={() => navigate(routeFor(resource as AskCoreWorkbenchTab, `${buildResourceBasePath(resource)}/new`))}>
+              <Button
+                className={styles.primary}
+                icon={<Plus size={14} />}
+                onClick={() =>
+                  navigate(
+                    routeFor(
+                      resource as AskCoreWorkbenchTab,
+                      `${buildResourceBasePath(resource)}/new`,
+                    ),
+                  )
+                }
+              >
                 {config.newLabel || `新建${RESOURCE_LABELS[resource].singular}`}
               </Button>
             )}
@@ -1801,7 +3746,8 @@ const AskCoreWorkbenchPage = memo(() => {
                 disabled={!selectedIds.length}
                 icon={<Download size={14} />}
                 onClick={async () => {
-                  const result = await askCoreWorkbenchClient.downloadSubmissionReportsZip(selectedIds);
+                  const result =
+                    await askCoreWorkbenchClient.downloadSubmissionReportsZip(selectedIds);
                   downloadBlob(result.blob, result.filename || 'submission-reports.zip');
                 }}
               >
@@ -1831,7 +3777,13 @@ const AskCoreWorkbenchPage = memo(() => {
             onRow={(record) => ({
               onClick: () => {
                 const id = getRecordId(resource, record);
-                if (id) navigate(routeFor(resource as AskCoreWorkbenchTab, buildResourceEntityPath(resource, id)));
+                if (id)
+                  navigate(
+                    routeFor(
+                      resource as AskCoreWorkbenchTab,
+                      buildResourceEntityPath(resource, id),
+                    ),
+                  );
               },
             })}
           />
@@ -1842,10 +3794,20 @@ const AskCoreWorkbenchPage = memo(() => {
             共 {list?.total ?? filteredItems.length} 条，当前第 {page} 页。
           </span>
           <Space>
-            <Button className={styles.secondary} disabled={page <= 1} size="small" onClick={() => setPage((current) => Math.max(1, current - 1))}>
+            <Button
+              className={styles.secondary}
+              disabled={page <= 1}
+              size="small"
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+            >
               上一页
             </Button>
-            <Button className={styles.secondary} disabled={!list?.has_more && page * PAGE_SIZE >= (list?.total || 0)} size="small" onClick={() => setPage((current) => current + 1)}>
+            <Button
+              className={styles.secondary}
+              disabled={!list?.has_more && page * PAGE_SIZE >= (list?.total || 0)}
+              size="small"
+              onClick={() => setPage((current) => current + 1)}
+            >
               下一页
             </Button>
           </Space>
@@ -1857,8 +3819,16 @@ const AskCoreWorkbenchPage = memo(() => {
   const renderEditOrCreate = (resource: ResourceKey, mode: 'create' | 'edit') => (
     <div className={styles.view}>
       <DetailHeader
-        subtitle={mode === 'create' ? RESOURCE_LABELS[resource].description : `编辑 ${getRecordTitle(resource, detail?.item || {})}`}
-        title={mode === 'create' ? `新建${RESOURCE_LABELS[resource].singular}` : `编辑${RESOURCE_LABELS[resource].singular}`}
+        subtitle={
+          mode === 'create'
+            ? RESOURCE_LABELS[resource].description
+            : `编辑 ${getRecordTitle(resource, detail?.item || {})}`
+        }
+        title={
+          mode === 'create'
+            ? `新建${RESOURCE_LABELS[resource].singular}`
+            : `编辑${RESOURCE_LABELS[resource].singular}`
+        }
         onBack={backToList}
       />
       {mode === 'edit' && detailLoading ? (
@@ -1875,11 +3845,21 @@ const AskCoreWorkbenchPage = memo(() => {
               const result = await askCoreWorkbenchClient.createResource(resource, payload);
               const id = getRecordId(resource, result.item);
               message.success('创建成功');
-              navigate(routeFor(resource as AskCoreWorkbenchTab, id ? buildResourceEntityPath(resource, id) : buildResourceBasePath(resource)));
+              navigate(
+                routeFor(
+                  resource as AskCoreWorkbenchTab,
+                  id ? buildResourceEntityPath(resource, id) : buildResourceBasePath(resource),
+                ),
+              );
             } else if (currentRoute.kind === 'edit') {
               await askCoreWorkbenchClient.updateResource(resource, currentRoute.entityId, payload);
               message.success('保存成功');
-              navigate(routeFor(resource as AskCoreWorkbenchTab, buildResourceEntityPath(resource, currentRoute.entityId)));
+              navigate(
+                routeFor(
+                  resource as AskCoreWorkbenchTab,
+                  buildResourceEntityPath(resource, currentRoute.entityId),
+                ),
+              );
             }
           }}
         />
@@ -1948,10 +3928,22 @@ const AskCoreWorkbenchPage = memo(() => {
     if (currentRoute.kind === 'new') return renderEditOrCreate(currentRoute.resource, 'create');
     if (currentRoute.kind === 'detail' || currentRoute.kind === 'edit') return renderDetail();
     if (currentRoute.kind === 'assignment-manual') {
-      return <AssignmentManualCreateView client={askCoreWorkbenchClient} lookups={lookups} onBack={backToList} />;
+      return (
+        <AssignmentManualCreateView
+          client={askCoreWorkbenchClient}
+          lookups={lookups}
+          onBack={backToList}
+        />
+      );
     }
     if (currentRoute.kind === 'assignment-ocr') {
-      return <AssignmentOcrCreateView client={askCoreWorkbenchClient} lookups={lookups} onBack={backToList} />;
+      return (
+        <AssignmentOcrCreateView
+          client={askCoreWorkbenchClient}
+          lookups={lookups}
+          onBack={backToList}
+        />
+      );
     }
     if (currentRoute.kind === 'submission-ocr') {
       return <SubmissionOcrCreateView client={askCoreWorkbenchClient} onBack={backToList} />;
