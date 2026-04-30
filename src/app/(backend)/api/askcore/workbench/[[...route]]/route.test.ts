@@ -132,6 +132,28 @@ describe('AskCore workbench proxy route', () => {
     expect(payload.scopes).toEqual(['plugin.invoke', 'plugin.read']);
   });
 
+  it('maps first-party action, invocation, and artifact routes to plugin authority paths', async () => {
+    const { buildWorkbenchAuthorityUrl } = await loadRoute();
+    const request = new NextRequest('https://askcore.cn/api/askcore/workbench/actions/submission.report.generate');
+
+    expect(
+      buildWorkbenchAuthorityUrl(request, ['actions', 'submission.report.generate']).toString(),
+    ).toBe(
+      'http://api:8000/api/lobe/plugins/v1/aitutor-suite/actions/submission.report.generate',
+    );
+    expect(
+      buildWorkbenchAuthorityUrl(request, ['invocations', 'inv-1', 'artifacts']).toString(),
+    ).toBe('http://api:8000/api/lobe/plugins/v1/invocations/inv-1/artifacts');
+    expect(buildWorkbenchAuthorityUrl(request, ['artifacts', 'artifact-1']).toString()).toBe(
+      'http://api:8000/api/lobe/plugins/v1/artifacts/artifact-1',
+    );
+    expect(
+      buildWorkbenchAuthorityUrl(request, ['submissions', 'reports', 'download']).toString(),
+    ).toBe(
+      'http://api:8000/api/lobe/plugins/v1/aitutor-suite/ui/submissions/reports/download',
+    );
+  });
+
   it('falls back to the only organization when the session has no active organization', async () => {
     vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'test-lobehub-workbench');
     vi.stubEnv('AITUTOR_API_BASE_URL', 'http://api:8000');

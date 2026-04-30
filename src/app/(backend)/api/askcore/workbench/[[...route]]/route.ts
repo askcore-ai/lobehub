@@ -216,11 +216,22 @@ export const buildWorkbenchAuthorityUrl = (request: NextRequest, route: string[]
     process.env.AITUTOR_API_BASE_URL?.trim() ||
     process.env.WORKBENCH_API_BASE_URL?.trim() ||
     DEFAULT_API_BASE_URL;
-  const safePath = route.map((segment) => encodeURIComponent(segment)).join('/');
-  const target = new URL(
-    `/api/lobe/plugins/v1/${ASKCORE_WORKBENCH_PLUGIN_ID}/ui/${safePath}`,
-    baseUrl,
-  );
+  const [surface, ...rest] = route;
+  const safeRestPath = rest.map((segment) => encodeURIComponent(segment)).join('/');
+  const safeUiPath = route.map((segment) => encodeURIComponent(segment)).join('/');
+
+  let pathname: string;
+  if (surface === 'actions' && rest.length > 0) {
+    pathname = `/api/lobe/plugins/v1/${ASKCORE_WORKBENCH_PLUGIN_ID}/actions/${safeRestPath}`;
+  } else if (surface === 'invocations' && rest.length > 0) {
+    pathname = `/api/lobe/plugins/v1/invocations/${safeRestPath}`;
+  } else if (surface === 'artifacts' && rest.length > 0) {
+    pathname = `/api/lobe/plugins/v1/artifacts/${safeRestPath}`;
+  } else {
+    pathname = `/api/lobe/plugins/v1/${ASKCORE_WORKBENCH_PLUGIN_ID}/ui/${safeUiPath}`;
+  }
+
+  const target = new URL(pathname, baseUrl);
   target.search = request.nextUrl.search;
   return target;
 };

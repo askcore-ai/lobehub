@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  AskCoreWorkbenchApiClient,
   askCoreWorkbenchDashboardUrl,
   askCoreWorkbenchItemUrl,
   askCoreWorkbenchResourceUrl,
@@ -41,5 +42,61 @@ describe('AskCoreWorkbench API', () => {
     const [input, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
     expect(String(input)).toBe('/api/askcore/workbench/dashboard');
     expect(init?.credentials).toBe('include');
+  });
+
+  it('builds first-party action, invocation, preview, and report requests', async () => {
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push([input, init]);
+      const url = String(input);
+      if (url.includes('/files/preview')) {
+        return new Response(new Blob(['pdf']), {
+          headers: {
+            'content-disposition': 'attachment; filename="report.pdf"',
+            'content-type': 'application/pdf',
+          },
+          status: 200,
+        });
+      }
+      if (url.includes('/submissions/reports/download')) {
+        return new Response(new Blob(['zip']), {
+          headers: { 'content-type': 'application/zip' },
+          status: 200,
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          action_id: 'submission.report.generate',
+          invocation_id: 'inv-1',
+          plugin_id: 'aitutor-suite',
+          run_id: 1,
+          status: 'accepted',
+        }),
+        {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new AskCoreWorkbenchApiClient();
+    await client.invokeAction('submission.report.generate', { submission_id: 12 });
+    await client.fetchPreviewBlob('uploads/org/report.pdf');
+    await client.downloadSubmissionReportsZip([12, 13]);
+
+    expect(String(calls[0][0])).toBe(
+      '/api/askcore/workbench/actions/submission.report.generate',
+    );
+    expect(String(calls[1][0])).toContain('/api/askcore/workbench/files/preview?object_key=');
+    expect(String(calls[2][0])).toBe(
+      '/api/askcore/workbench/submissions/reports/download',
+    );
+    expect(client.getInvocationStreamUrl('inv-1')).toBe(
+      '/api/askcore/workbench/invocations/inv-1/stream',
+    );
+    for (const [, init] of calls) {
+      expect(new Headers(init?.headers).get('Authorization')).toBeNull();
+    }
   });
 });

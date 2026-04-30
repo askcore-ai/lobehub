@@ -27,7 +27,7 @@ export const ASKCORE_WORKBENCH_TABS: AskCoreWorkbenchTabConfig[] = [
       { dataIndex: 'username', title: '账号', width: 160 },
       { dataIndex: 'teacher_number', title: '工号', width: 140 },
       { dataIndex: 'role', isStatus: true, title: '角色', width: 120 },
-      { dataIndex: 'school_id', title: '学校', width: 120 },
+      { dataIndex: 'school_id', displayIndex: 'school_name', title: '学校', width: 160 },
       { dataIndex: 'last_login', title: '最近登录', width: 180 },
     ],
     key: 'teachers',
@@ -39,7 +39,7 @@ export const ASKCORE_WORKBENCH_TABS: AskCoreWorkbenchTabConfig[] = [
   {
     columns: [
       { dataIndex: 'name', title: '班级', width: 180 },
-      { dataIndex: 'school_id', title: '学校', width: 120 },
+      { dataIndex: 'school_id', displayIndex: 'school_name', title: '学校', width: 160 },
       { dataIndex: 'grade_label', title: '年级', width: 120 },
       { dataIndex: 'education_level', isStatus: true, title: '学段', width: 120 },
       { dataIndex: 'admission_year', title: '入学', width: 100 },
@@ -55,7 +55,7 @@ export const ASKCORE_WORKBENCH_TABS: AskCoreWorkbenchTabConfig[] = [
     columns: [
       { dataIndex: 'name', title: '学生', width: 160 },
       { dataIndex: 'student_number', title: '学号', width: 160 },
-      { dataIndex: 'class_id', title: '班级', width: 120 },
+      { dataIndex: 'class_id', displayIndex: 'class_name', title: '班级', width: 160 },
       { dataIndex: 'gender', isStatus: true, title: '性别', width: 100 },
       { dataIndex: 'created_at', title: '创建时间', width: 180 },
     ],
@@ -96,8 +96,8 @@ export const ASKCORE_WORKBENCH_TABS: AskCoreWorkbenchTabConfig[] = [
   {
     columns: [
       { dataIndex: 'title', title: '作业', width: 240 },
-      { dataIndex: 'subject_id', title: '学科', width: 120 },
-      { dataIndex: 'grade_id', title: '年级', width: 120 },
+      { dataIndex: 'subject_id', displayIndex: 'subject_name', title: '学科', width: 140 },
+      { dataIndex: 'grade_id', displayIndex: 'grade_name', title: '年级', width: 140 },
       { dataIndex: 'creation_type', isStatus: true, title: '来源', width: 120 },
       { dataIndex: 'assign_date', title: '布置日期', width: 150 },
       { dataIndex: 'due_date', title: '截止日期', width: 150 },
@@ -112,8 +112,8 @@ export const ASKCORE_WORKBENCH_TABS: AskCoreWorkbenchTabConfig[] = [
     columns: [
       { dataIndex: 'content', title: '题目', width: 280 },
       { dataIndex: 'question_type', isStatus: true, title: '题型', width: 120 },
-      { dataIndex: 'subject_id', title: '学科', width: 120 },
-      { dataIndex: 'grade_id', title: '年级', width: 120 },
+      { dataIndex: 'subject_id', displayIndex: 'subject_name', title: '学科', width: 140 },
+      { dataIndex: 'grade_id', displayIndex: 'grade_name', title: '年级', width: 140 },
       { dataIndex: 'difficulty', title: '难度', width: 120 },
       { dataIndex: 'created_at', title: '创建时间', width: 180 },
     ],
@@ -126,8 +126,8 @@ export const ASKCORE_WORKBENCH_TABS: AskCoreWorkbenchTabConfig[] = [
   {
     columns: [
       { dataIndex: 'name', title: '提交', width: 240 },
-      { dataIndex: 'assignment_id', title: '作业', width: 120 },
-      { dataIndex: 'student_id', title: '学生', width: 120 },
+      { dataIndex: 'assignment_id', displayIndex: 'assignment_title', title: '作业', width: 180 },
+      { dataIndex: 'student_id', displayIndex: 'student_name', title: '学生', width: 140 },
       { dataIndex: 'status', isStatus: true, title: '状态', width: 120 },
       { dataIndex: 'score', title: '得分', width: 120 },
       { dataIndex: 'submitted_at', title: '提交时间', width: 180 },

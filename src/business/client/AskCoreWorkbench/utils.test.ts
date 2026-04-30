@@ -17,6 +17,9 @@ describe('AskCoreWorkbench utils', () => {
 
   it('maps plugin routes to first-party workbench tabs', () => {
     expect(askCoreWorkbenchTabFromRoute('/assignments/12')).toBe('assignments');
+    expect(askCoreWorkbenchTabFromRoute('/assignments/new/ocr')).toBe('assignments');
+    expect(askCoreWorkbenchTabFromRoute('/assignments/new/manual')).toBe('assignments');
+    expect(askCoreWorkbenchTabFromRoute('/submissions/new/ocr')).toBe('submissions');
     expect(askCoreWorkbenchTabFromRoute('/submissions/7')).toBe('submissions');
     expect(askCoreWorkbenchTabFromRoute('/operations')).toBe('ops');
     expect(askCoreWorkbenchTabFromRoute('/missing')).toBe('overview');
