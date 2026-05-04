@@ -3,6 +3,7 @@ import isEqual from 'fast-deep-equal';
 import { useCallback, useMemo } from 'react';
 
 import { conversationSelectors, useConversationStore } from '@/features/Conversation';
+import { stripSelectedSkillContextForDisplay } from '@/features/Conversation/Messages/AssistantGroup/toolRenderRules';
 
 import { type MinimapIndicator } from './types';
 import { getIndicatorWidth, getPreviewText } from './utils';
@@ -18,11 +19,13 @@ export const useMinimapData = () => {
     return messages.reduce<MinimapIndicator[]>((acc, message, virtuosoIndex) => {
       if (message.role !== 'user') return acc;
 
+      const displayContent = stripSelectedSkillContextForDisplay(message.content);
+
       acc.push({
         id: message.id,
-        preview: getPreviewText(message.content),
+        preview: getPreviewText(displayContent),
         virtuosoIndex,
-        width: getIndicatorWidth(message.content),
+        width: getIndicatorWidth(displayContent),
       });
 
       return acc;

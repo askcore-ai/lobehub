@@ -3,6 +3,7 @@ import { css, cx } from 'antd-style';
 import isEqual from 'fast-deep-equal';
 import { useEffect } from 'react';
 
+import { redactSkillMessageForDisplay } from '@/features/Conversation/Messages/AssistantGroup/toolRenderRules';
 import { useChatStore } from '@/store/chat';
 import { chatPortalSelectors, dbMessageSelectors } from '@/store/chat/selectors';
 
@@ -22,7 +23,7 @@ const MessageDetailBody = () => {
 
   const message = useChatStore(dbMessageSelectors.getDbMessageById(messageDetailId || ''), isEqual);
 
-  const content = message?.content || '';
+  const content = message ? redactSkillMessageForDisplay(message).content || '' : '';
 
   useEffect(() => {
     if (!message) {

@@ -1,6 +1,8 @@
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { stripSelectedSkillContextForDisplay } from '@/features/Conversation/Messages/AssistantGroup/toolRenderRules';
+
 import { type ChatMessage } from './types';
 
 interface ChatListProps {
@@ -26,7 +28,9 @@ const ChatList = memo<ChatListProps>(({ messages, styles }) => {
         messages.map((message) => (
           <div className={styles.chatMessage} key={message.id}>
             <div className={styles.chatMessageRole}>{message.role}</div>
-            <div className={styles.chatMessageContent}>{message.content}</div>
+            <div className={styles.chatMessageContent}>
+              {stripSelectedSkillContextForDisplay(message.content)}
+            </div>
           </div>
         ))
       )}

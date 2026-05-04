@@ -17,6 +17,7 @@ import AgentCouncilMessage from './AgentCouncil';
 import AssistantMessage from './Assistant';
 import AssistantGroupMessage from './AssistantGroup';
 import type { WorkflowExpandLevelDefault } from './AssistantGroup/components/WorkflowCollapse';
+import { stripSelectedSkillContextForDisplay } from './AssistantGroup/toolRenderRules';
 import CompressedGroupMessage from './CompressedGroup';
 import GroupTasksMessage from './GroupTasks';
 import SupervisorMessage from './Supervisor';
@@ -94,9 +95,10 @@ const MessageItem = memo<MessageItemProps>(
           // Get selected text for context menu features like Look Up and Search
           const selection = window.getSelection();
           const selectionText = selection?.toString() || '';
+          const displayContent = stripSelectedSkillContextForDisplay(message.content);
 
           electronSystemService.showContextMenu('chat', {
-            content: message.content,
+            content: displayContent,
             hasError: !!message.error,
             messageId: id,
             // For assistantGroup, we treat it as assistant for context menu purposes
