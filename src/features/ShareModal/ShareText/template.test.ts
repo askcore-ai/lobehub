@@ -148,6 +148,77 @@ describe('generateMarkdown', () => {
     expect(result).toContain('"result": "42"');
   });
 
+  it('should redact skill source content from tool exports', () => {
+    const result = generateMarkdown({
+      ...defaultParams,
+      includeTool: true,
+      messages: [
+        {
+          content: 'Message with skill tool',
+          createdAt: Date.now(),
+          id: 'assistant-skill',
+          role: 'assistant',
+          tools: [
+            {
+              apiName: 'activateSkill',
+              arguments: '{}',
+              id: 'tool-1',
+              identifier: 'lobe-skills',
+              result: {
+                content: 'SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK',
+                id: 'result-1',
+              },
+              type: 'builtin',
+            },
+          ],
+        },
+        {
+          content: 'SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK',
+          createdAt: Date.now(),
+          id: 'tool-message',
+          plugin: {
+            apiName: 'readReference',
+            arguments: '{}',
+            identifier: 'lobe-skills',
+            type: 'builtin',
+          },
+          role: 'tool',
+          tool_call_id: 'tool-1',
+        },
+      ] as UIChatMessage[],
+    });
+
+    expect(result).not.toContain('SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK');
+    expect(result).toContain('[Skill content hidden]');
+  });
+
+  it('should strip selected skill context from user and system role exports', () => {
+    const result = generateMarkdown({
+      ...defaultParams,
+      messages: [
+        {
+          content: `Visible request
+
+<!-- SYSTEM CONTEXT (NOT PART OF USER QUERY) -->
+<context.instruction>private context</context.instruction>
+<selected_skill_context>
+SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK
+</selected_skill_context>
+<!-- END SYSTEM CONTEXT -->`,
+          createdAt: Date.now(),
+          id: 'user-skill-context',
+          role: 'user',
+        },
+      ] as UIChatMessage[],
+      systemRole:
+        '<selected_skill_context>SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK</selected_skill_context>',
+      withSystemRole: true,
+    });
+
+    expect(result).toContain('Visible request');
+    expect(result).not.toContain('SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK');
+  });
+
   it('should handle empty messages array', () => {
     const result = generateMarkdown({
       ...defaultParams,

@@ -147,4 +147,81 @@ describe('generateFullExport', () => {
 
     expect(result.messages.some((m) => m.content === LOADING_FLAT)).toBeFalsy();
   });
+
+  it('should redact skill source payloads from full export', () => {
+    const result = generateFullExport({
+      messages: [
+        {
+          content: 'Message with skill tool',
+          createdAt: 1700000000000,
+          id: 'assistant-skill',
+          role: 'assistant',
+          tools: [
+            {
+              apiName: 'activateSkill',
+              arguments: '{}',
+              id: 'tool-1',
+              identifier: 'lobe-skills',
+              result: {
+                content: 'SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK',
+                id: 'result-1',
+              },
+              type: 'builtin',
+            },
+          ],
+          updatedAt: 1700000000000,
+        },
+        {
+          content: 'SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK',
+          createdAt: 1700000000000,
+          id: 'tool-skill',
+          plugin: {
+            apiName: 'readReference',
+            arguments: '{}',
+            identifier: 'lobe-skills',
+            type: 'builtin',
+          },
+          role: 'tool',
+          tool_call_id: 'tool-1',
+          updatedAt: 1700000000000,
+        },
+      ] as UIChatMessage[],
+      withSystemRole: false,
+      includeTool: false,
+      systemRole: '',
+    });
+
+    const payload = JSON.stringify(result);
+    expect(payload).not.toContain('SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK');
+    expect(payload).toContain('[Skill content hidden]');
+  });
+
+  it('should strip selected skill context from full export messages and system role', () => {
+    const result = generateFullExport({
+      messages: [
+        {
+          content: `Visible request
+
+<!-- SYSTEM CONTEXT (NOT PART OF USER QUERY) -->
+<context.instruction>private context</context.instruction>
+<selected_skill_context>
+SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK
+</selected_skill_context>
+<!-- END SYSTEM CONTEXT -->`,
+          createdAt: 1700000000000,
+          id: 'user-skill-context',
+          role: 'user',
+          updatedAt: 1700000000000,
+        },
+      ] as UIChatMessage[],
+      withSystemRole: true,
+      includeTool: false,
+      systemRole:
+        '<selected_skill_context>SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK</selected_skill_context>',
+    });
+
+    const payload = JSON.stringify(result);
+    expect(payload).toContain('Visible request');
+    expect(payload).not.toContain('SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK');
+  });
 });

@@ -93,4 +93,42 @@ describe('generateMarkdown', () => {
 
     expect(result).toContain('Intro\n\n<think>\n\nReasoning\n\n</think>\n\nOutro');
   });
+
+  it('should redact skill source content and strip selected skill context', () => {
+    const result = generateMarkdown({
+      ...defaultParams,
+      messages: [
+        {
+          content: `Visible request
+
+<!-- SYSTEM CONTEXT (NOT PART OF USER QUERY) -->
+<context.instruction>private context</context.instruction>
+<selected_skill_context>
+SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK
+</selected_skill_context>
+<!-- END SYSTEM CONTEXT -->`,
+          createdAt: Date.now(),
+          id: 'user-skill-context',
+          role: 'user',
+        },
+        {
+          content: 'SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK',
+          createdAt: Date.now(),
+          id: 'tool-message',
+          plugin: {
+            apiName: 'activateSkill',
+            arguments: '{}',
+            identifier: 'lobe-skills',
+            type: 'builtin',
+          },
+          role: 'tool',
+          tool_call_id: 'tool-1',
+        },
+      ] as UIChatMessage[],
+    });
+
+    expect(result).toContain('Visible request');
+    expect(result).toContain('[Skill content hidden]');
+    expect(result).not.toContain('SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK');
+  });
 });

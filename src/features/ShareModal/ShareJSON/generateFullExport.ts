@@ -2,6 +2,10 @@ import { type ChatTopic, type ExportedTopic, type UIChatMessage } from '@lobecha
 import { cleanObject } from '@lobechat/utils';
 
 import { LOADING_FLAT } from '@/const/message';
+import {
+  redactSkillMessageForDisplay,
+  stripSelectedSkillContextForDisplay,
+} from '@/features/Conversation/Messages/AssistantGroup/toolRenderRules';
 
 import { type BaseExportOptions } from './type';
 
@@ -22,6 +26,7 @@ export const generateFullExport = ({
 }: FullExportParams): ExportedTopic => {
   const exportedMessages: Record<string, any>[] = messages
     .filter((m) => m.content !== LOADING_FLAT)
+    .map(redactSkillMessageForDisplay)
     .map((m) =>
       cleanObject({
         // Core fields
@@ -55,7 +60,7 @@ export const generateFullExport = ({
   if (withSystemRole && !!systemRole) {
     const now = new Date().toISOString();
     exportedMessages.unshift({
-      content: systemRole,
+      content: stripSelectedSkillContextForDisplay(systemRole),
       createdAt: now,
       id: 'system-role',
       role: 'system',

@@ -17,6 +17,7 @@ import {
   useSetMessageItemActionElementPortialContext,
   useSetMessageItemActionTypeContext,
 } from '../Contexts/message-action-context';
+import { stripSelectedSkillContextForDisplay } from '../AssistantGroup/toolRenderRules';
 import Actions from './Actions';
 import UserMessageContent from './components/MessageContent';
 import { UserMessageExtra } from './Extra';
@@ -54,6 +55,14 @@ const UserMessage = memo<UserMessageProps>(({ id, disableEditing, index }) => {
   }, [targetId, userName, agents, t]);
 
   const onDoubleClick = useDoubleClickEdit({ disableEditing, error, id, role });
+  const displayContent = useMemo(
+    () => stripSelectedSkillContextForDisplay(content),
+    [content],
+  );
+  const displayItem = useMemo(
+    () => (displayContent === content ? item : { ...item, content: displayContent }),
+    [content, displayContent, item],
+  );
 
   const setMessageItemActionElementPortialContext = useSetMessageItemActionElementPortialContext();
   const setMessageItemActionTypeContext = useSetMessageItemActionTypeContext();
@@ -75,12 +84,12 @@ const UserMessage = memo<UserMessageProps>(({ id, disableEditing, index }) => {
 
   return (
     <ChatItem
-      actions={<Actions data={item} disableEditing={disableEditing} id={id} />}
+      actions={<Actions data={displayItem} disableEditing={disableEditing} id={id} />}
       avatar={{ avatar, title }}
       editing={editing}
       id={id}
-      message={content}
-      messageExtra={<UserMessageExtra content={content} extra={extra} id={id} />}
+      message={displayContent}
+      messageExtra={<UserMessageExtra content={displayContent} extra={extra} id={id} />}
       placement={'right'}
       showAvatar={false}
       showTitle={false}
@@ -89,7 +98,7 @@ const UserMessage = memo<UserMessageProps>(({ id, disableEditing, index }) => {
       onDoubleClick={onDoubleClick}
       onMouseEnter={onMouseEnter}
     >
-      <UserMessageContent {...item} />
+      <UserMessageContent {...displayItem} />
     </ChatItem>
   );
 }, isEqual);

@@ -61,4 +61,28 @@ describe('User MessageContent', () => {
     expect(screen.getByTestId('markdown-message')).toBeInTheDocument();
     expect(screen.queryByTestId('rich-message')).not.toBeInTheDocument();
   });
+
+  it('should strip selected skill context from rendered markdown', () => {
+    render(
+      <MessageContent
+        content={`Visible request
+
+<!-- SYSTEM CONTEXT (NOT PART OF USER QUERY) -->
+<context.instruction>private context</context.instruction>
+<selected_skill_context>
+SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK
+</selected_skill_context>
+<!-- END SYSTEM CONTEXT -->`}
+        createdAt={Date.now()}
+        id={'msg-3'}
+        role={'user'}
+        updatedAt={Date.now()}
+      />,
+    );
+
+    expect(screen.getByTestId('markdown-message')).toHaveTextContent('Visible request');
+    expect(screen.getByTestId('markdown-message')).not.toHaveTextContent(
+      'SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK',
+    );
+  });
 });

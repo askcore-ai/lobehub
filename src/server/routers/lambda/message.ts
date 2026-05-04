@@ -1,5 +1,9 @@
 import {
+  type ChatPluginPayload,
+  type ChatToolPayloadWithResult,
+  type ChatToolResult,
   CreateNewMessageParamsSchema,
+  type UIChatMessage,
   UpdateMessageParamsSchema,
   UpdateMessagePluginSchema,
   UpdateMessageRAGParamsSchema,
@@ -17,6 +21,146 @@ import { MessageService } from '@/server/services/message';
 
 import { resolveAgentIdFromSession, resolveContext } from './_helpers/resolveContext';
 import { basicContextSchema } from './_schema/context';
+
+const SKILL_TOOL_REDACTED_CONTENT = '[Skill content hidden]';
+const SKILLS_IDENTIFIER = 'lobe-skills';
+const LEGACY_SKILLS_IDENTIFIER = 'lobe-tools';
+const ACTIVATOR_IDENTIFIER = 'lobe-activator';
+const SELECTED_SKILL_CONTEXT_REGEX =
+  /\n*<selected_skill_context>[\S\s]*?<\/selected_skill_context>\n*/g;
+const EMPTY_SELECTED_SKILL_CONTEXT_WRAPPER_REGEX =
+  /\n*<!-- SYSTEM CONTEXT \(NOT PART OF USER QUERY\) -->\s*<context\.instruction>[\S\s]*?<\/context\.instruction>\s*<!-- END SYSTEM CONTEXT -->\n*/g;
+
+const stripSelectedSkillContextForMessageResponse = <T>(content: T): T => {
+  if (typeof content === 'string') {
+    const stripped = content
+      .replaceAll(SELECTED_SKILL_CONTEXT_REGEX, '\n')
+      .replaceAll(EMPTY_SELECTED_SKILL_CONTEXT_WRAPPER_REGEX, '\n');
+
+    if (stripped === content) return content as T;
+
+    return stripped.replaceAll(/\n{3,}/g, '\n\n').trim() as T;
+  }
+
+  if (Array.isArray(content)) {
+    return content.map((part) => {
+      if (part?.type !== 'text' || typeof part.text !== 'string') return part;
+
+      return {
+        ...part,
+        text: stripSelectedSkillContextForMessageResponse(part.text),
+      };
+    }) as T;
+  }
+
+  return content;
+};
+
+const isSkillSourceDisclosureTool = ({
+  apiName,
+  identifier,
+}: {
+  apiName: string;
+  identifier: string;
+}) => {
+  if (identifier === SKILLS_IDENTIFIER) {
+    return apiName === 'activateSkill' || apiName === 'readReference';
+  }
+
+  if (identifier === ACTIVATOR_IDENTIFIER) {
+    return apiName === 'activateSkill';
+  }
+
+  if (identifier === LEGACY_SKILLS_IDENTIFIER) {
+    return apiName === 'activateSkill';
+  }
+
+  return false;
+};
+
+const shouldRedactSkillToolResult = (
+  target: { apiName: string; identifier: string },
+  result?: ChatToolResult | null,
+) => {
+  if (isSkillSourceDisclosureTool(target)) return true;
+
+  return (
+    target.identifier === ACTIVATOR_IDENTIFIER &&
+    target.apiName === 'activateTools' &&
+    Array.isArray(result?.state?.activatedSkills) &&
+    result.state.activatedSkills.length > 0
+  );
+};
+
+const redactSkillToolResultForMessageResponse = (
+  target: { apiName: string; identifier: string },
+  result?: ChatToolResult | null,
+) => {
+  if (!result || !shouldRedactSkillToolResult(target, result)) return result;
+
+  return {
+    ...result,
+    content: SKILL_TOOL_REDACTED_CONTENT,
+  };
+};
+
+export const redactSkillMessageForUserResponse = <
+  T extends UIChatMessage | Record<string, any>,
+>(
+  message: T,
+): T => {
+  if (!message || typeof message !== 'object') return message;
+
+  const plugin = (message as { plugin?: ChatPluginPayload }).plugin;
+  const nextMessage: Record<string, any> = {
+    ...message,
+    content: stripSelectedSkillContextForMessageResponse(
+      (message as { content?: unknown }).content,
+    ),
+  };
+  const displayContent =
+    typeof nextMessage.content === 'string'
+      ? nextMessage.content
+      : nextMessage.content === undefined
+        ? null
+        : JSON.stringify(nextMessage.content);
+
+  if (
+    plugin &&
+    shouldRedactSkillToolResult(
+      { apiName: plugin.apiName, identifier: plugin.identifier },
+      {
+        content: displayContent,
+        id: nextMessage.id,
+        state: nextMessage.pluginState,
+      },
+    )
+  ) {
+    nextMessage.content = SKILL_TOOL_REDACTED_CONTENT;
+  }
+
+  if (Array.isArray(nextMessage.tools)) {
+    nextMessage.tools = nextMessage.tools.map((tool: ChatToolPayloadWithResult) => ({
+      ...tool,
+      result: redactSkillToolResultForMessageResponse(
+        { apiName: tool.apiName, identifier: tool.identifier },
+        tool.result,
+      ),
+    }));
+  }
+
+  for (const key of ['children', 'compressedMessages', 'pinnedMessages']) {
+    if (Array.isArray(nextMessage[key])) {
+      nextMessage[key] = nextMessage[key].map(redactSkillMessageForUserResponse);
+    }
+  }
+
+  return nextMessage as T;
+};
+
+export const redactSkillMessagesForUserResponse = <T extends UIChatMessage | Record<string, any>>(
+  messages: T[],
+) => messages.map(redactSkillMessageForUserResponse);
 
 const messageProcedure = authedProcedure.use(serverDatabase).use(async (opts) => {
   const { ctx } = opts;
@@ -82,7 +226,8 @@ export const messageRouter = router({
         .optional(),
     )
     .query(async ({ ctx, input }) => {
-      return ctx.messageModel.queryAll(input);
+      const messages = await ctx.messageModel.queryAll(input);
+      return redactSkillMessagesForUserResponse(messages);
     }),
 
   count: messageProcedure
@@ -204,12 +349,14 @@ export const messageRouter = router({
         const messageModel = new MessageModel(ctx.serverDB, share.ownerId);
         const fileService = new FileService(ctx.serverDB, share.ownerId);
 
-        return messageModel.query(
+        const messages = await messageModel.query(
           { ...queryParams, topicId: share.topicId },
           {
             postProcessUrl: (path) => fileService.getFullFileUrl(path),
           },
         );
+
+        return redactSkillMessagesForUserResponse(messages);
       }
 
       // Authenticated access - require userId
@@ -220,9 +367,11 @@ export const messageRouter = router({
       const messageModel = new MessageModel(ctx.serverDB, ctx.userId);
       const fileService = new FileService(ctx.serverDB, ctx.userId);
 
-      return messageModel.query(queryParams, {
+      const messages = await messageModel.query(queryParams, {
         postProcessUrl: (path) => fileService.getFullFileUrl(path),
       });
+
+      return redactSkillMessagesForUserResponse(messages);
     }),
 
   rankModels: messageProcedure.query(async ({ ctx }) => {
@@ -302,7 +451,8 @@ export const messageRouter = router({
   searchMessages: messageProcedure
     .input(z.object({ keywords: z.string() }))
     .query(async ({ input, ctx }) => {
-      return ctx.messageModel.queryByKeyword(input.keywords);
+      const messages = await ctx.messageModel.queryByKeyword(input.keywords);
+      return redactSkillMessagesForUserResponse(messages);
     }),
 
   update: messageProcedure

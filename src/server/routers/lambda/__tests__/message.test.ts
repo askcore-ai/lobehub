@@ -10,6 +10,8 @@ import { MessageModel } from '@/database/models/message';
 import { TopicShareModel } from '@/database/models/topicShare';
 import { FileService } from '@/server/services/file';
 
+import { redactSkillMessagesForUserResponse } from '../message';
+
 vi.mock('@/database/models/message', () => ({
   MessageModel: vi.fn(),
 }));
@@ -158,6 +160,83 @@ describe('messageRouter', () => {
 
     expect(mockQuery).toHaveBeenCalledWith(input, expect.any(Object));
     expect(result).toEqual([{ id: 'msg1' }]);
+  });
+
+  it('should redact skill source payloads from message responses', () => {
+    const result = redactSkillMessagesForUserResponse([
+      {
+        content: 'SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK',
+        id: 'tool-message',
+        plugin: {
+          apiName: 'activateSkill',
+          arguments: '{}',
+          identifier: 'lobe-skills',
+          type: 'builtin',
+        },
+        role: 'tool',
+        tools: [
+          {
+            apiName: 'readReference',
+            arguments: '{}',
+            id: 'tool-1',
+            identifier: 'lobe-skills',
+            result: {
+              content: 'SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK',
+              id: 'result-1',
+            },
+            type: 'builtin',
+          },
+          {
+            apiName: 'search',
+            arguments: '{}',
+            id: 'tool-2',
+            identifier: 'lobe-web-browsing',
+            result: {
+              content: 'public result',
+              id: 'result-2',
+            },
+            type: 'builtin',
+          },
+        ],
+      } as any,
+    ]);
+
+    expect(JSON.stringify(result)).not.toContain('SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK');
+    expect(result[0].content).toBe('[Skill content hidden]');
+    expect(result[0].tools[0].result.content).toBe('[Skill content hidden]');
+    expect(result[0].tools[1].result.content).toBe('public result');
+  });
+
+  it('should strip selected skill context from message responses', () => {
+    const result = redactSkillMessagesForUserResponse([
+      {
+        content: `Visible request
+
+<!-- SYSTEM CONTEXT (NOT PART OF USER QUERY) -->
+<context.instruction>private context</context.instruction>
+<selected_skill_context>
+SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK
+</selected_skill_context>
+<!-- END SYSTEM CONTEXT -->`,
+        id: 'user-message',
+        role: 'user',
+      } as any,
+    ]);
+
+    expect(result[0].content).toBe('Visible request');
+    expect(JSON.stringify(result)).not.toContain('SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK');
+  });
+
+  it('should preserve ordinary message whitespace when no skill context is present', () => {
+    const result = redactSkillMessagesForUserResponse([
+      {
+        content: '  ordinary message\n',
+        id: 'plain-message',
+        role: 'user',
+      } as any,
+    ]);
+
+    expect(result[0].content).toBe('  ordinary message\n');
   });
 
   it('should handle getAllMessages', async () => {

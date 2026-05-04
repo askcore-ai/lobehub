@@ -5,6 +5,7 @@ import MarkdownMessage from '@/features/Conversation/Markdown';
 import { cleanSpeakerTag } from '@/store/chat/utils/cleanSpeakerTag';
 import { type UIChatMessage } from '@/types/index';
 
+import { stripSelectedSkillContextForDisplay } from '../../AssistantGroup/toolRenderRules';
 import { useMarkdown } from '../useMarkdown';
 import CollapsibleContent from './CollapsibleContent';
 import FileListViewer from './FileListViewer';
@@ -17,7 +18,10 @@ const UserMessageContent = memo<UIChatMessage>(
   ({ id, content, editorData, imageList, videoList, fileList, metadata }) => {
     const markdownProps = useMarkdown(id);
     const pageSelections = metadata?.pageSelections;
-    const displayContent = useMemo(() => (content ? cleanSpeakerTag(content) : content), [content]);
+    const displayContent = useMemo(
+      () => stripSelectedSkillContextForDisplay(content ? cleanSpeakerTag(content) : content),
+      [content],
+    );
 
     const hasEditorData =
       editorData && typeof editorData === 'object' && Object.keys(editorData).length > 0;

@@ -7,6 +7,7 @@ import { useUserStore } from '@/store/user';
 import { userGeneralSettingsSelectors } from '@/store/user/selectors';
 
 import { type MessageActionsConfig } from '../../../types';
+import { stripSelectedSkillContextForDisplay } from '../../AssistantGroup/toolRenderRules';
 import {
   MessageActionBar,
   type MessageActionContext,
@@ -33,7 +34,17 @@ interface UserActionsProps {
 }
 
 export const UserActionsBar = memo<UserActionsProps>(({ actionsConfig, id, data }) => {
-  const ctx = useMemo<MessageActionContext>(() => ({ data, id, role: 'user' }), [data, id]);
+  const displayData = useMemo(
+    () => ({
+      ...data,
+      content: stripSelectedSkillContextForDisplay(data.content),
+    }),
+    [data],
+  );
+  const ctx = useMemo<MessageActionContext>(
+    () => ({ data: displayData, id, role: 'user' }),
+    [displayData, id],
+  );
   return (
     <MessageActionBar
       bar={actionsConfig?.bar ?? DEFAULT_BAR}

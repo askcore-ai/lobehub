@@ -1,7 +1,7 @@
 'use client';
 
 import { type BuiltinRenderProps } from '@lobechat/types';
-import { Block, Flexbox, Highlighter, Markdown, Text } from '@lobehub/ui';
+import { Block, Flexbox, Text } from '@lobehub/ui';
 import { createStaticStyles } from 'antd-style';
 import { memo } from 'react';
 
@@ -14,35 +14,6 @@ const styles = createStaticStyles(({ css }) => ({
   `,
 }));
 
-const getFileExtension = (path: string): string => {
-  const parts = path.split('.');
-  return parts.length > 1 ? parts.pop()?.toLowerCase() || 'text' : 'text';
-};
-
-const languageMap: Record<string, string> = {
-  css: 'css',
-  go: 'go',
-  html: 'html',
-  java: 'java',
-  js: 'javascript',
-  json: 'json',
-  jsx: 'jsx',
-  md: 'markdown',
-  py: 'python',
-  rs: 'rust',
-  scss: 'scss',
-  sh: 'bash',
-  sql: 'sql',
-  ts: 'typescript',
-  tsx: 'tsx',
-  xml: 'xml',
-  xsd: 'xml',
-  yaml: 'yaml',
-  yml: 'yaml',
-};
-
-const getLanguage = (ext: string): string => languageMap[ext] || 'text';
-
 const formatSize = (bytes: number): string => {
   if (bytes === 0) return '0 B';
   if (bytes < 1024) return `${bytes} B`;
@@ -51,16 +22,10 @@ const formatSize = (bytes: number): string => {
 };
 
 const ReadReference = memo<BuiltinRenderProps<ReadReferenceParams, ReadReferenceState>>(
-  ({ content, pluginState }) => {
-    const { encoding, fullPath, path, size } = pluginState || {};
+  ({ pluginState }) => {
+    const { path, size } = pluginState || {};
 
-    if (!path || !content) return null;
-
-    const displayPath = fullPath || path;
-
-    const ext = getFileExtension(path);
-    const isMarkdown = ext === 'md' || ext === 'markdown';
-    const isBinary = encoding === 'base64';
+    if (!path) return null;
 
     const sizeText = size ? formatSize(size) : '';
 
@@ -68,7 +33,7 @@ const ReadReference = memo<BuiltinRenderProps<ReadReferenceParams, ReadReference
       <Flexbox className={styles.container} gap={8}>
         <Flexbox horizontal align={'center'} justify={'space-between'}>
           <Text code ellipsis as={'span'} fontSize={12}>
-            {displayPath}
+            {path}
           </Text>
           {sizeText && (
             <Text code noWrap as={'span'} fontSize={12} type={'secondary'}>
@@ -77,31 +42,11 @@ const ReadReference = memo<BuiltinRenderProps<ReadReferenceParams, ReadReference
           )}
         </Flexbox>
 
-        {isBinary ? (
-          <Block padding={12} variant={'outlined'}>
-            <Text fontSize={12} type={'secondary'}>
-              Binary file ({sizeText})
-            </Text>
-          </Block>
-        ) : isMarkdown ? (
-          <Block padding={12} variant={'outlined'}>
-            <Markdown style={{ overflow: 'unset' }} variant={'chat'}>
-              {content}
-            </Markdown>
-          </Block>
-        ) : (
-          <Block padding={8} variant={'outlined'}>
-            <Highlighter
-              showLanguage
-              wrap
-              language={getLanguage(ext)}
-              style={{ maxHeight: 400, overflow: 'auto' }}
-              variant={'borderless'}
-            >
-              {content}
-            </Highlighter>
-          </Block>
-        )}
+        <Block padding={12} variant={'outlined'}>
+          <Text fontSize={12} type={'secondary'}>
+            Skill reference content is hidden.
+          </Text>
+        </Block>
       </Flexbox>
     );
   },

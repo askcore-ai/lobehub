@@ -13,6 +13,7 @@ import { operationSelectors } from '@/store/chat/slices/operation/selectors';
 import { useToolStore } from '@/store/tool';
 import { toolSelectors } from '@/store/tool/selectors';
 
+import { redactSkillToolResultForDisplay } from '../toolRenderRules';
 import Actions from './Actions';
 import Inspectors from './Inspector';
 
@@ -103,6 +104,11 @@ const Tool = memo<GroupToolProps>(
     const hasCustomRender = !!getBuiltinRender(identifier, apiName);
     // Only allow toggle when has custom render and not in pending/reject/abort state
     const canToggleCustomToolRender = hasCustomRender && !isPending && !isReject && !isAbort;
+    const displayResult = redactSkillToolResultForDisplay({
+      apiName,
+      identifier,
+      result,
+    });
 
     // Handle expand state changes
     const handleExpand = (expand?: boolean) => {
@@ -153,7 +159,7 @@ const Tool = memo<GroupToolProps>(
             intervention={intervention}
             isArgumentsStreaming={isArgumentsStreaming}
             isToolCalling={isToolCalling}
-            result={result}
+            result={displayResult}
           />
         }
         onExpandChange={handleExpand}
@@ -165,7 +171,7 @@ const Tool = memo<GroupToolProps>(
               identifier={identifier}
               intervention={intervention}
               requestArgs={requestArgs}
-              result={result}
+              result={displayResult}
               toolCallId={id}
               type={type}
             />
@@ -180,7 +186,7 @@ const Tool = memo<GroupToolProps>(
               isArgumentsStreaming={isArgumentsStreaming}
               isToolCalling={isToolCalling}
               messageId={assistantMessageId}
-              result={result}
+              result={displayResult}
               showCustomToolRender={showCustomToolRender}
               toolCallId={id}
               toolMessageId={toolMessageId}

@@ -5,6 +5,7 @@ import { useUserStore } from '@/store/user';
 import { authSelectors } from '@/store/user/slices/auth/selectors';
 
 import { messageStateSelectors, useConversationStore } from '../../store';
+import { stripSelectedSkillContextForDisplay } from '../AssistantGroup/toolRenderRules';
 import ExtraContainer from '../components/Extras/ExtraContainer';
 import Translate from '../components/Extras/Translate';
 import TTS from '../components/Extras/TTS';
@@ -21,6 +22,7 @@ export const UserMessageExtra = memo<UserMessageExtraProps>(({ extra, id, conten
 
   const showTranslate = !!extra?.translate;
   const showTTS = !!extra?.tts;
+  const displayContent = stripSelectedSkillContextForDisplay(content);
 
   const showExtra = isLogin && (showTranslate || showTTS);
 
@@ -30,7 +32,7 @@ export const UserMessageExtra = memo<UserMessageExtraProps>(({ extra, id, conten
     <Flexbox gap={8} style={{ marginTop: 8 }}>
       {extra?.tts && (
         <ExtraContainer>
-          <TTS content={content} id={id} loading={loading} {...extra?.tts} />
+          <TTS content={displayContent} id={id} loading={loading} {...extra?.tts} />
         </ExtraContainer>
       )}
       {extra?.translate && (

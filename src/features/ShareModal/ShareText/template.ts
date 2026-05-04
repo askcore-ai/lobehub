@@ -2,6 +2,10 @@ import { type UIChatMessage } from '@lobechat/types';
 import { template } from 'es-toolkit/compat';
 
 import { LOADING_FLAT } from '@/const/message';
+import {
+  redactSkillMessageForDisplay,
+  stripSelectedSkillContextForDisplay,
+} from '@/features/Conversation/Messages/AssistantGroup/toolRenderRules';
 import { normalizeThinkTags, processWithArtifact } from '@/features/Conversation/utils/markdown';
 import { type FieldType } from '@/features/ShareModal/ShareText/type';
 
@@ -74,11 +78,12 @@ export const generateMarkdown = ({
       .filter((m) => m.content !== LOADING_FLAT)
       .filter((m) => (!includeUser ? m.role !== 'user' : true))
       .filter((m) => (!includeTool ? m.role !== 'tool' : true))
+      .map(redactSkillMessageForDisplay)
       .map((message) => ({
         ...message,
         content: normalizeThinkTags(processWithArtifact(message.content)),
       })),
-    systemRole: withSystemRole ? systemRole : undefined,
+    systemRole: withSystemRole ? stripSelectedSkillContextForDisplay(systemRole) : undefined,
     title,
     withRole,
   });

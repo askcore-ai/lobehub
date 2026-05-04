@@ -4,6 +4,7 @@ import { safeParsePartialJSON } from '@lobechat/utils';
 import { Flexbox } from '@lobehub/ui';
 import { memo, Suspense } from 'react';
 
+import { redactSkillToolResultForDisplay } from '../../toolRenderRules';
 import AbortResponse from './AbortResponse';
 import LoadingPlaceholder from './LoadingPlaceholder';
 import RejectedResponse from './RejectedResponse';
@@ -99,14 +100,20 @@ const Render = memo<RenderProps>(
 
     if (isToolCalling) return placeholder;
 
+    const displayResult = redactSkillToolResultForDisplay({
+      apiName,
+      identifier,
+      result,
+    });
+
     return (
       <Suspense fallback={placeholder}>
         <Flexbox gap={8}>
           <ToolRender
-            content={result.content || ''}
+            content={displayResult?.content || ''}
             messageId={toolMessageId}
-            pluginState={result.state}
-            showCustomToolRender={result.error ? false : showCustomToolRender}
+            pluginState={displayResult?.state}
+            showCustomToolRender={displayResult?.error ? false : showCustomToolRender}
             toolCallId={toolCallId}
             plugin={{
               apiName,

@@ -1,7 +1,7 @@
 'use client';
 
 import { type BuiltinRenderProps } from '@lobechat/types';
-import { Flexbox, Markdown, ScrollShadow } from '@lobehub/ui';
+import { Flexbox } from '@lobehub/ui';
 import { createStaticStyles } from 'antd-style';
 import { memo } from 'react';
 
@@ -37,7 +37,7 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
 }));
 
 const RunSkill = memo<BuiltinRenderProps<ActivateSkillParams, ActivateSkillState>>(
-  ({ content, pluginState }) => {
+  ({ pluginState }) => {
     const { description, name } = pluginState || {};
 
     if (!name) return null;
@@ -48,13 +48,7 @@ const RunSkill = memo<BuiltinRenderProps<ActivateSkillParams, ActivateSkillState
           <span className={styles.name}>{name}</span>
           {description && <span className={styles.description}>{description}</span>}
         </Flexbox>
-        {content && (
-          <ScrollShadow className={styles.content} offset={12} size={12} style={{ maxHeight: 400 }}>
-            <Markdown style={{ overflow: 'unset' }} variant={'chat'}>
-              {content}
-            </Markdown>
-          </ScrollShadow>
-        )}
+        <div className={styles.content}>Skill content is hidden.</div>
       </Flexbox>
     );
   },
