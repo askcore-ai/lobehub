@@ -1,4 +1,8 @@
 import {
+  type AskCoreEducationOrgUnitCreateInput,
+  type AskCoreEducationOrgUnitPayload,
+  type AskCoreEducationRoleAssignment,
+  type AskCoreEducationRoleAssignmentCreateInput,
   type AskCoreInviteChannel,
   type AskCoreInviteExpiry,
   type AskCoreInvitePayload,
@@ -7,6 +11,7 @@ import {
 } from './types';
 
 const ORGANIZATION_API_BASE = '/api/askcore/organizations';
+const EDUCATION_ORG_API_BASE = '/api/askcore/workbench/organization';
 
 export class AskCoreOrganizationApiError extends Error {
   status: number;
@@ -21,7 +26,9 @@ export class AskCoreOrganizationApiError extends Error {
 const readErrorMessage = async (response: Response) => {
   try {
     const payload = await response.json();
-    return payload?.detail || payload?.message || response.statusText;
+    const detail = payload?.detail;
+    if (detail && typeof detail === 'object') return detail.message || JSON.stringify(detail);
+    return detail || payload?.message || response.statusText;
   } catch {
     return response.statusText;
   }
@@ -108,6 +115,21 @@ export const createAskCoreOrganizationInvite = (
   },
 ) =>
   requestJson<AskCoreInvitePayload>(`${ORGANIZATION_API_BASE}/${organizationId}/invites`, {
+    body: JSON.stringify(input),
+    method: 'POST',
+  });
+
+export const fetchAskCoreEducationOrgUnits = () =>
+  requestJson<AskCoreEducationOrgUnitPayload>(`${EDUCATION_ORG_API_BASE}/units`);
+
+export const createAskCoreEducationOrgUnit = (input: AskCoreEducationOrgUnitCreateInput) =>
+  requestJson<AskCoreEducationOrgUnitPayload['units'][number]>(`${EDUCATION_ORG_API_BASE}/units`, {
+    body: JSON.stringify(input),
+    method: 'POST',
+  });
+
+export const assignAskCoreEducationRole = (input: AskCoreEducationRoleAssignmentCreateInput) =>
+  requestJson<AskCoreEducationRoleAssignment>(`${EDUCATION_ORG_API_BASE}/roles`, {
     body: JSON.stringify(input),
     method: 'POST',
   });

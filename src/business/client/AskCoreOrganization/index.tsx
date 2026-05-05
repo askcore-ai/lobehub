@@ -8,6 +8,7 @@ import {
   Empty,
   Form,
   Input,
+  InputNumber,
   Modal,
   QRCode,
   Select,
@@ -24,6 +25,7 @@ import {
   Building2,
   Check,
   Copy,
+  GitBranch,
   Link2,
   Mail,
   Plus,
@@ -31,6 +33,7 @@ import {
   RefreshCw,
   Save,
   Trash2,
+  UserRoundPlus,
   UsersRound,
 } from 'lucide-react';
 import { type ReactNode, memo, useCallback, useEffect, useMemo, useState } from 'react';
@@ -38,8 +41,11 @@ import { type ReactNode, memo, useCallback, useEffect, useMemo, useState } from 
 import { message } from '@/components/AntdStaticMethods';
 
 import {
+  assignAskCoreEducationRole,
   createAskCoreOrganization,
+  createAskCoreEducationOrgUnit,
   createAskCoreOrganizationInvite,
+  fetchAskCoreEducationOrgUnits,
   fetchAskCoreOrganizations,
   removeAskCoreOrganizationMember,
   setActiveAskCoreOrganization,
@@ -47,6 +53,10 @@ import {
   updateAskCoreOrganizationMemberRole,
 } from './api';
 import {
+  type AskCoreEducationOrgUnit,
+  type AskCoreEducationOrgUnitPayload,
+  type AskCoreEducationOrgUnitType,
+  type AskCoreEducationRole,
   type AskCoreInviteChannel,
   type AskCoreInviteExpiry,
   type AskCoreInvitePayload,
@@ -59,6 +69,21 @@ const styles = createStaticStyles(({ css }) => ({
   body: css`
     padding-block: 22px 36px;
     padding-inline: 32px;
+  `,
+  educationForms: css`
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+
+    margin-block-start: 16px;
+
+    @media (width <= 1100px) {
+      grid-template-columns: 1fr;
+    }
+  `,
+  formBlock: css`
+    padding-block-start: 14px;
+    border-block-start: 1px solid ${cssVar.colorBorderSecondary};
   `,
   createFooter: css`
     padding-block-start: 8px;
@@ -241,6 +266,30 @@ const roleColors: Record<AskCoreOrganizationRole, string> = {
   owner: 'gold',
 };
 
+const unitTypeLabels: Record<AskCoreEducationOrgUnitType, string> = {
+  class: '班级',
+  grade: '年级',
+  school: '学校',
+};
+
+const educationRoleLabels: Record<AskCoreEducationRole, string> = {
+  grade_admin: '年级管理者',
+  homeroom_teacher: '班主任',
+  school_admin: '学校管理者',
+  student: '学生',
+  teacher: '教师',
+};
+
+const educationRoleOptions = Object.entries(educationRoleLabels).map(([value, label]) => ({
+  label,
+  value,
+}));
+
+const unitTypeOptions = Object.entries(unitTypeLabels).map(([value, label]) => ({
+  label,
+  value,
+}));
+
 const expiryOptions: { label: string; value: AskCoreInviteExpiry }[] = [
   { label: '30 分钟', value: '30m' },
   { label: '1 天', value: '1d' },
@@ -272,12 +321,53 @@ const AskCoreOrganizationPage = memo(() => {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteChannel, setInviteChannel] = useState<AskCoreInviteChannel>('email');
   const [inviteResult, setInviteResult] = useState<AskCoreInvitePayload | null>(null);
+  const [educationPayload, setEducationPayload] =
+    useState<AskCoreEducationOrgUnitPayload | null>(null);
+  const [educationLoading, setEducationLoading] = useState(false);
+  const [educationError, setEducationError] = useState<string>();
+  const [creatingUnit, setCreatingUnit] = useState(false);
+  const [assigningRole, setAssigningRole] = useState(false);
   const [metaForm] = Form.useForm();
   const [createForm] = Form.useForm();
   const [inviteForm] = Form.useForm();
+  const [orgUnitForm] = Form.useForm();
+  const [orgRoleForm] = Form.useForm();
 
   const current = payload?.current ?? null;
   const canManage = canManageOrganization(payload);
+  const watchedUnitType = Form.useWatch('unit_type', orgUnitForm) as
+    | AskCoreEducationOrgUnitType
+    | undefined;
+  const educationUnits = useMemo(() => educationPayload?.units ?? [], [educationPayload?.units]);
+  const educationFeatureEnabled = Boolean(educationPayload?.feature_enabled);
+  const educationUnitNameById = useMemo(
+    () =>
+      new Map(
+        educationUnits.map((unit) => [unit.id, `${unitTypeLabels[unit.unit_type]} / ${unit.name}`]),
+      ),
+    [educationUnits],
+  );
+  const educationUnitOptions = useMemo(
+    () =>
+      educationUnits.map((unit) => ({
+        label: educationUnitNameById.get(unit.id) || unit.name,
+        value: unit.id,
+      })),
+    [educationUnitNameById, educationUnits],
+  );
+  const parentUnitOptions = useMemo(() => {
+    const type = watchedUnitType || 'school';
+    return educationUnits
+      .filter((unit) => {
+        if (type === 'grade') return unit.unit_type === 'school';
+        if (type === 'class') return unit.unit_type === 'school' || unit.unit_type === 'grade';
+        return false;
+      })
+      .map((unit) => ({
+        label: educationUnitNameById.get(unit.id) || unit.name,
+        value: unit.id,
+      }));
+  }, [educationUnitNameById, educationUnits, watchedUnitType]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -303,6 +393,33 @@ const AskCoreOrganizationPage = memo(() => {
       name: current?.name || '',
     });
   }, [current?.contact, current?.description, current?.name, metaForm]);
+
+  useEffect(() => {
+    if (watchedUnitType === 'school') orgUnitForm.setFieldValue('parent_id', undefined);
+  }, [orgUnitForm, watchedUnitType]);
+
+  const reloadEducationOrgUnits = useCallback(async () => {
+    if (!current?.id) {
+      setEducationPayload(null);
+      setEducationLoading(false);
+      return;
+    }
+
+    setEducationLoading(true);
+    setEducationError(undefined);
+    try {
+      setEducationPayload(await fetchAskCoreEducationOrgUnits());
+    } catch (err) {
+      setEducationPayload(null);
+      setEducationError(err instanceof Error ? err.message : '教育组织加载失败');
+    } finally {
+      setEducationLoading(false);
+    }
+  }, [current?.id]);
+
+  useEffect(() => {
+    void reloadEducationOrgUnits();
+  }, [reloadEducationOrgUnits]);
 
   const handleCreateOrganization = useCallback(async () => {
     const values = await createForm.validateFields();
@@ -355,6 +472,53 @@ const AskCoreOrganizationPage = memo(() => {
       setInviteLoading(false);
     }
   }, [current, inviteChannel, inviteForm]);
+
+  const handleCreateEducationUnit = useCallback(async () => {
+    const values = await orgUnitForm.validateFields();
+    setCreatingUnit(true);
+    try {
+      await createAskCoreEducationOrgUnit({
+        class_id: values.class_id || undefined,
+        description: values.description?.trim() || undefined,
+        grade_level_id: values.grade_level_id || undefined,
+        name: values.name.trim(),
+        parent_id: values.parent_id || undefined,
+        school_id: values.school_id || undefined,
+        sort_order: values.sort_order || 0,
+        unit_type: values.unit_type,
+      });
+      orgUnitForm.resetFields([
+        'name',
+        'parent_id',
+        'grade_level_id',
+        'school_id',
+        'class_id',
+        'description',
+      ]);
+      await reloadEducationOrgUnits();
+      message.success('教育组织已创建');
+    } finally {
+      setCreatingUnit(false);
+    }
+  }, [orgUnitForm, reloadEducationOrgUnits]);
+
+  const handleAssignEducationRole = useCallback(async () => {
+    const values = await orgRoleForm.validateFields();
+    setAssigningRole(true);
+    try {
+      await assignAskCoreEducationRole({
+        better_auth_user_id: values.better_auth_user_id?.trim() || undefined,
+        org_unit_id: values.org_unit_id,
+        role: values.role,
+        student_id: values.student_id || undefined,
+        teacher_id: values.teacher_id || undefined,
+      });
+      orgRoleForm.resetFields(['better_auth_user_id', 'teacher_id', 'student_id']);
+      message.success('教育身份已分配');
+    } finally {
+      setAssigningRole(false);
+    }
+  }, [orgRoleForm]);
 
   const handleRoleChange = useCallback(
     async (memberId: string, role: AskCoreOrganizationRole) => {
@@ -448,6 +612,46 @@ const AskCoreOrganizationPage = memo(() => {
         : []),
     ],
     [canManage, handleRemoveMember, handleRoleChange],
+  );
+
+  const educationUnitColumns = useMemo<ColumnsType<AskCoreEducationOrgUnit>>(
+    () => [
+      {
+        dataIndex: 'name',
+        key: 'name',
+        render: (_, row) => (
+          <Space size={8}>
+            <Tag
+              color={row.unit_type === 'school' ? 'blue' : row.unit_type === 'grade' ? 'cyan' : 'green'}
+            >
+              {unitTypeLabels[row.unit_type]}
+            </Tag>
+            <span>{row.name}</span>
+          </Space>
+        ),
+        title: '名称',
+      },
+      {
+        dataIndex: 'parent_id',
+        key: 'parent_id',
+        render: (value?: number | null) => (value ? educationUnitNameById.get(value) || value : '顶层'),
+        title: '上级',
+        width: 220,
+      },
+      {
+        dataIndex: 'sort_order',
+        key: 'sort_order',
+        title: '排序',
+        width: 88,
+      },
+      {
+        dataIndex: 'description',
+        key: 'description',
+        render: (value?: string | null) => value || '--',
+        title: '备注',
+      },
+    ],
+    [educationUnitNameById],
   );
 
   const organizationOptions = useMemo(
@@ -615,6 +819,142 @@ const AskCoreOrganizationPage = memo(() => {
     );
   };
 
+  const renderEducationOrgPanel = () => (
+    <section className={styles.panel}>
+      <div className={styles.panelHeader}>
+        <Space size={8}>
+          <GitBranch size={15} />
+          <span>教育组织</span>
+        </Space>
+        <Tooltip title="刷新教育组织">
+          <Button
+            icon={<RefreshCw size={14} />}
+            loading={educationLoading}
+            size="small"
+            type="text"
+            onClick={reloadEducationOrgUnits}
+          />
+        </Tooltip>
+      </div>
+      <div className={styles.panelBody}>
+        {educationError && (
+          <Alert showIcon style={{ marginBottom: 14 }} title={educationError} type="error" />
+        )}
+        {educationPayload && !educationFeatureEnabled && !educationLoading && (
+          <Alert
+            showIcon
+            style={{ marginBottom: 14 }}
+            title="P39 组织层级未开启"
+            type="info"
+          />
+        )}
+        <div className={styles.table}>
+          <Table
+            columns={educationUnitColumns}
+            dataSource={educationUnits}
+            loading={educationLoading}
+            locale={{
+              emptyText: educationPayload
+                ? educationFeatureEnabled
+                  ? '暂无教育组织'
+                  : '功能未开启'
+                : '加载中',
+            }}
+            pagination={false}
+            rowKey="id"
+            size="middle"
+          />
+        </div>
+
+        {canManage && educationFeatureEnabled && (
+          <div className={styles.educationForms}>
+            <Form
+              className={styles.formBlock}
+              form={orgUnitForm}
+              initialValues={{ sort_order: 0, unit_type: 'school' }}
+              layout="vertical"
+            >
+              <Space size={8} style={{ marginBottom: 12 }}>
+                <Plus size={14} />
+                <span>新增层级</span>
+              </Space>
+              <Form.Item label="类型" name="unit_type" rules={[{ required: true }]}>
+                <Select options={unitTypeOptions} />
+              </Form.Item>
+              <Form.Item label="名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
+                <Input maxLength={200} />
+              </Form.Item>
+              <Form.Item label="上级" name="parent_id">
+                <Select
+                  allowClear
+                  disabled={(watchedUnitType || 'school') === 'school'}
+                  options={parentUnitOptions}
+                />
+              </Form.Item>
+              <Space align="start" wrap>
+                <Form.Item label="年级字典 ID" name="grade_level_id">
+                  <InputNumber min={1} />
+                </Form.Item>
+                <Form.Item label="学校 ID" name="school_id">
+                  <InputNumber min={1} />
+                </Form.Item>
+                <Form.Item label="班级 ID" name="class_id">
+                  <InputNumber min={1} />
+                </Form.Item>
+                <Form.Item label="排序" name="sort_order">
+                  <InputNumber />
+                </Form.Item>
+              </Space>
+              <Form.Item label="备注" name="description">
+                <Input.TextArea autoSize={{ maxRows: 3, minRows: 2 }} maxLength={2000} />
+              </Form.Item>
+              <Button
+                className={styles.primary}
+                icon={<Plus size={14} />}
+                loading={creatingUnit}
+                onClick={handleCreateEducationUnit}
+              >
+                创建层级
+              </Button>
+            </Form>
+
+            <Form className={styles.formBlock} form={orgRoleForm} layout="vertical">
+              <Space size={8} style={{ marginBottom: 12 }}>
+                <UserRoundPlus size={14} />
+                <span>分配身份</span>
+              </Space>
+              <Form.Item label="组织层级" name="org_unit_id" rules={[{ required: true, message: '请选择层级' }]}>
+                <Select options={educationUnitOptions} />
+              </Form.Item>
+              <Form.Item label="身份" name="role" rules={[{ required: true, message: '请选择身份' }]}>
+                <Select options={educationRoleOptions} />
+              </Form.Item>
+              <Form.Item label="Better Auth 用户 ID" name="better_auth_user_id">
+                <Input maxLength={200} />
+              </Form.Item>
+              <Space align="start" wrap>
+                <Form.Item label="教师 ID" name="teacher_id">
+                  <InputNumber min={1} />
+                </Form.Item>
+                <Form.Item label="学生 ID" name="student_id">
+                  <InputNumber min={1} />
+                </Form.Item>
+              </Space>
+              <Button
+                className={styles.primary}
+                icon={<UserRoundPlus size={14} />}
+                loading={assigningRole}
+                onClick={handleAssignEducationRole}
+              >
+                分配身份
+              </Button>
+            </Form>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+
   return (
     <div className={styles.page}>
       <div className={styles.body}>
@@ -648,6 +988,7 @@ const AskCoreOrganizationPage = memo(() => {
         ) : current ? (
           <div className={styles.view}>
             {renderMetaPanel()}
+            {renderEducationOrgPanel()}
             {renderInvitePanel()}
             <section className={styles.panel}>
               <div className={styles.panelHeader}>
