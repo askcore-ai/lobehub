@@ -11,7 +11,6 @@ import {
   InputNumber,
   message,
   Popconfirm,
-  Progress,
   Segmented,
   Select,
   Skeleton,
@@ -41,9 +40,11 @@ import {
 } from 'lucide-react';
 import {
   type DragEvent,
+  type Dispatch,
   type Key,
   memo,
   type ReactNode,
+  type SetStateAction,
   useCallback,
   useEffect,
   useMemo,
@@ -90,7 +91,6 @@ import {
   RESOURCE_FILTER_FIELDS,
   RESOURCE_FORM_FIELDS,
   RESOURCE_LABELS,
-  safeJsonParse,
   toFormState,
 } from './resourceMeta';
 import {
@@ -102,8 +102,10 @@ import {
   type AssignmentDetailResponse,
   type FileDescriptor,
   type JsonRecord,
-  type PluginInvocation,
+  type PluginArtifact,
   type ResourceKey,
+  type RunState,
+  type ScannerDevice,
   type StudentDetailResponse,
   type SubmissionDetailResponse,
 } from './types';
@@ -114,6 +116,21 @@ import {
 } from './utils';
 
 const PAGE_SIZE = 20;
+const OCR_INPUT_MODE_OPTIONS = [
+  { label: '上传图片', value: 'upload' },
+  { label: '调用扫描仪', value: 'scan' },
+] as const;
+const OCR_SCAN_MEDIA_OPTIONS = ['A3', 'A4', 'B4', 'B5'] as const;
+const PERSONALIZED_QUESTION_COUNT_DEFAULT = 3;
+const PERSONALIZED_QUESTION_COUNT_MIN = 1;
+const PERSONALIZED_QUESTION_COUNT_MAX = 10;
+const DEFAULT_PROVINCE_LABEL = '未设置省份';
+const DEFAULT_CITY_LABEL = '未设置城市';
+const DEFAULT_SCHOOL_LABEL = '未命名学校';
+const DEFAULT_CLASS_LABEL = '未命名班级';
+const DEFAULT_STUDENT_LABEL = '未命名学生';
+const TERMINAL_INVOCATION_STATES = new Set(['cancelled', 'failed', 'succeeded']);
+
 const lookupResources: Array<keyof LookupCollections> = [
   'schools',
   'teachers',
@@ -579,12 +596,25 @@ const displayNode = (value: unknown) => {
   return stringifyDetailValue(value);
 };
 
+const delay = (ms: number) =>
+  new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+
 const compactJsonRecord = (value: Record<string, unknown>): JsonRecord =>
   Object.fromEntries(
     Object.entries(value).filter(
       ([, entry]) => entry !== undefined && entry !== null && entry !== '',
     ),
   ) as JsonRecord;
+
+const createConfirmationId = () => {
+  const suffix =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `confirm-${suffix}`;
+};
 
 const asError = (reason: unknown) =>
   reason instanceof Error ? reason.message : String(reason || '操作失败');
@@ -602,6 +632,91 @@ const parseOptionalNumeric = (value: unknown) => {
   if (value === undefined || value === null || value === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+const positiveId = (value: unknown) => {
+  const parsed = Number(value || 0);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
+};
+
+const normalizeOcrInputType = (value: unknown): 'scan' | 'upload' =>
+  String(value || '').trim().toLowerCase() === 'scan' ? 'scan' : 'upload';
+
+const sortScopeLabels = (values: string[]) =>
+  Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean))).sort(
+    (left, right) => left.localeCompare(right, 'zh-Hans-CN'),
+  );
+
+const scopeText = (value: unknown, fallback: string) => {
+  const normalized = String(value || '').trim();
+  return normalized || fallback;
+};
+
+const normalizePersonalizedQuestionCount = (value: unknown) => {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) return PERSONALIZED_QUESTION_COUNT_DEFAULT;
+  return Math.min(
+    PERSONALIZED_QUESTION_COUNT_MAX,
+    Math.max(PERSONALIZED_QUESTION_COUNT_MIN, parsed),
+  );
+};
+
+const parsePersonalizedQuestionCountOrThrow = (value: unknown) => {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) {
+    throw new Error('个性化作业题目数量必须是整数（1-10）。');
+  }
+  if (parsed < PERSONALIZED_QUESTION_COUNT_MIN || parsed > PERSONALIZED_QUESTION_COUNT_MAX) {
+    throw new Error('个性化作业题目数量必须在 1-10 之间。');
+  }
+  return parsed;
+};
+
+const toIsoDateTime = (value: string) => {
+  const raw = value.trim();
+  if (!raw) return '';
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) throw new Error(`时间格式无效：${raw}`);
+  return parsed.toISOString();
+};
+
+const emptyRunState = (): RunState => ({
+  artifacts: [],
+  busy: false,
+  error: null,
+  invocation: null,
+  notice: null,
+  tracking: null,
+});
+
+const isTerminalInvocationState = (value: unknown) =>
+  TERMINAL_INVOCATION_STATES.has(String(value || '').toLowerCase());
+
+const extractDraftArtifactId = (artifacts: PluginArtifact[]) => {
+  const artifact = artifacts.find((item) => item.type === 'assignment.draft');
+  return artifact?.artifact_id ? String(artifact.artifact_id) : null;
+};
+
+const extractPublishedAssignmentId = (artifacts: PluginArtifact[]) => {
+  const artifact = artifacts.find((item) => item.type === 'assignment.publish.result');
+  const assignmentId = Number(artifact?.content?.assignment_id || 0) || 0;
+  return assignmentId > 0 ? assignmentId : null;
+};
+
+const artifactTitle = (artifact: PluginArtifact) =>
+  String(artifact.title || artifact.summary || artifact.type || artifact.artifact_id);
+
+const runNoticeForUploadProgress = (prefix: string) => (progress: {
+  completed: number;
+  fileName: string;
+  index: number;
+  phase: string;
+  total: number;
+}) => {
+  if (progress.phase === 'uploaded') {
+    return `${prefix} ${progress.completed}/${progress.total} 张图片，正在继续处理…`;
+  }
+  return `${prefix} ${progress.completed}/${progress.total}：${progress.fileName || `第 ${progress.index + 1} 张`}`;
 };
 
 const getRecordId = (resource: ResourceKey, record: AskCoreWorkbenchRecord) => {
@@ -836,6 +951,355 @@ const FileListPanel = ({
         </div>
       ))}
     </Space>
+  );
+};
+
+type ScopeNode = {
+  city?: string;
+  classId?: number | null;
+  id: number;
+  name: string;
+  province?: string;
+  schoolId?: number | null;
+};
+
+const selectOptionsFromLabels = (values: string[]) =>
+  values.map((value) => ({ label: value, value }));
+
+const PublishScopeSelector = ({
+  classIds,
+  lookups,
+  onClassIdsChange,
+  onStudentIdsChange,
+  studentIds,
+}: {
+  classIds: number[];
+  lookups: LookupCollections;
+  onClassIdsChange: (value: number[]) => void;
+  onStudentIdsChange: (value: number[]) => void;
+  studentIds: number[];
+}) => {
+  const schools = useMemo<ScopeNode[]>(
+    () =>
+      lookups.schools
+        .map((item) => {
+          const id = positiveId(item.school_id || item.id);
+          if (!id) return null;
+          return {
+            city: scopeText(item.city, DEFAULT_CITY_LABEL),
+            id,
+            name: scopeText(item.name, `${DEFAULT_SCHOOL_LABEL} ${id}`),
+            province: scopeText(item.province, DEFAULT_PROVINCE_LABEL),
+          };
+        })
+        .filter((item): item is ScopeNode => Boolean(item)),
+    [lookups.schools],
+  );
+
+  const classes = useMemo<ScopeNode[]>(
+    () =>
+      lookups.classes
+        .map((item) => {
+          const id = positiveId(item.class_id || item.id);
+          if (!id) return null;
+          return {
+            id,
+            name: scopeText(item.name, `${DEFAULT_CLASS_LABEL} ${id}`),
+            schoolId: positiveId(item.school_id) || null,
+          };
+        })
+        .filter((item): item is ScopeNode => Boolean(item)),
+    [lookups.classes],
+  );
+
+  const students = useMemo<ScopeNode[]>(
+    () =>
+      lookups.students
+        .map((item) => {
+          const id = positiveId(item.student_id || item.id);
+          if (!id) return null;
+          return {
+            classId: positiveId(item.class_id) || null,
+            id,
+            name: scopeText(item.name || item.student_number, `${DEFAULT_STUDENT_LABEL} ${id}`),
+          };
+        })
+        .filter((item): item is ScopeNode => Boolean(item)),
+    [lookups.students],
+  );
+
+  const schoolNameById = useMemo(
+    () => new Map(schools.map((item) => [item.id, item.name])),
+    [schools],
+  );
+  const classNameById = useMemo(
+    () => new Map(classes.map((item) => [item.id, item.name])),
+    [classes],
+  );
+  const classSchoolIdById = useMemo(
+    () => new Map(classes.map((item) => [item.id, item.schoolId || null])),
+    [classes],
+  );
+  const [classProvince, setClassProvince] = useState('');
+  const [classCity, setClassCity] = useState('');
+  const [classSchoolId, setClassSchoolId] = useState<number | null>(null);
+  const [studentProvince, setStudentProvince] = useState('');
+  const [studentCity, setStudentCity] = useState('');
+  const [studentSchoolId, setStudentSchoolId] = useState<number | null>(null);
+  const [studentClassId, setStudentClassId] = useState<number | null>(null);
+
+  const classProvinceOptions = useMemo(
+    () => selectOptionsFromLabels(sortScopeLabels(schools.map((item) => item.province || ''))),
+    [schools],
+  );
+  const classCityOptions = useMemo(
+    () =>
+      selectOptionsFromLabels(
+        sortScopeLabels(
+          schools
+            .filter((item) => !classProvince || item.province === classProvince)
+            .map((item) => item.city || ''),
+        ),
+      ),
+    [classProvince, schools],
+  );
+  const classSchoolOptions = useMemo(
+    () =>
+      schools
+        .filter(
+          (item) =>
+            (!classProvince || item.province === classProvince) &&
+            (!classCity || item.city === classCity),
+        )
+        .map((item) => ({ label: `${item.name}（ID ${item.id}）`, value: item.id })),
+    [classCity, classProvince, schools],
+  );
+  const classScopedSchoolIds = useMemo(
+    () => new Set(classSchoolOptions.map((option) => option.value)),
+    [classSchoolOptions],
+  );
+  const classLeafOptions = useMemo(
+    () =>
+      classes
+        .filter((item) => {
+          if (classSchoolId) return item.schoolId === classSchoolId;
+          if (classProvince || classCity) {
+            return item.schoolId != null && classScopedSchoolIds.has(item.schoolId);
+          }
+          return true;
+        })
+        .map((item) => ({
+          label: `${item.name}（ID ${item.id} · ${
+            item.schoolId ? schoolNameById.get(item.schoolId) || DEFAULT_SCHOOL_LABEL : '未绑定学校'
+          }）`,
+          value: item.id,
+        })),
+    [classCity, classProvince, classSchoolId, classScopedSchoolIds, classes, schoolNameById],
+  );
+
+  useEffect(() => {
+    if (classCity && !classCityOptions.some((option) => option.value === classCity)) {
+      setClassCity('');
+    }
+  }, [classCity, classCityOptions]);
+
+  useEffect(() => {
+    if (classSchoolId && !classSchoolOptions.some((option) => option.value === classSchoolId)) {
+      setClassSchoolId(null);
+    }
+  }, [classSchoolId, classSchoolOptions]);
+
+  const studentProvinceOptions = useMemo(
+    () => selectOptionsFromLabels(sortScopeLabels(schools.map((item) => item.province || ''))),
+    [schools],
+  );
+  const studentCityOptions = useMemo(
+    () =>
+      selectOptionsFromLabels(
+        sortScopeLabels(
+          schools
+            .filter((item) => !studentProvince || item.province === studentProvince)
+            .map((item) => item.city || ''),
+        ),
+      ),
+    [schools, studentProvince],
+  );
+  const studentSchoolOptions = useMemo(
+    () =>
+      schools
+        .filter(
+          (item) =>
+            (!studentProvince || item.province === studentProvince) &&
+            (!studentCity || item.city === studentCity),
+        )
+        .map((item) => ({ label: `${item.name}（ID ${item.id}）`, value: item.id })),
+    [schools, studentCity, studentProvince],
+  );
+  const studentClassOptions = useMemo(() => {
+    const scopedSchoolIds = new Set(studentSchoolOptions.map((option) => option.value));
+    return classes
+      .filter((item) => {
+        if (studentClassId && item.id === studentClassId) return true;
+        if (studentSchoolId) return item.schoolId === studentSchoolId;
+        if (studentProvince || studentCity) {
+          return item.schoolId != null && scopedSchoolIds.has(item.schoolId);
+        }
+        return true;
+      })
+      .map((item) => ({
+        label: `${item.name}（ID ${item.id} · ${
+          item.schoolId ? schoolNameById.get(item.schoolId) || DEFAULT_SCHOOL_LABEL : '未绑定学校'
+        }）`,
+        value: item.id,
+      }));
+  }, [
+    classes,
+    schoolNameById,
+    studentCity,
+    studentClassId,
+    studentProvince,
+    studentSchoolId,
+    studentSchoolOptions,
+  ]);
+  const studentScopedClassIds = useMemo(
+    () => new Set(studentClassOptions.map((option) => option.value)),
+    [studentClassOptions],
+  );
+  const studentLeafOptions = useMemo(
+    () =>
+      students
+        .filter((item) => {
+          if (studentClassId) return item.classId === studentClassId;
+          if (studentSchoolId || studentProvince || studentCity) {
+            return item.classId != null && studentScopedClassIds.has(item.classId);
+          }
+          return true;
+        })
+        .map((item) => {
+          const className = item.classId
+            ? classNameById.get(item.classId) || DEFAULT_CLASS_LABEL
+            : '未绑定班级';
+          const schoolId = item.classId ? classSchoolIdById.get(item.classId) : null;
+          const schoolName = schoolId
+            ? schoolNameById.get(schoolId) || DEFAULT_SCHOOL_LABEL
+            : '未绑定学校';
+          return {
+            label: `${item.name}（ID ${item.id} · ${className} · ${schoolName}）`,
+            value: item.id,
+          };
+        }),
+    [
+      classNameById,
+      classSchoolIdById,
+      schoolNameById,
+      studentCity,
+      studentClassId,
+      studentProvince,
+      studentSchoolId,
+      studentScopedClassIds,
+      students,
+    ],
+  );
+
+  useEffect(() => {
+    if (studentCity && !studentCityOptions.some((option) => option.value === studentCity)) {
+      setStudentCity('');
+    }
+  }, [studentCity, studentCityOptions]);
+
+  useEffect(() => {
+    if (
+      studentSchoolId &&
+      !studentSchoolOptions.some((option) => option.value === studentSchoolId)
+    ) {
+      setStudentSchoolId(null);
+    }
+  }, [studentSchoolId, studentSchoolOptions]);
+
+  useEffect(() => {
+    if (studentClassId && !studentClassOptions.some((option) => option.value === studentClassId)) {
+      setStudentClassId(null);
+    }
+  }, [studentClassId, studentClassOptions]);
+
+  return (
+    <div className={styles.editorGrid}>
+      <div className={styles.previewBox}>
+        <h4 className={styles.panelTitle}>发布班级</h4>
+        <div className={styles.stack}>
+          <Select
+            allowClear
+            options={classProvinceOptions}
+            placeholder="全部省份"
+            value={classProvince || undefined}
+            onChange={(value) => setClassProvince(value || '')}
+          />
+          <Select
+            allowClear
+            options={classCityOptions}
+            placeholder="全部城市"
+            value={classCity || undefined}
+            onChange={(value) => setClassCity(value || '')}
+          />
+          <Select
+            allowClear
+            options={classSchoolOptions}
+            placeholder="全部学校"
+            value={classSchoolId || undefined}
+            onChange={(value) => setClassSchoolId(value || null)}
+          />
+          <Select
+            mode="multiple"
+            options={classLeafOptions}
+            placeholder="选择班级"
+            value={classIds}
+            onChange={(value) => onClassIdsChange(value.map(Number).filter(Boolean))}
+          />
+          <div className={styles.muted}>已选 {classIds.length} 个班级。</div>
+        </div>
+      </div>
+      <div className={styles.previewBox}>
+        <h4 className={styles.panelTitle}>发布学生</h4>
+        <div className={styles.stack}>
+          <Select
+            allowClear
+            options={studentProvinceOptions}
+            placeholder="全部省份"
+            value={studentProvince || undefined}
+            onChange={(value) => setStudentProvince(value || '')}
+          />
+          <Select
+            allowClear
+            options={studentCityOptions}
+            placeholder="全部城市"
+            value={studentCity || undefined}
+            onChange={(value) => setStudentCity(value || '')}
+          />
+          <Select
+            allowClear
+            options={studentSchoolOptions}
+            placeholder="全部学校"
+            value={studentSchoolId || undefined}
+            onChange={(value) => setStudentSchoolId(value || null)}
+          />
+          <Select
+            allowClear
+            options={studentClassOptions}
+            placeholder="全部班级"
+            value={studentClassId || undefined}
+            onChange={(value) => setStudentClassId(value || null)}
+          />
+          <Select
+            mode="multiple"
+            options={studentLeafOptions}
+            placeholder="选择学生"
+            value={studentIds}
+            onChange={(value) => onStudentIdsChange(value.map(Number).filter(Boolean))}
+          />
+          <div className={styles.muted}>已选 {studentIds.length} 个学生。</div>
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -1300,38 +1764,293 @@ const ImageReferenceRail = ({
   );
 };
 
+type RunStateSetter = Dispatch<SetStateAction<RunState>>;
+
+const loadInvocationArtifacts = async (
+  client: AskCoreWorkbenchApiClient,
+  invocationId: string,
+) => {
+  const response = await client.listInvocationArtifacts(invocationId);
+  return Promise.all(
+    response.artifacts.map(async (summary) => {
+      try {
+        return await client.getArtifact(summary.artifact_id);
+      } catch {
+        return {
+          artifact_id: summary.artifact_id,
+          content: {},
+          created_at: summary.created_at,
+          redaction: {},
+          references: [],
+          run_id: summary.run_id,
+          schema_version: summary.schema_version,
+          summary: summary.summary,
+          title: summary.title,
+          type: summary.type,
+        } satisfies PluginArtifact;
+      }
+    }),
+  );
+};
+
+const waitForInvocation = async ({
+  client,
+  invocationId,
+  setRun,
+}: {
+  client: AskCoreWorkbenchApiClient;
+  invocationId: string;
+  setRun: RunStateSetter;
+}) => {
+  let lastRun = emptyRunState();
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const invocation = await client.getInvocation(invocationId);
+    const artifacts = await loadInvocationArtifacts(client, invocationId).catch(() => []);
+    const terminal = isTerminalInvocationState(invocation.state);
+    lastRun = {
+      artifacts,
+      busy: !terminal,
+      error:
+        terminal && String(invocation.state).toLowerCase() === 'failed'
+          ? invocation.failure_reason || '任务失败'
+          : null,
+      invocation,
+      notice: terminal ? '任务已结束。' : invocation.progress_stage || '任务正在运行…',
+      tracking: 'polling',
+    };
+    setRun(lastRun);
+    if (terminal) return lastRun;
+    await delay(1500);
+  }
+
+  const degraded = {
+    ...lastRun,
+    busy: false,
+    notice: '任务仍在后台运行，可稍后刷新查看结果。',
+    tracking: 'degraded',
+  } satisfies RunState;
+  setRun(degraded);
+  return degraded;
+};
+
+const autoPublishDraft = async ({
+  client,
+  draftArtifactId,
+  onPublishedAssignment,
+  personalized,
+  setRun,
+  target,
+}: {
+  client: AskCoreWorkbenchApiClient;
+  draftArtifactId: string;
+  onPublishedAssignment: (assignmentId: number) => void;
+  personalized: { enabled: boolean; questionCount: number };
+  setRun: RunStateSetter;
+  target: { classIds: number[]; studentIds: number[] };
+}) => {
+  setRun((current) => ({
+    ...current,
+    busy: true,
+    error: null,
+    notice: '草稿已生成，正在自动发布作业…',
+  }));
+  const publish = await client.invokeAction(
+    'assignment.draft.publish',
+    {
+      draft_artifact_id: draftArtifactId,
+      personalized: {
+        enabled: personalized.enabled,
+        question_count: personalized.questionCount,
+      },
+      target: {
+        class_ids: target.classIds,
+        student_ids: target.studentIds,
+      },
+    },
+    createConfirmationId(),
+  );
+  const finalRun = await waitForInvocation({
+    client,
+    invocationId: publish.invocation_id,
+    setRun,
+  });
+  const assignmentId = extractPublishedAssignmentId(finalRun.artifacts);
+  if (!assignmentId) throw new Error('发布完成，但未返回 assignment_id。');
+  message.success('作业已创建并发布');
+  onPublishedAssignment(assignmentId);
+};
+
+const BatchResultTable = ({
+  onOpenSubmission,
+  rows,
+}: {
+  onOpenSubmission?: (submissionId: number) => void;
+  rows: JsonRecord[];
+}) => (
+  <Table
+    dataSource={rows}
+    pagination={false}
+    rowKey={(row, index) => String(row.submission_id || row.id || index)}
+    size="small"
+    columns={[
+      {
+        key: 'student',
+        render: (_, row) =>
+          String(row.student_name || row.student_number || row.assignment_student_id || '--'),
+        title: '学生',
+      },
+      {
+        key: 'submission',
+        render: (_, row) => {
+          const submissionId = positiveId(row.submission_id || row.id);
+          return submissionId ? (
+            <Button
+              className={styles.secondary}
+              size="small"
+              onClick={() => onOpenSubmission?.(submissionId)}
+            >
+              打开提交 {submissionId}
+            </Button>
+          ) : (
+            '--'
+          );
+        },
+        title: '提交',
+        width: 150,
+      },
+      {
+        key: 'reason',
+        render: (_, row) => String(row.reason || row.error || row.status || '--'),
+        title: '说明',
+      },
+    ]}
+  />
+);
+
 const RunStatusPanel = ({
-  invocation,
+  onOpenSubmission,
+  run,
   title = '运行状态',
 }: {
-  invocation: PluginInvocation | null;
+  onOpenSubmission?: (submissionId: number) => void;
+  run: RunState;
   title?: string;
-}) => (
-  <div className={styles.panel}>
-    <h3 className={styles.panelTitle}>{title}</h3>
-    {invocation ? (
-      <Descriptions
-        column={2}
-        size="small"
-        items={[
-          { children: invocation.invocation_id, label: 'Invocation' },
-          {
-            children: formatCellValue(invocation.state, {
-              dataIndex: 'state',
-              isStatus: true,
-              title: '状态',
-            }),
-            label: '状态',
-          },
-          { children: invocation.progress_stage || '--', label: '阶段' },
-          { children: invocation.failure_reason || '--', label: '错误' },
-        ]}
-      />
-    ) : (
-      <Empty description="尚未开始运行" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-    )}
-  </div>
-);
+}) => {
+  const invocation = run.invocation;
+  const batchArtifact = run.artifacts.find((artifact) => artifact.type === 'submission.ocr.batch.result');
+  const batchContent = batchArtifact?.content || {};
+  const autoBound = readRecordArray(batchContent.auto_bound);
+  const needsBinding = readRecordArray(batchContent.needs_binding);
+  const failed = readRecordArray(batchContent.failed);
+
+  return (
+    <div className={styles.stack}>
+      <div className={styles.panel}>
+        <div className={styles.actionBar}>
+          <h3 className={styles.panelTitle}>{title}</h3>
+          {run.busy ? <Tag color="blue">运行中</Tag> : null}
+        </div>
+        {invocation ? (
+          <Descriptions
+            column={2}
+            size="small"
+            items={[
+              { children: invocation.invocation_id, label: 'Invocation' },
+              {
+                children: formatCellValue(invocation.state, {
+                  dataIndex: 'state',
+                  isStatus: true,
+                  title: '状态',
+                }),
+                label: '状态',
+              },
+              { children: invocation.progress_stage || run.notice || '--', label: '阶段' },
+              { children: invocation.failure_reason || run.error || '--', label: '错误' },
+              { children: run.tracking || '--', label: '跟踪方式' },
+              { children: String(run.artifacts.length), label: '结果数' },
+            ]}
+          />
+        ) : (
+          <Empty description="尚未开始运行" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        )}
+        {run.notice && !invocation ? <Alert showIcon message={run.notice} type="info" /> : null}
+        {run.error && !invocation ? <Alert showIcon message={run.error} type="error" /> : null}
+      </div>
+
+      {run.artifacts.length ? (
+        <div className={styles.panel}>
+          <h3 className={styles.panelTitle}>运行结果</h3>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            {run.artifacts.map((artifact) => (
+              <div className={styles.actionBar} key={artifact.artifact_id}>
+                <Space wrap>
+                  <Tag bordered={false}>{artifact.type}</Tag>
+                  <span>{artifactTitle(artifact)}</span>
+                </Space>
+                <span className={styles.muted}>{artifact.artifact_id}</span>
+              </div>
+            ))}
+          </Space>
+        </div>
+      ) : null}
+
+      {batchArtifact ? (
+        <div className={styles.panel}>
+          <h3 className={styles.panelTitle}>批次结果</h3>
+          <Descriptions
+            column={2}
+            size="small"
+            items={[
+              {
+                children: String(batchContent.created_count || autoBound.length + needsBinding.length),
+                label: '已创建',
+              },
+              { children: String(autoBound.length), label: '自动绑定' },
+              { children: String(needsBinding.length), label: '待人工处理' },
+              { children: String(batchContent.graded_count || 0), label: '已批改' },
+              { children: String(batchContent.explained_count || 0), label: '已生成讲解' },
+              {
+                children: String(batchContent.ocr_failed_count || failed.length),
+                label: 'OCR 失败',
+              },
+            ]}
+          />
+          <Tabs
+            items={[
+              {
+                children: autoBound.length ? (
+                  <BatchResultTable onOpenSubmission={onOpenSubmission} rows={autoBound} />
+                ) : (
+                  <Empty description="暂无自动绑定提交" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                ),
+                key: 'auto_bound',
+                label: `自动绑定 (${autoBound.length})`,
+              },
+              {
+                children: needsBinding.length ? (
+                  <BatchResultTable onOpenSubmission={onOpenSubmission} rows={needsBinding} />
+                ) : (
+                  <Empty description="暂无待人工处理提交" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                ),
+                key: 'needs_binding',
+                label: `待人工处理 (${needsBinding.length})`,
+              },
+              {
+                children: failed.length ? (
+                  <BatchResultTable rows={failed} />
+                ) : (
+                  <Empty description="暂无失败项" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                ),
+                key: 'failed',
+                label: `失败 (${failed.length})`,
+              },
+            ]}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+};
 
 type AssignmentDetailQuestionItem = {
   assignmentQuestionId: number | null;
@@ -3102,178 +3821,138 @@ const AssignmentManualCreateView = ({
   client,
   lookups,
   onBack,
+  onOpenAssignment,
 }: {
   client: AskCoreWorkbenchApiClient;
   lookups: LookupCollections;
   onBack: () => void;
+  onOpenAssignment: (assignmentId: number) => void;
 }) => {
   const [form] = Form.useForm();
-  const [invocation, setInvocation] = useState<PluginInvocation | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [classIds, setClassIds] = useState<number[]>([]);
+  const [studentIds, setStudentIds] = useState<number[]>([]);
+  const [personalizedEnabled, setPersonalizedEnabled] = useState(true);
+  const [personalizedQuestionCount, setPersonalizedQuestionCount] = useState(
+    PERSONALIZED_QUESTION_COUNT_DEFAULT,
+  );
+  const [run, setRun] = useState<RunState>(emptyRunState());
 
   return (
     <div className={styles.view}>
       <DetailHeader
-        subtitle="使用插件 UI 的 durable action 创建草稿并发布。"
+        subtitle="创建草稿后自动发布，并进入作业详情。"
         title="手动创建作业"
         onBack={onBack}
       />
-      <div className={styles.formPanel}>
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={async (values) => {
-            setBusy(true);
-            try {
-              const result = await client.invokeAction('assignment.draft.create_manual', {
-                draft: {
+      <div className={styles.splitWorkspace}>
+        <div className={styles.formPanel}>
+          <Form
+            form={form}
+            layout="vertical"
+            onFinish={async (values) => {
+              setRun({ ...emptyRunState(), busy: true, notice: '正在创建作业草稿…' });
+              try {
+                const questionCount =
+                  parsePersonalizedQuestionCountOrThrow(personalizedQuestionCount);
+                const result = await client.invokeAction('assignment.draft.create_manual', {
+                  due_date: values.due_date ? toIsoDateTime(String(values.due_date)) : undefined,
                   grade_id: Number(values.grade_id),
-                  questions: safeJsonParse(values.questions_json || '{"questions":[]}', {
-                    questions: [],
-                  }),
                   subject_id: Number(values.subject_id),
-                  title: values.title,
-                },
-              });
-              const next = await client.getInvocation(result.invocation_id);
-              setInvocation(next);
-              message.success('手动作业创建任务已提交');
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <div className={styles.fieldGrid}>
-            <Form.Item label="标题" name="title" rules={[{ required: true }]}>
-              <Input />
-            </Form.Item>
-            <Form.Item label="学科" name="subject_id" rules={[{ required: true }]}>
-              <Select
-                options={fieldOptions(
-                  { key: 'subject_id', kind: 'select', label: '学科', optionsFrom: 'subjects' },
-                  lookups,
-                )}
-              />
-            </Form.Item>
-            <Form.Item label="年级" name="grade_id" rules={[{ required: true }]}>
-              <Select
-                options={fieldOptions(
-                  { key: 'grade_id', kind: 'select', label: '年级', optionsFrom: 'grades' },
-                  lookups,
-                )}
-              />
-            </Form.Item>
-          </div>
-          <Form.Item
-            extra="保留插件 UI 的 JSON 草稿入口，可粘贴 questions 数组。"
-            label="题目 JSON"
-            name="questions_json"
+                  title: String(values.title || '').trim(),
+                });
+                const finalRun = await waitForInvocation({
+                  client,
+                  invocationId: result.invocation_id,
+                  setRun,
+                });
+                const draftArtifactId = extractDraftArtifactId(finalRun.artifacts);
+                if (!draftArtifactId) throw new Error('草稿创建完成，但未返回 draft artifact。');
+                await autoPublishDraft({
+                  client,
+                  draftArtifactId,
+                  onPublishedAssignment: onOpenAssignment,
+                  personalized: {
+                    enabled: personalizedEnabled,
+                    questionCount,
+                  },
+                  setRun,
+                  target: { classIds, studentIds },
+                });
+              } catch (reason) {
+                const error = asError(reason);
+                setRun((current) => ({ ...current, busy: false, error, notice: null }));
+              }
+            }}
           >
-            <Input.TextArea placeholder='{"questions":[]}' rows={8} />
-          </Form.Item>
-          <Button className={styles.primary} htmlType="submit" loading={busy}>
-            创建草稿
-          </Button>
-        </Form>
-      </div>
-      <RunStatusPanel invocation={invocation} />
-    </div>
-  );
-};
+            <div className={styles.fieldGrid}>
+              <Form.Item label="标题" name="title" rules={[{ required: true }]}>
+                <Input placeholder="例如 高一物理每日练习" />
+              </Form.Item>
+              <Form.Item label="科目" name="subject_id" rules={[{ required: true }]}>
+                <Select
+                  options={fieldOptions(
+                    { key: 'subject_id', kind: 'select', label: '科目', optionsFrom: 'subjects' },
+                    lookups,
+                  )}
+                  placeholder="选择科目"
+                />
+              </Form.Item>
+              <Form.Item label="年级" name="grade_id" rules={[{ required: true }]}>
+                <Select
+                  options={fieldOptions(
+                    { key: 'grade_id', kind: 'select', label: '年级', optionsFrom: 'grades' },
+                    lookups,
+                  )}
+                  placeholder="选择年级"
+                />
+              </Form.Item>
+              <Form.Item label="截止时间" name="due_date">
+                <Input type="datetime-local" />
+              </Form.Item>
+            </div>
 
-const UploadActionView = ({
-  action,
-  client,
-  extraFields,
-  onBack,
-  title,
-}: {
-  action: 'assignment.draft.create_from_ocr' | 'submission.create_from_ocr';
-  client: AskCoreWorkbenchApiClient;
-  extraFields?: ReactNode;
-  onBack: () => void;
-  title: string;
-}) => {
-  const [form] = Form.useForm();
-  const [files, setFiles] = useState<File[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [invocation, setInvocation] = useState<PluginInvocation | null>(null);
+            <div className={styles.stack}>
+              <h3 className={styles.panelTitle}>发布范围</h3>
+              <PublishScopeSelector
+                classIds={classIds}
+                lookups={lookups}
+                studentIds={studentIds}
+                onClassIdsChange={setClassIds}
+                onStudentIdsChange={setStudentIds}
+              />
+              <div className={styles.previewBox}>
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <Checkbox
+                    checked={personalizedEnabled}
+                    onChange={(event) => setPersonalizedEnabled(event.target.checked)}
+                  >
+                    错题变式训练
+                  </Checkbox>
+                  <label>
+                    <div className={styles.muted}>个性化作业题目数量</div>
+                    <InputNumber
+                      disabled={!personalizedEnabled}
+                      max={PERSONALIZED_QUESTION_COUNT_MAX}
+                      min={PERSONALIZED_QUESTION_COUNT_MIN}
+                      value={personalizedQuestionCount}
+                      onChange={(value) =>
+                        setPersonalizedQuestionCount(
+                          normalizePersonalizedQuestionCount(value ?? PERSONALIZED_QUESTION_COUNT_DEFAULT),
+                        )
+                      }
+                    />
+                  </label>
+                </Space>
+              </div>
+            </div>
 
-  return (
-    <div className={styles.view}>
-      <DetailHeader
-        subtitle="上传图片后复用插件 UI 的 OCR durable action。"
-        title={title}
-        onBack={onBack}
-      />
-      <div className={styles.formPanel}>
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={async (values) => {
-            if (!files.length) {
-              message.warning('请先选择扫描图片');
-              return;
-            }
-            setBusy(true);
-            setProgress(0);
-            try {
-              const refs = await client.uploadScanFiles(files, {
-                onProgress: (item) => {
-                  setProgress(Math.round((item.completed / Math.max(1, item.total)) * 100));
-                },
-              });
-              const params: JsonRecord =
-                action === 'assignment.draft.create_from_ocr'
-                  ? compactJsonRecord({
-                      grade_id: values.grade_id ? Number(values.grade_id) : undefined,
-                      scan_refs: refs,
-                      subject_id: values.subject_id ? Number(values.subject_id) : undefined,
-                      title: values.title,
-                    })
-                  : compactJsonRecord({
-                      assignment_id: Number(values.assignment_id),
-                      pages_per_student: values.pages_per_student
-                        ? Number(values.pages_per_student)
-                        : undefined,
-                      scan_refs: refs,
-                    });
-              const result = await client.invokeAction(action, params);
-              const next = await client.getInvocation(result.invocation_id);
-              setInvocation(next);
-              setProgress(100);
-              message.success('OCR 任务已提交');
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          {extraFields}
-          <Form.Item label="扫描图片">
-            <Upload
-              multiple
-              accept="image/*"
-              beforeUpload={() => false}
-              onChange={(info) => {
-                setFiles(info.fileList.map((file) => file.originFileObj).filter(Boolean) as File[]);
-              }}
-            >
-              <Button icon={<UploadCloud size={14} />}>选择图片</Button>
-            </Upload>
-          </Form.Item>
-          {busy || progress > 0 ? <Progress percent={progress} /> : null}
-          <Button
-            className={styles.primary}
-            htmlType="submit"
-            icon={<FileScan size={14} />}
-            loading={busy}
-          >
-            开始 OCR
-          </Button>
-        </Form>
+            <Button className={styles.primary} htmlType="submit" loading={run.busy}>
+              创建并发布作业
+            </Button>
+          </Form>
+        </div>
+        <RunStatusPanel run={run} />
       </div>
-      <RunStatusPanel invocation={invocation} />
     </div>
   );
 };
@@ -3282,68 +3961,741 @@ const AssignmentOcrCreateView = ({
   client,
   lookups,
   onBack,
+  onOpenAssignment,
 }: {
   client: AskCoreWorkbenchApiClient;
   lookups: LookupCollections;
   onBack: () => void;
-}) => (
-  <UploadActionView
-    action="assignment.draft.create_from_ocr"
-    client={client}
-    title="OCR 创建作业"
-    extraFields={
-      <div className={styles.fieldGrid}>
-        <Form.Item label="标题" name="title">
-          <Input />
-        </Form.Item>
-        <Form.Item label="学科" name="subject_id">
-          <Select
-            allowClear
-            options={fieldOptions(
-              { key: 'subject_id', kind: 'select', label: '学科', optionsFrom: 'subjects' },
-              lookups,
-            )}
-          />
-        </Form.Item>
-        <Form.Item label="年级" name="grade_id">
-          <Select
-            allowClear
-            options={fieldOptions(
-              { key: 'grade_id', kind: 'select', label: '年级', optionsFrom: 'grades' },
-              lookups,
-            )}
-          />
-        </Form.Item>
+  onOpenAssignment: (assignmentId: number) => void;
+}) => {
+  const [form] = Form.useForm();
+  const [inputType, setInputType] = useState<'scan' | 'upload'>('upload');
+  const [files, setFiles] = useState<File[]>([]);
+  const [scanners, setScanners] = useState<ScannerDevice[]>([]);
+  const [scannersLoading, setScannersLoading] = useState(false);
+  const [scannersError, setScannersError] = useState<string | null>(null);
+  const [scanScannerId, setScanScannerId] = useState<string>('');
+  const [scanMedia, setScanMedia] = useState<string>('A4');
+  const [scanDuplex, setScanDuplex] = useState(true);
+  const [scanPages, setScanPages] = useState<number | null>(null);
+  const [classIds, setClassIds] = useState<number[]>([]);
+  const [studentIds, setStudentIds] = useState<number[]>([]);
+  const [personalizedEnabled, setPersonalizedEnabled] = useState(true);
+  const [personalizedQuestionCount, setPersonalizedQuestionCount] = useState(
+    PERSONALIZED_QUESTION_COUNT_DEFAULT,
+  );
+  const [run, setRun] = useState<RunState>(emptyRunState());
+
+  useEffect(() => {
+    let cancelled = false;
+    setScannersLoading(true);
+    setScannersError(null);
+    client
+      .listScannerDevices()
+      .then((response) => {
+        if (cancelled) return;
+        setScanners(response.items || []);
+        setScanScannerId(response.default_scanner_id || response.items[0]?.scanner_id || '');
+        setScannersLoading(false);
+      })
+      .catch((reason) => {
+        if (cancelled) return;
+        setScanners([]);
+        setScannersError(asError(reason));
+        setScannersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
+
+  return (
+    <div className={styles.view}>
+      <DetailHeader
+        subtitle="上传扫描件或调用在线扫描仪，生成作业草稿后自动发布。"
+        title="OCR 创建作业"
+        onBack={onBack}
+      />
+      <div className={styles.splitWorkspace}>
+        <div className={styles.formPanel}>
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={async (values) => {
+            const subjectId = Number(values.subject_id || 0);
+            const gradeId = Number(values.grade_id || 0);
+            if (!subjectId || !gradeId) {
+              message.warning('请先选择科目和年级');
+              return;
+            }
+            if (inputType === 'upload' && !files.length) {
+              message.warning('请先选择扫描图片');
+              return;
+            }
+            if (inputType === 'scan' && !scanScannerId) {
+              message.warning('请先选择在线扫描仪');
+              return;
+            }
+            setRun({
+              ...emptyRunState(),
+              busy: true,
+              notice:
+                inputType === 'upload'
+                  ? `正在上传扫描件 0/${files.length}…`
+                  : '正在调用在线扫描仪并启动 OCR…',
+            });
+            try {
+              const questionCount =
+                parsePersonalizedQuestionCountOrThrow(personalizedQuestionCount);
+              const result =
+                inputType === 'upload'
+                  ? await client
+                      .uploadScanFiles(files, {
+                        onProgress: (progress) =>
+                          setRun((current) => ({
+                            ...current,
+                            busy: true,
+                            error: null,
+                            notice: runNoticeForUploadProgress('正在上传扫描件')(progress),
+                          })),
+                      })
+                      .then((scanRefs) =>
+                        client.invokeAction(
+                          'assignment.draft.create_from_ocr',
+                          {
+                            grade_id: gradeId,
+                            input_type: 'upload',
+                            scan_refs: scanRefs,
+                            subject_id: subjectId,
+                          },
+                          createConfirmationId(),
+                        ),
+                      )
+                  : await client.invokeAction(
+                      'assignment.draft.create_from_ocr',
+                      compactJsonRecord({
+                        grade_id: gradeId,
+                        input_type: 'scan',
+                        scan_duplex: scanDuplex,
+                        scan_media: scanMedia,
+                        scan_pages: scanPages || undefined,
+                        scan_scanner_id: scanScannerId,
+                        subject_id: subjectId,
+                      }),
+                      createConfirmationId(),
+                    );
+              const finalRun = await waitForInvocation({
+                client,
+                invocationId: result.invocation_id,
+                setRun,
+              });
+              const draftArtifactId = extractDraftArtifactId(finalRun.artifacts);
+              if (!draftArtifactId) throw new Error('OCR 完成，但未返回 draft artifact。');
+              await autoPublishDraft({
+                client,
+                draftArtifactId,
+                onPublishedAssignment: onOpenAssignment,
+                personalized: { enabled: personalizedEnabled, questionCount },
+                setRun,
+                target: { classIds, studentIds },
+              });
+            } catch (reason) {
+              const error = asError(reason);
+              setRun((current) => ({ ...current, busy: false, error, notice: null }));
+            }
+          }}
+        >
+          <div className={styles.fieldGrid}>
+            <Form.Item label="科目" name="subject_id" rules={[{ required: true }]}>
+              <Select
+                options={fieldOptions(
+                  { key: 'subject_id', kind: 'select', label: '科目', optionsFrom: 'subjects' },
+                  lookups,
+                )}
+                placeholder="选择科目"
+              />
+            </Form.Item>
+            <Form.Item label="年级" name="grade_id" rules={[{ required: true }]}>
+              <Select
+                options={fieldOptions(
+                  { key: 'grade_id', kind: 'select', label: '年级', optionsFrom: 'grades' },
+                  lookups,
+                )}
+                placeholder="选择年级"
+              />
+            </Form.Item>
+            <Form.Item label="录入方式">
+              <Segmented
+                options={OCR_INPUT_MODE_OPTIONS}
+                value={inputType}
+                onChange={(value) => setInputType(normalizeOcrInputType(value))}
+              />
+            </Form.Item>
+          </div>
+
+          {inputType === 'upload' ? (
+            <Form.Item extra="图片会先通过 presigned direct PUT 上传到对象存储。" label="扫描图片">
+              <Upload
+                multiple
+                accept="image/*"
+                beforeUpload={() => false}
+                onChange={(info) => {
+                  setFiles(info.fileList.map((file) => file.originFileObj).filter(Boolean) as File[]);
+                }}
+              >
+                <Button icon={<UploadCloud size={14} />}>选择图片</Button>
+              </Upload>
+            </Form.Item>
+          ) : (
+            <div className={styles.fieldGrid}>
+              <Form.Item
+                extra={
+                  scannersLoading
+                    ? '正在读取当前用户在线的 Windows 设备助手。'
+                    : scanners.length
+                      ? `当前检测到 ${scanners.length} 台在线扫描仪。`
+                      : '当前没有在线扫描仪，请先在 Windows 设备助手里完成绑定。'
+                }
+                label="在线扫描仪"
+              >
+                <Select
+                  loading={scannersLoading}
+                  options={scanners.map((scanner) => ({
+                    label: scanner.display_name,
+                    value: scanner.scanner_id,
+                  }))}
+                  placeholder="选择扫描仪"
+                  value={scanScannerId || undefined}
+                  onChange={setScanScannerId}
+                />
+              </Form.Item>
+              <Form.Item label="纸张">
+                <Select
+                  options={OCR_SCAN_MEDIA_OPTIONS.map((value) => ({ label: value, value }))}
+                  value={scanMedia}
+                  onChange={setScanMedia}
+                />
+              </Form.Item>
+              <Form.Item label="单双面">
+                <Segmented
+                  options={[
+                    { label: '双面', value: 'true' },
+                    { label: '单面', value: 'false' },
+                  ]}
+                  value={scanDuplex ? 'true' : 'false'}
+                  onChange={(value) => setScanDuplex(value === 'true')}
+                />
+              </Form.Item>
+              <Form.Item extra="留空则使用后端默认上限。" label="最多扫描页数">
+                <InputNumber
+                  min={1}
+                  style={{ width: '100%' }}
+                  value={scanPages}
+                  onChange={(value) => setScanPages(value == null ? null : Number(value))}
+                />
+              </Form.Item>
+            </div>
+          )}
+
+          {files.length ? (
+            <Space wrap>
+              {files.map((file) => (
+                <Tag key={`${file.name}-${file.size}-${file.lastModified}`}>{file.name}</Tag>
+              ))}
+            </Space>
+          ) : null}
+
+          <div className={styles.stack}>
+            <h3 className={styles.panelTitle}>发布范围</h3>
+            <PublishScopeSelector
+              classIds={classIds}
+              lookups={lookups}
+              studentIds={studentIds}
+              onClassIdsChange={setClassIds}
+              onStudentIdsChange={setStudentIds}
+            />
+            <div className={styles.previewBox}>
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Checkbox
+                  checked={personalizedEnabled}
+                  onChange={(event) => setPersonalizedEnabled(event.target.checked)}
+                >
+                  错题变式训练
+                </Checkbox>
+                <label>
+                  <div className={styles.muted}>个性化作业题目数量</div>
+                  <InputNumber
+                    disabled={!personalizedEnabled}
+                    max={PERSONALIZED_QUESTION_COUNT_MAX}
+                    min={PERSONALIZED_QUESTION_COUNT_MIN}
+                    value={personalizedQuestionCount}
+                    onChange={(value) =>
+                      setPersonalizedQuestionCount(
+                        normalizePersonalizedQuestionCount(value ?? PERSONALIZED_QUESTION_COUNT_DEFAULT),
+                      )
+                    }
+                  />
+                </label>
+              </Space>
+            </div>
+          </div>
+
+          {scannersError ? <Alert showIcon message={`加载扫描仪失败：${scannersError}`} type="warning" /> : null}
+
+          <Button
+            className={styles.primary}
+            htmlType="submit"
+            icon={<FileScan size={14} />}
+            loading={run.busy}
+          >
+            {inputType === 'upload' ? '开始 OCR 创建并发布' : '开始扫描、OCR 并发布'}
+          </Button>
+        </Form>
+        </div>
+        <RunStatusPanel run={run} />
       </div>
-    }
-    onBack={onBack}
-  />
-);
+    </div>
+  );
+};
 
 const SubmissionOcrCreateView = ({
   client,
+  onOpenAssignment,
+  onOpenSubmission,
   onBack,
 }: {
   client: AskCoreWorkbenchApiClient;
+  onOpenAssignment: (assignmentId: number) => void;
+  onOpenSubmission: (submissionId: number) => void;
   onBack: () => void;
-}) => (
-  <UploadActionView
-    action="submission.create_from_ocr"
-    client={client}
-    title="提交 OCR 录入"
-    extraFields={
-      <div className={styles.fieldGrid}>
-        <Form.Item label="作业 ID" name="assignment_id" rules={[{ required: true }]}>
-          <InputNumber style={{ width: '100%' }} />
-        </Form.Item>
-        <Form.Item label="每位学生页数" name="pages_per_student">
-          <InputNumber min={1} style={{ width: '100%' }} />
-        </Form.Item>
-      </div>
+}) => {
+  const [assignmentId, setAssignmentId] = useState<number | null>(null);
+  const [pagesPerStudent, setPagesPerStudent] = useState(2);
+  const [inputType, setInputType] = useState<'scan' | 'upload'>('upload');
+  const [files, setFiles] = useState<File[]>([]);
+  const [scanners, setScanners] = useState<ScannerDevice[]>([]);
+  const [scannersLoading, setScannersLoading] = useState(false);
+  const [scannersError, setScannersError] = useState<string | null>(null);
+  const [scanScannerId, setScanScannerId] = useState('');
+  const [scanMedia, setScanMedia] = useState('A4');
+  const [scanDuplex, setScanDuplex] = useState(true);
+  const [scanPages, setScanPages] = useState<number | null>(null);
+  const [assignments, setAssignments] = useState<JsonRecord[]>([]);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [assignmentsError, setAssignmentsError] = useState<string | null>(null);
+  const [assignmentDetail, setAssignmentDetail] = useState<AssignmentDetailResponse | null>(null);
+  const [assignmentDetailLoading, setAssignmentDetailLoading] = useState(false);
+  const [assignmentDetailError, setAssignmentDetailError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [run, setRun] = useState<RunState>(emptyRunState());
+
+  useEffect(() => {
+    let cancelled = false;
+    setScannersLoading(true);
+    setScannersError(null);
+    client
+      .listScannerDevices()
+      .then((response) => {
+        if (cancelled) return;
+        setScanners(response.items || []);
+        setScanScannerId(response.default_scanner_id || response.items[0]?.scanner_id || '');
+        setScannersLoading(false);
+      })
+      .catch((reason) => {
+        if (cancelled) return;
+        setScanners([]);
+        setScannersError(asError(reason));
+        setScannersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAssignmentsLoading(true);
+    setAssignmentsError(null);
+    client
+      .listAllResource('assignments')
+      .then((items) => {
+        if (cancelled) return;
+        setAssignments(items.filter((item) => positiveId(item.assignment_id || item.id) > 0));
+        setAssignmentsLoading(false);
+      })
+      .catch((reason) => {
+        if (cancelled) return;
+        setAssignments([]);
+        setAssignmentsError(asError(reason));
+        setAssignmentsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
+
+  useEffect(() => {
+    const normalizedAssignmentId = positiveId(assignmentId);
+    if (!normalizedAssignmentId) {
+      setAssignmentDetail(null);
+      setAssignmentDetailError(null);
+      setAssignmentDetailLoading(false);
+      return;
     }
-    onBack={onBack}
-  />
-);
+    let cancelled = false;
+    setAssignmentDetailLoading(true);
+    setAssignmentDetailError(null);
+    client
+      .getAssignmentDetail(normalizedAssignmentId)
+      .then((detail) => {
+        if (cancelled) return;
+        setAssignmentDetail(detail);
+        setAssignmentDetailLoading(false);
+      })
+      .catch((reason) => {
+        if (cancelled) return;
+        setAssignmentDetail(null);
+        setAssignmentDetailError(asError(reason));
+        setAssignmentDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [assignmentId, client]);
+
+  const fileCount = files.length;
+  const splitCount = pagesPerStudent > 0 && fileCount > 0 ? Math.floor(fileCount / pagesPerStudent) : 0;
+  const splitRemainder = pagesPerStudent > 0 && fileCount > 0 ? fileCount % pagesPerStudent : 0;
+  const recipientCount = assignmentDetail?.students.length || 0;
+  const estimatedScanSubmissionCount =
+    inputType === 'scan' && pagesPerStudent > 0 && positiveId(scanPages) > 0
+      ? Math.floor(positiveId(scanPages) / pagesPerStudent)
+      : 0;
+  const validationMessage =
+    !positiveId(assignmentId)
+      ? '请先选择一条作业。'
+      : pagesPerStudent <= 0
+        ? '请填写每生页数。'
+        : inputType === 'upload'
+          ? fileCount <= 0
+            ? '请先上传答题图片。'
+            : splitRemainder !== 0
+              ? '上传图片数量必须能被每生页数整除。'
+              : null
+          : !scanScannerId
+            ? '请先选择在线扫描仪。'
+            : null;
+
+  const startBatchOcr = async () => {
+    setSubmitError(null);
+    if (validationMessage) {
+      setSubmitError(validationMessage);
+      return;
+    }
+    const normalizedAssignmentId = positiveId(assignmentId);
+    setRun({
+      ...emptyRunState(),
+      busy: true,
+      notice:
+        inputType === 'upload'
+          ? `正在上传图片 0/${files.length}…`
+          : '正在调用在线扫描仪并启动批量 OCR、批改与讲解…',
+    });
+    try {
+      const result =
+        inputType === 'upload'
+          ? await client
+              .uploadScanFiles(files, {
+                onProgress: (progress) =>
+                  setRun((current) => ({
+                    ...current,
+                    busy: true,
+                    error: null,
+                    notice: runNoticeForUploadProgress('正在上传图片')(progress),
+                  })),
+              })
+              .then((scanRefs) =>
+                client.invokeAction('submission.create_from_ocr', {
+                  assignment_id: normalizedAssignmentId,
+                  input_type: 'upload',
+                  pages_per_student: pagesPerStudent,
+                  scan_refs: scanRefs,
+                }),
+              )
+          : await client.invokeAction(
+              'submission.create_from_ocr',
+              compactJsonRecord({
+                assignment_id: normalizedAssignmentId,
+                input_type: 'scan',
+                pages_per_student: pagesPerStudent,
+                scan_duplex: scanDuplex,
+                scan_media: scanMedia,
+                scan_pages: scanPages || undefined,
+                scan_scanner_id: scanScannerId,
+              }),
+            );
+      await waitForInvocation({ client, invocationId: result.invocation_id, setRun });
+    } catch (reason) {
+      const error = asError(reason);
+      setSubmitError(error);
+      setRun((current) => ({ ...current, busy: false, error, notice: null }));
+    }
+  };
+
+  const selectedAssignment = assignmentDetail?.assignment || {};
+
+  return (
+    <div className={styles.view}>
+      <DetailHeader
+        subtitle="选择作业后上传整批答题图片或调用扫描仪，按每生页数切分并自动创建 submissions。"
+        title="提交 OCR 录入"
+        onBack={onBack}
+      />
+      <div className={styles.splitWorkspace}>
+        <div className={styles.formPanel}>
+          <div className={styles.stack}>
+            <div className={styles.fieldGrid}>
+              <Form.Item
+                extra={
+                  assignmentsLoading
+                    ? '正在加载作业列表…'
+                    : `系统会在所选作业的发布对象范围内自动匹配学生。当前可选 ${assignments.length} 条作业。`
+                }
+                label="选择作业"
+                required
+              >
+                <Select
+                  showSearch
+                  loading={assignmentsLoading}
+                  optionFilterProp="label"
+                  options={assignments.map((item) => {
+                    const optionId = positiveId(item.assignment_id || item.id);
+                    const label = [
+                      scopeText(item.title || optionId, '未命名作业'),
+                      item.subject_name || item.subject_id
+                        ? `科目 ${scopeText(item.subject_name || item.subject_id, '--')}`
+                        : null,
+                      item.grade_name || item.grade_id
+                        ? `年级 ${scopeText(item.grade_name || item.grade_id, '--')}`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ');
+                    return { label, value: optionId };
+                  })}
+                  placeholder="选择作业"
+                  value={assignmentId || undefined}
+                  onChange={(value) => setAssignmentId(Number(value))}
+                />
+              </Form.Item>
+              <Form.Item label="录入方式">
+                <Segmented
+                  options={OCR_INPUT_MODE_OPTIONS}
+                  value={inputType}
+                  onChange={(value) => setInputType(normalizeOcrInputType(value))}
+                />
+              </Form.Item>
+              <Form.Item extra="系统会按顺序每 n 张切成一份 submission。" label="每生页数">
+                <InputNumber
+                  min={1}
+                  style={{ width: '100%' }}
+                  value={pagesPerStudent}
+                  onChange={(value) => setPagesPerStudent(Math.max(1, Number(value || 1)))}
+                />
+              </Form.Item>
+            </div>
+
+            {inputType === 'upload' ? (
+              <Form.Item extra="上传后会按每生页数切分，再进入 OCR、批改和讲解。" label="上传图片">
+                <Upload
+                  multiple
+                  accept="image/*"
+                  beforeUpload={() => false}
+                  onChange={(info) => {
+                    setFiles(info.fileList.map((file) => file.originFileObj).filter(Boolean) as File[]);
+                  }}
+                >
+                  <Button icon={<UploadCloud size={14} />}>选择图片</Button>
+                </Upload>
+              </Form.Item>
+            ) : (
+              <div className={styles.fieldGrid}>
+                <Form.Item
+                  extra={
+                    scannersLoading
+                      ? '正在读取当前用户在线的 Windows 设备助手。'
+                      : scanners.length
+                        ? `当前检测到 ${scanners.length} 台在线扫描仪。`
+                        : '当前没有在线扫描仪，请先在 Windows 设备助手里完成绑定。'
+                  }
+                  label="在线扫描仪"
+                >
+                  <Select
+                    loading={scannersLoading}
+                    options={scanners.map((scanner) => ({
+                      label: scanner.display_name,
+                      value: scanner.scanner_id,
+                    }))}
+                    placeholder="选择扫描仪"
+                    value={scanScannerId || undefined}
+                    onChange={setScanScannerId}
+                  />
+                </Form.Item>
+                <Form.Item label="纸张">
+                  <Select
+                    options={OCR_SCAN_MEDIA_OPTIONS.map((value) => ({ label: value, value }))}
+                    value={scanMedia}
+                    onChange={setScanMedia}
+                  />
+                </Form.Item>
+                <Form.Item label="单双面">
+                  <Segmented
+                    options={[
+                      { label: '双面', value: 'true' },
+                      { label: '单面', value: 'false' },
+                    ]}
+                    value={scanDuplex ? 'true' : 'false'}
+                    onChange={(value) => setScanDuplex(value === 'true')}
+                  />
+                </Form.Item>
+                <Form.Item extra="达到上限或扫描仪返回结束时停止采集。" label="最多扫描页数">
+                  <InputNumber
+                    min={1}
+                    style={{ width: '100%' }}
+                    value={scanPages}
+                    onChange={(value) => setScanPages(value == null ? null : Number(value))}
+                  />
+                </Form.Item>
+              </div>
+            )}
+
+            {assignmentDetailLoading ? <Skeleton active paragraph={{ rows: 2 }} /> : null}
+            {assignmentDetail ? (
+              <div className={styles.previewBox}>
+                <div className={styles.actionBar}>
+                  <h3 className={styles.panelTitle}>作业概览</h3>
+                  <Button
+                    className={styles.secondary}
+                    size="small"
+                    onClick={() => onOpenAssignment(positiveId(assignmentId))}
+                  >
+                    打开作业详情
+                  </Button>
+                </div>
+                <Descriptions
+                  column={2}
+                  size="small"
+                  items={[
+                    {
+                      children: scopeText(selectedAssignment.assignment_id || selectedAssignment.id, '--'),
+                      label: '作业编号',
+                    },
+                    { children: scopeText(selectedAssignment.title, '--'), label: '标题' },
+                    {
+                      children: scopeText(
+                        assignmentDetail.subject?.name || selectedAssignment.subject_name || selectedAssignment.subject_id,
+                        '--',
+                      ),
+                      label: '科目',
+                    },
+                    {
+                      children: scopeText(
+                        assignmentDetail.grade?.name || selectedAssignment.grade_name || selectedAssignment.grade_id,
+                        '--',
+                      ),
+                      label: '年级',
+                    },
+                    { children: String(recipientCount), label: '发布对象' },
+                    {
+                      children: selectedAssignment.due_date
+                        ? compactDate(String(selectedAssignment.due_date))
+                        : '--',
+                      label: '截止时间',
+                    },
+                  ]}
+                />
+              </div>
+            ) : null}
+
+            <div className={styles.previewBox}>
+              <h3 className={styles.panelTitle}>切分预览</h3>
+              <div className={styles.statGrid}>
+                <div className={styles.statItem}>
+                  <div className={styles.statTitle}>
+                    {inputType === 'upload' ? '已选图片' : '扫描页数上限'}
+                  </div>
+                  <div className={styles.statValue}>
+                    {inputType === 'upload' ? fileCount : scanPages || '--'}
+                  </div>
+                </div>
+                <div className={styles.statItem}>
+                  <div className={styles.statTitle}>每生页数</div>
+                  <div className={styles.statValue}>{pagesPerStudent || '--'}</div>
+                </div>
+                <div className={styles.statItem}>
+                  <div className={styles.statTitle}>
+                    {inputType === 'upload' ? '将生成' : '预计最多生成'}
+                  </div>
+                  <div className={styles.statValue}>
+                    {inputType === 'upload' ? splitCount || '--' : estimatedScanSubmissionCount || '--'}
+                  </div>
+                </div>
+                <div className={styles.statItem}>
+                  <div className={styles.statTitle}>发布对象</div>
+                  <div className={styles.statValue}>{recipientCount || '--'}</div>
+                </div>
+              </div>
+              <div className={styles.muted} style={{ marginTop: 10 }}>
+                本次只创建切分得到的 submission，不会为未覆盖学生自动补建 submission。
+                未匹配、歧义匹配或重复命中的 submission 会保留并标记为待人工处理。
+                {recipientCount > 0 &&
+                ((inputType === 'upload' && splitCount > recipientCount) ||
+                  (inputType === 'scan' && estimatedScanSubmissionCount > recipientCount))
+                  ? ` 当前作业有 ${recipientCount} 个发布对象，超出的分块会进入待人工处理。`
+                  : ''}
+                {inputType === 'upload' && fileCount > 0 && splitRemainder !== 0
+                  ? ' 当前图片数与每生页数不整除，无法启动。'
+                  : ''}
+                {inputType === 'scan' && positiveId(scanPages) > 0 && pagesPerStudent > 0
+                  ? ' 扫描页数上限只控制采集停止点，实际生成数量取决于扫描仪返回页数。'
+                  : ''}
+              </div>
+            </div>
+
+            {files.length ? (
+              <Space wrap>
+                {files.map((file) => (
+                  <Tag key={`${file.name}-${file.size}-${file.lastModified}`}>{file.name}</Tag>
+                ))}
+              </Space>
+            ) : null}
+
+            {assignmentsError ? <Alert showIcon message={`加载作业列表失败：${assignmentsError}`} type="warning" /> : null}
+            {assignmentDetailError ? (
+              <Alert showIcon message={`加载作业详情失败：${assignmentDetailError}`} type="warning" />
+            ) : null}
+            {scannersError ? <Alert showIcon message={`加载扫描仪失败：${scannersError}`} type="warning" /> : null}
+            {submitError ? <Alert showIcon message={submitError} type="error" /> : null}
+
+            <Space wrap>
+              <Button
+                className={styles.primary}
+                disabled={Boolean(validationMessage)}
+                icon={<FileScan size={14} />}
+                loading={run.busy}
+                onClick={() => void startBatchOcr()}
+              >
+                {inputType === 'upload' ? '开始 OCR 创建并自动批改' : '开始扫描、OCR 并自动批改'}
+              </Button>
+              {validationMessage ? <span className={styles.muted}>{validationMessage}</span> : null}
+            </Space>
+          </div>
+        </div>
+        <RunStatusPanel onOpenSubmission={onOpenSubmission} run={run} />
+      </div>
+    </div>
+  );
+};
 
 const AskCoreWorkbenchPage = memo(() => {
   const location = useLocation();
@@ -3933,6 +5285,9 @@ const AskCoreWorkbenchPage = memo(() => {
           client={askCoreWorkbenchClient}
           lookups={lookups}
           onBack={backToList}
+          onOpenAssignment={(assignmentId) =>
+            navigate(routeFor('assignments', buildResourceEntityPath('assignments', assignmentId)))
+          }
         />
       );
     }
@@ -3942,11 +5297,25 @@ const AskCoreWorkbenchPage = memo(() => {
           client={askCoreWorkbenchClient}
           lookups={lookups}
           onBack={backToList}
+          onOpenAssignment={(assignmentId) =>
+            navigate(routeFor('assignments', buildResourceEntityPath('assignments', assignmentId)))
+          }
         />
       );
     }
     if (currentRoute.kind === 'submission-ocr') {
-      return <SubmissionOcrCreateView client={askCoreWorkbenchClient} onBack={backToList} />;
+      return (
+        <SubmissionOcrCreateView
+          client={askCoreWorkbenchClient}
+          onBack={backToList}
+          onOpenAssignment={(assignmentId) =>
+            navigate(routeFor('assignments', buildResourceEntityPath('assignments', assignmentId)))
+          }
+          onOpenSubmission={(submissionId) =>
+            navigate(routeFor('submissions', buildResourceEntityPath('submissions', submissionId)))
+          }
+        />
+      );
     }
     return renderDashboard();
   };
