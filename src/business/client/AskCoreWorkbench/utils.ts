@@ -24,17 +24,12 @@ export const askCoreWorkbenchTabFromRoute = (route?: string | null): AskCoreWork
 
   const mapping: Record<string, AskCoreWorkbenchTab> = {
     assignments: 'assignments',
-    classes: 'classes',
     dashboard: 'overview',
-    grades: 'grades',
     ops: 'ops',
     operations: 'ops',
     questions: 'questions',
-    schools: 'schools',
-    students: 'students',
     subjects: 'subjects',
     submissions: 'submissions',
-    teachers: 'teachers',
   };
 
   return mapping[firstSegment] || DEFAULT_ASKCORE_WORKBENCH_TAB;

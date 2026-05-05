@@ -464,22 +464,12 @@ type DetailState =
 const routeResourceAliases: Record<string, ResourceKey> = {
   assignment: 'assignments',
   assignments: 'assignments',
-  class: 'classes',
-  classes: 'classes',
-  grade: 'grades',
-  grades: 'grades',
   question: 'questions',
   questions: 'questions',
-  school: 'schools',
-  schools: 'schools',
-  student: 'students',
-  students: 'students',
   subject: 'subjects',
   subjects: 'subjects',
   submission: 'submissions',
   submissions: 'submissions',
-  teacher: 'teachers',
-  teachers: 'teachers',
 };
 
 const statusLabelMap: Record<string, string> = {
@@ -3516,7 +3506,6 @@ const AskCoreWorkbenchPage = memo(() => {
       { key: 'submissions', label: '提交', value: counts.submissions || 0 },
       { key: 'assignments', label: '作业', value: counts.assignments || 0 },
       { key: 'questions', label: '题目', value: counts.questions || 0 },
-      { key: 'students', label: '学生', value: counts.students || 0 },
     ];
 
     return (

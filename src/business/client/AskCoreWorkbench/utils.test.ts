@@ -10,7 +10,7 @@ import {
 
 describe('AskCoreWorkbench utils', () => {
   it('normalizes invalid tabs to overview', () => {
-    expect(normalizeAskCoreWorkbenchTab('schools')).toBe('schools');
+    expect(normalizeAskCoreWorkbenchTab('schools')).toBe('overview');
     expect(normalizeAskCoreWorkbenchTab('unknown')).toBe('overview');
     expect(normalizeAskCoreWorkbenchTab(null)).toBe('overview');
   });
@@ -29,7 +29,7 @@ describe('AskCoreWorkbench utils', () => {
     expect(buildAskCoreWorkbenchUrl({ route: '/submissions/7' })).toBe(
       '/askcore/workbench?tab=submissions&route=%2Fsubmissions%2F7',
     );
-    expect(buildAskCoreWorkbenchUrl({ tab: 'teachers' })).toBe('/askcore/workbench?tab=teachers');
+    expect(buildAskCoreWorkbenchUrl({ tab: 'teachers' })).toBe('/askcore/workbench?tab=overview');
   });
 
   it('detects AskCore standalone suite.run UI results', () => {

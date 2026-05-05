@@ -2,11 +2,6 @@
 
 export type AskCoreWorkbenchTab =
   | 'overview'
-  | 'schools'
-  | 'teachers'
-  | 'classes'
-  | 'students'
-  | 'grades'
   | 'subjects'
   | 'assignments'
   | 'questions'

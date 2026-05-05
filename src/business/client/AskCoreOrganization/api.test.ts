@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  assignAskCoreEducationRole,
   bootstrapAskCoreOrganization,
   createAskCoreOrganization,
+  createAskCoreEducationOrgUnit,
   createAskCoreOrganizationInvite,
+  fetchAskCoreEducationOrgUnits,
   fetchAskCoreOrganizations,
   setActiveAskCoreOrganization,
   updateAskCoreOrganizationMemberRole,
@@ -30,6 +33,13 @@ describe('AskCoreOrganization api client', () => {
       expiresIn: '7d',
       role: 'member',
     });
+    await fetchAskCoreEducationOrgUnits();
+    await createAskCoreEducationOrgUnit({ name: '高一', parent_id: 1, unit_type: 'grade' });
+    await assignAskCoreEducationRole({
+      better_auth_user_id: 'user-1',
+      org_unit_id: 2,
+      role: 'grade_admin',
+    });
 
     const calls = fetchMock.mock.calls as [RequestInfo | URL, RequestInit?][];
 
@@ -40,6 +50,9 @@ describe('AskCoreOrganization api client', () => {
       '/api/askcore/organizations/active',
       '/api/askcore/organizations/org-1/members/mem-1',
       '/api/askcore/organizations/org-1/invites',
+      '/api/askcore/workbench/organization/units',
+      '/api/askcore/workbench/organization/units',
+      '/api/askcore/workbench/organization/roles',
     ]);
     expect(calls[1][1]).toMatchObject({
       body: JSON.stringify({ invite_token: 'token-1' }),
@@ -49,6 +62,18 @@ describe('AskCoreOrganization api client', () => {
     expect(calls[4][1]).toMatchObject({
       body: JSON.stringify({ role: 'admin' }),
       method: 'PATCH',
+    });
+    expect(calls[7][1]).toMatchObject({
+      body: JSON.stringify({ name: '高一', parent_id: 1, unit_type: 'grade' }),
+      method: 'POST',
+    });
+    expect(calls[8][1]).toMatchObject({
+      body: JSON.stringify({
+        better_auth_user_id: 'user-1',
+        org_unit_id: 2,
+        role: 'grade_admin',
+      }),
+      method: 'POST',
     });
   });
 });
