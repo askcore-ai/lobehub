@@ -53,6 +53,8 @@ import {
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
+import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
+
 import type { AskCoreWorkbenchApiClient } from './api';
 import {
   askCoreWorkbenchClient,
@@ -112,14 +114,16 @@ import {
 import {
   askCoreWorkbenchTabFromRoute,
   buildAskCoreWorkbenchUrl,
+  canUseAskCoreWorkbenchCreateFlows,
+  isAskCoreWorkbenchCreateRoute,
   normalizeAskCoreWorkbenchTab,
 } from './utils';
 
 const PAGE_SIZE = 20;
-const OCR_INPUT_MODE_OPTIONS = [
+const OCR_INPUT_MODE_OPTIONS: Array<{ label: string; value: 'scan' | 'upload' }> = [
   { label: '上传图片', value: 'upload' },
   { label: '调用扫描仪', value: 'scan' },
-] as const;
+];
 const OCR_SCAN_MEDIA_OPTIONS = ['A3', 'A4', 'B4', 'B5'] as const;
 const PERSONALIZED_QUESTION_COUNT_DEFAULT = 3;
 const PERSONALIZED_QUESTION_COUNT_MIN = 1;
@@ -630,7 +634,11 @@ const positiveId = (value: unknown) => {
 };
 
 const normalizeOcrInputType = (value: unknown): 'scan' | 'upload' =>
-  String(value || '').trim().toLowerCase() === 'scan' ? 'scan' : 'upload';
+  String(value || '')
+    .trim()
+    .toLowerCase() === 'scan'
+    ? 'scan'
+    : 'upload';
 
 const sortScopeLabels = (values: string[]) =>
   Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean))).sort(
@@ -696,18 +704,20 @@ const extractPublishedAssignmentId = (artifacts: PluginArtifact[]) => {
 const artifactTitle = (artifact: PluginArtifact) =>
   String(artifact.title || artifact.summary || artifact.type || artifact.artifact_id);
 
-const runNoticeForUploadProgress = (prefix: string) => (progress: {
-  completed: number;
-  fileName: string;
-  index: number;
-  phase: string;
-  total: number;
-}) => {
-  if (progress.phase === 'uploaded') {
-    return `${prefix} ${progress.completed}/${progress.total} 张图片，正在继续处理…`;
-  }
-  return `${prefix} ${progress.completed}/${progress.total}：${progress.fileName || `第 ${progress.index + 1} 张`}`;
-};
+const runNoticeForUploadProgress =
+  (prefix: string) =>
+  (progress: {
+    completed: number;
+    fileName: string;
+    index: number;
+    phase: string;
+    total: number;
+  }) => {
+    if (progress.phase === 'uploaded') {
+      return `${prefix} ${progress.completed}/${progress.total} 张图片，正在继续处理…`;
+    }
+    return `${prefix} ${progress.completed}/${progress.total}：${progress.fileName || `第 ${progress.index + 1} 张`}`;
+  };
 
 const getRecordId = (resource: ResourceKey, record: AskCoreWorkbenchRecord) => {
   const idKey = getResourceIdKey(resource);
@@ -765,7 +775,7 @@ const parseWorkbenchRoute = (
   return { entityId, kind: 'detail', path, resource };
 };
 
-const routeFor = (tab: AskCoreWorkbenchTab, route?: string | null) =>
+const routeFor = (tab: AskCoreWorkbenchTab | string, route?: string | null) =>
   buildAskCoreWorkbenchUrl({ route, tab });
 
 const downloadBlob = (blob: Blob, filename: string) => {
@@ -972,7 +982,7 @@ const PublishScopeSelector = ({
   const schools = useMemo<ScopeNode[]>(
     () =>
       lookups.schools
-        .map((item) => {
+        .map((item): ScopeNode | null => {
           const id = positiveId(item.school_id || item.id);
           if (!id) return null;
           return {
@@ -989,7 +999,7 @@ const PublishScopeSelector = ({
   const classes = useMemo<ScopeNode[]>(
     () =>
       lookups.classes
-        .map((item) => {
+        .map((item): ScopeNode | null => {
           const id = positiveId(item.class_id || item.id);
           if (!id) return null;
           return {
@@ -1005,7 +1015,7 @@ const PublishScopeSelector = ({
   const students = useMemo<ScopeNode[]>(
     () =>
       lookups.students
-        .map((item) => {
+        .map((item): ScopeNode | null => {
           const id = positiveId(item.student_id || item.id);
           if (!id) return null;
           return {
@@ -1756,10 +1766,7 @@ const ImageReferenceRail = ({
 
 type RunStateSetter = Dispatch<SetStateAction<RunState>>;
 
-const loadInvocationArtifacts = async (
-  client: AskCoreWorkbenchApiClient,
-  invocationId: string,
-) => {
+const loadInvocationArtifacts = async (client: AskCoreWorkbenchApiClient, invocationId: string) => {
   const response = await client.listInvocationArtifacts(invocationId);
   return Promise.all(
     response.artifacts.map(async (summary) => {
@@ -1927,7 +1934,9 @@ const RunStatusPanel = ({
   title?: string;
 }) => {
   const invocation = run.invocation;
-  const batchArtifact = run.artifacts.find((artifact) => artifact.type === 'submission.ocr.batch.result');
+  const batchArtifact = run.artifacts.find(
+    (artifact) => artifact.type === 'submission.ocr.batch.result',
+  );
   const batchContent = batchArtifact?.content || {};
   const autoBound = readRecordArray(batchContent.auto_bound);
   const needsBinding = readRecordArray(batchContent.needs_binding);
@@ -1992,7 +2001,9 @@ const RunStatusPanel = ({
             size="small"
             items={[
               {
-                children: String(batchContent.created_count || autoBound.length + needsBinding.length),
+                children: String(
+                  batchContent.created_count || autoBound.length + needsBinding.length,
+                ),
                 label: '已创建',
               },
               { children: String(autoBound.length), label: '自动绑定' },
@@ -3844,12 +3855,15 @@ const AssignmentManualCreateView = ({
               try {
                 const questionCount =
                   parsePersonalizedQuestionCountOrThrow(personalizedQuestionCount);
-                const result = await client.invokeAction('assignment.draft.create_manual', {
-                  due_date: values.due_date ? toIsoDateTime(String(values.due_date)) : undefined,
-                  grade_id: Number(values.grade_id),
-                  subject_id: Number(values.subject_id),
-                  title: String(values.title || '').trim(),
-                });
+                const result = await client.invokeAction(
+                  'assignment.draft.create_manual',
+                  compactJsonRecord({
+                    due_date: values.due_date ? toIsoDateTime(String(values.due_date)) : undefined,
+                    grade_id: Number(values.grade_id),
+                    subject_id: Number(values.subject_id),
+                    title: String(values.title || '').trim(),
+                  }),
+                );
                 const finalRun = await waitForInvocation({
                   client,
                   invocationId: result.invocation_id,
@@ -3927,7 +3941,9 @@ const AssignmentManualCreateView = ({
                       value={personalizedQuestionCount}
                       onChange={(value) =>
                         setPersonalizedQuestionCount(
-                          normalizePersonalizedQuestionCount(value ?? PERSONALIZED_QUESTION_COUNT_DEFAULT),
+                          normalizePersonalizedQuestionCount(
+                            value ?? PERSONALIZED_QUESTION_COUNT_DEFAULT,
+                          ),
                         )
                       }
                     />
@@ -4008,239 +4024,248 @@ const AssignmentOcrCreateView = ({
       />
       <div className={styles.splitWorkspace}>
         <div className={styles.formPanel}>
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={async (values) => {
-            const subjectId = Number(values.subject_id || 0);
-            const gradeId = Number(values.grade_id || 0);
-            if (!subjectId || !gradeId) {
-              message.warning('请先选择科目和年级');
-              return;
-            }
-            if (inputType === 'upload' && !files.length) {
-              message.warning('请先选择扫描图片');
-              return;
-            }
-            if (inputType === 'scan' && !scanScannerId) {
-              message.warning('请先选择在线扫描仪');
-              return;
-            }
-            setRun({
-              ...emptyRunState(),
-              busy: true,
-              notice:
-                inputType === 'upload'
-                  ? `正在上传扫描件 0/${files.length}…`
-                  : '正在调用在线扫描仪并启动 OCR…',
-            });
-            try {
-              const questionCount =
-                parsePersonalizedQuestionCountOrThrow(personalizedQuestionCount);
-              const result =
-                inputType === 'upload'
-                  ? await client
-                      .uploadScanFiles(files, {
-                        onProgress: (progress) =>
-                          setRun((current) => ({
-                            ...current,
-                            busy: true,
-                            error: null,
-                            notice: runNoticeForUploadProgress('正在上传扫描件')(progress),
-                          })),
-                      })
-                      .then((scanRefs) =>
-                        client.invokeAction(
-                          'assignment.draft.create_from_ocr',
-                          {
-                            grade_id: gradeId,
-                            input_type: 'upload',
-                            scan_refs: scanRefs,
-                            subject_id: subjectId,
-                          },
-                          createConfirmationId(),
-                        ),
-                      )
-                  : await client.invokeAction(
-                      'assignment.draft.create_from_ocr',
-                      compactJsonRecord({
-                        grade_id: gradeId,
-                        input_type: 'scan',
-                        scan_duplex: scanDuplex,
-                        scan_media: scanMedia,
-                        scan_pages: scanPages || undefined,
-                        scan_scanner_id: scanScannerId,
-                        subject_id: subjectId,
-                      }),
-                      createConfirmationId(),
-                    );
-              const finalRun = await waitForInvocation({
-                client,
-                invocationId: result.invocation_id,
-                setRun,
+          <Form
+            form={form}
+            layout="vertical"
+            onFinish={async (values) => {
+              const subjectId = Number(values.subject_id || 0);
+              const gradeId = Number(values.grade_id || 0);
+              if (!subjectId || !gradeId) {
+                message.warning('请先选择科目和年级');
+                return;
+              }
+              if (inputType === 'upload' && !files.length) {
+                message.warning('请先选择扫描图片');
+                return;
+              }
+              if (inputType === 'scan' && !scanScannerId) {
+                message.warning('请先选择在线扫描仪');
+                return;
+              }
+              setRun({
+                ...emptyRunState(),
+                busy: true,
+                notice:
+                  inputType === 'upload'
+                    ? `正在上传扫描件 0/${files.length}…`
+                    : '正在调用在线扫描仪并启动 OCR…',
               });
-              const draftArtifactId = extractDraftArtifactId(finalRun.artifacts);
-              if (!draftArtifactId) throw new Error('OCR 完成，但未返回 draft artifact。');
-              await autoPublishDraft({
-                client,
-                draftArtifactId,
-                onPublishedAssignment: onOpenAssignment,
-                personalized: { enabled: personalizedEnabled, questionCount },
-                setRun,
-                target: { classIds, studentIds },
-              });
-            } catch (reason) {
-              const error = asError(reason);
-              setRun((current) => ({ ...current, busy: false, error, notice: null }));
-            }
-          }}
-        >
-          <div className={styles.fieldGrid}>
-            <Form.Item label="科目" name="subject_id" rules={[{ required: true }]}>
-              <Select
-                options={fieldOptions(
-                  { key: 'subject_id', kind: 'select', label: '科目', optionsFrom: 'subjects' },
-                  lookups,
-                )}
-                placeholder="选择科目"
-              />
-            </Form.Item>
-            <Form.Item label="年级" name="grade_id" rules={[{ required: true }]}>
-              <Select
-                options={fieldOptions(
-                  { key: 'grade_id', kind: 'select', label: '年级', optionsFrom: 'grades' },
-                  lookups,
-                )}
-                placeholder="选择年级"
-              />
-            </Form.Item>
-            <Form.Item label="录入方式">
-              <Segmented
-                options={OCR_INPUT_MODE_OPTIONS}
-                value={inputType}
-                onChange={(value) => setInputType(normalizeOcrInputType(value))}
-              />
-            </Form.Item>
-          </div>
-
-          {inputType === 'upload' ? (
-            <Form.Item extra="图片会先通过 presigned direct PUT 上传到对象存储。" label="扫描图片">
-              <Upload
-                multiple
-                accept="image/*"
-                beforeUpload={() => false}
-                onChange={(info) => {
-                  setFiles(info.fileList.map((file) => file.originFileObj).filter(Boolean) as File[]);
-                }}
-              >
-                <Button icon={<UploadCloud size={14} />}>选择图片</Button>
-              </Upload>
-            </Form.Item>
-          ) : (
-            <div className={styles.fieldGrid}>
-              <Form.Item
-                extra={
-                  scannersLoading
-                    ? '正在读取当前用户在线的 Windows 设备助手。'
-                    : scanners.length
-                      ? `当前检测到 ${scanners.length} 台在线扫描仪。`
-                      : '当前没有在线扫描仪，请先在 Windows 设备助手里完成绑定。'
-                }
-                label="在线扫描仪"
-              >
-                <Select
-                  loading={scannersLoading}
-                  options={scanners.map((scanner) => ({
-                    label: scanner.display_name,
-                    value: scanner.scanner_id,
-                  }))}
-                  placeholder="选择扫描仪"
-                  value={scanScannerId || undefined}
-                  onChange={setScanScannerId}
-                />
-              </Form.Item>
-              <Form.Item label="纸张">
-                <Select
-                  options={OCR_SCAN_MEDIA_OPTIONS.map((value) => ({ label: value, value }))}
-                  value={scanMedia}
-                  onChange={setScanMedia}
-                />
-              </Form.Item>
-              <Form.Item label="单双面">
-                <Segmented
-                  options={[
-                    { label: '双面', value: 'true' },
-                    { label: '单面', value: 'false' },
-                  ]}
-                  value={scanDuplex ? 'true' : 'false'}
-                  onChange={(value) => setScanDuplex(value === 'true')}
-                />
-              </Form.Item>
-              <Form.Item extra="留空则使用后端默认上限。" label="最多扫描页数">
-                <InputNumber
-                  min={1}
-                  style={{ width: '100%' }}
-                  value={scanPages}
-                  onChange={(value) => setScanPages(value == null ? null : Number(value))}
-                />
-              </Form.Item>
-            </div>
-          )}
-
-          {files.length ? (
-            <Space wrap>
-              {files.map((file) => (
-                <Tag key={`${file.name}-${file.size}-${file.lastModified}`}>{file.name}</Tag>
-              ))}
-            </Space>
-          ) : null}
-
-          <div className={styles.stack}>
-            <h3 className={styles.panelTitle}>发布范围</h3>
-            <PublishScopeSelector
-              classIds={classIds}
-              lookups={lookups}
-              studentIds={studentIds}
-              onClassIdsChange={setClassIds}
-              onStudentIdsChange={setStudentIds}
-            />
-            <div className={styles.previewBox}>
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <Checkbox
-                  checked={personalizedEnabled}
-                  onChange={(event) => setPersonalizedEnabled(event.target.checked)}
-                >
-                  错题变式训练
-                </Checkbox>
-                <label>
-                  <div className={styles.muted}>个性化作业题目数量</div>
-                  <InputNumber
-                    disabled={!personalizedEnabled}
-                    max={PERSONALIZED_QUESTION_COUNT_MAX}
-                    min={PERSONALIZED_QUESTION_COUNT_MIN}
-                    value={personalizedQuestionCount}
-                    onChange={(value) =>
-                      setPersonalizedQuestionCount(
-                        normalizePersonalizedQuestionCount(value ?? PERSONALIZED_QUESTION_COUNT_DEFAULT),
-                      )
-                    }
-                  />
-                </label>
-              </Space>
-            </div>
-          </div>
-
-          {scannersError ? <Alert showIcon message={`加载扫描仪失败：${scannersError}`} type="warning" /> : null}
-
-          <Button
-            className={styles.primary}
-            htmlType="submit"
-            icon={<FileScan size={14} />}
-            loading={run.busy}
+              try {
+                const questionCount =
+                  parsePersonalizedQuestionCountOrThrow(personalizedQuestionCount);
+                const result =
+                  inputType === 'upload'
+                    ? await client
+                        .uploadScanFiles(files, {
+                          onProgress: (progress) =>
+                            setRun((current) => ({
+                              ...current,
+                              busy: true,
+                              error: null,
+                              notice: runNoticeForUploadProgress('正在上传扫描件')(progress),
+                            })),
+                        })
+                        .then((scanRefs) =>
+                          client.invokeAction(
+                            'assignment.draft.create_from_ocr',
+                            {
+                              grade_id: gradeId,
+                              input_type: 'upload',
+                              scan_refs: scanRefs,
+                              subject_id: subjectId,
+                            },
+                            createConfirmationId(),
+                          ),
+                        )
+                    : await client.invokeAction(
+                        'assignment.draft.create_from_ocr',
+                        compactJsonRecord({
+                          grade_id: gradeId,
+                          input_type: 'scan',
+                          scan_duplex: scanDuplex,
+                          scan_media: scanMedia,
+                          scan_pages: scanPages || undefined,
+                          scan_scanner_id: scanScannerId,
+                          subject_id: subjectId,
+                        }),
+                        createConfirmationId(),
+                      );
+                const finalRun = await waitForInvocation({
+                  client,
+                  invocationId: result.invocation_id,
+                  setRun,
+                });
+                const draftArtifactId = extractDraftArtifactId(finalRun.artifacts);
+                if (!draftArtifactId) throw new Error('OCR 完成，但未返回 draft artifact。');
+                await autoPublishDraft({
+                  client,
+                  draftArtifactId,
+                  onPublishedAssignment: onOpenAssignment,
+                  personalized: { enabled: personalizedEnabled, questionCount },
+                  setRun,
+                  target: { classIds, studentIds },
+                });
+              } catch (reason) {
+                const error = asError(reason);
+                setRun((current) => ({ ...current, busy: false, error, notice: null }));
+              }
+            }}
           >
-            {inputType === 'upload' ? '开始 OCR 创建并发布' : '开始扫描、OCR 并发布'}
-          </Button>
-        </Form>
+            <div className={styles.fieldGrid}>
+              <Form.Item label="科目" name="subject_id" rules={[{ required: true }]}>
+                <Select
+                  options={fieldOptions(
+                    { key: 'subject_id', kind: 'select', label: '科目', optionsFrom: 'subjects' },
+                    lookups,
+                  )}
+                  placeholder="选择科目"
+                />
+              </Form.Item>
+              <Form.Item label="年级" name="grade_id" rules={[{ required: true }]}>
+                <Select
+                  options={fieldOptions(
+                    { key: 'grade_id', kind: 'select', label: '年级', optionsFrom: 'grades' },
+                    lookups,
+                  )}
+                  placeholder="选择年级"
+                />
+              </Form.Item>
+              <Form.Item label="录入方式">
+                <Segmented
+                  options={OCR_INPUT_MODE_OPTIONS}
+                  value={inputType}
+                  onChange={(value) => setInputType(normalizeOcrInputType(value))}
+                />
+              </Form.Item>
+            </div>
+
+            {inputType === 'upload' ? (
+              <Form.Item
+                extra="图片会先通过 presigned direct PUT 上传到对象存储。"
+                label="扫描图片"
+              >
+                <Upload
+                  multiple
+                  accept="image/*"
+                  beforeUpload={() => false}
+                  onChange={(info) => {
+                    setFiles(
+                      info.fileList.map((file) => file.originFileObj).filter(Boolean) as File[],
+                    );
+                  }}
+                >
+                  <Button icon={<UploadCloud size={14} />}>选择图片</Button>
+                </Upload>
+              </Form.Item>
+            ) : (
+              <div className={styles.fieldGrid}>
+                <Form.Item
+                  extra={
+                    scannersLoading
+                      ? '正在读取当前用户在线的 Windows 设备助手。'
+                      : scanners.length
+                        ? `当前检测到 ${scanners.length} 台在线扫描仪。`
+                        : '当前没有在线扫描仪，请先在 Windows 设备助手里完成绑定。'
+                  }
+                  label="在线扫描仪"
+                >
+                  <Select
+                    loading={scannersLoading}
+                    options={scanners.map((scanner) => ({
+                      label: scanner.display_name,
+                      value: scanner.scanner_id,
+                    }))}
+                    placeholder="选择扫描仪"
+                    value={scanScannerId || undefined}
+                    onChange={setScanScannerId}
+                  />
+                </Form.Item>
+                <Form.Item label="纸张">
+                  <Select
+                    options={OCR_SCAN_MEDIA_OPTIONS.map((value) => ({ label: value, value }))}
+                    value={scanMedia}
+                    onChange={setScanMedia}
+                  />
+                </Form.Item>
+                <Form.Item label="单双面">
+                  <Segmented
+                    options={[
+                      { label: '双面', value: 'true' },
+                      { label: '单面', value: 'false' },
+                    ]}
+                    value={scanDuplex ? 'true' : 'false'}
+                    onChange={(value) => setScanDuplex(value === 'true')}
+                  />
+                </Form.Item>
+                <Form.Item extra="留空则使用后端默认上限。" label="最多扫描页数">
+                  <InputNumber
+                    min={1}
+                    style={{ width: '100%' }}
+                    value={scanPages}
+                    onChange={(value) => setScanPages(value == null ? null : Number(value))}
+                  />
+                </Form.Item>
+              </div>
+            )}
+
+            {files.length ? (
+              <Space wrap>
+                {files.map((file) => (
+                  <Tag key={`${file.name}-${file.size}-${file.lastModified}`}>{file.name}</Tag>
+                ))}
+              </Space>
+            ) : null}
+
+            <div className={styles.stack}>
+              <h3 className={styles.panelTitle}>发布范围</h3>
+              <PublishScopeSelector
+                classIds={classIds}
+                lookups={lookups}
+                studentIds={studentIds}
+                onClassIdsChange={setClassIds}
+                onStudentIdsChange={setStudentIds}
+              />
+              <div className={styles.previewBox}>
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <Checkbox
+                    checked={personalizedEnabled}
+                    onChange={(event) => setPersonalizedEnabled(event.target.checked)}
+                  >
+                    错题变式训练
+                  </Checkbox>
+                  <label>
+                    <div className={styles.muted}>个性化作业题目数量</div>
+                    <InputNumber
+                      disabled={!personalizedEnabled}
+                      max={PERSONALIZED_QUESTION_COUNT_MAX}
+                      min={PERSONALIZED_QUESTION_COUNT_MIN}
+                      value={personalizedQuestionCount}
+                      onChange={(value) =>
+                        setPersonalizedQuestionCount(
+                          normalizePersonalizedQuestionCount(
+                            value ?? PERSONALIZED_QUESTION_COUNT_DEFAULT,
+                          ),
+                        )
+                      }
+                    />
+                  </label>
+                </Space>
+              </div>
+            </div>
+
+            {scannersError ? (
+              <Alert showIcon message={`加载扫描仪失败：${scannersError}`} type="warning" />
+            ) : null}
+
+            <Button
+              className={styles.primary}
+              htmlType="submit"
+              icon={<FileScan size={14} />}
+              loading={run.busy}
+            >
+              {inputType === 'upload' ? '开始 OCR 创建并发布' : '开始扫描、OCR 并发布'}
+            </Button>
+          </Form>
         </div>
         <RunStatusPanel run={run} />
       </div>
@@ -4354,27 +4379,27 @@ const SubmissionOcrCreateView = ({
   }, [assignmentId, client]);
 
   const fileCount = files.length;
-  const splitCount = pagesPerStudent > 0 && fileCount > 0 ? Math.floor(fileCount / pagesPerStudent) : 0;
+  const splitCount =
+    pagesPerStudent > 0 && fileCount > 0 ? Math.floor(fileCount / pagesPerStudent) : 0;
   const splitRemainder = pagesPerStudent > 0 && fileCount > 0 ? fileCount % pagesPerStudent : 0;
   const recipientCount = assignmentDetail?.students.length || 0;
   const estimatedScanSubmissionCount =
     inputType === 'scan' && pagesPerStudent > 0 && positiveId(scanPages) > 0
       ? Math.floor(positiveId(scanPages) / pagesPerStudent)
       : 0;
-  const validationMessage =
-    !positiveId(assignmentId)
-      ? '请先选择一条作业。'
-      : pagesPerStudent <= 0
-        ? '请填写每生页数。'
-        : inputType === 'upload'
-          ? fileCount <= 0
-            ? '请先上传答题图片。'
-            : splitRemainder !== 0
-              ? '上传图片数量必须能被每生页数整除。'
-              : null
-          : !scanScannerId
-            ? '请先选择在线扫描仪。'
-            : null;
+  const validationMessage = !positiveId(assignmentId)
+    ? '请先选择一条作业。'
+    : pagesPerStudent <= 0
+      ? '请填写每生页数。'
+      : inputType === 'upload'
+        ? fileCount <= 0
+          ? '请先上传答题图片。'
+          : splitRemainder !== 0
+            ? '上传图片数量必须能被每生页数整除。'
+            : null
+        : !scanScannerId
+          ? '请先选择在线扫描仪。'
+          : null;
 
   const startBatchOcr = async () => {
     setSubmitError(null);
@@ -4502,7 +4527,9 @@ const SubmissionOcrCreateView = ({
                   accept="image/*"
                   beforeUpload={() => false}
                   onChange={(info) => {
-                    setFiles(info.fileList.map((file) => file.originFileObj).filter(Boolean) as File[]);
+                    setFiles(
+                      info.fileList.map((file) => file.originFileObj).filter(Boolean) as File[],
+                    );
                   }}
                 >
                   <Button icon={<UploadCloud size={14} />}>选择图片</Button>
@@ -4577,20 +4604,27 @@ const SubmissionOcrCreateView = ({
                   size="small"
                   items={[
                     {
-                      children: scopeText(selectedAssignment.assignment_id || selectedAssignment.id, '--'),
+                      children: scopeText(
+                        selectedAssignment.assignment_id || selectedAssignment.id,
+                        '--',
+                      ),
                       label: '作业编号',
                     },
                     { children: scopeText(selectedAssignment.title, '--'), label: '标题' },
                     {
                       children: scopeText(
-                        assignmentDetail.subject?.name || selectedAssignment.subject_name || selectedAssignment.subject_id,
+                        assignmentDetail.subject?.name ||
+                          selectedAssignment.subject_name ||
+                          selectedAssignment.subject_id,
                         '--',
                       ),
                       label: '科目',
                     },
                     {
                       children: scopeText(
-                        assignmentDetail.grade?.name || selectedAssignment.grade_name || selectedAssignment.grade_id,
+                        assignmentDetail.grade?.name ||
+                          selectedAssignment.grade_name ||
+                          selectedAssignment.grade_id,
                         '--',
                       ),
                       label: '年级',
@@ -4627,7 +4661,9 @@ const SubmissionOcrCreateView = ({
                     {inputType === 'upload' ? '将生成' : '预计最多生成'}
                   </div>
                   <div className={styles.statValue}>
-                    {inputType === 'upload' ? splitCount || '--' : estimatedScanSubmissionCount || '--'}
+                    {inputType === 'upload'
+                      ? splitCount || '--'
+                      : estimatedScanSubmissionCount || '--'}
                   </div>
                 </div>
                 <div className={styles.statItem}>
@@ -4660,11 +4696,19 @@ const SubmissionOcrCreateView = ({
               </Space>
             ) : null}
 
-            {assignmentsError ? <Alert showIcon message={`加载作业列表失败：${assignmentsError}`} type="warning" /> : null}
-            {assignmentDetailError ? (
-              <Alert showIcon message={`加载作业详情失败：${assignmentDetailError}`} type="warning" />
+            {assignmentsError ? (
+              <Alert showIcon message={`加载作业列表失败：${assignmentsError}`} type="warning" />
             ) : null}
-            {scannersError ? <Alert showIcon message={`加载扫描仪失败：${scannersError}`} type="warning" /> : null}
+            {assignmentDetailError ? (
+              <Alert
+                showIcon
+                message={`加载作业详情失败：${assignmentDetailError}`}
+                type="warning"
+              />
+            ) : null}
+            {scannersError ? (
+              <Alert showIcon message={`加载扫描仪失败：${scannersError}`} type="warning" />
+            ) : null}
             {submitError ? <Alert showIcon message={submitError} type="error" /> : null}
 
             <Space wrap>
@@ -4690,6 +4734,7 @@ const SubmissionOcrCreateView = ({
 const AskCoreWorkbenchPage = memo(() => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { enableAskCoreWorkbenchCreateFlows } = useServerConfigStore(featureFlagsSelectors);
   const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const routeQuery = query.get('route');
   const routeTab = routeQuery ? askCoreWorkbenchTabFromRoute(routeQuery) : undefined;
@@ -4699,6 +4744,7 @@ const AskCoreWorkbenchPage = memo(() => {
     () => parseWorkbenchRoute(routeQuery, activeTab),
     [activeTab, routeQuery],
   );
+  const canUseCreateFlows = canUseAskCoreWorkbenchCreateFlows(enableAskCoreWorkbenchCreateFlows);
 
   const [dashboard, setDashboard] = useState<AskCoreWorkbenchDashboardPayload>(
     emptyAskCoreWorkbenchDashboard,
@@ -4885,18 +4931,22 @@ const AskCoreWorkbenchPage = memo(() => {
             共 {drafts.length} 个草稿，{active.length} 个后台任务正在运行。
           </span>
           <Space wrap>
-            <Button
-              className={styles.secondary}
-              onClick={() => navigate(routeFor('assignments', '/assignments/new/manual'))}
-            >
-              创建作业
-            </Button>
-            <Button
-              className={styles.secondary}
-              onClick={() => navigate(routeFor('submissions', '/submissions/new/ocr'))}
-            >
-              导入提交
-            </Button>
+            {canUseCreateFlows ? (
+              <>
+                <Button
+                  className={styles.secondary}
+                  onClick={() => navigate(routeFor('assignments', '/assignments/new/manual'))}
+                >
+                  创建作业
+                </Button>
+                <Button
+                  className={styles.secondary}
+                  onClick={() => navigate(routeFor('submissions', '/submissions/new/ocr'))}
+                >
+                  导入提交
+                </Button>
+              </>
+            ) : null}
             <Button
               className={styles.secondary}
               icon={<RefreshCw size={14} />}
@@ -5021,29 +5071,33 @@ const AskCoreWorkbenchPage = memo(() => {
           </div>
           <Space wrap>
             {resource === 'assignments' ? (
-              <>
-                <Button
-                  className={styles.secondary}
-                  onClick={() => navigate(routeFor('assignments', '/assignments/new/ocr'))}
-                >
-                  OCR 创建
-                </Button>
+              canUseCreateFlows ? (
+                <>
+                  <Button
+                    className={styles.secondary}
+                    onClick={() => navigate(routeFor('assignments', '/assignments/new/ocr'))}
+                  >
+                    OCR 创建
+                  </Button>
+                  <Button
+                    className={styles.primary}
+                    icon={<Plus size={14} />}
+                    onClick={() => navigate(routeFor('assignments', '/assignments/new/manual'))}
+                  >
+                    手动创建
+                  </Button>
+                </>
+              ) : null
+            ) : resource === 'submissions' ? (
+              canUseCreateFlows ? (
                 <Button
                   className={styles.primary}
-                  icon={<Plus size={14} />}
-                  onClick={() => navigate(routeFor('assignments', '/assignments/new/manual'))}
+                  icon={<FileScan size={14} />}
+                  onClick={() => navigate(routeFor('submissions', '/submissions/new/ocr'))}
                 >
-                  手动创建
+                  OCR 录入
                 </Button>
-              </>
-            ) : resource === 'submissions' ? (
-              <Button
-                className={styles.primary}
-                icon={<FileScan size={14} />}
-                onClick={() => navigate(routeFor('submissions', '/submissions/new/ocr'))}
-              >
-                OCR 录入
-              </Button>
+              ) : null
             ) : (
               <Button
                 className={styles.primary}
@@ -5263,9 +5317,38 @@ const AskCoreWorkbenchPage = memo(() => {
     );
   };
 
+  const renderCreateGrayGate = () => (
+    <div className={styles.view}>
+      <DetailHeader
+        subtitle="当前账号暂未进入本轮创建页灰度范围。"
+        title="创建页灰度未开放"
+        onBack={backToList}
+      />
+      <Alert
+        showIcon
+        action={
+          <Button className={styles.secondary} onClick={backToList}>
+            返回列表
+          </Button>
+        }
+        description="作业手动创建、作业 OCR 创建和提交 OCR 录入仅对本轮灰度账号开放。其他工作台列表、详情、编辑和报告能力保持可用。"
+        message="当前账号不能访问本轮创建页能力"
+        type="warning"
+      />
+    </div>
+  );
+
   const renderMain = () => {
     if (currentRoute.kind === 'dashboard' || currentRoute.kind === 'ops') return renderDashboard();
     if (currentRoute.kind === 'list') return renderResourceList(currentRoute.resource);
+    if (
+      !canUseCreateFlows &&
+      (isAskCoreWorkbenchCreateRoute(currentRoute.path) ||
+        (currentRoute.kind === 'new' &&
+          ['assignments', 'submissions'].includes(currentRoute.resource)))
+    ) {
+      return renderCreateGrayGate();
+    }
     if (currentRoute.kind === 'new') return renderEditOrCreate(currentRoute.resource, 'create');
     if (currentRoute.kind === 'detail' || currentRoute.kind === 'edit') return renderDetail();
     if (currentRoute.kind === 'assignment-manual') {

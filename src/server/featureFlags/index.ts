@@ -99,7 +99,10 @@ export const getServerFeatureFlagsFromRuntimeConfig = async (userId?: string) =>
  * Get server feature flags from RuntimeConfig and map them to state with user ID
  * @param userId - Optional user ID for user-specific feature flag evaluation
  */
-export const getServerFeatureFlagsStateFromRuntimeConfig = async (userId?: string) => {
+export const getServerFeatureFlagsStateFromRuntimeConfig = async (
+  userId?: string,
+  userEmail?: string,
+) => {
   const flags = await getServerFeatureFlagsFromRuntimeConfig(userId);
-  return mapFeatureFlagsEnvToState(flags, userId);
+  return mapFeatureFlagsEnvToState(flags, userId, userEmail);
 };

@@ -64,7 +64,10 @@ export const configRouter = router({
 
     const [serverConfig, serverFeatureFlags, billboard] = await Promise.all([
       getServerGlobalConfig({ userEmail: ctx.userEmail, userId: ctx.userId }),
-      getServerFeatureFlagsStateFromRuntimeConfig(ctx.userId || undefined),
+      getServerFeatureFlagsStateFromRuntimeConfig(
+        ctx.userId || undefined,
+        ctx.userEmail || undefined,
+      ),
       getActiveBillboard(),
     ]);
 

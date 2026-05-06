@@ -40,6 +40,9 @@ export const FeatureFlagsSchema = z.object({
   // please contact us for more information: hello@lobehub.com
   commercial_hide_github: FeatureFlagValue.optional(),
   commercial_hide_docs: FeatureFlagValue.optional(),
+
+  // AskCore rollout flags
+  askcore_workbench_create_flows: FeatureFlagValue.optional(),
 });
 
 export type IFeatureFlags = z.infer<typeof FeatureFlagsSchema>;
@@ -53,11 +56,21 @@ export type IFeatureFlags = z.infer<typeof FeatureFlagsSchema>;
 export const evaluateFeatureFlag = (
   flagValue: boolean | string[] | undefined,
   userId?: string,
+  userEmail?: string,
 ): boolean | undefined => {
   if (typeof flagValue === 'boolean') return flagValue;
 
   if (Array.isArray(flagValue)) {
-    return userId ? flagValue.includes(userId) : false;
+    const allowlist = new Set(flagValue.map((value) => value.trim().toLowerCase()).filter(Boolean));
+    const identities = [userId, userEmail]
+      .map((value) =>
+        String(value || '')
+          .trim()
+          .toLowerCase(),
+      )
+      .filter(Boolean);
+
+    return identities.some((identity) => allowlist.has(identity));
   }
 };
 
@@ -93,37 +106,49 @@ export const DEFAULT_FEATURE_FLAGS: IFeatureFlags = {
   // please contact us for more information: hello@lobehub.com
   commercial_hide_github: false,
   commercial_hide_docs: false,
+
+  askcore_workbench_create_flows: false,
 };
 
-export const mapFeatureFlagsEnvToState = (config: IFeatureFlags, userId?: string) => {
+export const mapFeatureFlagsEnvToState = (
+  config: IFeatureFlags,
+  userId?: string,
+  userEmail?: string,
+) => {
   return {
-    isAgentEditable: evaluateFeatureFlag(config.edit_agent, userId),
-    showProvider: evaluateFeatureFlag(config.provider_settings, userId),
+    isAgentEditable: evaluateFeatureFlag(config.edit_agent, userId, userEmail),
+    showProvider: evaluateFeatureFlag(config.provider_settings, userId, userEmail),
 
-    showOpenAIApiKey: evaluateFeatureFlag(config.openai_api_key, userId),
-    showOpenAIProxyUrl: evaluateFeatureFlag(config.openai_proxy_url, userId),
+    showOpenAIApiKey: evaluateFeatureFlag(config.openai_api_key, userId, userEmail),
+    showOpenAIProxyUrl: evaluateFeatureFlag(config.openai_proxy_url, userId, userEmail),
 
-    showApiKeyManage: evaluateFeatureFlag(config.api_key_manage, userId),
+    showApiKeyManage: evaluateFeatureFlag(config.api_key_manage, userId, userEmail),
 
-    showAiImage: evaluateFeatureFlag(config.ai_image, userId),
-    showChangelog: evaluateFeatureFlag(config.changelog, userId),
+    showAiImage: evaluateFeatureFlag(config.ai_image, userId, userEmail),
+    showChangelog: evaluateFeatureFlag(config.changelog, userId, userEmail),
 
-    enableCheckUpdates: evaluateFeatureFlag(config.check_updates, userId),
-    showWelcomeSuggest: evaluateFeatureFlag(config.welcome_suggest, userId),
+    enableCheckUpdates: evaluateFeatureFlag(config.check_updates, userId, userEmail),
+    showWelcomeSuggest: evaluateFeatureFlag(config.welcome_suggest, userId, userEmail),
 
-    enableKnowledgeBase: evaluateFeatureFlag(config.knowledge_base, userId),
-    enableRAGEval: evaluateFeatureFlag(config.rag_eval, userId),
-    enableAgentSelfIteration: evaluateFeatureFlag(config.agent_self_iteration, userId),
-    enableAgentOnboarding: evaluateFeatureFlag(config.agent_onboarding, userId),
-    enableAgentTask: evaluateFeatureFlag(config.agent_task, userId),
+    enableKnowledgeBase: evaluateFeatureFlag(config.knowledge_base, userId, userEmail),
+    enableRAGEval: evaluateFeatureFlag(config.rag_eval, userId, userEmail),
+    enableAgentSelfIteration: evaluateFeatureFlag(config.agent_self_iteration, userId, userEmail),
+    enableAgentOnboarding: evaluateFeatureFlag(config.agent_onboarding, userId, userEmail),
+    enableAgentTask: evaluateFeatureFlag(config.agent_task, userId, userEmail),
 
-    showCloudPromotion: evaluateFeatureFlag(config.cloud_promotion, userId),
+    showCloudPromotion: evaluateFeatureFlag(config.cloud_promotion, userId, userEmail),
 
-    showMarket: evaluateFeatureFlag(config.market, userId),
-    enableSTT: evaluateFeatureFlag(config.speech_to_text, userId),
+    showMarket: evaluateFeatureFlag(config.market, userId, userEmail),
+    enableSTT: evaluateFeatureFlag(config.speech_to_text, userId, userEmail),
 
-    hideGitHub: evaluateFeatureFlag(config.commercial_hide_github, userId),
-    hideDocs: evaluateFeatureFlag(config.commercial_hide_docs, userId),
+    hideGitHub: evaluateFeatureFlag(config.commercial_hide_github, userId, userEmail),
+    hideDocs: evaluateFeatureFlag(config.commercial_hide_docs, userId, userEmail),
+
+    enableAskCoreWorkbenchCreateFlows: evaluateFeatureFlag(
+      config.askcore_workbench_create_flows,
+      userId,
+      userEmail,
+    ),
   };
 };
 
