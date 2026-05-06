@@ -44,14 +44,10 @@ describe('AskCoreWorkbench utils', () => {
     expect(isAskCoreWorkbenchCreateRoute('/questions/new')).toBe(false);
   });
 
-  it('gates create flows by the default gray account allowlist', () => {
-    expect(canUseAskCoreWorkbenchCreateFlows('seednov@outlook.com')).toBe(true);
-    expect(canUseAskCoreWorkbenchCreateFlows(' SeedNov@Outlook.com ')).toBe(true);
-    expect(canUseAskCoreWorkbenchCreateFlows('teacher@askcore.cn')).toBe(false);
-    expect(canUseAskCoreWorkbenchCreateFlows('teacher@askcore.cn', ['*'])).toBe(true);
-    expect(canUseAskCoreWorkbenchCreateFlows('teacher@askcore.cn', ['teacher@askcore.cn'])).toBe(
-      true,
-    );
+  it('gates create flows by the runtime feature flag state', () => {
+    expect(canUseAskCoreWorkbenchCreateFlows(true)).toBe(true);
+    expect(canUseAskCoreWorkbenchCreateFlows(false)).toBe(false);
+    expect(canUseAskCoreWorkbenchCreateFlows(undefined)).toBe(false);
   });
 
   it('detects AskCore standalone suite.run UI results', () => {

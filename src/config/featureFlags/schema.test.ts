@@ -78,6 +78,12 @@ describe('evaluateFeatureFlag', () => {
     expect(evaluateFeatureFlag(allowlist, 'user-456')).toBe(true);
   });
 
+  it('should return true if user email is in the account allowlist', () => {
+    const allowlist = ['seednov@outlook.com'];
+    expect(evaluateFeatureFlag(allowlist, 'user-123', 'SeedNov@Outlook.com')).toBe(true);
+    expect(evaluateFeatureFlag(allowlist, 'user-123', 'teacher@askcore.cn')).toBe(false);
+  });
+
   it('should return false if user ID is not in the allowlist', () => {
     const allowlist = ['user-123', 'user-456'];
     expect(evaluateFeatureFlag(allowlist, 'user-789')).toBe(false);
@@ -117,6 +123,7 @@ describe('mapFeatureFlagsEnvToState', () => {
       cloud_promotion: true,
       commercial_hide_github: false,
       commercial_hide_docs: true,
+      askcore_workbench_create_flows: false,
     };
 
     const mappedState = mapFeatureFlagsEnvToState(config);
@@ -141,6 +148,7 @@ describe('mapFeatureFlagsEnvToState', () => {
       showCloudPromotion: true,
       hideGitHub: false,
       hideDocs: true,
+      enableAskCoreWorkbenchCreateFlows: false,
     });
   });
 
@@ -154,9 +162,10 @@ describe('mapFeatureFlagsEnvToState', () => {
       create_session: ['user-789'],
       dalle: true,
       knowledge_base: ['user-123'],
+      askcore_workbench_create_flows: ['seednov@outlook.com'],
     };
 
-    const mappedState = mapFeatureFlagsEnvToState(config, userId);
+    const mappedState = mapFeatureFlagsEnvToState(config, userId, 'seednov@outlook.com');
 
     expect(mappedState.isAgentEditable).toBe(true); // user-123 is in allowlist
 
@@ -164,6 +173,7 @@ describe('mapFeatureFlagsEnvToState', () => {
     expect(mappedState.enableAgentOnboarding).toBe(true); // user-123 is in allowlist
     expect(mappedState.enableAgentTask).toBe(true); // user-123 is in allowlist
     expect(mappedState.enableKnowledgeBase).toBe(true); // user-123 is in allowlist
+    expect(mappedState.enableAskCoreWorkbenchCreateFlows).toBe(true); // email is in allowlist
   });
 
   it('should return false for array flags when user ID is not in allowlist', () => {

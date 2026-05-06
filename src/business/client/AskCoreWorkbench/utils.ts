@@ -1,10 +1,6 @@
 'use client';
 
-import {
-  ASKCORE_WORKBENCH_CREATE_GRAY_ALLOWLIST,
-  ASKCORE_WORKBENCH_PATH,
-  ASKCORE_WORKBENCH_TABS,
-} from './config';
+import { ASKCORE_WORKBENCH_PATH, ASKCORE_WORKBENCH_TABS } from './config';
 import { type AskCoreWorkbenchTab } from './types';
 
 export const DEFAULT_ASKCORE_WORKBENCH_TAB: AskCoreWorkbenchTab = 'overview';
@@ -61,17 +57,7 @@ export const normalizeAskCoreWorkbenchRoutePath = (route?: string | null) => {
 export const isAskCoreWorkbenchCreateRoute = (route?: string | null) =>
   ASKCORE_WORKBENCH_CREATE_ROUTES.has(normalizeAskCoreWorkbenchRoutePath(route));
 
-const normalizeEmail = (value?: string | null) => String(value || '').trim().toLowerCase();
-
-export const canUseAskCoreWorkbenchCreateFlows = (
-  userEmail?: string | null,
-  allowlist: readonly string[] = ASKCORE_WORKBENCH_CREATE_GRAY_ALLOWLIST,
-) => {
-  const normalizedEmail = normalizeEmail(userEmail);
-  if (!normalizedEmail) return false;
-  const normalizedAllowlist = new Set(allowlist.map(normalizeEmail).filter(Boolean));
-  return normalizedAllowlist.has('*') || normalizedAllowlist.has(normalizedEmail);
-};
+export const canUseAskCoreWorkbenchCreateFlows = (enabled?: boolean | null) => enabled === true;
 
 export const getAskCoreWorkbenchRouteFromState = (state?: any): string | undefined => {
   if (!state || typeof state !== 'object') return;
