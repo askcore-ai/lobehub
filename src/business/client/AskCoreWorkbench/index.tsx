@@ -53,6 +53,9 @@ import {
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
+import { useUserStore } from '@/store/user';
+import { userProfileSelectors } from '@/store/user/selectors';
+
 import type { AskCoreWorkbenchApiClient } from './api';
 import {
   askCoreWorkbenchClient,
@@ -112,14 +115,16 @@ import {
 import {
   askCoreWorkbenchTabFromRoute,
   buildAskCoreWorkbenchUrl,
+  canUseAskCoreWorkbenchCreateFlows,
+  isAskCoreWorkbenchCreateRoute,
   normalizeAskCoreWorkbenchTab,
 } from './utils';
 
 const PAGE_SIZE = 20;
-const OCR_INPUT_MODE_OPTIONS = [
+const OCR_INPUT_MODE_OPTIONS: Array<{ label: string; value: 'scan' | 'upload' }> = [
   { label: '上传图片', value: 'upload' },
   { label: '调用扫描仪', value: 'scan' },
-] as const;
+];
 const OCR_SCAN_MEDIA_OPTIONS = ['A3', 'A4', 'B4', 'B5'] as const;
 const PERSONALIZED_QUESTION_COUNT_DEFAULT = 3;
 const PERSONALIZED_QUESTION_COUNT_MIN = 1;
@@ -982,7 +987,7 @@ const PublishScopeSelector = ({
   const schools = useMemo<ScopeNode[]>(
     () =>
       lookups.schools
-        .map((item) => {
+        .map((item): ScopeNode | null => {
           const id = positiveId(item.school_id || item.id);
           if (!id) return null;
           return {
@@ -999,7 +1004,7 @@ const PublishScopeSelector = ({
   const classes = useMemo<ScopeNode[]>(
     () =>
       lookups.classes
-        .map((item) => {
+        .map((item): ScopeNode | null => {
           const id = positiveId(item.class_id || item.id);
           if (!id) return null;
           return {
@@ -1015,7 +1020,7 @@ const PublishScopeSelector = ({
   const students = useMemo<ScopeNode[]>(
     () =>
       lookups.students
-        .map((item) => {
+        .map((item): ScopeNode | null => {
           const id = positiveId(item.student_id || item.id);
           if (!id) return null;
           return {
@@ -3854,12 +3859,17 @@ const AssignmentManualCreateView = ({
               try {
                 const questionCount =
                   parsePersonalizedQuestionCountOrThrow(personalizedQuestionCount);
-                const result = await client.invokeAction('assignment.draft.create_manual', {
-                  due_date: values.due_date ? toIsoDateTime(String(values.due_date)) : undefined,
-                  grade_id: Number(values.grade_id),
-                  subject_id: Number(values.subject_id),
-                  title: String(values.title || '').trim(),
-                });
+                const result = await client.invokeAction(
+                  'assignment.draft.create_manual',
+                  compactJsonRecord({
+                    due_date: values.due_date
+                      ? toIsoDateTime(String(values.due_date))
+                      : undefined,
+                    grade_id: Number(values.grade_id),
+                    subject_id: Number(values.subject_id),
+                    title: String(values.title || '').trim(),
+                  }),
+                );
                 const finalRun = await waitForInvocation({
                   client,
                   invocationId: result.invocation_id,
@@ -4700,6 +4710,7 @@ const SubmissionOcrCreateView = ({
 const AskCoreWorkbenchPage = memo(() => {
   const location = useLocation();
   const navigate = useNavigate();
+  const userEmail = useUserStore(userProfileSelectors.email);
   const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const routeQuery = query.get('route');
   const routeTab = routeQuery ? askCoreWorkbenchTabFromRoute(routeQuery) : undefined;
@@ -4709,6 +4720,7 @@ const AskCoreWorkbenchPage = memo(() => {
     () => parseWorkbenchRoute(routeQuery, activeTab),
     [activeTab, routeQuery],
   );
+  const canUseCreateFlows = canUseAskCoreWorkbenchCreateFlows(userEmail);
 
   const [dashboard, setDashboard] = useState<AskCoreWorkbenchDashboardPayload>(
     emptyAskCoreWorkbenchDashboard,
@@ -4896,18 +4908,22 @@ const AskCoreWorkbenchPage = memo(() => {
             共 {drafts.length} 个草稿，{active.length} 个后台任务正在运行。
           </span>
           <Space wrap>
-            <Button
-              className={styles.secondary}
-              onClick={() => navigate(routeFor('assignments', '/assignments/new/manual'))}
-            >
-              创建作业
-            </Button>
-            <Button
-              className={styles.secondary}
-              onClick={() => navigate(routeFor('submissions', '/submissions/new/ocr'))}
-            >
-              导入提交
-            </Button>
+            {canUseCreateFlows ? (
+              <>
+                <Button
+                  className={styles.secondary}
+                  onClick={() => navigate(routeFor('assignments', '/assignments/new/manual'))}
+                >
+                  创建作业
+                </Button>
+                <Button
+                  className={styles.secondary}
+                  onClick={() => navigate(routeFor('submissions', '/submissions/new/ocr'))}
+                >
+                  导入提交
+                </Button>
+              </>
+            ) : null}
             <Button
               className={styles.secondary}
               icon={<RefreshCw size={14} />}
@@ -5032,29 +5048,33 @@ const AskCoreWorkbenchPage = memo(() => {
           </div>
           <Space wrap>
             {resource === 'assignments' ? (
-              <>
-                <Button
-                  className={styles.secondary}
-                  onClick={() => navigate(routeFor('assignments', '/assignments/new/ocr'))}
-                >
-                  OCR 创建
-                </Button>
+              canUseCreateFlows ? (
+                <>
+                  <Button
+                    className={styles.secondary}
+                    onClick={() => navigate(routeFor('assignments', '/assignments/new/ocr'))}
+                  >
+                    OCR 创建
+                  </Button>
+                  <Button
+                    className={styles.primary}
+                    icon={<Plus size={14} />}
+                    onClick={() => navigate(routeFor('assignments', '/assignments/new/manual'))}
+                  >
+                    手动创建
+                  </Button>
+                </>
+              ) : null
+            ) : resource === 'submissions' ? (
+              canUseCreateFlows ? (
                 <Button
                   className={styles.primary}
-                  icon={<Plus size={14} />}
-                  onClick={() => navigate(routeFor('assignments', '/assignments/new/manual'))}
+                  icon={<FileScan size={14} />}
+                  onClick={() => navigate(routeFor('submissions', '/submissions/new/ocr'))}
                 >
-                  手动创建
+                  OCR 录入
                 </Button>
-              </>
-            ) : resource === 'submissions' ? (
-              <Button
-                className={styles.primary}
-                icon={<FileScan size={14} />}
-                onClick={() => navigate(routeFor('submissions', '/submissions/new/ocr'))}
-              >
-                OCR 录入
-              </Button>
+              ) : null
             ) : (
               <Button
                 className={styles.primary}
@@ -5274,9 +5294,38 @@ const AskCoreWorkbenchPage = memo(() => {
     );
   };
 
+  const renderCreateGrayGate = () => (
+    <div className={styles.view}>
+      <DetailHeader
+        subtitle="当前账号暂未进入本轮创建页灰度范围。"
+        title="创建页灰度未开放"
+        onBack={backToList}
+      />
+      <Alert
+        showIcon
+        action={
+          <Button className={styles.secondary} onClick={backToList}>
+            返回列表
+          </Button>
+        }
+        description="作业手动创建、作业 OCR 创建和提交 OCR 录入仅对本轮灰度账号开放。其他工作台列表、详情、编辑和报告能力保持可用。"
+        message="当前账号不能访问本轮创建页能力"
+        type="warning"
+      />
+    </div>
+  );
+
   const renderMain = () => {
     if (currentRoute.kind === 'dashboard' || currentRoute.kind === 'ops') return renderDashboard();
     if (currentRoute.kind === 'list') return renderResourceList(currentRoute.resource);
+    if (
+      !canUseCreateFlows &&
+      (isAskCoreWorkbenchCreateRoute(currentRoute.path) ||
+        (currentRoute.kind === 'new' &&
+          ['assignments', 'submissions'].includes(currentRoute.resource)))
+    ) {
+      return renderCreateGrayGate();
+    }
     if (currentRoute.kind === 'new') return renderEditOrCreate(currentRoute.resource, 'create');
     if (currentRoute.kind === 'detail' || currentRoute.kind === 'edit') return renderDetail();
     if (currentRoute.kind === 'assignment-manual') {

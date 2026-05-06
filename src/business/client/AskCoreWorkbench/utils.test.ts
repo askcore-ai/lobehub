@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   askCoreWorkbenchTabFromRoute,
   buildAskCoreWorkbenchUrl,
+  canUseAskCoreWorkbenchCreateFlows,
   getAskCoreWorkbenchRouteFromState,
   isAskCoreSuiteRunResult,
+  isAskCoreWorkbenchCreateRoute,
   normalizeAskCoreWorkbenchTab,
 } from './utils';
 
@@ -30,6 +32,26 @@ describe('AskCoreWorkbench utils', () => {
       '/askcore/workbench?tab=submissions&route=%2Fsubmissions%2F7',
     );
     expect(buildAskCoreWorkbenchUrl({ tab: 'teachers' })).toBe('/askcore/workbench?tab=teachers');
+  });
+
+  it('identifies create routes that require the gray allowlist', () => {
+    expect(isAskCoreWorkbenchCreateRoute('/assignments/new/manual')).toBe(true);
+    expect(isAskCoreWorkbenchCreateRoute('https://askcore.cn/assignments/new/ocr?draft=1')).toBe(
+      true,
+    );
+    expect(isAskCoreWorkbenchCreateRoute('/submissions/new/ocr')).toBe(true);
+    expect(isAskCoreWorkbenchCreateRoute('/assignments/12')).toBe(false);
+    expect(isAskCoreWorkbenchCreateRoute('/questions/new')).toBe(false);
+  });
+
+  it('gates create flows by the default gray account allowlist', () => {
+    expect(canUseAskCoreWorkbenchCreateFlows('seednov@outlook.com')).toBe(true);
+    expect(canUseAskCoreWorkbenchCreateFlows(' SeedNov@Outlook.com ')).toBe(true);
+    expect(canUseAskCoreWorkbenchCreateFlows('teacher@askcore.cn')).toBe(false);
+    expect(canUseAskCoreWorkbenchCreateFlows('teacher@askcore.cn', ['*'])).toBe(true);
+    expect(canUseAskCoreWorkbenchCreateFlows('teacher@askcore.cn', ['teacher@askcore.cn'])).toBe(
+      true,
+    );
   });
 
   it('detects AskCore standalone suite.run UI results', () => {

@@ -4,6 +4,7 @@ import { type AskCoreWorkbenchTabConfig } from './types';
 
 export const ASKCORE_WORKBENCH_PATH = '/askcore/workbench';
 export const ASKCORE_WORKBENCH_PLUGIN_ID = 'aitutor-suite';
+export const ASKCORE_WORKBENCH_CREATE_GRAY_ALLOWLIST = ['seednov@outlook.com'] as const;
 
 export const ASKCORE_WORKBENCH_TABS: AskCoreWorkbenchTabConfig[] = [
   { key: 'overview', label: '总览' },
