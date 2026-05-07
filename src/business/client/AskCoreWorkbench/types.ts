@@ -5,8 +5,7 @@ export type AskCoreWorkbenchTab =
   | 'subjects'
   | 'assignments'
   | 'questions'
-  | 'submissions'
-  | 'ops';
+  | 'submissions';
 
 export type JsonPrimitive = boolean | number | string | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | JsonRecord;

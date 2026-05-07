@@ -66,7 +66,6 @@ export const ASKCORE_WORKBENCH_TABS: AskCoreWorkbenchTabConfig[] = [
     resource: 'submissions',
     searchPlaceholder: '搜索提交、学生',
   },
-  { key: 'ops', label: '运维' },
 ];
 
 export const ASKCORE_WORKBENCH_TAB_OPTIONS = ASKCORE_WORKBENCH_TABS.map((tab) => ({

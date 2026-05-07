@@ -30,8 +30,7 @@ export const askCoreWorkbenchTabFromRoute = (route?: string | null): AskCoreWork
   const mapping: Record<string, AskCoreWorkbenchTab> = {
     assignments: 'assignments',
     dashboard: 'overview',
-    ops: 'ops',
-    operations: 'ops',
+    grades: 'grades',
     questions: 'questions',
     subjects: 'subjects',
     submissions: 'submissions',

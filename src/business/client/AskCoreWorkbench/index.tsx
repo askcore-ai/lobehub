@@ -474,7 +474,7 @@ type WorkbenchRoute =
   | { kind: 'assignment-manual'; path: string }
   | { kind: 'assignment-ocr'; path: string }
   | { kind: 'submission-ocr'; path: string }
-  | { kind: 'ops'; path: string };
+
 
 type DetailState =
   | { item: JsonRecord; kind: 'generic' }
@@ -751,7 +751,6 @@ const parseWorkbenchRoute = (
   const path = normalizeRoutePath(route);
   if (!path) {
     if (activeTab === 'overview') return { kind: 'dashboard', path: '/dashboard' };
-    if (activeTab === 'ops') return { kind: 'ops', path: '/ops' };
     return {
       kind: 'list',
       path: buildResourceBasePath(activeTab as ResourceKey),
@@ -759,7 +758,6 @@ const parseWorkbenchRoute = (
     };
   }
   if (path === '/dashboard') return { kind: 'dashboard', path };
-  if (path === '/ops' || path.startsWith('/ops/')) return { kind: 'ops', path };
   if (path === '/assignments/new/manual') return { kind: 'assignment-manual', path };
   if (path === '/assignments/new/ocr') return { kind: 'assignment-ocr', path };
   if (path === '/submissions/new/ocr') return { kind: 'submission-ocr', path };
@@ -4792,8 +4790,7 @@ const AskCoreWorkbenchPage = memo(() => {
     setError(undefined);
     if (
       currentRoute.kind !== 'list' &&
-      currentRoute.kind !== 'dashboard' &&
-      currentRoute.kind !== 'ops'
+      currentRoute.kind !== 'dashboard'
     ) {
       return;
     }
@@ -4801,7 +4798,6 @@ const AskCoreWorkbenchPage = memo(() => {
     try {
       if (
         currentRoute.kind === 'dashboard' ||
-        currentRoute.kind === 'ops' ||
         !activeConfig.resource
       ) {
         const payload = await askCoreWorkbenchClient.getDashboard();
@@ -4919,7 +4915,7 @@ const AskCoreWorkbenchPage = memo(() => {
         <div className={styles.table}>
           <Table
             columns={invocationColumns}
-            dataSource={activeTab === 'ops' ? [...active, ...recent] : recent}
+            dataSource={recent}
             locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
             pagination={false}
             rowKey={(record) => String(record.invocation_id || record.run_id)}
@@ -5339,7 +5335,7 @@ const AskCoreWorkbenchPage = memo(() => {
   );
 
   const renderMain = () => {
-    if (currentRoute.kind === 'dashboard' || currentRoute.kind === 'ops') return renderDashboard();
+    if (currentRoute.kind === 'dashboard') return renderDashboard();
     if (currentRoute.kind === 'list') return renderResourceList(currentRoute.resource);
     if (
       !canUseCreateFlows &&
