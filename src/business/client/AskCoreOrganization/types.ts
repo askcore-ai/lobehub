@@ -66,7 +66,6 @@ export interface AskCoreEducationOrgUnit {
 }
 
 export interface AskCoreEducationOrgUnitPayload {
-  feature_enabled: boolean;
   org_id: string;
   units: AskCoreEducationOrgUnit[];
 }

@@ -3,10 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   askCoreWorkbenchTabFromRoute,
   buildAskCoreWorkbenchUrl,
-  canUseAskCoreWorkbenchCreateFlows,
   getAskCoreWorkbenchRouteFromState,
   isAskCoreSuiteRunResult,
-  isAskCoreWorkbenchCreateRoute,
   normalizeAskCoreWorkbenchTab,
 } from './utils';
 
@@ -31,22 +29,6 @@ describe('AskCoreWorkbench utils', () => {
       '/askcore/workbench?tab=submissions&route=%2Fsubmissions%2F7',
     );
     expect(buildAskCoreWorkbenchUrl({ tab: 'teachers' })).toBe('/askcore/workbench?tab=overview');
-  });
-
-  it('identifies create routes that require the gray allowlist', () => {
-    expect(isAskCoreWorkbenchCreateRoute('/assignments/new/manual')).toBe(true);
-    expect(isAskCoreWorkbenchCreateRoute('https://askcore.cn/assignments/new/ocr?draft=1')).toBe(
-      true,
-    );
-    expect(isAskCoreWorkbenchCreateRoute('/submissions/new/ocr')).toBe(true);
-    expect(isAskCoreWorkbenchCreateRoute('/assignments/12')).toBe(false);
-    expect(isAskCoreWorkbenchCreateRoute('/questions/new')).toBe(false);
-  });
-
-  it('gates create flows by the runtime feature flag state', () => {
-    expect(canUseAskCoreWorkbenchCreateFlows(true)).toBe(true);
-    expect(canUseAskCoreWorkbenchCreateFlows(false)).toBe(false);
-    expect(canUseAskCoreWorkbenchCreateFlows(undefined)).toBe(false);
   });
 
   it('detects AskCore standalone suite.run UI results', () => {

@@ -41,8 +41,6 @@ export const FeatureFlagsSchema = z.object({
   commercial_hide_github: FeatureFlagValue.optional(),
   commercial_hide_docs: FeatureFlagValue.optional(),
 
-  // AskCore rollout flags
-  askcore_workbench_create_flows: FeatureFlagValue.optional(),
 });
 
 export type IFeatureFlags = z.infer<typeof FeatureFlagsSchema>;
@@ -107,7 +105,6 @@ export const DEFAULT_FEATURE_FLAGS: IFeatureFlags = {
   commercial_hide_github: false,
   commercial_hide_docs: false,
 
-  askcore_workbench_create_flows: false,
 };
 
 export const mapFeatureFlagsEnvToState = (
@@ -144,11 +141,6 @@ export const mapFeatureFlagsEnvToState = (
     hideGitHub: evaluateFeatureFlag(config.commercial_hide_github, userId, userEmail),
     hideDocs: evaluateFeatureFlag(config.commercial_hide_docs, userId, userEmail),
 
-    enableAskCoreWorkbenchCreateFlows: evaluateFeatureFlag(
-      config.askcore_workbench_create_flows,
-      userId,
-      userEmail,
-    ),
   };
 };
 

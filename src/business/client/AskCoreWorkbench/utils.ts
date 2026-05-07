@@ -4,11 +4,6 @@ import { ASKCORE_WORKBENCH_PATH, ASKCORE_WORKBENCH_TABS } from './config';
 import { type AskCoreWorkbenchTab } from './types';
 
 export const DEFAULT_ASKCORE_WORKBENCH_TAB: AskCoreWorkbenchTab = 'overview';
-const ASKCORE_WORKBENCH_CREATE_ROUTES = new Set([
-  '/assignments/new/manual',
-  '/assignments/new/ocr',
-  '/submissions/new/ocr',
-]);
 
 export const normalizeAskCoreWorkbenchTab = (value?: string | null): AskCoreWorkbenchTab => {
   const normalized = String(value || '').trim();
@@ -30,7 +25,7 @@ export const askCoreWorkbenchTabFromRoute = (route?: string | null): AskCoreWork
   const mapping: Record<string, AskCoreWorkbenchTab> = {
     assignments: 'assignments',
     dashboard: 'overview',
-    grades: 'grades',
+    grades: 'overview',
     questions: 'questions',
     subjects: 'subjects',
     submissions: 'submissions',
@@ -47,11 +42,6 @@ export const normalizeAskCoreWorkbenchRoutePath = (route?: string | null) => {
     .split(/[?#]/)[0];
   return normalized ? `/${normalized}` : '';
 };
-
-export const isAskCoreWorkbenchCreateRoute = (route?: string | null) =>
-  ASKCORE_WORKBENCH_CREATE_ROUTES.has(normalizeAskCoreWorkbenchRoutePath(route));
-
-export const canUseAskCoreWorkbenchCreateFlows = (enabled?: boolean | null) => enabled === true;
 
 export const getAskCoreWorkbenchRouteFromState = (state?: any): string | undefined => {
   if (!state || typeof state !== 'object') return;

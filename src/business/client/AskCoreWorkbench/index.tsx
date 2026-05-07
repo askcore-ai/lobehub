@@ -39,8 +39,8 @@ import {
   UploadCloud,
 } from 'lucide-react';
 import {
-  type DragEvent,
   type Dispatch,
+  type DragEvent,
   type Key,
   memo,
   type ReactNode,
@@ -52,8 +52,6 @@ import {
   useState,
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-
-import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
 
 import type { AskCoreWorkbenchApiClient } from './api';
 import {
@@ -114,8 +112,6 @@ import {
 import {
   askCoreWorkbenchTabFromRoute,
   buildAskCoreWorkbenchUrl,
-  canUseAskCoreWorkbenchCreateFlows,
-  isAskCoreWorkbenchCreateRoute,
   normalizeAskCoreWorkbenchTab,
 } from './utils';
 
@@ -1407,12 +1403,12 @@ const QuestionEditor = ({
                 <div className={styles.muted}>科目</div>
                 <Select
                   allowClear
+                  style={{ width: '100%' }}
+                  value={model.subjectId || undefined}
                   options={fieldOptions(
                     { key: 'subject_id', kind: 'select', label: '科目', optionsFrom: 'subjects' },
                     lookups,
                   )}
-                  style={{ width: '100%' }}
-                  value={model.subjectId || undefined}
                   onChange={(value) => setModel({ subjectId: value || '' })}
                 />
               </label>
@@ -1420,12 +1416,12 @@ const QuestionEditor = ({
                 <div className={styles.muted}>年级</div>
                 <Select
                   allowClear
+                  style={{ width: '100%' }}
+                  value={model.gradeId || undefined}
                   options={fieldOptions(
                     { key: 'grade_id', kind: 'select', label: '年级', optionsFrom: 'grades' },
                     lookups,
                   )}
-                  style={{ width: '100%' }}
-                  value={model.gradeId || undefined}
                   onChange={(value) => setModel({ gradeId: value || '' })}
                 />
               </label>
@@ -2018,7 +2014,7 @@ const RunStatusPanel = ({
             items={[
               {
                 children: autoBound.length ? (
-                  <BatchResultTable onOpenSubmission={onOpenSubmission} rows={autoBound} />
+                  <BatchResultTable rows={autoBound} onOpenSubmission={onOpenSubmission} />
                 ) : (
                   <Empty description="暂无自动绑定提交" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 ),
@@ -2027,7 +2023,7 @@ const RunStatusPanel = ({
               },
               {
                 children: needsBinding.length ? (
-                  <BatchResultTable onOpenSubmission={onOpenSubmission} rows={needsBinding} />
+                  <BatchResultTable rows={needsBinding} onOpenSubmission={onOpenSubmission} />
                 ) : (
                   <Empty description="暂无待人工处理提交" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 ),
@@ -2697,24 +2693,24 @@ const AssignmentDetailView = ({
           <Space wrap>
             <Select
               allowClear
+              placeholder="选择班级"
+              style={{ width: 180 }}
+              value={selectedClassId || undefined}
               options={fieldOptions(
                 { key: 'class_id', kind: 'select', label: '班级', optionsFrom: 'classes' },
                 lookups,
               )}
-              placeholder="选择班级"
-              style={{ width: 180 }}
-              value={selectedClassId || undefined}
               onChange={(value) => setSelectedClassId(value || '')}
             />
             <Select
               allowClear
+              placeholder="或选择单个学生"
+              style={{ width: 180 }}
+              value={selectedStudentId || undefined}
               options={fieldOptions(
                 { key: 'student_id', kind: 'select', label: '学生', optionsFrom: 'students' },
                 lookups,
               )}
-              placeholder="或选择单个学生"
-              style={{ width: 180 }}
-              value={selectedStudentId || undefined}
               onChange={(value) => setSelectedStudentId(value || '')}
             />
             <Button
@@ -3456,10 +3452,10 @@ const SubmissionDetailView = ({
                       </div>
                     </div>
                     <SubmissionSubResultPreview
+                      subResults={item.subResults}
                       referencePreview={
                         item.question ? buildQuestionPreviewDataFromPayload(item.question) : null
                       }
-                      subResults={item.subResults}
                     />
                     <Space>
                       <Button
@@ -3834,7 +3830,7 @@ const AssignmentManualCreateView = ({
   const [personalizedQuestionCount, setPersonalizedQuestionCount] = useState(
     PERSONALIZED_QUESTION_COUNT_DEFAULT,
   );
-  const [run, setRun] = useState<RunState>(emptyRunState());
+  const [run, setRun] = useState<RunState>(() => emptyRunState());
 
   return (
     <div className={styles.view}>
@@ -3892,20 +3888,20 @@ const AssignmentManualCreateView = ({
               </Form.Item>
               <Form.Item label="科目" name="subject_id" rules={[{ required: true }]}>
                 <Select
+                  placeholder="选择科目"
                   options={fieldOptions(
                     { key: 'subject_id', kind: 'select', label: '科目', optionsFrom: 'subjects' },
                     lookups,
                   )}
-                  placeholder="选择科目"
                 />
               </Form.Item>
               <Form.Item label="年级" name="grade_id" rules={[{ required: true }]}>
                 <Select
+                  placeholder="选择年级"
                   options={fieldOptions(
                     { key: 'grade_id', kind: 'select', label: '年级', optionsFrom: 'grades' },
                     lookups,
                   )}
-                  placeholder="选择年级"
                 />
               </Form.Item>
               <Form.Item label="截止时间" name="due_date">
@@ -3988,7 +3984,7 @@ const AssignmentOcrCreateView = ({
   const [personalizedQuestionCount, setPersonalizedQuestionCount] = useState(
     PERSONALIZED_QUESTION_COUNT_DEFAULT,
   );
-  const [run, setRun] = useState<RunState>(emptyRunState());
+  const [run, setRun] = useState<RunState>(() => emptyRunState());
 
   useEffect(() => {
     let cancelled = false;
@@ -4112,20 +4108,20 @@ const AssignmentOcrCreateView = ({
             <div className={styles.fieldGrid}>
               <Form.Item label="科目" name="subject_id" rules={[{ required: true }]}>
                 <Select
+                  placeholder="选择科目"
                   options={fieldOptions(
                     { key: 'subject_id', kind: 'select', label: '科目', optionsFrom: 'subjects' },
                     lookups,
                   )}
-                  placeholder="选择科目"
                 />
               </Form.Item>
               <Form.Item label="年级" name="grade_id" rules={[{ required: true }]}>
                 <Select
+                  placeholder="选择年级"
                   options={fieldOptions(
                     { key: 'grade_id', kind: 'select', label: '年级', optionsFrom: 'grades' },
                     lookups,
                   )}
-                  placeholder="选择年级"
                 />
               </Form.Item>
               <Form.Item label="录入方式">
@@ -4158,6 +4154,7 @@ const AssignmentOcrCreateView = ({
             ) : (
               <div className={styles.fieldGrid}>
                 <Form.Item
+                  label="在线扫描仪"
                   extra={
                     scannersLoading
                       ? '正在读取当前用户在线的 Windows 设备助手。'
@@ -4165,16 +4162,15 @@ const AssignmentOcrCreateView = ({
                         ? `当前检测到 ${scanners.length} 台在线扫描仪。`
                         : '当前没有在线扫描仪，请先在 Windows 设备助手里完成绑定。'
                   }
-                  label="在线扫描仪"
                 >
                   <Select
                     loading={scannersLoading}
+                    placeholder="选择扫描仪"
+                    value={scanScannerId || undefined}
                     options={scanners.map((scanner) => ({
                       label: scanner.display_name,
                       value: scanner.scanner_id,
                     }))}
-                    placeholder="选择扫描仪"
-                    value={scanScannerId || undefined}
                     onChange={setScanScannerId}
                   />
                 </Form.Item>
@@ -4187,11 +4183,11 @@ const AssignmentOcrCreateView = ({
                 </Form.Item>
                 <Form.Item label="单双面">
                   <Segmented
+                    value={scanDuplex ? 'true' : 'false'}
                     options={[
                       { label: '双面', value: 'true' },
                       { label: '单面', value: 'false' },
                     ]}
-                    value={scanDuplex ? 'true' : 'false'}
                     onChange={(value) => setScanDuplex(value === 'true')}
                   />
                 </Form.Item>
@@ -4300,7 +4296,7 @@ const SubmissionOcrCreateView = ({
   const [assignmentDetailLoading, setAssignmentDetailLoading] = useState(false);
   const [assignmentDetailError, setAssignmentDetailError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [run, setRun] = useState<RunState>(emptyRunState());
+  const [run, setRun] = useState<RunState>(() => emptyRunState());
 
   useEffect(() => {
     let cancelled = false;
@@ -4469,18 +4465,20 @@ const SubmissionOcrCreateView = ({
           <div className={styles.stack}>
             <div className={styles.fieldGrid}>
               <Form.Item
+                required
+                label="选择作业"
                 extra={
                   assignmentsLoading
                     ? '正在加载作业列表…'
                     : `系统会在所选作业的发布对象范围内自动匹配学生。当前可选 ${assignments.length} 条作业。`
                 }
-                label="选择作业"
-                required
               >
                 <Select
                   showSearch
                   loading={assignmentsLoading}
                   optionFilterProp="label"
+                  placeholder="选择作业"
+                  value={assignmentId || undefined}
                   options={assignments.map((item) => {
                     const optionId = positiveId(item.assignment_id || item.id);
                     const label = [
@@ -4496,8 +4494,6 @@ const SubmissionOcrCreateView = ({
                       .join(' · ');
                     return { label, value: optionId };
                   })}
-                  placeholder="选择作业"
-                  value={assignmentId || undefined}
                   onChange={(value) => setAssignmentId(Number(value))}
                 />
               </Form.Item>
@@ -4536,6 +4532,7 @@ const SubmissionOcrCreateView = ({
             ) : (
               <div className={styles.fieldGrid}>
                 <Form.Item
+                  label="在线扫描仪"
                   extra={
                     scannersLoading
                       ? '正在读取当前用户在线的 Windows 设备助手。'
@@ -4543,16 +4540,15 @@ const SubmissionOcrCreateView = ({
                         ? `当前检测到 ${scanners.length} 台在线扫描仪。`
                         : '当前没有在线扫描仪，请先在 Windows 设备助手里完成绑定。'
                   }
-                  label="在线扫描仪"
                 >
                   <Select
                     loading={scannersLoading}
+                    placeholder="选择扫描仪"
+                    value={scanScannerId || undefined}
                     options={scanners.map((scanner) => ({
                       label: scanner.display_name,
                       value: scanner.scanner_id,
                     }))}
-                    placeholder="选择扫描仪"
-                    value={scanScannerId || undefined}
                     onChange={setScanScannerId}
                   />
                 </Form.Item>
@@ -4565,11 +4561,11 @@ const SubmissionOcrCreateView = ({
                 </Form.Item>
                 <Form.Item label="单双面">
                   <Segmented
+                    value={scanDuplex ? 'true' : 'false'}
                     options={[
                       { label: '双面', value: 'true' },
                       { label: '单面', value: 'false' },
                     ]}
-                    value={scanDuplex ? 'true' : 'false'}
                     onChange={(value) => setScanDuplex(value === 'true')}
                   />
                 </Form.Item>
@@ -4723,7 +4719,7 @@ const SubmissionOcrCreateView = ({
             </Space>
           </div>
         </div>
-        <RunStatusPanel onOpenSubmission={onOpenSubmission} run={run} />
+        <RunStatusPanel run={run} onOpenSubmission={onOpenSubmission} />
       </div>
     </div>
   );
@@ -4732,7 +4728,6 @@ const SubmissionOcrCreateView = ({
 const AskCoreWorkbenchPage = memo(() => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { enableAskCoreWorkbenchCreateFlows } = useServerConfigStore(featureFlagsSelectors);
   const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const routeQuery = query.get('route');
   const routeTab = routeQuery ? askCoreWorkbenchTabFromRoute(routeQuery) : undefined;
@@ -4742,8 +4737,6 @@ const AskCoreWorkbenchPage = memo(() => {
     () => parseWorkbenchRoute(routeQuery, activeTab),
     [activeTab, routeQuery],
   );
-  const canUseCreateFlows = canUseAskCoreWorkbenchCreateFlows(enableAskCoreWorkbenchCreateFlows);
-
   const [dashboard, setDashboard] = useState<AskCoreWorkbenchDashboardPayload>(
     emptyAskCoreWorkbenchDashboard,
   );
@@ -4927,22 +4920,18 @@ const AskCoreWorkbenchPage = memo(() => {
             共 {drafts.length} 个草稿，{active.length} 个后台任务正在运行。
           </span>
           <Space wrap>
-            {canUseCreateFlows ? (
-              <>
-                <Button
-                  className={styles.secondary}
-                  onClick={() => navigate(routeFor('assignments', '/assignments/new/manual'))}
-                >
-                  创建作业
-                </Button>
-                <Button
-                  className={styles.secondary}
-                  onClick={() => navigate(routeFor('submissions', '/submissions/new/ocr'))}
-                >
-                  导入提交
-                </Button>
-              </>
-            ) : null}
+            <Button
+              className={styles.secondary}
+              onClick={() => navigate(routeFor('assignments', '/assignments/new/manual'))}
+            >
+              创建作业
+            </Button>
+            <Button
+              className={styles.secondary}
+              onClick={() => navigate(routeFor('submissions', '/submissions/new/ocr'))}
+            >
+              导入提交
+            </Button>
             <Button
               className={styles.secondary}
               icon={<RefreshCw size={14} />}
@@ -5067,33 +5056,29 @@ const AskCoreWorkbenchPage = memo(() => {
           </div>
           <Space wrap>
             {resource === 'assignments' ? (
-              canUseCreateFlows ? (
-                <>
-                  <Button
-                    className={styles.secondary}
-                    onClick={() => navigate(routeFor('assignments', '/assignments/new/ocr'))}
-                  >
-                    OCR 创建
-                  </Button>
-                  <Button
-                    className={styles.primary}
-                    icon={<Plus size={14} />}
-                    onClick={() => navigate(routeFor('assignments', '/assignments/new/manual'))}
-                  >
-                    手动创建
-                  </Button>
-                </>
-              ) : null
-            ) : resource === 'submissions' ? (
-              canUseCreateFlows ? (
+              <>
+                <Button
+                  className={styles.secondary}
+                  onClick={() => navigate(routeFor('assignments', '/assignments/new/ocr'))}
+                >
+                  OCR 创建
+                </Button>
                 <Button
                   className={styles.primary}
-                  icon={<FileScan size={14} />}
-                  onClick={() => navigate(routeFor('submissions', '/submissions/new/ocr'))}
+                  icon={<Plus size={14} />}
+                  onClick={() => navigate(routeFor('assignments', '/assignments/new/manual'))}
                 >
-                  OCR 录入
+                  手动创建
                 </Button>
-              ) : null
+              </>
+            ) : resource === 'submissions' ? (
+              <Button
+                className={styles.primary}
+                icon={<FileScan size={14} />}
+                onClick={() => navigate(routeFor('submissions', '/submissions/new/ocr'))}
+              >
+                OCR 录入
+              </Button>
             ) : (
               <Button
                 className={styles.primary}
@@ -5313,38 +5298,9 @@ const AskCoreWorkbenchPage = memo(() => {
     );
   };
 
-  const renderCreateGrayGate = () => (
-    <div className={styles.view}>
-      <DetailHeader
-        subtitle="当前账号暂未进入本轮创建页灰度范围。"
-        title="创建页灰度未开放"
-        onBack={backToList}
-      />
-      <Alert
-        showIcon
-        action={
-          <Button className={styles.secondary} onClick={backToList}>
-            返回列表
-          </Button>
-        }
-        description="作业手动创建、作业 OCR 创建和提交 OCR 录入仅对本轮灰度账号开放。其他工作台列表、详情、编辑和报告能力保持可用。"
-        message="当前账号不能访问本轮创建页能力"
-        type="warning"
-      />
-    </div>
-  );
-
   const renderMain = () => {
     if (currentRoute.kind === 'dashboard') return renderDashboard();
     if (currentRoute.kind === 'list') return renderResourceList(currentRoute.resource);
-    if (
-      !canUseCreateFlows &&
-      (isAskCoreWorkbenchCreateRoute(currentRoute.path) ||
-        (currentRoute.kind === 'new' &&
-          ['assignments', 'submissions'].includes(currentRoute.resource)))
-    ) {
-      return renderCreateGrayGate();
-    }
     if (currentRoute.kind === 'new') return renderEditOrCreate(currentRoute.resource, 'create');
     if (currentRoute.kind === 'detail' || currentRoute.kind === 'edit') return renderDetail();
     if (currentRoute.kind === 'assignment-manual') {

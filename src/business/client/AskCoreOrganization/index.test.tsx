@@ -56,7 +56,6 @@ describe('AskCoreOrganizationRoute', () => {
         if (url.endsWith('/workbench/organization/units')) {
           return new Response(
             JSON.stringify({
-              feature_enabled: true,
               org_id: 'org-1',
               units: [{ id: 1, name: '高一', org_id: 'org-1', sort_order: 0, tenant_id: 1, unit_type: 'grade' }],
             }),
@@ -69,7 +68,7 @@ describe('AskCoreOrganizationRoute', () => {
 
     render(<AskCoreOrganizationRoute />);
 
-    await waitFor(() => expect(screen.getByText('组织信息')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('组织设置').length).toBeGreaterThan(0));
     await waitFor(() => expect(screen.getByText('教育组织')).toBeInTheDocument());
     expect(screen.queryByText('邀请成员')).not.toBeInTheDocument();
     expect(screen.getAllByText('成员').length).toBeGreaterThan(0);

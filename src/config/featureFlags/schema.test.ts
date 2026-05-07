@@ -123,7 +123,6 @@ describe('mapFeatureFlagsEnvToState', () => {
       cloud_promotion: true,
       commercial_hide_github: false,
       commercial_hide_docs: true,
-      askcore_workbench_create_flows: false,
     };
 
     const mappedState = mapFeatureFlagsEnvToState(config);
@@ -148,7 +147,6 @@ describe('mapFeatureFlagsEnvToState', () => {
       showCloudPromotion: true,
       hideGitHub: false,
       hideDocs: true,
-      enableAskCoreWorkbenchCreateFlows: false,
     });
   });
 
@@ -162,7 +160,6 @@ describe('mapFeatureFlagsEnvToState', () => {
       create_session: ['user-789'],
       dalle: true,
       knowledge_base: ['user-123'],
-      askcore_workbench_create_flows: ['seednov@outlook.com'],
     };
 
     const mappedState = mapFeatureFlagsEnvToState(config, userId, 'seednov@outlook.com');
@@ -173,7 +170,6 @@ describe('mapFeatureFlagsEnvToState', () => {
     expect(mappedState.enableAgentOnboarding).toBe(true); // user-123 is in allowlist
     expect(mappedState.enableAgentTask).toBe(true); // user-123 is in allowlist
     expect(mappedState.enableKnowledgeBase).toBe(true); // user-123 is in allowlist
-    expect(mappedState.enableAskCoreWorkbenchCreateFlows).toBe(true); // email is in allowlist
   });
 
   it('should return false for array flags when user ID is not in allowlist', () => {

@@ -6,7 +6,7 @@ import { CheckCircle2 } from 'lucide-react';
 import { memo, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { bootstrapAskCoreOrganization, AskCoreOrganizationApiError } from './api';
+import { AskCoreOrganizationApiError, bootstrapAskCoreOrganization } from './api';
 
 const styles = createStaticStyles(({ css }) => ({
   page: css`
@@ -41,12 +41,13 @@ const OrganizationJoinPage = memo(() => {
     }
 
     let ignore = false;
+    let redirectTimer: number | undefined;
     const accept = async () => {
       try {
         await bootstrapAskCoreOrganization(token);
         if (!ignore) {
           setLoading(false);
-          window.setTimeout(() => navigate('/organization', { replace: true }), 700);
+          redirectTimer = window.setTimeout(() => navigate('/organization', { replace: true }), 700);
         }
       } catch (err) {
         if (ignore) return;
@@ -62,6 +63,7 @@ const OrganizationJoinPage = memo(() => {
     accept();
     return () => {
       ignore = true;
+      if (redirectTimer) window.clearTimeout(redirectTimer);
     };
   }, [navigate, token]);
 
@@ -72,17 +74,17 @@ const OrganizationJoinPage = memo(() => {
           <Result icon={<Skeleton.Avatar active size={56} />} title="正在处理邀请" />
         ) : error ? (
           <Result
-            status="warning"
-            title="无法加入组织"
-            subTitle={<Alert showIcon message={error} type="warning" />}
             extra={<Button onClick={() => navigate('/')}>返回首页</Button>}
+            status="warning"
+            subTitle={<Alert showIcon message={error} type="warning" />}
+            title="无法加入组织"
           />
         ) : (
           <Result
             icon={<CheckCircle2 color="var(--ant-color-success)" size={56} />}
             status="success"
-            title="已加入组织"
             subTitle="正在打开组织管理页"
+            title="已加入组织"
           />
         )}
       </div>
