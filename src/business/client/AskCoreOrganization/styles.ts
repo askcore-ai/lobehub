@@ -79,50 +79,82 @@ export const styles = createStaticStyles(({ css }) => ({
     margin-top: 12px;
   `,
 
-  // Quick Actions
-  quickActionsGrid: css`
+  // Tab Navigation
+  tabNav: css`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 12px;
+    background: ${cssVar.colorBgContainer};
+    width: fit-content;
+    margin: 0 auto;
+  `,
+  tabButton: css`
+    padding: 8px 24px;
+    border-radius: 10px;
+    border: none;
+    background: transparent;
+    color: ${cssVar.colorTextSecondary};
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    line-height: 1.4;
+
+    &:hover {
+      color: ${cssVar.colorText};
+    }
+  `,
+  tabButtonActive: css`
+    background: ${cssVar.colorText};
+    color: ${cssVar.colorBgContainer};
+
+    &:hover {
+      color: ${cssVar.colorBgContainer};
+    }
+  `,
+  tabContent: css`
+    animation: orgFadeUp 0.35s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+  `,
+
+  // Stat Cards
+  statGrid: css`
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 12px;
 
-    @media (width <= 900px) {
+    @media (width <= 700px) {
       grid-template-columns: repeat(2, 1fr);
     }
   `,
-  quickActionCard: css`
+  statCard: css`
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
+    gap: 6px;
     padding: 20px 12px;
     border: 1px solid ${cssVar.colorBorderSecondary};
-    border-radius: 16px;
+    border-radius: 14px;
     background: ${cssVar.colorBgContainer};
-    cursor: pointer;
-    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    text-align: center;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 
     &:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
     }
   `,
-  quickActionIcon: css`
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-    background: ${cssVar.colorFillQuaternary};
+  statValue: css`
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1;
     color: ${cssVar.colorText};
   `,
-  quickActionTitle: css`
-    font-size: 14px;
-    font-weight: 600;
-    color: ${cssVar.colorText};
-  `,
-  quickActionDesc: css`
-    font-size: 12px;
+  statLabel: css`
+    font-size: 13px;
     color: ${cssVar.colorTextSecondary};
   `,
 
