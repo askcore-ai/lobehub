@@ -85,7 +85,11 @@ export const AskCoreOrganizationRoute = memo(() => {
           <>
             {/* Hero Card - always visible */}
             <div className={styles.staggerItem} style={{ animationDelay: '0s' }}>
-              <HeroCard payload={org.payload} />
+              <HeroCard
+                canUpdateMeta={org.canUpdateMeta}
+                onEdit={() => setEditingMeta(true)}
+                payload={org.payload}
+              />
             </div>
 
             {/* Tab Navigation */}

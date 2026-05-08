@@ -21,11 +21,13 @@ export const styles = createStaticStyles(({ css }) => ({
     position: relative;
     overflow: hidden;
     border: 1px solid ${cssVar.colorBorderSecondary};
-    border-radius: 20px;
-    padding: 32px;
+    border-radius: 16px;
+    padding: 20px 24px;
     background: ${cssVar.colorBgContainer};
-    text-align: center;
     transition: box-shadow 0.25s ease, transform 0.25s ease;
+    display: flex;
+    align-items: center;
+    gap: 16px;
 
     &:hover {
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
@@ -34,37 +36,41 @@ export const styles = createStaticStyles(({ css }) => ({
   heroAvatarWrap: css`
     position: relative;
     display: inline-flex;
-    margin-bottom: 16px;
+    flex-shrink: 0;
   `,
   heroAvatar: css`
-    border: 3px solid ${cssVar.colorBgContainer};
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border: 2px solid ${cssVar.colorBgContainer};
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  `,
+  heroBody: css`
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   `,
   heroName: css`
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 700;
     line-height: 1.3;
     color: ${cssVar.colorText};
-    margin-bottom: 6px;
   `,
   heroDesc: css`
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 400;
     line-height: 1.5;
     color: ${cssVar.colorTextSecondary};
-    max-width: 480px;
-    margin: 0 auto 16px;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 1;
     -webkit-box-orient: vertical;
     overflow: hidden;
   `,
   heroStats: css`
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 12px;
+    gap: 10px;
     flex-wrap: wrap;
+    margin-top: 2px;
   `,
   heroEditForm: css`
     max-width: 480px;
