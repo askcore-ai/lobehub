@@ -53,7 +53,7 @@ import {
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import type { AskCoreWorkbenchApiClient } from './api';
+import { type AskCoreWorkbenchApiClient, AskCoreWorkbenchApiError } from './api';
 import {
   askCoreWorkbenchClient,
   emptyAskCoreWorkbenchDashboard,
@@ -5104,10 +5104,32 @@ const AskCoreWorkbenchPage = memo(() => {
               disabled={!selectedIds.length}
               title={`批量删除 ${selectedIds.length} 条记录？`}
               onConfirm={async () => {
+                let failedCount = 0;
                 for (const id of selectedIds) {
-                  await askCoreWorkbenchClient.deleteResource(resource, id);
+                  try {
+                    await askCoreWorkbenchClient.deleteResource(resource, id);
+                  } catch (error) {
+                    if (
+                      error instanceof AskCoreWorkbenchApiError &&
+                      error.status === 400 &&
+                      /not found/i.test(error.message)
+                    ) {
+                      failedCount += 1;
+                      continue;
+                    }
+                    message.error(
+                      `批量删除中断：${error instanceof Error ? error.message : String(error)}`,
+                    );
+                    setSelectedRowKeys([]);
+                    await reloadListOrDashboard();
+                    return;
+                  }
                 }
-                message.success('批量删除完成');
+                if (failedCount > 0) {
+                  message.warning(`批量删除完成，${failedCount} 条已被删除`);
+                } else {
+                  message.success('批量删除完成');
+                }
                 setSelectedRowKeys([]);
                 await reloadListOrDashboard();
               }}
