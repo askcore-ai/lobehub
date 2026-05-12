@@ -80,6 +80,12 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
                     className={styles.pillButton}
                     icon={<Plus size={14} />}
                     type="primary"
+                    onClick={() => {
+                      orgUnitForm.setFieldsValue({ parent_id: undefined, unit_type: 'school' });
+                      document
+                        .getElementById('askcore-create-org-unit')
+                        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }}
                   >
                     创建第一个学校
                   </Button>
@@ -101,7 +107,12 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
 
           {canManage && (
             <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${cssVar.colorBorderSecondary}` }}>
-              <Form form={orgUnitForm} initialValues={{ sort_order: 0, unit_type: 'school' }} layout="vertical">
+              <Form
+                form={orgUnitForm}
+                id="askcore-create-org-unit"
+                initialValues={{ sort_order: 0, unit_type: 'school' }}
+                layout="vertical"
+              >
                 <Space size={8} style={{ marginBottom: 12 }}>
                   <Plus size={14} />
                   <span style={{ fontSize: 14, fontWeight: 600 }}>创建层级</span>

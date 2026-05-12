@@ -463,13 +463,14 @@ const styles = createStaticStyles(({ css }) => ({
 
 type WorkbenchRoute =
   | { kind: 'dashboard'; path: string }
+  | { kind: 'ops'; path: string }
   | { kind: 'list'; path: string; resource: ResourceKey }
   | { kind: 'new'; path: string; resource: ResourceKey }
   | { entityId: number; kind: 'detail'; path: string; resource: ResourceKey }
   | { entityId: number; kind: 'edit'; path: string; resource: ResourceKey }
   | { kind: 'assignment-manual'; path: string }
   | { kind: 'assignment-ocr'; path: string }
-  | { kind: 'submission-ocr'; path: string }
+  | { kind: 'submission-ocr'; path: string };
 
 
 type DetailState =
@@ -747,6 +748,7 @@ const parseWorkbenchRoute = (
   const path = normalizeRoutePath(route);
   if (!path) {
     if (activeTab === 'overview') return { kind: 'dashboard', path: '/dashboard' };
+    if (activeTab === 'ops') return { kind: 'ops', path: '/ops' };
     return {
       kind: 'list',
       path: buildResourceBasePath(activeTab as ResourceKey),
@@ -754,6 +756,7 @@ const parseWorkbenchRoute = (
     };
   }
   if (path === '/dashboard') return { kind: 'dashboard', path };
+  if (path === '/ops') return { kind: 'ops', path };
   if (path === '/assignments/new/manual') return { kind: 'assignment-manual', path };
   if (path === '/assignments/new/ocr') return { kind: 'assignment-ocr', path };
   if (path === '/submissions/new/ocr') return { kind: 'submission-ocr', path };
@@ -2047,6 +2050,181 @@ const RunStatusPanel = ({
   );
 };
 
+const OPS_ACTION_TEMPLATES: Array<{ label: string; params: JsonRecord; value: string }> = [
+  {
+    label: '实体解析',
+    params: {
+      entity_type: 'student',
+      query: '',
+      scope: {},
+    },
+    value: 'lookup.resolve.entity',
+  },
+  { label: '导入学校', params: { file_url: '' }, value: 'ops.import.schools' },
+  { label: '导入教师', params: { file_url: '' }, value: 'ops.import.teachers' },
+  {
+    label: '导入班级',
+    params: { defaults: { school_id: 0 }, file_url: '' },
+    value: 'ops.import.classes',
+  },
+  {
+    label: '导入学生',
+    params: { defaults: { class_id: 0 }, file_url: '' },
+    value: 'ops.import.students',
+  },
+  { label: '导入年级', params: { file_url: '' }, value: 'ops.import.grades' },
+  { label: '导入学科', params: { file_url: '' }, value: 'ops.import.subjects' },
+  {
+    label: '预览学校删除',
+    params: { school_ids: [1, 2] },
+    value: 'ops.bulk_delete.schools.preview',
+  },
+  {
+    label: '删除学校',
+    params: { school_ids: [1, 2] },
+    value: 'ops.bulk_delete.schools.execute',
+  },
+  {
+    label: '预览学生删除',
+    params: { student_ids: [101, 102] },
+    value: 'ops.bulk_delete.students.preview',
+  },
+  {
+    label: '删除学生',
+    params: { student_ids: [101, 102] },
+    value: 'ops.bulk_delete.students.execute',
+  },
+  {
+    label: '预览年级删除',
+    params: { grade_ids: [1, 2] },
+    value: 'ops.bulk_delete.grades.preview',
+  },
+  {
+    label: '删除年级',
+    params: { grade_ids: [1, 2] },
+    value: 'ops.bulk_delete.grades.execute',
+  },
+  {
+    label: '预览学科删除',
+    params: { subject_ids: [1, 2] },
+    value: 'ops.bulk_delete.subjects.preview',
+  },
+  {
+    label: '删除学科',
+    params: { subject_ids: [1, 2] },
+    value: 'ops.bulk_delete.subjects.execute',
+  },
+  {
+    label: 'SQL 补丁预览',
+    params: {
+      max_affected_rows: 100,
+      sql_ref: {
+        locator: { kind: 'object_store', object_key: '' },
+      },
+    },
+    value: 'ops.sql_patch.preview',
+  },
+  {
+    label: 'SQL 补丁执行',
+    params: {
+      max_affected_rows: 100,
+      sql_ref: {
+        locator: { kind: 'object_store', object_key: '' },
+      },
+    },
+    value: 'ops.sql_patch.execute',
+  },
+];
+
+const prettyParams = (value: JsonRecord) => JSON.stringify(value, null, 2);
+
+const OpsActionView = ({
+  client,
+}: {
+  client: AskCoreWorkbenchApiClient;
+}) => {
+  const [action, setAction] = useState(OPS_ACTION_TEMPLATES[0].value);
+  const [paramsText, setParamsText] = useState(() => prettyParams(OPS_ACTION_TEMPLATES[0].params));
+  const [run, setRun] = useState<RunState>(() => emptyRunState());
+
+  const applyTemplate = (value: string) => {
+    const template = OPS_ACTION_TEMPLATES.find((item) => item.value === value);
+    setAction(value);
+    if (template) setParamsText(prettyParams(template.params));
+  };
+
+  const startAction = async () => {
+    const normalizedAction = action.trim();
+    if (!normalizedAction) {
+      message.warning('请填写动作名称');
+      return;
+    }
+
+    let params: JsonRecord;
+    try {
+      const parsed = JSON.parse(paramsText || '{}');
+      params = isJsonRecord(parsed) ? parsed : {};
+    } catch (reason) {
+      message.error(`参数 JSON 无效：${asError(reason)}`);
+      return;
+    }
+
+    setRun({ ...emptyRunState(), busy: true, notice: '正在提交后台任务…' });
+    try {
+      const result = await client.invokeAction(normalizedAction, params, createConfirmationId());
+      await waitForInvocation({ client, invocationId: result.invocation_id, setRun });
+    } catch (reason) {
+      const error = asError(reason);
+      setRun((current) => ({ ...current, busy: false, error, notice: null }));
+    }
+  };
+
+  return (
+    <div className={styles.view}>
+      <div className={styles.splitWorkspace}>
+        <div className={styles.formPanel}>
+          <div className={styles.stack}>
+            <div className={styles.fieldGrid}>
+              <label>
+                <div className={styles.muted}>模板</div>
+                <Select
+                  value={action}
+                  options={OPS_ACTION_TEMPLATES.map((item) => ({
+                    label: item.label,
+                    value: item.value,
+                  }))}
+                  onChange={applyTemplate}
+                />
+              </label>
+              <label style={{ gridColumn: 'span 2' }}>
+                <div className={styles.muted}>动作名称</div>
+                <Input value={action} onChange={(event) => setAction(event.target.value)} />
+              </label>
+            </div>
+            <label>
+              <div className={styles.muted}>参数 JSON</div>
+              <Input.TextArea
+                rows={14}
+                value={paramsText}
+                onChange={(event) => setParamsText(event.target.value)}
+              />
+            </label>
+            <Button
+              className={styles.primary}
+              disabled={run.busy}
+              loading={run.busy}
+              onClick={() => void startAction()}
+            >
+              运行
+            </Button>
+          </div>
+        </div>
+        <RunStatusPanel run={run} title="运维运行状态" />
+      </div>
+    </div>
+  );
+};
+
 type AssignmentDetailQuestionItem = {
   assignmentQuestionId: number | null;
   clientKey: string;
@@ -2359,36 +2537,44 @@ const AssignmentDetailView = ({
   const addRecipients = async () => {
     if (!assignmentId) return;
     const existingStudentIds = new Set(
-      recipientItems.map((row) => Number(row.student_id || 0) || 0).filter((id) => id > 0),
+      recipientItems
+        .map((row) => {
+          const student = isJsonRecord(row.student) ? row.student : {};
+          return positiveId(row.student_id || student.student_id || student.id);
+        })
+        .filter((id) => id > 0),
     );
-    const selectedStudents = selectedStudentId
-      ? lookups.students.filter(
-          (student) => String(student.student_id || student.id) === selectedStudentId,
-        )
-      : lookups.students.filter((student) => String(student.class_id || '') === selectedClassId);
-    const studentsToCreate = selectedStudents.filter((student) => {
-      const studentId = Number(student.student_id || student.id || 0) || 0;
-      return studentId > 0 && !existingStudentIds.has(studentId);
-    });
-    if (!studentsToCreate.length) {
-      message.info('没有新的发布对象可添加');
+
+    if (!selectedClassId && !selectedStudentId) {
+      message.info('请选择班级或单个学生');
       return;
     }
+
     setRecipientBusy(true);
     try {
-      const created: JsonRecord[] = [];
-      for (const student of studentsToCreate) {
-        const studentId = Number(student.student_id || student.id || 0) || 0;
+      if (selectedStudentId) {
+        const studentId = positiveId(selectedStudentId);
+        if (!studentId || existingStudentIds.has(studentId)) {
+          message.info('没有新的发布对象可添加');
+          return;
+        }
         const result = await client.createAssignmentDetailResource('assignment-students', {
           assignment_id: assignmentId,
           student_id: studentId,
         });
-        created.push(result.item);
+        setRecipientItems((items) => [...items, result.item]);
+        message.success('已新增 1 个发布对象');
+      } else {
+        const result = await client.createAssignmentDetailResource('assignment-students', {
+          assignment_id: assignmentId,
+          class_id: positiveId(selectedClassId),
+        });
+        const createdCount = Number(result.item.created_count || 0) || 0;
+        const skippedCount = Number(result.item.skipped_count || 0) || 0;
+        message.success(`已新增 ${createdCount} 个发布对象${skippedCount ? `，跳过 ${skippedCount} 个已有学生` : ''}`);
       }
-      setRecipientItems((items) => [...items, ...created]);
       setSelectedClassId('');
       setSelectedStudentId('');
-      message.success(`已新增 ${created.length} 个发布对象`);
       void onReload();
     } catch (reason) {
       message.error(asError(reason));
@@ -2400,15 +2586,26 @@ const AssignmentDetailView = ({
   const removeRecipients = async (ids: number[]) => {
     if (!ids.length) return;
     setRecipientBusy(true);
+    const removed = new Set<number>();
+    const failures: string[] = [];
     try {
       for (const id of ids) {
-        await client.deleteAssignmentDetailResource('assignment-students', id);
+        try {
+          await client.deleteAssignmentDetailResource('assignment-students', id);
+          removed.add(id);
+        } catch (reason) {
+          failures.push(`ID ${id}: ${asError(reason)}`);
+        }
       }
       setRecipientItems((items) =>
-        items.filter((row) => !ids.includes(Number(row.assignment_student_id || row.id || 0) || 0)),
+        items.filter((row) => !removed.has(Number(row.assignment_student_id || row.id || 0) || 0)),
       );
-      setRecipientSelectedIds((current) => current.filter((id) => !ids.includes(id)));
-      message.success(`已移除 ${ids.length} 个发布对象`);
+      setRecipientSelectedIds((current) => current.filter((id) => !removed.has(id)));
+      if (failures.length) {
+        message.error(`已移除 ${removed.size} 个发布对象，失败 ${failures.length} 个：${failures[0]}`);
+      } else {
+        message.success(`已移除 ${removed.size} 个发布对象`);
+      }
       void onReload();
     } catch (reason) {
       message.error(asError(reason));
@@ -4749,7 +4946,9 @@ const AskCoreWorkbenchPage = memo(() => {
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterForm, setFilterForm] = useState<Record<string, string>>({});
-  const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
+  const [selectedRowKeysByResource, setSelectedRowKeysByResource] = useState<
+    Partial<Record<ResourceKey, Key[]>>
+  >({});
 
   const navigateToTab = useCallback(
     (tab: AskCoreWorkbenchTab) => {
@@ -4785,6 +4984,7 @@ const AskCoreWorkbenchPage = memo(() => {
       currentRoute.kind !== 'list' &&
       currentRoute.kind !== 'dashboard'
     ) {
+      setLoading(false);
       return;
     }
     setLoading(true);
@@ -4865,7 +5065,7 @@ const AskCoreWorkbenchPage = memo(() => {
 
   useEffect(() => {
     setSearchQuery('');
-    setSelectedRowKeys([]);
+    setSelectedRowKeysByResource({});
     setPage(1);
   }, [activeTab]);
 
@@ -4948,7 +5148,13 @@ const AskCoreWorkbenchPage = memo(() => {
   const renderResourceList = (resource: ResourceKey) => {
     const config = ASKCORE_WORKBENCH_TABS.find((tab) => tab.resource === resource)!;
     const filters = RESOURCE_FILTER_FIELDS[resource] || [];
-    const selectedIds = selectedRowKeys.map((key) => Number(key)).filter((id) => id > 0);
+    const visibleIds = new Set(filteredItems.map((item) => getRecordId(resource, item)).filter((id) => id > 0));
+    const selectedRowKeys = selectedRowKeysByResource[resource] || [];
+    const setResourceSelectedRowKeys = (keys: Key[]) =>
+      setSelectedRowKeysByResource((current) => ({ ...current, [resource]: keys }));
+    const selectedIds = selectedRowKeys
+      .map((key) => Number(key))
+      .filter((id) => id > 0 && visibleIds.has(id));
 
     const columns: ColumnsType<AskCoreWorkbenchRecord> = [
       ...(config.columns || []).map((column) => ({
@@ -5048,6 +5254,7 @@ const AskCoreWorkbenchPage = memo(() => {
               className={styles.secondary}
               onClick={() => {
                 setPage(1);
+                setResourceSelectedRowKeys([]);
                 void reloadListOrDashboard();
               }}
             >
@@ -5104,11 +5311,22 @@ const AskCoreWorkbenchPage = memo(() => {
               disabled={!selectedIds.length}
               title={`批量删除 ${selectedIds.length} 条记录？`}
               onConfirm={async () => {
+                const deleted: number[] = [];
+                const failed: string[] = [];
                 for (const id of selectedIds) {
-                  await askCoreWorkbenchClient.deleteResource(resource, id);
+                  try {
+                    await askCoreWorkbenchClient.deleteResource(resource, id);
+                    deleted.push(id);
+                  } catch (error) {
+                    failed.push(`ID ${id}: ${asError(error)}`);
+                  }
                 }
-                message.success('批量删除完成');
-                setSelectedRowKeys([]);
+                if (failed.length) {
+                  message.error(`已删除 ${deleted.length} 条，失败 ${failed.length} 条：${failed[0]}`);
+                } else {
+                  message.success('批量删除完成');
+                }
+                setResourceSelectedRowKeys([]);
                 await reloadListOrDashboard();
               }}
             >
@@ -5148,7 +5366,7 @@ const AskCoreWorkbenchPage = memo(() => {
             size="middle"
             rowSelection={{
               selectedRowKeys,
-              onChange: setSelectedRowKeys,
+              onChange: setResourceSelectedRowKeys,
             }}
             onRow={(record) => ({
               onClick: () => {
@@ -5174,7 +5392,10 @@ const AskCoreWorkbenchPage = memo(() => {
               className={styles.secondary}
               disabled={page <= 1}
               size="small"
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              onClick={() => {
+                setResourceSelectedRowKeys([]);
+                setPage((current) => Math.max(1, current - 1));
+              }}
             >
               上一页
             </Button>
@@ -5182,7 +5403,10 @@ const AskCoreWorkbenchPage = memo(() => {
               className={styles.secondary}
               disabled={!list?.has_more && page * PAGE_SIZE >= (list?.total || 0)}
               size="small"
-              onClick={() => setPage((current) => current + 1)}
+              onClick={() => {
+                setResourceSelectedRowKeys([]);
+                setPage((current) => current + 1);
+              }}
             >
               下一页
             </Button>
@@ -5300,6 +5524,7 @@ const AskCoreWorkbenchPage = memo(() => {
 
   const renderMain = () => {
     if (currentRoute.kind === 'dashboard') return renderDashboard();
+    if (currentRoute.kind === 'ops') return <OpsActionView client={askCoreWorkbenchClient} />;
     if (currentRoute.kind === 'list') return renderResourceList(currentRoute.resource);
     if (currentRoute.kind === 'new') return renderEditOrCreate(currentRoute.resource, 'create');
     if (currentRoute.kind === 'detail' || currentRoute.kind === 'edit') return renderDetail();

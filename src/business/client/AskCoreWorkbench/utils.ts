@@ -26,12 +26,48 @@ export const askCoreWorkbenchTabFromRoute = (route?: string | null): AskCoreWork
     assignments: 'assignments',
     dashboard: 'overview',
     grades: 'overview',
+    ops: 'ops',
     questions: 'questions',
     subjects: 'subjects',
     submissions: 'submissions',
   };
 
   return mapping[firstSegment] || DEFAULT_ASKCORE_WORKBENCH_TAB;
+};
+
+const ORGANIZATION_ROUTE_TABS: Record<string, string> = {
+  class: 'classes',
+  classes: 'classes',
+  grade: 'grades',
+  grades: 'grades',
+  school: 'schools',
+  schools: 'schools',
+  student: 'students',
+  students: 'students',
+  teacher: 'teachers',
+  teachers: 'teachers',
+};
+
+export const askCoreOrganizationTabFromRoute = (route?: string | null) => {
+  const routeValue = String(route || '').trim();
+  if (!routeValue) return null;
+
+  const firstSegment = routeValue
+    .replace(/^https?:\/\/[^/]+/i, '')
+    .replace(/^\/+/, '')
+    .split(/[/?#]/)[0]
+    .replaceAll('_', '-');
+
+  return ORGANIZATION_ROUTE_TABS[firstSegment] || null;
+};
+
+export const buildAskCoreOrganizationUrl = ({ route }: { route?: string | null } = {}) => {
+  const params = new URLSearchParams();
+  const tab = askCoreOrganizationTabFromRoute(route);
+  if (tab) params.set('tab', tab);
+  if (route) params.set('route', route);
+  const encoded = params.toString();
+  return encoded ? `/organization?${encoded}` : '/organization';
 };
 
 export const normalizeAskCoreWorkbenchRoutePath = (route?: string | null) => {

@@ -8,6 +8,8 @@ import { memo } from 'react';
 import { Link } from 'react-router-dom';
 
 import {
+  askCoreOrganizationTabFromRoute,
+  buildAskCoreOrganizationUrl,
   buildAskCoreWorkbenchUrl,
   getAskCoreWorkbenchRouteFromState,
   isAskCoreSuiteRunResult,
@@ -104,7 +106,12 @@ const AskCoreWorkbenchToolCta = memo<AskCoreWorkbenchToolCtaProps>(({ plugin, pl
   }
 
   const route = getAskCoreWorkbenchRouteFromState(pluginState);
-  const href = buildAskCoreWorkbenchUrl({ route });
+  const organizationTab = askCoreOrganizationTabFromRoute(route);
+  const href = organizationTab
+    ? buildAskCoreOrganizationUrl({ route })
+    : buildAskCoreWorkbenchUrl({ route });
+  const title = organizationTab ? '组织管理已准备好' : '教学工作台已准备好';
+  const buttonText = organizationTab ? '打开组织管理' : '打开教学工作台';
 
   return (
     <div className={styles.cta}>
@@ -113,13 +120,13 @@ const AskCoreWorkbenchToolCta = memo<AskCoreWorkbenchToolCtaProps>(({ plugin, pl
           <BriefcaseBusiness size={16} />
         </span>
         <div className={styles.description}>
-          <span className={styles.title}>教学工作台已准备好</span>
+          <span className={styles.title}>{title}</span>
           <span className={styles.route}>{route}</span>
         </div>
       </div>
       <Link to={href}>
         <Button className={styles.primary} icon={<ExternalLink size={14} />} size="small">
-          打开教学工作台
+          {buttonText}
         </Button>
       </Link>
     </div>

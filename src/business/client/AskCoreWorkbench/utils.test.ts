@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  askCoreOrganizationTabFromRoute,
   askCoreWorkbenchTabFromRoute,
+  buildAskCoreOrganizationUrl,
   buildAskCoreWorkbenchUrl,
   getAskCoreWorkbenchRouteFromState,
   isAskCoreSuiteRunResult,
@@ -10,6 +12,7 @@ import {
 
 describe('AskCoreWorkbench utils', () => {
   it('normalizes invalid tabs to overview', () => {
+    expect(normalizeAskCoreWorkbenchTab('ops')).toBe('ops');
     expect(normalizeAskCoreWorkbenchTab('schools')).toBe('overview');
     expect(normalizeAskCoreWorkbenchTab('unknown')).toBe('overview');
     expect(normalizeAskCoreWorkbenchTab(null)).toBe('overview');
@@ -21,6 +24,7 @@ describe('AskCoreWorkbench utils', () => {
     expect(askCoreWorkbenchTabFromRoute('/assignments/new/manual')).toBe('assignments');
     expect(askCoreWorkbenchTabFromRoute('/submissions/new/ocr')).toBe('submissions');
     expect(askCoreWorkbenchTabFromRoute('/submissions/7')).toBe('submissions');
+    expect(askCoreWorkbenchTabFromRoute('/ops')).toBe('ops');
     expect(askCoreWorkbenchTabFromRoute('/missing')).toBe('overview');
   });
 
@@ -29,6 +33,15 @@ describe('AskCoreWorkbench utils', () => {
       '/askcore/workbench?tab=submissions&route=%2Fsubmissions%2F7',
     );
     expect(buildAskCoreWorkbenchUrl({ tab: 'teachers' })).toBe('/askcore/workbench?tab=overview');
+  });
+
+  it('maps organization-owned plugin routes to organization tabs', () => {
+    expect(askCoreOrganizationTabFromRoute('/schools')).toBe('schools');
+    expect(askCoreOrganizationTabFromRoute('/students/201')).toBe('students');
+    expect(askCoreOrganizationTabFromRoute('/assignments')).toBeNull();
+    expect(buildAskCoreOrganizationUrl({ route: '/classes' })).toBe(
+      '/organization?tab=classes&route=%2Fclasses',
+    );
   });
 
   it('detects AskCore standalone suite.run UI results', () => {

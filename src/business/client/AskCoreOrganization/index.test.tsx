@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AskCoreOrganizationRoute } from './index';
@@ -66,12 +67,16 @@ describe('AskCoreOrganizationRoute', () => {
       }),
     );
 
-    render(<AskCoreOrganizationRoute />);
+    render(
+      <MemoryRouter>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
 
     await waitFor(() => expect(screen.getAllByText('组织设置').length).toBeGreaterThan(0));
     fireEvent.click(screen.getByRole('button', { name: '成员' }));
     expect(screen.queryByText('邀请成员')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '学校' }));
+    fireEvent.click(screen.getByRole('button', { name: '层级' }));
     await waitFor(() => expect(screen.getByText('教育组织')).toBeInTheDocument());
     expect(screen.getAllByText('成员').length).toBeGreaterThan(0);
     expect(screen.getByText('高一')).toBeInTheDocument();

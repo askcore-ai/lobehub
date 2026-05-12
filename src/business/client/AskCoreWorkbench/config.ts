@@ -7,6 +7,7 @@ export const ASKCORE_WORKBENCH_PLUGIN_ID = 'aitutor-suite';
 
 export const ASKCORE_WORKBENCH_TABS: AskCoreWorkbenchTabConfig[] = [
   { key: 'overview', label: '总览' },
+  { key: 'ops', label: '运维' },
   {
     columns: [
       { dataIndex: 'name', title: '学科', width: 180 },

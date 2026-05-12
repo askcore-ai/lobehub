@@ -9,9 +9,9 @@ import { styles } from '../styles';
 import { type AskCoreOrganizationPayload } from '../types';
 
 interface HeroCardProps {
-  payload: AskCoreOrganizationPayload | null;
   canUpdateMeta: boolean;
   onEdit: () => void;
+  payload: AskCoreOrganizationPayload | null;
 }
 
 export const HeroCard = memo<HeroCardProps>(({ payload, canUpdateMeta, onEdit }) => {

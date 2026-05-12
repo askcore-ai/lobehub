@@ -2,6 +2,7 @@
 
 export type AskCoreWorkbenchTab =
   | 'overview'
+  | 'ops'
   | 'subjects'
   | 'assignments'
   | 'questions'
