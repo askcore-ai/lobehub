@@ -33,6 +33,11 @@ export class AskCoreWorkbenchApiError extends Error {
   }
 }
 
+export const isAskCoreWorkbenchDeleteNotFound = (reason: unknown) =>
+  reason instanceof AskCoreWorkbenchApiError &&
+  (reason.status === 404 ||
+    (reason.status === 400 && /\bnot found\b|未找到/i.test(reason.message)));
+
 const isRecord = (value: unknown): value is JsonRecord =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 

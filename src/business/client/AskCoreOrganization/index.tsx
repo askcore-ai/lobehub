@@ -13,16 +13,20 @@ import {
   Skeleton,
   Space,
   Table,
+  Upload,
 } from 'antd';
 import { type ColumnsType } from 'antd/es/table';
 import { cssVar } from 'antd-style';
-import { Check, Copy, Pencil, Plus, RefreshCw, Save } from 'lucide-react';
+import { Check, Copy, FileSpreadsheet, Pencil, Plus, RefreshCw, Save } from 'lucide-react';
 import { type Key, memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { message } from '@/components/AntdStaticMethods';
 
-import { askCoreWorkbenchClient } from '../AskCoreWorkbench/api';
+import {
+  askCoreWorkbenchClient,
+  isAskCoreWorkbenchDeleteNotFound,
+} from '../AskCoreWorkbench/api';
 import {
   type EditableResourceKey,
   EMPTY_LOOKUPS,
@@ -51,7 +55,7 @@ import { styles } from './styles';
 
 type OrganizationRosterResource = Extract<
   ResourceKey,
-  'classes' | 'grades' | 'schools' | 'students' | 'teachers'
+  'classes' | 'grades' | 'schools' | 'students' | 'subjects' | 'teachers'
 >;
 type TabKey = 'hierarchy' | 'members' | 'overview' | OrganizationRosterResource;
 
@@ -64,6 +68,7 @@ const tabs: { key: TabKey; label: string }[] = [
   { key: 'classes', label: '班级' },
   { key: 'teachers', label: '教师' },
   { key: 'students', label: '学生' },
+  { key: 'subjects', label: '学科' },
 ];
 
 const rosterResources: OrganizationRosterResource[] = [
@@ -72,9 +77,19 @@ const rosterResources: OrganizationRosterResource[] = [
   'classes',
   'teachers',
   'students',
+  'subjects',
 ];
 const lookupResources = Object.keys(EMPTY_LOOKUPS) as LookupCollectionKey[];
 const ROSTER_PAGE_SIZE = 20;
+const ROSTER_IMPORT_TERMINAL_STATES = new Set(['cancelled', 'failed', 'succeeded']);
+const ROSTER_IMPORT_ACTIONS: Record<OrganizationRosterResource, string> = {
+  classes: 'ops.import.classes',
+  grades: 'ops.import.grades',
+  schools: 'ops.import.schools',
+  students: 'ops.import.students',
+  subjects: 'ops.import.subjects',
+  teachers: 'ops.import.teachers',
+};
 
 const normalizeTab = (value?: string | null): TabKey =>
   tabs.some((tab) => tab.key === value) ? (value as TabKey) : 'overview';
@@ -91,6 +106,42 @@ const normalizeFormValues = (values: Record<string, unknown>) =>
 
 const recordId = (resource: OrganizationRosterResource, record: JsonRecord) =>
   Number(record[getResourceIdKey(resource)] || record.id || 0) || 0;
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+
+const fileSha256Hex = async (file: File) => {
+  if (!globalThis.crypto?.subtle) throw new Error('当前浏览器不支持文件校验。');
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+  return Array.from(new Uint8Array(digest))
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('');
+};
+
+const csvImportDefaults = (
+  resource: OrganizationRosterResource,
+  filterForm: Record<string, string>,
+) => {
+  const defaults: JsonRecord = {};
+  if (resource === 'students' && filterForm.class_id) {
+    defaults.class_id = Number(filterForm.class_id);
+  }
+  if ((resource === 'classes' || resource === 'teachers') && filterForm.school_id) {
+    defaults.school_id = Number(filterForm.school_id);
+  }
+  return defaults;
+};
+
+const waitForRosterImport = async (invocationId: string) => {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const invocation = await askCoreWorkbenchClient.getInvocation(invocationId);
+    if (ROSTER_IMPORT_TERMINAL_STATES.has(String(invocation.state))) return invocation;
+    await sleep(1000);
+  }
+  return null;
+};
 
 const labelForField = (resource: OrganizationRosterResource, key: string) => {
   const fields = [...RESOURCE_FORM_FIELDS[resource], ...RESOURCE_FILTER_FIELDS[resource]];
@@ -120,6 +171,7 @@ const rosterColumnsByResource: Record<OrganizationRosterResource, string[]> = {
   grades: ['name', 'education_level', 'grade_order', 'is_graduation_grade'],
   schools: ['name', 'province', 'city', 'contact_phone'],
   students: ['name', 'student_number', 'class_name', 'gender'],
+  subjects: ['name', 'subject_category', 'is_core_subject'],
   teachers: ['real_name', 'username', 'role', 'school_name'],
 };
 
@@ -159,6 +211,7 @@ const OrganizationRosterSection = memo<{
   const [total, setTotal] = useState<number | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
@@ -261,7 +314,11 @@ const OrganizationRosterSection = memo<{
         await askCoreWorkbenchClient.deleteResource(resource, id);
         deleted.push(id);
       } catch (reason) {
-        failed.push(`ID ${id}: ${reason instanceof Error ? reason.message : '删除失败'}`);
+        if (isAskCoreWorkbenchDeleteNotFound(reason)) {
+          deleted.push(id);
+        } else {
+          failed.push(`ID ${id}: ${reason instanceof Error ? reason.message : '删除失败'}`);
+        }
       }
     }
     setSelectedRowKeys([]);
@@ -271,6 +328,55 @@ const OrganizationRosterSection = memo<{
       message.error(`已删除 ${deleted.length} 条，失败 ${failed.length} 条：${failed[0]}`);
     } else {
       message.success(`已删除 ${deleted.length} 条`);
+    }
+  };
+
+  const importCsv = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      message.warning('请选择 CSV 文件');
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const sha256 = await fileSha256Hex(file);
+      const signed = await askCoreWorkbenchClient.presignUpload({
+        content_type: 'text/csv',
+        filename: file.name,
+        purpose: 'csv',
+        sha256,
+      });
+      await askCoreWorkbenchClient.uploadFile(file, signed);
+      const params: JsonRecord = {
+        csv_ref: {
+          integrity: { sha256 },
+          locator: { kind: 'object_store', object_key: signed.object_key },
+          media_type: 'text/csv',
+          purpose: 'csv',
+          sensitivity: resource === 'students' ? 'student_personal' : 'restricted',
+        },
+      };
+      const defaults = csvImportDefaults(resource, filterForm);
+      if (Object.keys(defaults).length) params.defaults = defaults;
+
+      const result = await askCoreWorkbenchClient.invokeAction(
+        ROSTER_IMPORT_ACTIONS[resource],
+        params,
+      );
+      const invocation = await waitForRosterImport(result.invocation_id);
+      if (!invocation) {
+        message.success('导入任务已提交，稍后刷新列表查看结果');
+      } else if (invocation.state === 'succeeded') {
+        message.success('导入完成');
+      } else {
+        message.error(invocation.failure_reason || `导入失败：${invocation.state}`);
+      }
+      await loadLookups();
+      await loadItems();
+    } catch (reason) {
+      message.error(reason instanceof Error ? reason.message : '导入失败');
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -370,6 +476,19 @@ const OrganizationRosterSection = memo<{
           </Space>
           {canManage ? (
             <Space wrap>
+              <Upload
+                accept=".csv,text/csv"
+                disabled={importing}
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  void importCsv(file as File);
+                  return false;
+                }}
+              >
+                <Button disabled={importing} icon={<FileSpreadsheet size={14} />} loading={importing}>
+                  导入 CSV
+                </Button>
+              </Upload>
               <Popconfirm
                 disabled={!selectedIds.length}
                 title={`批量删除 ${selectedIds.length} 条记录？`}

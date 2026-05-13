@@ -58,6 +58,7 @@ import {
   askCoreWorkbenchClient,
   emptyAskCoreWorkbenchDashboard,
   emptyAskCoreWorkbenchList,
+  isAskCoreWorkbenchDeleteNotFound,
 } from './api';
 import { ASKCORE_WORKBENCH_TAB_OPTIONS, ASKCORE_WORKBENCH_TABS } from './config';
 import {
@@ -463,7 +464,6 @@ const styles = createStaticStyles(({ css }) => ({
 
 type WorkbenchRoute =
   | { kind: 'dashboard'; path: string }
-  | { kind: 'ops'; path: string }
   | { kind: 'list'; path: string; resource: ResourceKey }
   | { kind: 'new'; path: string; resource: ResourceKey }
   | { entityId: number; kind: 'detail'; path: string; resource: ResourceKey }
@@ -484,8 +484,6 @@ const routeResourceAliases: Record<string, ResourceKey> = {
   assignments: 'assignments',
   question: 'questions',
   questions: 'questions',
-  subject: 'subjects',
-  subjects: 'subjects',
   submission: 'submissions',
   submissions: 'submissions',
 };
@@ -748,7 +746,6 @@ const parseWorkbenchRoute = (
   const path = normalizeRoutePath(route);
   if (!path) {
     if (activeTab === 'overview') return { kind: 'dashboard', path: '/dashboard' };
-    if (activeTab === 'ops') return { kind: 'ops', path: '/ops' };
     return {
       kind: 'list',
       path: buildResourceBasePath(activeTab as ResourceKey),
@@ -756,7 +753,6 @@ const parseWorkbenchRoute = (
     };
   }
   if (path === '/dashboard') return { kind: 'dashboard', path };
-  if (path === '/ops') return { kind: 'ops', path };
   if (path === '/assignments/new/manual') return { kind: 'assignment-manual', path };
   if (path === '/assignments/new/ocr') return { kind: 'assignment-ocr', path };
   if (path === '/submissions/new/ocr') return { kind: 'submission-ocr', path };
@@ -2046,181 +2042,6 @@ const RunStatusPanel = ({
           />
         </div>
       ) : null}
-    </div>
-  );
-};
-
-const OPS_ACTION_TEMPLATES: Array<{ label: string; params: JsonRecord; value: string }> = [
-  {
-    label: '实体解析',
-    params: {
-      entity_type: 'student',
-      query: '',
-      scope: {},
-    },
-    value: 'lookup.resolve.entity',
-  },
-  { label: '导入学校', params: { file_url: '' }, value: 'ops.import.schools' },
-  { label: '导入教师', params: { file_url: '' }, value: 'ops.import.teachers' },
-  {
-    label: '导入班级',
-    params: { defaults: { school_id: 0 }, file_url: '' },
-    value: 'ops.import.classes',
-  },
-  {
-    label: '导入学生',
-    params: { defaults: { class_id: 0 }, file_url: '' },
-    value: 'ops.import.students',
-  },
-  { label: '导入年级', params: { file_url: '' }, value: 'ops.import.grades' },
-  { label: '导入学科', params: { file_url: '' }, value: 'ops.import.subjects' },
-  {
-    label: '预览学校删除',
-    params: { school_ids: [1, 2] },
-    value: 'ops.bulk_delete.schools.preview',
-  },
-  {
-    label: '删除学校',
-    params: { school_ids: [1, 2] },
-    value: 'ops.bulk_delete.schools.execute',
-  },
-  {
-    label: '预览学生删除',
-    params: { student_ids: [101, 102] },
-    value: 'ops.bulk_delete.students.preview',
-  },
-  {
-    label: '删除学生',
-    params: { student_ids: [101, 102] },
-    value: 'ops.bulk_delete.students.execute',
-  },
-  {
-    label: '预览年级删除',
-    params: { grade_ids: [1, 2] },
-    value: 'ops.bulk_delete.grades.preview',
-  },
-  {
-    label: '删除年级',
-    params: { grade_ids: [1, 2] },
-    value: 'ops.bulk_delete.grades.execute',
-  },
-  {
-    label: '预览学科删除',
-    params: { subject_ids: [1, 2] },
-    value: 'ops.bulk_delete.subjects.preview',
-  },
-  {
-    label: '删除学科',
-    params: { subject_ids: [1, 2] },
-    value: 'ops.bulk_delete.subjects.execute',
-  },
-  {
-    label: 'SQL 补丁预览',
-    params: {
-      max_affected_rows: 100,
-      sql_ref: {
-        locator: { kind: 'object_store', object_key: '' },
-      },
-    },
-    value: 'ops.sql_patch.preview',
-  },
-  {
-    label: 'SQL 补丁执行',
-    params: {
-      max_affected_rows: 100,
-      sql_ref: {
-        locator: { kind: 'object_store', object_key: '' },
-      },
-    },
-    value: 'ops.sql_patch.execute',
-  },
-];
-
-const prettyParams = (value: JsonRecord) => JSON.stringify(value, null, 2);
-
-const OpsActionView = ({
-  client,
-}: {
-  client: AskCoreWorkbenchApiClient;
-}) => {
-  const [action, setAction] = useState(OPS_ACTION_TEMPLATES[0].value);
-  const [paramsText, setParamsText] = useState(() => prettyParams(OPS_ACTION_TEMPLATES[0].params));
-  const [run, setRun] = useState<RunState>(() => emptyRunState());
-
-  const applyTemplate = (value: string) => {
-    const template = OPS_ACTION_TEMPLATES.find((item) => item.value === value);
-    setAction(value);
-    if (template) setParamsText(prettyParams(template.params));
-  };
-
-  const startAction = async () => {
-    const normalizedAction = action.trim();
-    if (!normalizedAction) {
-      message.warning('请填写动作名称');
-      return;
-    }
-
-    let params: JsonRecord;
-    try {
-      const parsed = JSON.parse(paramsText || '{}');
-      params = isJsonRecord(parsed) ? parsed : {};
-    } catch (reason) {
-      message.error(`参数 JSON 无效：${asError(reason)}`);
-      return;
-    }
-
-    setRun({ ...emptyRunState(), busy: true, notice: '正在提交后台任务…' });
-    try {
-      const result = await client.invokeAction(normalizedAction, params, createConfirmationId());
-      await waitForInvocation({ client, invocationId: result.invocation_id, setRun });
-    } catch (reason) {
-      const error = asError(reason);
-      setRun((current) => ({ ...current, busy: false, error, notice: null }));
-    }
-  };
-
-  return (
-    <div className={styles.view}>
-      <div className={styles.splitWorkspace}>
-        <div className={styles.formPanel}>
-          <div className={styles.stack}>
-            <div className={styles.fieldGrid}>
-              <label>
-                <div className={styles.muted}>模板</div>
-                <Select
-                  value={action}
-                  options={OPS_ACTION_TEMPLATES.map((item) => ({
-                    label: item.label,
-                    value: item.value,
-                  }))}
-                  onChange={applyTemplate}
-                />
-              </label>
-              <label style={{ gridColumn: 'span 2' }}>
-                <div className={styles.muted}>动作名称</div>
-                <Input value={action} onChange={(event) => setAction(event.target.value)} />
-              </label>
-            </div>
-            <label>
-              <div className={styles.muted}>参数 JSON</div>
-              <Input.TextArea
-                rows={14}
-                value={paramsText}
-                onChange={(event) => setParamsText(event.target.value)}
-              />
-            </label>
-            <Button
-              className={styles.primary}
-              disabled={run.busy}
-              loading={run.busy}
-              onClick={() => void startAction()}
-            >
-              运行
-            </Button>
-          </div>
-        </div>
-        <RunStatusPanel run={run} title="运维运行状态" />
-      </div>
     </div>
   );
 };
@@ -5318,7 +5139,11 @@ const AskCoreWorkbenchPage = memo(() => {
                     await askCoreWorkbenchClient.deleteResource(resource, id);
                     deleted.push(id);
                   } catch (error) {
-                    failed.push(`ID ${id}: ${asError(error)}`);
+                    if (isAskCoreWorkbenchDeleteNotFound(error)) {
+                      deleted.push(id);
+                    } else {
+                      failed.push(`ID ${id}: ${asError(error)}`);
+                    }
                   }
                 }
                 if (failed.length) {
@@ -5514,7 +5339,11 @@ const AskCoreWorkbenchPage = memo(() => {
         onBack={backToList}
         onEdit={() => navigate(routeFor(currentRoute.resource as AskCoreWorkbenchTab, editRoute))}
         onDelete={async () => {
-          await askCoreWorkbenchClient.deleteResource(currentRoute.resource, currentRoute.entityId);
+          try {
+            await askCoreWorkbenchClient.deleteResource(currentRoute.resource, currentRoute.entityId);
+          } catch (error) {
+            if (!isAskCoreWorkbenchDeleteNotFound(error)) throw error;
+          }
           message.success('删除成功');
           backToList();
         }}
@@ -5524,7 +5353,6 @@ const AskCoreWorkbenchPage = memo(() => {
 
   const renderMain = () => {
     if (currentRoute.kind === 'dashboard') return renderDashboard();
-    if (currentRoute.kind === 'ops') return <OpsActionView client={askCoreWorkbenchClient} />;
     if (currentRoute.kind === 'list') return renderResourceList(currentRoute.resource);
     if (currentRoute.kind === 'new') return renderEditOrCreate(currentRoute.resource, 'create');
     if (currentRoute.kind === 'detail' || currentRoute.kind === 'edit') return renderDetail();

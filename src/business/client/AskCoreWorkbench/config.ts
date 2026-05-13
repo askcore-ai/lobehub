@@ -7,21 +7,6 @@ export const ASKCORE_WORKBENCH_PLUGIN_ID = 'aitutor-suite';
 
 export const ASKCORE_WORKBENCH_TABS: AskCoreWorkbenchTabConfig[] = [
   { key: 'overview', label: '总览' },
-  { key: 'ops', label: '运维' },
-  {
-    columns: [
-      { dataIndex: 'name', title: '学科', width: 180 },
-      { dataIndex: 'subject_category', title: '分类', width: 160 },
-      { dataIndex: 'is_core_subject', isStatus: true, title: '核心学科', width: 140 },
-      { dataIndex: 'created_at', title: '创建时间', width: 180 },
-      { dataIndex: 'updated_at', title: '更新时间', width: 180 },
-    ],
-    key: 'subjects',
-    label: '学科',
-    newLabel: '新建学科',
-    resource: 'subjects',
-    searchPlaceholder: '搜索学科、分类',
-  },
   {
     columns: [
       { dataIndex: 'title', title: '作业', width: 240 },

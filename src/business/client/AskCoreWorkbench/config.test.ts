@@ -6,11 +6,12 @@ describe('AskCoreWorkbench config', () => {
   it('keeps organization-owned roster resources out of first-class workbench tabs', () => {
     const tabKeys = ASKCORE_WORKBENCH_TABS.map((tab) => tab.key);
 
-    expect(tabKeys).toContain('ops');
+    expect(tabKeys).not.toContain('ops');
     expect(tabKeys).not.toContain('schools');
     expect(tabKeys).not.toContain('grades');
     expect(tabKeys).not.toContain('classes');
     expect(tabKeys).not.toContain('teachers');
     expect(tabKeys).not.toContain('students');
+    expect(tabKeys).not.toContain('subjects');
   });
 });

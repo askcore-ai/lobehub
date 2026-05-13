@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   AskCoreWorkbenchApiClient,
+  AskCoreWorkbenchApiError,
   askCoreWorkbenchDashboardUrl,
   askCoreWorkbenchItemUrl,
   askCoreWorkbenchResourceUrl,
   fetchAskCoreWorkbenchJson,
+  isAskCoreWorkbenchDeleteNotFound,
 } from './api';
 
 describe('AskCoreWorkbench API', () => {
@@ -98,5 +100,17 @@ describe('AskCoreWorkbench API', () => {
     for (const [, init] of calls) {
       expect(new Headers(init?.headers).get('Authorization')).toBeNull();
     }
+  });
+
+  it('treats missing delete targets as idempotent completion', () => {
+    expect(isAskCoreWorkbenchDeleteNotFound(new AskCoreWorkbenchApiError('Submission not found', 400))).toBe(
+      true,
+    );
+    expect(isAskCoreWorkbenchDeleteNotFound(new AskCoreWorkbenchApiError('Entity not found', 404))).toBe(
+      true,
+    );
+    expect(isAskCoreWorkbenchDeleteNotFound(new AskCoreWorkbenchApiError('Permission denied', 403))).toBe(
+      false,
+    );
   });
 });
