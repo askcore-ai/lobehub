@@ -2489,7 +2489,7 @@ const AssignmentDetailView = ({
       recipientItems
         .map((row) => {
           const student = isJsonRecord(row.student) ? row.student : {};
-          return positiveId(row.student_id || student.student_id || student.id);
+          return positiveId(student.student_id || student.id);
         })
         .filter((id) => id > 0),
     );
@@ -2905,15 +2905,19 @@ const AssignmentDetailView = ({
                 width: 52,
               },
               {
-                dataIndex: 'student_name',
-                key: 'student_name',
-                render: (value, row) => displayNode(value || row.student_number || row.student_id),
+                key: 'student',
+                render: (_, row) => {
+                  const student = isJsonRecord(row.student) ? row.student : {};
+                  return displayNode(student.name);
+                },
                 title: '学生',
               },
               {
-                dataIndex: 'class_name',
-                key: 'class_name',
-                render: (value, row) => displayNode(value || row.class_id),
+                key: 'classroom',
+                render: (_, row) => {
+                  const classroom = isJsonRecord(row.classroom) ? row.classroom : {};
+                  return displayNode(classroom.name);
+                },
                 title: '班级',
               },
               {
