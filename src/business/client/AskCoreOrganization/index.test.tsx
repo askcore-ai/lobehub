@@ -133,6 +133,9 @@ describe('AskCoreOrganizationRoute', () => {
             { status: 200 },
           );
         }
+        if (url.includes('/workbench/organization/roles')) {
+          return new Response(JSON.stringify({ items: [] }), { status: 200 });
+        }
         return new Response(JSON.stringify(payload), { status: 200 });
       }),
     );
@@ -148,12 +151,16 @@ describe('AskCoreOrganizationRoute', () => {
     await waitFor(() => expect(screen.getByText('2025级')).toBeInTheDocument());
 
     expect(screen.getByText('添加学校')).toBeInTheDocument();
-    expect(screen.getByText('分配身份')).toBeInTheDocument();
+    expect(screen.getByText('选择树上的节点分配身份')).toBeInTheDocument();
     expect(screen.getByText('届别')).toBeInTheDocument();
+    expect(screen.queryByLabelText('学校名称')).not.toBeInTheDocument();
     expect(screen.queryByText('创建层级')).not.toBeInTheDocument();
     expect(screen.queryByText('上级 ID')).not.toBeInTheDocument();
     expect(screen.queryByText('Better Auth 用户 ID')).not.toBeInTheDocument();
     expect(screen.queryByText('教师 ID')).not.toBeInTheDocument();
     expect(screen.queryByText('学生 ID')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Seed School'));
+    await waitFor(() => expect(screen.getByText('Seed School 的身份')).toBeInTheDocument());
   });
 });

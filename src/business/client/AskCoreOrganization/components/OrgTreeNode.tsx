@@ -38,10 +38,12 @@ interface OrgTreeNodeProps {
   depth?: number;
   node: AskCoreEducationOrgUnit;
   onAddChild?: (parent: AskCoreEducationOrgUnit, name: string) => Promise<void>;
+  onSelect?: (node: AskCoreEducationOrgUnit) => void;
+  selectedId?: number;
 }
 
 export const OrgTreeNode = memo<OrgTreeNodeProps>(
-  ({ node, allNodes, depth = 0, canManage, onAddChild }) => {
+  ({ node, allNodes, depth = 0, canManage, onAddChild, onSelect, selectedId }) => {
     const [expanded, setExpanded] = useState(true);
     const [adding, setAdding] = useState(false);
     const [addName, setAddName] = useState('');
@@ -68,11 +70,22 @@ export const OrgTreeNode = memo<OrgTreeNodeProps>(
 
     return (
       <div className={styles.treeNode}>
-        <div className={styles.treeNodeRow}>
+        <div
+          className={`${styles.treeNodeRow} ${selectedId === node.id ? styles.treeNodeRowSelected : ''}`}
+          role="button"
+          tabIndex={0}
+          onClick={() => onSelect?.(node)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') onSelect?.(node);
+          }}
+        >
           {hasChildren ? (
             <span
               style={{ cursor: 'pointer', display: 'inline-flex' }}
-              onClick={() => setExpanded((v) => !v)}
+              onClick={(event) => {
+                event.stopPropagation();
+                setExpanded((v) => !v);
+              }}
             >
               {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </span>
@@ -91,10 +104,13 @@ export const OrgTreeNode = memo<OrgTreeNodeProps>(
               {node.unit_type !== 'class' && (
                 <Tooltip title={`添加${node.unit_type === 'school' ? '届别' : '班级'}`}>
                   <Button
+                    className={styles.treeAddButton}
                     icon={<Plus size={13} />}
                     size="small"
-                    type="text"
-                    onClick={() => setAdding(true)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setAdding(true);
+                    }}
                   />
                 </Tooltip>
               )}
@@ -136,6 +152,8 @@ export const OrgTreeNode = memo<OrgTreeNodeProps>(
                 key={child.id}
                 node={child}
                 onAddChild={onAddChild}
+                onSelect={onSelect}
+                selectedId={selectedId}
               />
             ))}
           </div>

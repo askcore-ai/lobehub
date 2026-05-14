@@ -5,6 +5,8 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { message } from '@/components/AntdStaticMethods';
 
+import { askCoreWorkbenchClient } from '../../AskCoreWorkbench/api';
+import { type JsonRecord } from '../../AskCoreWorkbench/types';
 import {
   assignAskCoreEducationRole,
   createAskCoreClassUnit,
@@ -13,7 +15,9 @@ import {
   createAskCoreOrganization,
   createAskCoreOrganizationInvite,
   createAskCoreSchoolUnit,
+  deleteAskCoreEducationRoleAssignment,
   fetchAskCoreEducationOrgUnits,
+  fetchAskCoreEducationRoleAssignments,
   fetchAskCoreOrganizations,
   removeAskCoreOrganizationMember,
   setActiveAskCoreOrganization,
@@ -23,6 +27,7 @@ import {
 import {
   type AskCoreEducationOrgUnit,
   type AskCoreEducationOrgUnitPayload,
+  type AskCoreEducationRoleAssignment,
   type AskCoreInviteChannel,
   type AskCoreInviteExpiry,
   type AskCoreInvitePayload,
@@ -47,6 +52,10 @@ export const useOrganization = () => {
   const [educationPayload, setEducationPayload] = useState<AskCoreEducationOrgUnitPayload | null>(null);
   const [educationLoading, setEducationLoading] = useState(false);
   const [educationError, setEducationError] = useState<string | undefined>();
+  const [educationRoleAssignments, setEducationRoleAssignments] = useState<AskCoreEducationRoleAssignment[]>([]);
+  const [educationRoleLoading, setEducationRoleLoading] = useState(false);
+  const [educationTeachers, setEducationTeachers] = useState<JsonRecord[]>([]);
+  const [educationStudents, setEducationStudents] = useState<JsonRecord[]>([]);
 
   const [creatingUnit, setCreatingUnit] = useState(false);
   const [assigningRole, setAssigningRole] = useState(false);
@@ -93,6 +102,36 @@ export const useOrganization = () => {
     }
   }, [current?.id]);
 
+  const reloadEducationRoleAssignments = useCallback(async () => {
+    if (!current?.id) {
+      setEducationRoleAssignments([]);
+      return;
+    }
+    setEducationRoleLoading(true);
+    try {
+      const next = await fetchAskCoreEducationRoleAssignments();
+      setEducationRoleAssignments(next.items || []);
+    } catch {
+      setEducationRoleAssignments([]);
+    } finally {
+      setEducationRoleLoading(false);
+    }
+  }, [current?.id]);
+
+  const reloadEducationRoleSubjects = useCallback(async () => {
+    if (!current?.id) {
+      setEducationTeachers([]);
+      setEducationStudents([]);
+      return;
+    }
+    const [teachers, students] = await Promise.all([
+      askCoreWorkbenchClient.listAllResource('teachers').catch(() => []),
+      askCoreWorkbenchClient.listAllResource('students').catch(() => []),
+    ]);
+    setEducationTeachers(teachers);
+    setEducationStudents(students);
+  }, [current?.id]);
+
   useEffect(() => {
     void reload();
   }, [reload]);
@@ -100,6 +139,11 @@ export const useOrganization = () => {
   useEffect(() => {
     void reloadEducationOrgUnits();
   }, [reloadEducationOrgUnits]);
+
+  useEffect(() => {
+    void reloadEducationRoleAssignments();
+    void reloadEducationRoleSubjects();
+  }, [reloadEducationRoleAssignments, reloadEducationRoleSubjects]);
 
   const handleCreateOrganization = useCallback(async () => {
     const values = await createForm.validateFields();
@@ -189,6 +233,25 @@ export const useOrganization = () => {
     }
   }, [orgUnitForm, reloadEducationOrgUnits]);
 
+  const handleAddSchoolUnit = useCallback(
+    async (name: string, description?: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      setCreatingUnit(true);
+      try {
+        await createAskCoreSchoolUnit({
+          description: description?.trim() || undefined,
+          name: trimmed,
+        });
+        await reloadEducationOrgUnits();
+        message.success('学校已创建');
+      } finally {
+        setCreatingUnit(false);
+      }
+    },
+    [reloadEducationOrgUnits],
+  );
+
   const handleAddEducationChild = useCallback(
     async (parent: AskCoreEducationOrgUnit, name: string) => {
       const trimmed = name.trim();
@@ -223,17 +286,34 @@ export const useOrganization = () => {
     const values = await orgRoleForm.validateFields();
     setAssigningRole(true);
     try {
+      const subjectKind = values.subject_kind || 'member';
+      const subjectValue = values.subject_value;
       await assignAskCoreEducationRole({
         org_unit_id: values.org_unit_id,
         role: values.role,
-        subject: { kind: 'member', userId: values.subject_user_id },
+        subject:
+          subjectKind === 'teacher'
+            ? { kind: 'teacher', teacherId: Number(subjectValue) }
+            : subjectKind === 'student'
+              ? { kind: 'student', studentId: Number(subjectValue) }
+              : { kind: 'member', userId: String(subjectValue) },
       });
-      orgRoleForm.resetFields(['subject_user_id']);
+      orgRoleForm.resetFields(['subject_value']);
+      await reloadEducationRoleAssignments();
       message.success('教育身份已分配');
     } finally {
       setAssigningRole(false);
     }
-  }, [orgRoleForm]);
+  }, [orgRoleForm, reloadEducationRoleAssignments]);
+
+  const handleDeleteEducationRole = useCallback(
+    async (assignmentId: number) => {
+      await deleteAskCoreEducationRoleAssignment(assignmentId);
+      await reloadEducationRoleAssignments();
+      message.success('教育身份已移除');
+    },
+    [reloadEducationRoleAssignments],
+  );
 
   const handleRoleChange = useCallback(
     async (memberId: string, role: AskCoreOrganizationRole) => {
@@ -299,15 +379,22 @@ export const useOrganization = () => {
     educationLoading,
     educationError,
     educationUnits,
+    educationRoleAssignments,
+    educationRoleLoading,
+    educationTeachers,
+    educationStudents,
     creatingUnit,
     assigningRole,
     orgUnitForm,
     orgRoleForm,
     handleCreateEducationUnit,
     handleCreateSchoolUnit,
+    handleAddSchoolUnit,
     handleAddEducationChild,
     handleAssignEducationRole,
+    handleDeleteEducationRole,
     reloadEducationOrgUnits,
+    reloadEducationRoleAssignments,
 
     // Members
     handleRoleChange,

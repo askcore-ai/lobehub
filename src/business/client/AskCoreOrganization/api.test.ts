@@ -9,7 +9,9 @@ import {
   createAskCoreOrganization,
   createAskCoreOrganizationInvite,
   createAskCoreSchoolUnit,
+  deleteAskCoreEducationRoleAssignment,
   fetchAskCoreEducationOrgUnits,
+  fetchAskCoreEducationRoleAssignments,
   fetchAskCoreOrganizations,
   setActiveAskCoreOrganization,
   updateAskCoreOrganizationMemberRole,
@@ -46,6 +48,8 @@ describe('AskCoreOrganization api client', () => {
       org_unit_id: 2,
       role: 'grade_admin',
     });
+    await fetchAskCoreEducationRoleAssignments(2);
+    await deleteAskCoreEducationRoleAssignment(9);
 
     const calls = fetchMock.mock.calls as [RequestInfo | URL, RequestInit?][];
 
@@ -62,6 +66,8 @@ describe('AskCoreOrganization api client', () => {
       '/api/askcore/workbench/organization/units',
       '/api/askcore/workbench/organization/units',
       '/api/askcore/workbench/organization/roles',
+      '/api/askcore/workbench/organization/roles?org_unit_id=2',
+      '/api/askcore/workbench/organization/roles/9',
     ]);
     expect(calls[1][1]).toMatchObject({
       body: JSON.stringify({ invite_token: 'token-1' }),
@@ -96,5 +102,6 @@ describe('AskCoreOrganization api client', () => {
       }),
       method: 'POST',
     });
+    expect(calls[13][1]).toMatchObject({ method: 'DELETE' });
   });
 });

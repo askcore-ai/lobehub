@@ -3,6 +3,7 @@ import {
   type AskCoreEducationOrgUnitPayload,
   type AskCoreEducationRoleAssignment,
   type AskCoreEducationRoleAssignmentCreateInput,
+  type AskCoreEducationRoleAssignmentPayload,
   type AskCoreInviteChannel,
   type AskCoreInviteExpiry,
   type AskCoreInvitePayload,
@@ -187,4 +188,14 @@ export const assignAskCoreEducationRole = (input: AskCoreEducationRoleAssignment
   requestJson<AskCoreEducationRoleAssignment>(`${EDUCATION_ORG_API_BASE}/roles`, {
     body: JSON.stringify(roleAssignmentBody(input)),
     method: 'POST',
+  });
+
+export const fetchAskCoreEducationRoleAssignments = (orgUnitId?: number) => {
+  const query = orgUnitId ? `?org_unit_id=${orgUnitId}` : '';
+  return requestJson<AskCoreEducationRoleAssignmentPayload>(`${EDUCATION_ORG_API_BASE}/roles${query}`);
+};
+
+export const deleteAskCoreEducationRoleAssignment = (assignmentId: number) =>
+  requestJson<AskCoreEducationRoleAssignment>(`${EDUCATION_ORG_API_BASE}/roles/${assignmentId}`, {
+    method: 'DELETE',
   });

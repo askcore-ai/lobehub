@@ -75,7 +75,7 @@ const rosterResources: OrganizationRosterResource[] = [
   'students',
   'subjects',
 ];
-const lookupResources = Object.keys(EMPTY_LOOKUPS) as LookupCollectionKey[];
+const lookupResources: LookupCollectionKey[] = ['grades', 'students', 'subjects', 'teachers'];
 const ROSTER_PAGE_SIZE = 20;
 const ROSTER_IMPORT_TERMINAL_STATES = new Set(['cancelled', 'failed', 'succeeded']);
 const ROSTER_IMPORT_ACTIONS: Record<OrganizationRosterResource, string> = {
@@ -119,8 +119,8 @@ const csvImportDefaults = (
   filterForm: Record<string, string>,
 ) => {
   const defaults: JsonRecord = {};
-  if (resource === 'students' && filterForm.class_id) {
-    defaults.class_id = Number(filterForm.class_id);
+  if (resource === 'students' && filterForm.org_unit_id) {
+    defaults.org_unit_id = Number(filterForm.org_unit_id);
   }
   return defaults;
 };
@@ -234,7 +234,7 @@ const OrganizationRosterSection = memo<{
         }
       }),
     );
-    setLookups(Object.fromEntries(entries) as LookupCollections);
+    setLookups({ ...EMPTY_LOOKUPS, ...Object.fromEntries(entries) } as LookupCollections);
   }, []);
 
   const loadItems = useCallback(async () => {
@@ -891,11 +891,15 @@ export const AskCoreOrganizationRoute = memo(() => {
 	                  loading={org.educationLoading}
                   members={org.members}
                   orgRoleForm={org.orgRoleForm}
-                  orgUnitForm={org.orgUnitForm}
                   payload={org.educationPayload}
+                  roleAssignments={org.educationRoleAssignments}
+                  roleLoading={org.educationRoleLoading}
+                  students={org.educationStudents}
+                  teachers={org.educationTeachers}
+                  onAddSchool={org.handleAddSchoolUnit}
                   onAssignRole={org.handleAssignEducationRole}
                   onAddChild={org.handleAddEducationChild}
-                  onCreateSchool={org.handleCreateSchoolUnit}
+                  onDeleteRole={org.handleDeleteEducationRole}
 	                  onReload={org.reloadEducationOrgUnits}
 	                />
 	              )}

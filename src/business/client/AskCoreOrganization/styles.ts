@@ -329,6 +329,39 @@ export const styles = createStaticStyles(({ css }) => ({
     flex-direction: column;
     gap: 4px;
   `,
+  orgTreeLayout: css`
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 20px;
+
+    @media (width <= 820px) {
+      grid-template-columns: 1fr;
+    }
+  `,
+  orgTreePane: css`
+    min-width: 0;
+  `,
+  treeRootAddButton: css`
+    border-radius: 999px;
+    border-color: ${cssVar.colorText};
+    color: ${cssVar.colorText};
+    font-weight: 600;
+  `,
+  treeRootInlineForm: css`
+    display: grid;
+    grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) auto auto;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 12px;
+    padding: 10px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 12px;
+    background: ${cssVar.colorFillQuaternary};
+
+    @media (width <= 700px) {
+      grid-template-columns: 1fr;
+    }
+  `,
   treeNode: css`
     position: relative;
   `,
@@ -348,13 +381,33 @@ export const styles = createStaticStyles(({ css }) => ({
       }
     }
   `,
+  treeNodeRowSelected: css`
+    background: ${cssVar.colorPrimaryBg};
+    color: ${cssVar.colorPrimary};
+  `,
   treeNodeActions: css`
-    opacity: 0;
+    opacity: 1;
     transition: opacity 0.15s ease;
     display: flex;
     align-items: center;
     gap: 4px;
     margin-left: auto;
+  `,
+  treeAddButton: css`
+    min-width: 26px;
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    background: ${cssVar.colorBgContainer};
+    color: ${cssVar.colorText};
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+
+    &:hover {
+      border-color: ${cssVar.colorText};
+      color: ${cssVar.colorText};
+      background: ${cssVar.colorFillQuaternary};
+    }
   `,
   treeNodeChildren: css`
     position: relative;
@@ -392,6 +445,68 @@ export const styles = createStaticStyles(({ css }) => ({
   `,
   treeEmpty: css`
     padding: 32px 0;
+    text-align: center;
+  `,
+  orgRolePanel: css`
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 12px;
+    background: ${cssVar.colorFillQuaternary};
+  `,
+  rolePanelHeader: css`
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  `,
+  rolePanelTitle: css`
+    font-size: 15px;
+    font-weight: 700;
+    color: ${cssVar.colorText};
+  `,
+  rolePanelMeta: css`
+    margin-top: 2px;
+    font-size: 12px;
+    color: ${cssVar.colorTextSecondary};
+  `,
+  roleAssignmentList: css`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 14px;
+  `,
+  roleAssignmentItem: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid ${cssVar.colorBorderSecondary};
+    font-size: 13px;
+
+    &:last-child {
+      border-bottom: 0;
+    }
+  `,
+  roleAssignForm: css`
+    padding-top: 12px;
+    border-top: 1px solid ${cssVar.colorBorderSecondary};
+  `,
+  rolePanelEmpty: css`
+    padding: 12px 0;
+    font-size: 13px;
+    color: ${cssVar.colorTextSecondary};
+  `,
+  rolePanelEmptyState: css`
+    min-height: 220px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: ${cssVar.colorTextSecondary};
     text-align: center;
   `,
 

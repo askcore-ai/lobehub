@@ -96,5 +96,8 @@ export interface AskCoreEducationRoleAssignment {
   student_id?: number | null;
   subject_user_id: string;
   teacher_id?: number | null;
-  tenant_id: number;
+}
+
+export interface AskCoreEducationRoleAssignmentPayload {
+  items: AskCoreEducationRoleAssignment[];
 }

@@ -210,7 +210,7 @@ export const RESOURCE_FILTER_FIELDS: Record<ResourceKey, FieldDefinition[]> = {
     { key: 'province', kind: 'text', label: '省份', placeholder: '输入省份' },
     { key: 'city', kind: 'text', label: '城市', placeholder: '输入城市' },
   ],
-  students: [{ key: 'class_id', kind: 'select', label: '班级', numeric: true, optionsFrom: 'classes' }],
+  students: [],
   subjects: [{ key: 'subject_category', kind: 'text', label: '科目分类', placeholder: 'core / elective' }],
   'submission-questions': [
     { key: 'submission_id', kind: 'number', label: '提交 ID' },
@@ -218,14 +218,13 @@ export const RESOURCE_FILTER_FIELDS: Record<ResourceKey, FieldDefinition[]> = {
   ],
   submissions: [
     { key: 'assignment_id', kind: 'number', label: '作业 ID' },
-    { key: 'class_id', kind: 'select', label: '班级', numeric: true, optionsFrom: 'classes' },
+    { key: 'org_unit_id', kind: 'select', label: '班级', numeric: true, optionsFrom: 'classes' },
     { key: 'student_id', kind: 'select', label: '学生', numeric: true, optionsFrom: 'students' },
     { key: 'grade_id', kind: 'select', label: '教学年级', numeric: true, optionsFrom: 'grades' },
     { key: 'subject_id', kind: 'select', label: '科目', numeric: true, optionsFrom: 'subjects' },
     { key: 'status', kind: 'text', label: '状态', placeholder: 'submitted / graded / needs_binding' },
   ],
   teachers: [
-    { key: 'school_id', kind: 'select', label: '学校', numeric: true, optionsFrom: 'schools' },
     { key: 'role', kind: 'text', label: '角色', placeholder: 'TEACHER / ADMIN / PRINCIPAL' },
   ],
 };
@@ -312,7 +311,6 @@ export const RESOURCE_FORM_FIELDS: Record<EditableResourceKey, FieldDefinition[]
     { key: 'student_number', kind: 'text', label: '学号', required: true },
     { key: 'name', kind: 'text', label: '姓名', required: true },
     { key: 'pinyin_name', kind: 'text', label: '拼音名' },
-    { key: 'class_id', kind: 'select', label: '班级', numeric: true, optionsFrom: 'classes' },
     {
       key: 'gender',
       kind: 'select',
@@ -385,7 +383,6 @@ export const RESOURCE_FORM_FIELDS: Record<EditableResourceKey, FieldDefinition[]
       ],
       required: true,
     },
-    { key: 'school_id', kind: 'select', label: '学校', numeric: true, optionsFrom: 'schools' },
   ],
 };
 

@@ -259,6 +259,10 @@ export class AskCoreWorkbenchApiClient {
     return items;
   }
 
+  getOrganizationUnits() {
+    return this.requestJson<{ org_id: string; units: JsonRecord[] }>('/organization/units');
+  }
+
   getResource(resource: AnyResourceKey, entityId: number) {
     return this.requestJson<ResourceItemResponse>(`/${resource}/${entityId}`);
   }

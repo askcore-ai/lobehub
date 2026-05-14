@@ -134,9 +134,7 @@ const DEFAULT_STUDENT_LABEL = '未命名学生';
 const TERMINAL_INVOCATION_STATES = new Set(['cancelled', 'failed', 'succeeded']);
 
 const lookupResources: Array<keyof LookupCollections> = [
-  'schools',
   'teachers',
-  'classes',
   'students',
   'grades',
   'subjects',
@@ -1140,7 +1138,7 @@ const PublishScopeSelector = ({
           const id = positiveId(item.student_id || item.id);
           if (!id) return null;
           return {
-            classId: positiveId(item.class_id) || null,
+            classId: positiveId(item.org_unit_id || item.class_id) || null,
             id,
             name: scopeText(item.name || item.student_number, `${DEFAULT_STUDENT_LABEL} ${id}`),
           };
@@ -2516,7 +2514,7 @@ const AssignmentDetailView = ({
       } else {
         const result = await client.createAssignmentDetailResource('assignment-students', {
           assignment_id: assignmentId,
-          class_id: positiveId(selectedClassId),
+          org_unit_id: positiveId(selectedClassId),
         });
         const createdCount = Number(result.item.created_count || 0) || 0;
         const skippedCount = Number(result.item.skipped_count || 0) || 0;
@@ -2843,7 +2841,7 @@ const AssignmentDetailView = ({
               style={{ width: 180 }}
               value={selectedClassId || undefined}
               options={fieldOptions(
-                { key: 'class_id', kind: 'select', label: '班级', optionsFrom: 'classes' },
+                { key: 'org_unit_id', kind: 'select', label: '班级', optionsFrom: 'classes' },
                 lookups,
               )}
               onChange={(value) => setSelectedClassId(value || '')}
@@ -4930,7 +4928,43 @@ const AskCoreWorkbenchPage = memo(() => {
         }
       }),
     );
-    setLookups(Object.fromEntries(entries) as LookupCollections);
+
+    let schools: JsonRecord[] = [];
+    let classes: JsonRecord[] = [];
+    try {
+      const { units } = await askCoreWorkbenchClient.getOrganizationUnits();
+      const unitById = new Map(units.map((unit) => [positiveId(unit.id), unit]).filter(([id]) => id > 0));
+      const schoolIdFor = (unit: JsonRecord) => {
+        const seen = new Set<number>();
+        let current: JsonRecord | undefined = unit;
+        while (current) {
+          const id = positiveId(current.id);
+          if (!id || seen.has(id)) break;
+          seen.add(id);
+          if (current.unit_type === 'school') return id;
+          current = unitById.get(positiveId(current.parent_id));
+        }
+        return null;
+      };
+
+      schools = units
+        .filter((unit) => unit.unit_type === 'school')
+        .map((unit) => {
+          const id = positiveId(unit.id);
+          return { ...unit, id, school_id: id };
+        });
+      classes = units
+        .filter((unit) => unit.unit_type === 'class')
+        .map((unit) => {
+          const id = positiveId(unit.id);
+          return { ...unit, class_id: id, id, school_id: schoolIdFor(unit) };
+        });
+    } catch {
+      schools = [];
+      classes = [];
+    }
+
+    setLookups({ ...EMPTY_LOOKUPS, ...Object.fromEntries(entries), classes, schools } as LookupCollections);
   }, []);
 
   const reloadListOrDashboard = useCallback(async () => {
