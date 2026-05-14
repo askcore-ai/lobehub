@@ -4929,11 +4929,15 @@ const AskCoreWorkbenchPage = memo(() => {
       }),
     );
 
-    let schools: JsonRecord[] = [];
-    let classes: JsonRecord[] = [];
+    let schools: JsonRecord[];
+    let classes: JsonRecord[];
     try {
       const { units } = await askCoreWorkbenchClient.getOrganizationUnits();
-      const unitById = new Map(units.map((unit) => [positiveId(unit.id), unit]).filter(([id]) => id > 0));
+      const unitById = new Map<number, JsonRecord>(
+        units
+          .map((unit): [number, JsonRecord] => [positiveId(unit.id), unit])
+          .filter(([id]) => id > 0),
+      );
       const schoolIdFor = (unit: JsonRecord) => {
         const seen = new Set<number>();
         let current: JsonRecord | undefined = unit;

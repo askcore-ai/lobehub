@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -58,7 +58,16 @@ describe('AskCoreOrganizationRoute', () => {
           return new Response(
             JSON.stringify({
               org_id: 'org-1',
-              units: [{ entry_year: 2025, id: 1, name: '2025级', org_id: 'org-1', sort_order: 0, unit_type: 'cohort' }],
+              units: [
+                {
+                  entry_year: 2025,
+                  id: 1,
+                  name: '2025级',
+                  org_id: 'org-1',
+                  sort_order: 0,
+                  unit_type: 'cohort',
+                },
+              ],
             }),
             { status: 200 },
           );
@@ -83,7 +92,7 @@ describe('AskCoreOrganizationRoute', () => {
     expect(screen.getAllByText('Seed 的组织').length).toBeGreaterThan(0);
   });
 
-  it('renders a tree-driven cohort hierarchy without raw ID inputs', async () => {
+  it('renders tree-only creation controls and a node-scoped role panel without raw ID inputs', async () => {
     const payload = {
       current: {
         id: 'org-1',
@@ -126,15 +135,70 @@ describe('AskCoreOrganizationRoute', () => {
               org_id: 'org-1',
               units: [
                 { id: 1, name: 'Seed School', org_id: 'org-1', sort_order: 0, unit_type: 'school' },
-                { entry_year: 2025, id: 2, name: '2025级', org_id: 'org-1', parent_id: 1, sort_order: 0, unit_type: 'cohort' },
-                { id: 3, name: '高一 1 班', org_id: 'org-1', parent_id: 2, sort_order: 0, unit_type: 'class' },
+                {
+                  entry_year: 2025,
+                  id: 2,
+                  name: '2025级',
+                  org_id: 'org-1',
+                  parent_id: 1,
+                  sort_order: 0,
+                  unit_type: 'cohort',
+                },
+                {
+                  id: 3,
+                  name: '高一 1 班',
+                  org_id: 'org-1',
+                  parent_id: 2,
+                  sort_order: 0,
+                  unit_type: 'class',
+                },
               ],
             }),
             { status: 200 },
           );
         }
         if (url.includes('/workbench/organization/roles')) {
-          return new Response(JSON.stringify({ items: [] }), { status: 200 });
+          return new Response(
+            JSON.stringify({
+              items: [
+                {
+                  id: 10,
+                  org_id: 'org-1',
+                  org_unit_id: 3,
+                  role: 'teacher',
+                  subject_user_id: 'teacher-subject',
+                  teacher_id: 9001,
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.includes('/api/askcore/workbench/teachers')) {
+          return new Response(
+            JSON.stringify({
+              has_more: false,
+              items: [{ id: 9001, real_name: '李老师', teacher_id: 9001 }],
+              page: 1,
+              page_size: 100,
+              resource: 'teachers',
+              total: 1,
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.includes('/api/askcore/workbench/students')) {
+          return new Response(
+            JSON.stringify({
+              has_more: false,
+              items: [{ id: 7001, name: '王同学', student_id: 7001, student_number: 'S001' }],
+              page: 1,
+              page_size: 100,
+              resource: 'students',
+              total: 1,
+            }),
+            { status: 200 },
+          );
         }
         return new Response(JSON.stringify(payload), { status: 200 });
       }),
@@ -150,7 +214,8 @@ describe('AskCoreOrganizationRoute', () => {
     fireEvent.click(screen.getByRole('button', { name: '层级' }));
     await waitFor(() => expect(screen.getByText('2025级')).toBeInTheDocument());
 
-    expect(screen.getByText('添加学校')).toBeInTheDocument();
+    expect(screen.getByLabelText('新建学校')).toBeInTheDocument();
+    expect(screen.queryByText('添加学校')).not.toBeInTheDocument();
     expect(screen.getByText('选择树上的节点分配身份')).toBeInTheDocument();
     expect(screen.getByText('届别')).toBeInTheDocument();
     expect(screen.queryByLabelText('学校名称')).not.toBeInTheDocument();
@@ -159,8 +224,19 @@ describe('AskCoreOrganizationRoute', () => {
     expect(screen.queryByText('Better Auth 用户 ID')).not.toBeInTheDocument();
     expect(screen.queryByText('教师 ID')).not.toBeInTheDocument();
     expect(screen.queryByText('学生 ID')).not.toBeInTheDocument();
+    expect(screen.queryByText('对象类型')).not.toBeInTheDocument();
+    expect(screen.queryByText('组织层级')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Seed School'));
     await waitFor(() => expect(screen.getByText('Seed School 的身份')).toBeInTheDocument());
+    const rolePanel = screen.getByLabelText('身份分配');
+    expect(screen.getByText('学校管理者')).toBeInTheDocument();
+    expect(within(rolePanel).queryByText('学生')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('高一 1 班'));
+    await waitFor(() => expect(screen.getByText('高一 1 班 的身份')).toBeInTheDocument());
+    expect(screen.getByText('班主任')).toBeInTheDocument();
+    expect(screen.getByText('李老师')).toBeInTheDocument();
+    expect(screen.queryByText(/9001/)).not.toBeInTheDocument();
   });
 });

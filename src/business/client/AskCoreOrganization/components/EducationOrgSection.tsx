@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, Button, Empty, Form, Input, Popconfirm, Select, Space, Spin, Tag } from 'antd';
+import { Alert, Button, Empty, Form, Input, Popconfirm, Select, Spin, Tag, Tooltip } from 'antd';
 import { Check, Plus, RefreshCw, UserRoundPlus, X } from 'lucide-react';
 import { memo, useMemo, useState } from 'react';
 
@@ -9,6 +9,7 @@ import { styles } from '../styles';
 import {
   type AskCoreEducationOrgUnit,
   type AskCoreEducationOrgUnitPayload,
+  type AskCoreEducationOrgUnitType,
   type AskCoreEducationRole,
   type AskCoreEducationRoleAssignment,
   type AskCoreOrganizationMember,
@@ -29,13 +30,29 @@ const roleLabels: Record<AskCoreEducationRole, string> = {
   teacher: '教师',
 };
 
-const subjectKindOptions = [
-  { label: '成员', value: 'member' },
-  { label: '教师', value: 'teacher' },
-  { label: '学生', value: 'student' },
-];
+type RoleSubjectKind = 'member' | 'student' | 'teacher';
 
-const roleOptions = Object.entries(roleLabels).map(([value, label]) => ({ label, value }));
+const roleOptionsByUnitType: Record<AskCoreEducationOrgUnitType, AskCoreEducationRole[]> = {
+  class: ['homeroom_teacher', 'teacher', 'student'],
+  cohort: ['grade_admin', 'teacher'],
+  school: ['school_admin', 'teacher'],
+};
+
+const subjectKindByRole: Record<AskCoreEducationRole, RoleSubjectKind> = {
+  grade_admin: 'member',
+  homeroom_teacher: 'teacher',
+  school_admin: 'member',
+  student: 'student',
+  teacher: 'teacher',
+};
+
+const getRoleOptions = (unit: AskCoreEducationOrgUnit | null) =>
+  unit
+    ? roleOptionsByUnitType[unit.unit_type].map((role) => ({
+        label: roleLabels[role],
+        value: role,
+      }))
+    : [];
 
 const numericId = (record: JsonRecord, keys: string[]) => {
   for (const key of keys) {
@@ -94,9 +111,10 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
     const units = useMemo(() => payload?.units ?? [], [payload?.units]);
     const roots = useMemo(() => units.filter((u) => !u.parent_id), [units]);
     const selectedUnit = units.find((u) => u.id === selectedUnitId) || null;
-    const selectedAssignments = roleAssignments.filter(
-      (assignment) => selectedUnit && assignment.org_unit_id === selectedUnit.id,
-    );
+    const availableRoleOptions = useMemo(() => getRoleOptions(selectedUnit), [selectedUnit]);
+    const selectedAssignments = selectedUnit
+      ? roleAssignments.filter((assignment) => assignment.org_unit_id === selectedUnit.id)
+      : [];
 
     const subjectOptions = useMemo(() => {
       if (subjectKind === 'teacher') {
@@ -104,7 +122,9 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
           .map((teacher) => {
             const id = numericId(teacher, ['teacher_id', 'id']);
             return {
-              label: String(teacher.real_name || teacher.username || id || '').trim(),
+              label: String(
+                teacher.real_name || teacher.username || teacher.name || '未命名教师',
+              ).trim(),
               value: String(id),
             };
           })
@@ -114,38 +134,59 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
         return students
           .map((student) => {
             const id = numericId(student, ['student_id', 'id']);
-            const number = String(student.student_number || '').trim();
             return {
-              label: number ? `${student.name || id} · ${number}` : String(student.name || id),
+              label: String(student.name || student.real_name || '未命名学生').trim(),
               value: String(id),
             };
           })
           .filter((item) => item.value !== '0');
       }
       return members.map((member) => ({
-        label: member.email ? `${member.name} · ${member.email}` : member.name,
+        label: member.email
+          ? `${member.name || '未命名成员'} · ${member.email}`
+          : member.name || '未命名成员',
         value: member.userId,
       }));
     }, [members, students, subjectKind, teachers]);
 
     const subjectLabel = (assignment: AskCoreEducationRoleAssignment) => {
       if (assignment.teacher_id) {
-        const teacher = teachers.find((item) => numericId(item, ['teacher_id', 'id']) === assignment.teacher_id);
-        return String(teacher?.real_name || teacher?.username || `教师 #${assignment.teacher_id}`);
+        const teacher = teachers.find(
+          (item) => numericId(item, ['teacher_id', 'id']) === assignment.teacher_id,
+        );
+        return String(teacher?.real_name || teacher?.username || teacher?.name || '未命名教师');
       }
       if (assignment.student_id) {
-        const student = students.find((item) => numericId(item, ['student_id', 'id']) === assignment.student_id);
-        return String(student?.name || student?.student_number || `学生 #${assignment.student_id}`);
+        const student = students.find(
+          (item) => numericId(item, ['student_id', 'id']) === assignment.student_id,
+        );
+        return String(student?.name || student?.real_name || '未命名学生');
       }
       const member = members.find((item) => item.userId === assignment.better_auth_user_id);
-      return member?.email ? `${member.name} · ${member.email}` : member?.name || assignment.subject_user_id;
+      return member?.email
+        ? `${member.name || '未命名成员'} · ${member.email}`
+        : member?.name || '未知成员';
     };
 
     const selectUnit = (unit: AskCoreEducationOrgUnit) => {
+      const defaultRole = roleOptionsByUnitType[unit.unit_type][0];
+      const defaultSubjectKind = subjectKindByRole[defaultRole];
       setSelectedUnitId(unit.id);
+      setSubjectKind(defaultSubjectKind);
       orgRoleForm.setFieldsValue({
         org_unit_id: unit.id,
-        role: unit.unit_type === 'class' ? 'teacher' : unit.unit_type === 'cohort' ? 'grade_admin' : 'school_admin',
+        role: defaultRole,
+        subject_kind: defaultSubjectKind,
+        subject_value: undefined,
+      });
+    };
+
+    const handleRoleChange = (role: AskCoreEducationRole) => {
+      const nextSubjectKind = subjectKindByRole[role];
+      setSubjectKind(nextSubjectKind);
+      orgRoleForm.setFieldsValue({
+        subject_kind: nextSubjectKind,
+        subject_value: undefined,
       });
     };
 
@@ -158,6 +199,11 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
       setSchoolDescription('');
     };
 
+    const subjectFieldLabel =
+      subjectKind === 'teacher' ? '教师' : subjectKind === 'student' ? '学生' : '成员';
+    const subjectPlaceholder =
+      subjectKind === 'teacher' ? '搜索教师' : subjectKind === 'student' ? '搜索学生' : '搜索成员';
+
     return (
       <div className={styles.sectionCard}>
         <div className={styles.sectionHeader}>
@@ -169,24 +215,35 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
               {units.filter((u) => u.unit_type === 'class').length} 班级
             </span>
           </div>
-          <Space>
-            {canManage && (
-              <Button
-                className={styles.treeRootAddButton}
-                icon={<Plus size={15} />}
-                size="small"
-                onClick={() => setAddingSchool(true)}
-              >
-                添加学校
-              </Button>
-            )}
-            <Button icon={<RefreshCw size={14} />} loading={loading} size="small" type="text" onClick={onReload} />
-          </Space>
+          <Button
+            icon={<RefreshCw size={14} />}
+            loading={loading}
+            size="small"
+            type="text"
+            onClick={onReload}
+          />
         </div>
         <div className={styles.sectionBody}>
           {error && <Alert showIcon style={{ marginBottom: 14 }} title={error} type="error" />}
           <div className={styles.orgTreeLayout}>
             <div className={styles.orgTreePane}>
+              {canManage && (
+                <div className={styles.treeRootActionRow}>
+                  <div className={styles.treeRootActionText}>
+                    <span className={styles.treeRootActionTitle}>组织根层级</span>
+                    <span className={styles.treeRootActionHint}>学校从这里创建</span>
+                  </div>
+                  <Tooltip title="新建学校">
+                    <Button
+                      aria-label="新建学校"
+                      className={styles.treeRootAddButton}
+                      icon={<Plus size={16} />}
+                      onClick={() => setAddingSchool(true)}
+                    />
+                  </Tooltip>
+                </div>
+              )}
+
               {addingSchool && (
                 <div className={styles.treeRootInlineForm}>
                   <Input
@@ -204,7 +261,12 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
                     onChange={(event) => setSchoolDescription(event.target.value)}
                     onPressEnter={confirmAddSchool}
                   />
-                  <Button icon={<Check size={14} />} loading={creatingUnit} type="text" onClick={confirmAddSchool} />
+                  <Button
+                    icon={<Check size={14} />}
+                    loading={creatingUnit}
+                    type="text"
+                    onClick={confirmAddSchool}
+                  />
                   <Button
                     icon={<X size={14} />}
                     type="text"
@@ -219,18 +281,7 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
 
               {units.length === 0 ? (
                 <div className={styles.treeEmpty}>
-                  <Empty description="还没有组织层级" image={Empty.PRESENTED_IMAGE_SIMPLE}>
-                    {canManage && (
-                      <Button
-                        className={styles.pillButton}
-                        icon={<Plus size={14} />}
-                        type="primary"
-                        onClick={() => setAddingSchool(true)}
-                      >
-                        添加学校
-                      </Button>
-                    )}
-                  </Empty>
+                  <Empty description="还没有学校" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 </div>
               ) : (
                 <div className={styles.treeRoot}>
@@ -249,13 +300,15 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
               )}
             </div>
 
-            <aside className={styles.orgRolePanel}>
+            <aside aria-label="身份分配" className={styles.orgRolePanel}>
               {selectedUnit ? (
                 <>
                   <div className={styles.rolePanelHeader}>
                     <div>
                       <div className={styles.rolePanelTitle}>{selectedUnit.name} 的身份</div>
-                      <div className={styles.rolePanelMeta}>{unitTypeLabels[selectedUnit.unit_type]}</div>
+                      <div className={styles.rolePanelMeta}>
+                        {unitTypeLabels[selectedUnit.unit_type]}
+                      </div>
                     </div>
                     {roleLoading && <Spin size="small" />}
                   </div>
@@ -268,7 +321,10 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
                             <span>{subjectLabel(assignment)}</span>
                           </div>
                           {canManage && (
-                            <Popconfirm title="移除该身份？" onConfirm={() => onDeleteRole(assignment.id)}>
+                            <Popconfirm
+                              title="移除该身份？"
+                              onConfirm={() => onDeleteRole(assignment.id)}
+                            >
                               <Button danger size="small" type="link">
                                 移除
                               </Button>
@@ -281,24 +337,31 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
                     )}
                   </div>
                   {canManage && (
-                    <Form form={orgRoleForm} layout="vertical" className={styles.roleAssignForm}>
+                    <Form className={styles.roleAssignForm} form={orgRoleForm} layout="vertical">
                       <Form.Item hidden name="org_unit_id">
                         <Input />
                       </Form.Item>
-                      <Form.Item label="身份" name="role" rules={[{ required: true, message: '请选择身份' }]}>
-                        <Select options={roleOptions} />
+                      <Form.Item hidden initialValue="member" name="subject_kind">
+                        <Input />
                       </Form.Item>
-                      <Form.Item label="对象类型" name="subject_kind" initialValue="member">
+                      <Form.Item
+                        label="身份"
+                        name="role"
+                        rules={[{ required: true, message: '请选择身份' }]}
+                      >
+                        <Select options={availableRoleOptions} onChange={handleRoleChange} />
+                      </Form.Item>
+                      <Form.Item
+                        label={subjectFieldLabel}
+                        name="subject_value"
+                        rules={[{ required: true, message: '请选择对象' }]}
+                      >
                         <Select
-                          options={subjectKindOptions}
-                          onChange={(value) => {
-                            setSubjectKind(value);
-                            orgRoleForm.resetFields(['subject_value']);
-                          }}
+                          showSearch
+                          optionFilterProp="label"
+                          options={subjectOptions}
+                          placeholder={subjectPlaceholder}
                         />
-                      </Form.Item>
-                      <Form.Item label="对象" name="subject_value" rules={[{ required: true, message: '请选择对象' }]}>
-                        <Select showSearch optionFilterProp="label" options={subjectOptions} placeholder="搜索成员/教师/学生" />
                       </Form.Item>
                       <Button
                         className={styles.pillButton}

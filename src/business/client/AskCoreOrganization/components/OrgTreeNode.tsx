@@ -15,10 +15,7 @@ import {
 import { memo, useState } from 'react';
 
 import { styles } from '../styles';
-import {
-  type AskCoreEducationOrgUnit,
-  type AskCoreEducationOrgUnitType,
-} from '../types';
+import { type AskCoreEducationOrgUnit, type AskCoreEducationOrgUnitType } from '../types';
 
 const unitTypeIcons: Record<AskCoreEducationOrgUnitType, React.ReactNode> = {
   class: <UsersRound size={14} />,
@@ -50,6 +47,7 @@ export const OrgTreeNode = memo<OrgTreeNodeProps>(
 
     const children = allNodes.filter((n) => n.parent_id === node.id);
     const hasChildren = children.length > 0;
+    const childActionLabel = `添加${node.unit_type === 'school' ? '届别' : '班级'}`;
 
     const handleConfirmAdd = () => {
       const trimmed = addName.trim();
@@ -102,8 +100,9 @@ export const OrgTreeNode = memo<OrgTreeNodeProps>(
           {canManage && (
             <div className={`tree-node-actions ${styles.treeNodeActions}`}>
               {node.unit_type !== 'class' && (
-                <Tooltip title={`添加${node.unit_type === 'school' ? '届别' : '班级'}`}>
+                <Tooltip title={childActionLabel}>
                   <Button
+                    aria-label={childActionLabel}
                     className={styles.treeAddButton}
                     icon={<Plus size={13} />}
                     size="small"
@@ -129,7 +128,12 @@ export const OrgTreeNode = memo<OrgTreeNodeProps>(
               onChange={(e) => setAddName(e.target.value)}
               onKeyDown={handleKeyDown}
             />
-            <Button icon={<Check size={13} />} size="small" type="text" onClick={handleConfirmAdd} />
+            <Button
+              icon={<Check size={13} />}
+              size="small"
+              type="text"
+              onClick={handleConfirmAdd}
+            />
             <Button
               icon={<X size={13} />}
               size="small"
@@ -151,9 +155,9 @@ export const OrgTreeNode = memo<OrgTreeNodeProps>(
                 depth={depth + 1}
                 key={child.id}
                 node={child}
+                selectedId={selectedId}
                 onAddChild={onAddChild}
                 onSelect={onSelect}
-                selectedId={selectedId}
               />
             ))}
           </div>

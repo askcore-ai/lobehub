@@ -341,11 +341,48 @@ export const styles = createStaticStyles(({ css }) => ({
   orgTreePane: css`
     min-width: 0;
   `,
-  treeRootAddButton: css`
-    border-radius: 999px;
-    border-color: ${cssVar.colorText};
+  treeRootActionRow: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 12px;
+    background: ${cssVar.colorBgContainer};
+  `,
+  treeRootActionText: css`
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  `,
+  treeRootActionTitle: css`
+    font-size: 13px;
+    font-weight: 700;
     color: ${cssVar.colorText};
-    font-weight: 600;
+  `,
+  treeRootActionHint: css`
+    font-size: 12px;
+    color: ${cssVar.colorTextSecondary};
+  `,
+  treeRootAddButton: css`
+    min-width: 34px;
+    width: 34px;
+    height: 34px;
+    border: 0;
+    border-radius: 999px;
+    background: ${cssVar.colorText};
+    color: ${cssVar.colorBgContainer};
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
+
+    &:hover,
+    &:focus-visible {
+      background: ${cssVar.colorPrimary};
+      color: ${cssVar.colorBgContainer};
+      transform: translateY(-1px);
+    }
   `,
   treeRootInlineForm: css`
     display: grid;
@@ -394,19 +431,19 @@ export const styles = createStaticStyles(({ css }) => ({
     margin-left: auto;
   `,
   treeAddButton: css`
-    min-width: 26px;
-    width: 26px;
-    height: 26px;
+    min-width: 28px;
+    width: 28px;
+    height: 28px;
     border-radius: 999px;
-    border: 1px solid ${cssVar.colorBorderSecondary};
-    background: ${cssVar.colorBgContainer};
-    color: ${cssVar.colorText};
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    border: 0;
+    background: ${cssVar.colorText};
+    color: ${cssVar.colorBgContainer};
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.14);
 
     &:hover {
-      border-color: ${cssVar.colorText};
-      color: ${cssVar.colorText};
-      background: ${cssVar.colorFillQuaternary};
+      color: ${cssVar.colorBgContainer};
+      background: ${cssVar.colorPrimary};
+      transform: translateY(-1px);
     }
   `,
   treeNodeChildren: css`
