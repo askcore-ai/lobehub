@@ -3,6 +3,7 @@
 import {
   Alert,
   Button,
+  Checkbox,
   Empty,
   Form,
   Input,
@@ -12,13 +13,11 @@ import {
   Select,
   Skeleton,
   Space,
-  Table,
   Upload,
 } from 'antd';
-import { type ColumnsType } from 'antd/es/table';
 import { cssVar } from 'antd-style';
 import { Check, Copy, FileSpreadsheet, Pencil, Plus, RefreshCw, Save } from 'lucide-react';
-import { type Key, memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { type Key, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { message } from '@/components/AntdStaticMethods';
@@ -38,6 +37,7 @@ import {
   hydrateLookupLabels,
   type LookupCollectionKey,
   type LookupCollections,
+  mergeResourceItems,
   RESOURCE_FILTER_FIELDS,
   RESOURCE_FORM_FIELDS,
   RESOURCE_LABELS,
@@ -207,16 +207,19 @@ const OrganizationRosterSection = memo<{
   const [items, setItems] = useState<JsonRecord[]>([]);
   const [lookups, setLookups] = useState<LookupCollections>(EMPTY_LOOKUPS);
   const [filterForm, setFilterForm] = useState<Record<string, string>>({});
-  const [page, setPage] = useState(1);
   const [total, setTotal] = useState<number | null>(null);
   const [hasMore, setHasMore] = useState(false);
+  const [nextAfterId, setNextAfterId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [importing, setImporting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [editing, setEditing] = useState<JsonRecord | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const listVersionRef = useRef(0);
+  const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
 
   const filters = RESOURCE_FILTER_FIELDS[resource] || [];
   const formFields = RESOURCE_FORM_FIELDS[resource] || [];
@@ -224,7 +227,13 @@ const OrganizationRosterSection = memo<{
     () => new Set(items.map((item) => recordId(resource, item)).filter((id) => id > 0)),
     [items, resource],
   );
-  const selectedIds = selectedRowKeys.map(Number).filter((id) => id > 0 && visibleIds.has(id));
+  const selectedKeySet = useMemo(
+    () => new Set(selectedRowKeys.map(Number).filter((id) => id > 0)),
+    [selectedRowKeys],
+  );
+  const selectedIds = [...visibleIds].filter((id) => selectedKeySet.has(id));
+  const allVisibleSelected =
+    visibleIds.size > 0 && [...visibleIds].every((id) => selectedKeySet.has(id));
 
   const loadLookups = useCallback(async () => {
     const entries = await Promise.all(
@@ -240,26 +249,64 @@ const OrganizationRosterSection = memo<{
   }, []);
 
   const loadItems = useCallback(async () => {
+    const requestVersion = listVersionRef.current + 1;
+    listVersionRef.current = requestVersion;
     setLoading(true);
+    setLoadingMore(false);
     setError(undefined);
     try {
       const response = await askCoreWorkbenchClient.listResource(
         resource,
         filtersFromFormState(resource, filterForm),
-        { page, pageSize: ROSTER_PAGE_SIZE },
+        { pageSize: ROSTER_PAGE_SIZE },
       );
+      if (listVersionRef.current !== requestVersion) return;
       setItems(response.items.map((item) => hydrateLookupLabels(item, lookups)));
       setTotal(response.total ?? null);
       setHasMore(Boolean(response.has_more));
+      setNextAfterId(response.next_after_id ?? null);
     } catch (reason) {
+      if (listVersionRef.current !== requestVersion) return;
       setError(reason instanceof Error ? reason.message : '加载失败');
       setItems([]);
       setTotal(0);
       setHasMore(false);
+      setNextAfterId(null);
     } finally {
-      setLoading(false);
+      if (listVersionRef.current === requestVersion) setLoading(false);
     }
-  }, [filterForm, lookups, page, resource]);
+  }, [filterForm, lookups, resource]);
+
+  const loadMoreItems = useCallback(async () => {
+    if (loading || loadingMore || !hasMore || !nextAfterId) return;
+    const requestVersion = listVersionRef.current;
+    const requestedAfterId = nextAfterId;
+    setLoadingMore(true);
+    setError(undefined);
+    try {
+      const response = await askCoreWorkbenchClient.listResource(
+        resource,
+        filtersFromFormState(resource, filterForm),
+        {
+          afterId: requestedAfterId,
+          includeTotal: false,
+          pageSize: ROSTER_PAGE_SIZE,
+        },
+      );
+      if (listVersionRef.current !== requestVersion) return;
+      const incoming = response.items.map((item) => hydrateLookupLabels(item, lookups));
+      setItems((current) => mergeResourceItems(resource, current, incoming));
+      setHasMore(Boolean(response.has_more));
+      setNextAfterId(response.next_after_id ?? null);
+      setTotal((current) => current ?? response.total ?? null);
+    } catch (reason) {
+      if (listVersionRef.current === requestVersion) {
+        setError(reason instanceof Error ? reason.message : '加载更多失败');
+      }
+    } finally {
+      if (listVersionRef.current === requestVersion) setLoadingMore(false);
+    }
+  }, [filterForm, hasMore, loading, loadingMore, lookups, nextAfterId, resource]);
 
   useEffect(() => {
     void loadLookups();
@@ -268,7 +315,6 @@ const OrganizationRosterSection = memo<{
   useEffect(() => {
     setFilterForm({});
     setSelectedRowKeys([]);
-    setPage(1);
     setEditing(null);
     setModalOpen(false);
   }, [resource]);
@@ -276,6 +322,21 @@ const OrganizationRosterSection = memo<{
   useEffect(() => {
     void loadItems();
   }, [loadItems]);
+
+  useEffect(() => {
+    const target = loadMoreTriggerRef.current;
+    if (!target || loading || loadingMore || !hasMore || !nextAfterId) return;
+    if (typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void loadMoreItems();
+      },
+      { rootMargin: '240px 0px' },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadingMore, loadMoreItems, nextAfterId]);
 
   const openEditor = (record: JsonRecord | null) => {
     setEditing(record);
@@ -380,37 +441,6 @@ const OrganizationRosterSection = memo<{
     }
   };
 
-  const columns: ColumnsType<JsonRecord> = [
-    ...rosterColumnsByResource[resource].map((key) => ({
-      dataIndex: key,
-      key,
-      render: (value: unknown) => displayValue(value),
-      title: labelForField(resource, key),
-    })),
-    {
-      key: 'actions',
-      render: (_, row) => {
-        const id = recordId(resource, row);
-        return (
-          <Space>
-            <Button size="small" type="link" onClick={() => openEditor(row)}>
-              编辑
-            </Button>
-            {canManage ? (
-              <Popconfirm title={`删除该${RESOURCE_LABELS[resource].singular}？`} onConfirm={() => deleteRecords([id])}>
-                <Button danger size="small" type="link">
-                  删除
-                </Button>
-              </Popconfirm>
-            ) : null}
-          </Space>
-        );
-      },
-      title: '操作',
-      width: 130,
-    },
-  ];
-
   return (
     <div className={styles.sectionCard}>
       <div className={styles.sectionHeader}>
@@ -466,7 +496,6 @@ const OrganizationRosterSection = memo<{
             <Button
               className={styles.pillButton}
               onClick={() => {
-                setPage(1);
                 setSelectedRowKeys([]);
                 void loadItems();
               }}
@@ -504,50 +533,94 @@ const OrganizationRosterSection = memo<{
             </Space>
           ) : null}
         </div>
-        <Table
-          columns={columns}
-          dataSource={items}
-          loading={loading}
-          pagination={false}
-          rowKey={(row) => String(recordId(resource, row) || JSON.stringify(row))}
-          size="small"
-          rowSelection={
-            canManage
-              ? {
-                  selectedRowKeys,
-                  onChange: setSelectedRowKeys,
-                }
-              : undefined
-          }
-        />
-        <div className={styles.flexBetween} style={{ marginTop: 12 }}>
+        <div className={styles.rosterListHeader}>
+          {canManage ? (
+            <Checkbox
+              checked={allVisibleSelected}
+              disabled={!visibleIds.size || loading}
+              indeterminate={Boolean(selectedIds.length) && !allVisibleSelected}
+              onChange={(event) => {
+                setSelectedRowKeys(event.target.checked ? [...visibleIds] : []);
+              }}
+            >
+              全选已加载记录
+            </Checkbox>
+          ) : (
+            <span className={styles.settingsLabel}>已加载记录</span>
+          )}
           <span className={styles.settingsLabel}>
-            共 {total ?? items.length} 条，当前第 {page} 页，已选 {selectedIds.length} 条。
+            已加载 {items.length} 条{total != null ? ` / ${total} 条` : ''}，已选 {selectedIds.length} 条。
           </span>
-          <Space>
-            <Button
-              className={styles.pillButton}
-              disabled={page <= 1}
-              size="small"
-              onClick={() => {
-                setSelectedRowKeys([]);
-                setPage((current) => Math.max(1, current - 1));
-              }}
-            >
-              上一页
-            </Button>
-            <Button
-              className={styles.pillButton}
-              disabled={!hasMore && page * ROSTER_PAGE_SIZE >= (total || 0)}
-              size="small"
-              onClick={() => {
-                setSelectedRowKeys([]);
-                setPage((current) => current + 1);
-              }}
-            >
-              下一页
-            </Button>
-          </Space>
+        </div>
+        {loading && !items.length ? (
+          <Skeleton active paragraph={{ rows: 5 }} />
+        ) : items.length ? (
+          <div className={styles.rosterMasonry}>
+            {items.map((item) => {
+              const id = recordId(resource, item);
+              const selected = id > 0 && selectedKeySet.has(id);
+              const title =
+                String(item.name || item.title || item.real_name || item.student_name || item.student_number || '').trim() ||
+                `${RESOURCE_LABELS[resource].singular} #${id || '--'}`;
+              return (
+                <article
+                  className={`${styles.rosterCard} ${selected ? styles.rosterCardSelected : ''}`}
+                  key={`${resource}-${id || JSON.stringify(item)}`}
+                >
+                  <div className={styles.rosterCardHeader}>
+                    {canManage ? (
+                      <Checkbox
+                        checked={selected}
+                        disabled={id <= 0 || loading}
+                        onChange={(event) => {
+                          if (id <= 0) return;
+                          setSelectedRowKeys((current) => {
+                            const next = new Set(current.map(Number));
+                            if (event.target.checked) next.add(id);
+                            else next.delete(id);
+                            return [...next];
+                          });
+                        }}
+                      />
+                    ) : null}
+                    <div className={styles.rosterCardTitleWrap}>
+                      <div className={styles.rosterCardTitle}>{title}</div>
+                      <div className={styles.rosterCardMeta}>ID {id || '--'}</div>
+                    </div>
+                    <Space size={4}>
+                      <Button size="small" type="link" onClick={() => openEditor(item)}>
+                        编辑
+                      </Button>
+                      {canManage ? (
+                        <Popconfirm
+                          title={`删除该${RESOURCE_LABELS[resource].singular}？`}
+                          onConfirm={() => deleteRecords([id])}
+                        >
+                          <Button danger size="small" type="link">
+                            删除
+                          </Button>
+                        </Popconfirm>
+                      ) : null}
+                    </Space>
+                  </div>
+                  <div className={styles.rosterCardFields}>
+                    {rosterColumnsByResource[resource].map((key) => (
+                      <div className={styles.rosterFieldChip} key={`${id || title}-${key}`}>
+                        <span>{labelForField(resource, key)}</span>
+                        <strong>{displayValue(item[key])}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        )}
+        {hasMore ? <div className={styles.scrollSentinel} ref={loadMoreTriggerRef} /> : null}
+        <div className={styles.rosterLoadStatus}>
+          {loadingMore ? '正在加载更多…' : hasMore ? '滚动到底部会自动加载更多记录。' : '已加载完当前结果。'}
         </div>
       </div>
 

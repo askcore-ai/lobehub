@@ -5,6 +5,7 @@ import {
   filtersFromFormState,
   fromFormState,
   hydrateLookupLabels,
+  mergeResourceItems,
   resolveLookupLabel,
   toFormState,
 } from './resourceMeta';
@@ -51,5 +52,15 @@ describe('AskCore workbench resource metadata', () => {
       grade_id: 3,
       query: '期中',
     });
+  });
+
+  it('deduplicates cursor-loaded resource items by resource id', () => {
+    expect(
+      mergeResourceItems(
+        'submissions',
+        [{ submission_id: 1 }, { submission_id: 2 }],
+        [{ submission_id: 2 }, { submission_id: 3 }],
+      ),
+    ).toEqual([{ submission_id: 1 }, { submission_id: 2 }, { submission_id: 3 }]);
   });
 });

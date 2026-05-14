@@ -89,6 +89,7 @@ import {
   getResourceIdKey,
   hydrateLookupLabels,
   type LookupCollections,
+  mergeResourceItems,
   RESOURCE_FILTER_FIELDS,
   RESOURCE_FORM_FIELDS,
   RESOURCE_LABELS,
@@ -382,6 +383,133 @@ const styles = createStaticStyles(({ css }) => ({
       font-size: 13px;
       color: ${cssVar.colorText};
     }
+  `,
+  resourceMasonry: css`
+    column-count: 2;
+    column-gap: 14px;
+
+    @media (width >= 1480px) {
+      column-count: 3;
+    }
+
+    @media (width <= 980px) {
+      column-count: 1;
+    }
+  `,
+  resourceCard: css`
+    cursor: pointer;
+    break-inside: avoid;
+
+    margin-bottom: 14px;
+    padding: 14px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 8px;
+
+    background: ${cssVar.colorBgContainer};
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+
+    &:hover {
+      border-color: ${cssVar.colorPrimaryBorder};
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.05);
+      transform: translateY(-1px);
+    }
+  `,
+  resourceCardSelected: css`
+    border-color: ${cssVar.colorPrimary};
+    box-shadow: 0 0 0 1px ${cssVar.colorPrimaryBorder};
+  `,
+  resourceCardHeader: css`
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  `,
+  resourceCardBody: css`
+    flex: 1;
+    min-width: 0;
+  `,
+  resourceCardTitle: css`
+    overflow-wrap: anywhere;
+    font-size: 14px;
+    font-weight: 650;
+    line-height: 1.5;
+    color: ${cssVar.colorText};
+  `,
+  resourceCardMeta: css`
+    margin-top: 2px;
+    overflow-wrap: anywhere;
+    font-size: 12px;
+    color: ${cssVar.colorTextDescription};
+  `,
+  resourceCardFields: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  `,
+  resourceFieldChip: css`
+    display: inline-flex;
+    max-width: 100%;
+    gap: 5px;
+    align-items: center;
+
+    padding: 4px 8px;
+    border-radius: 8px;
+
+    overflow-wrap: anywhere;
+    font-size: 12px;
+    line-height: 1.45;
+
+    background: ${cssVar.colorFillQuaternary};
+
+    span {
+      color: ${cssVar.colorTextDescription};
+    }
+
+    strong {
+      min-width: 0;
+      font-weight: 500;
+      color: ${cssVar.colorText};
+    }
+  `,
+  resourcePreviewBlock: css`
+    width: 100%;
+    margin-top: 10px;
+    overflow: hidden;
+  `,
+  listStatusBar: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+
+    margin-block-end: 12px;
+    padding-block: 10px;
+    padding-inline: 12px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 8px;
+
+    font-size: 13px;
+    color: ${cssVar.colorTextSecondary};
+
+    background: ${cssVar.colorBgContainer};
+  `,
+  loadMoreStatus: css`
+    margin-block-start: 12px;
+    padding-block: 10px;
+    padding-inline: 12px;
+    border: 1px dashed ${cssVar.colorBorderSecondary};
+    border-radius: 8px;
+
+    font-size: 13px;
+    color: ${cssVar.colorTextSecondary};
+    text-align: center;
+
+    background: ${cssVar.colorBgContainer};
+  `,
+  scrollSentinel: css`
+    height: 12px;
   `,
   tightTable: css`
     .ant-table-tbody > tr > td {
@@ -4761,15 +4889,17 @@ const AskCoreWorkbenchPage = memo(() => {
   const [list, setList] = useState<AskCoreWorkbenchListPayload | null>(null);
   const [lookups, setLookups] = useState<LookupCollections>(EMPTY_LOOKUPS);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detail, setDetail] = useState<DetailState | null>(null);
   const [error, setError] = useState<string>();
-  const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterForm, setFilterForm] = useState<Record<string, string>>({});
   const [selectedRowKeysByResource, setSelectedRowKeysByResource] = useState<
     Partial<Record<ResourceKey, Key[]>>
   >({});
+  const listVersionRef = useRef(0);
+  const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
 
   const navigateToTab = useCallback(
     (tab: AskCoreWorkbenchTab) => {
@@ -4800,6 +4930,8 @@ const AskCoreWorkbenchPage = memo(() => {
   }, []);
 
   const reloadListOrDashboard = useCallback(async () => {
+    const requestVersion = listVersionRef.current + 1;
+    listVersionRef.current = requestVersion;
     setError(undefined);
     if (
       currentRoute.kind !== 'list' &&
@@ -4809,12 +4941,14 @@ const AskCoreWorkbenchPage = memo(() => {
       return;
     }
     setLoading(true);
+    setLoadingMore(false);
     try {
       if (
         currentRoute.kind === 'dashboard' ||
         !activeConfig.resource
       ) {
         const payload = await askCoreWorkbenchClient.getDashboard();
+        if (listVersionRef.current !== requestVersion) return;
         setDashboard(payload || emptyAskCoreWorkbenchDashboard());
         setList(null);
         return;
@@ -4822,22 +4956,64 @@ const AskCoreWorkbenchPage = memo(() => {
 
       const filters = filtersFromFormState(currentRoute.resource, filterForm);
       const payload = await askCoreWorkbenchClient.listResource(currentRoute.resource, filters, {
-        page,
         pageSize: PAGE_SIZE,
       });
+      if (listVersionRef.current !== requestVersion) return;
       setList({
         ...payload,
         items: payload.items.map((item) => hydrateLookupLabels(item, lookups)),
       });
     } catch (err) {
+      if (listVersionRef.current !== requestVersion) return;
       setError(err instanceof Error ? err.message : '加载失败');
       if (currentRoute.kind === 'list') {
-        setList(emptyAskCoreWorkbenchList(currentRoute.resource, page, PAGE_SIZE));
+        setList(emptyAskCoreWorkbenchList(currentRoute.resource, 1, PAGE_SIZE));
       }
     } finally {
-      setLoading(false);
+      if (listVersionRef.current === requestVersion) setLoading(false);
     }
-  }, [activeConfig.resource, currentRoute, filterForm, lookups, page]);
+  }, [activeConfig.resource, currentRoute, filterForm, lookups]);
+
+  const loadMoreListItems = useCallback(async () => {
+    if (
+      currentRoute.kind !== 'list' ||
+      loading ||
+      loadingMore ||
+      !list?.has_more ||
+      !list.next_after_id
+    )
+      return;
+    const requestVersion = listVersionRef.current;
+    const requestedAfterId = list.next_after_id;
+    setLoadingMore(true);
+    setError(undefined);
+    try {
+      const filters = filtersFromFormState(currentRoute.resource, filterForm);
+      const payload = await askCoreWorkbenchClient.listResource(currentRoute.resource, filters, {
+        afterId: requestedAfterId,
+        includeTotal: false,
+        pageSize: PAGE_SIZE,
+      });
+      if (listVersionRef.current !== requestVersion) return;
+      const incoming = payload.items.map((item) => hydrateLookupLabels(item, lookups));
+      setList((current) => {
+        if (!current) return { ...payload, items: incoming };
+        return {
+          ...current,
+          has_more: payload.has_more,
+          items: mergeResourceItems(currentRoute.resource, current.items, incoming),
+          next_after_id: payload.next_after_id ?? null,
+          total: current.total ?? payload.total ?? null,
+        };
+      });
+    } catch (err) {
+      if (listVersionRef.current === requestVersion) {
+        setError(err instanceof Error ? err.message : '加载更多失败');
+      }
+    } finally {
+      if (listVersionRef.current === requestVersion) setLoadingMore(false);
+    }
+  }, [currentRoute, filterForm, list?.has_more, list?.next_after_id, loading, loadingMore, lookups]);
 
   const reloadDetail = useCallback(async () => {
     if (currentRoute.kind !== 'detail' && currentRoute.kind !== 'edit') return;
@@ -4887,7 +5063,6 @@ const AskCoreWorkbenchPage = memo(() => {
   useEffect(() => {
     setSearchQuery('');
     setSelectedRowKeysByResource({});
-    setPage(1);
   }, [activeTab]);
 
   useEffect(() => {
@@ -4897,6 +5072,29 @@ const AskCoreWorkbenchPage = memo(() => {
   useEffect(() => {
     void reloadDetail();
   }, [reloadDetail]);
+
+  useEffect(() => {
+    const target = loadMoreTriggerRef.current;
+    if (
+      currentRoute.kind !== 'list' ||
+      !target ||
+      loading ||
+      loadingMore ||
+      !list?.has_more ||
+      !list.next_after_id
+    )
+      return;
+    if (typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void loadMoreListItems();
+      },
+      { rootMargin: '260px 0px' },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [currentRoute.kind, list?.has_more, list?.next_after_id, loading, loadingMore, loadMoreListItems]);
 
   const filteredItems = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
@@ -4973,65 +5171,10 @@ const AskCoreWorkbenchPage = memo(() => {
     const selectedRowKeys = selectedRowKeysByResource[resource] || [];
     const setResourceSelectedRowKeys = (keys: Key[]) =>
       setSelectedRowKeysByResource((current) => ({ ...current, [resource]: keys }));
-    const selectedIds = selectedRowKeys
-      .map((key) => Number(key))
-      .filter((id) => id > 0 && visibleIds.has(id));
-
-    const columns: ColumnsType<AskCoreWorkbenchRecord> = [
-      ...(config.columns || []).map((column) => ({
-        dataIndex: column.displayIndex || column.dataIndex,
-        ellipsis: resource === 'questions' && column.dataIndex === 'content' ? false : true,
-        key: column.displayIndex || column.dataIndex,
-        render: (_value: unknown, row: AskCoreWorkbenchRecord) => {
-          if (resource === 'questions' && column.dataIndex === 'content') {
-            return (
-              <div className={styles.questionPreviewCell}>
-                <QuestionSummaryPreview preview={buildQuestionPreviewDataFromPayload(row)} />
-              </div>
-            );
-          }
-          const primary = column.displayIndex
-            ? row[column.displayIndex] || row[column.dataIndex]
-            : row[column.dataIndex];
-          const secondary = column.displayIndex
-            ? row[column.dataIndex]
-            : column.secondaryIndex
-              ? row[column.secondaryIndex]
-              : undefined;
-          return (
-            <span>
-              {formatCellValue(primary, column)}
-              {secondary && primary !== secondary ? (
-                <span className={styles.muted}> #{String(secondary)}</span>
-              ) : null}
-            </span>
-          );
-        },
-        title: column.title,
-        width: column.width,
-      })),
-      {
-        key: 'action',
-        render: (_, record) => (
-          <Button
-            size="small"
-            type="link"
-            onClick={(event) => {
-              event.stopPropagation();
-              const id = getRecordId(resource, record);
-              if (!id) return;
-              navigate(
-                routeFor(resource as AskCoreWorkbenchTab, buildResourceEntityPath(resource, id)),
-              );
-            }}
-          >
-            管理
-          </Button>
-        ),
-        title: '操作',
-        width: 90,
-      },
-    ];
+    const selectedKeySet = new Set(selectedRowKeys.map((key) => Number(key)).filter((id) => id > 0));
+    const selectedIds = [...visibleIds].filter((id) => selectedKeySet.has(id));
+    const allVisibleSelected =
+      visibleIds.size > 0 && [...visibleIds].every((id) => selectedKeySet.has(id));
 
     return (
       <div className={styles.view}>
@@ -5074,7 +5217,6 @@ const AskCoreWorkbenchPage = memo(() => {
             <Button
               className={styles.secondary}
               onClick={() => {
-                setPage(1);
                 setResourceSelectedRowKeys([]);
                 void reloadListOrDashboard();
               }}
@@ -5179,63 +5321,115 @@ const AskCoreWorkbenchPage = memo(() => {
           </span>
         </div>
 
-        <div className={styles.table}>
-          <Table
-            columns={columns}
-            dataSource={filteredItems}
-            loading={loading}
-            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
-            pagination={false}
-            rowKey={(record) => String(getRecordId(resource, record) || JSON.stringify(record))}
-            scroll={{ x: 980 }}
-            size="middle"
-            rowSelection={{
-              selectedRowKeys,
-              onChange: setResourceSelectedRowKeys,
+        <div className={styles.listStatusBar}>
+          <Checkbox
+            checked={allVisibleSelected}
+            disabled={!visibleIds.size || loading}
+            indeterminate={Boolean(selectedIds.length) && !allVisibleSelected}
+            onChange={(event) => {
+              setResourceSelectedRowKeys(event.target.checked ? [...visibleIds] : []);
             }}
-            onRow={(record) => ({
-              onClick: () => {
-                const id = getRecordId(resource, record);
-                if (id)
-                  navigate(
-                    routeFor(
-                      resource as AskCoreWorkbenchTab,
-                      buildResourceEntityPath(resource, id),
-                    ),
-                  );
-              },
-            })}
-          />
+          >
+            全选当前显示记录
+          </Checkbox>
+          <span>
+            已加载 {list?.items.length ?? 0} 条{list?.total != null ? ` / ${list.total} 条` : ''}，当前显示 {filteredItems.length} 条。
+          </span>
         </div>
 
-        <div className={styles.footer}>
-          <span>
-            共 {list?.total ?? filteredItems.length} 条，当前第 {page} 页。
-          </span>
-          <Space>
-            <Button
-              className={styles.secondary}
-              disabled={page <= 1}
-              size="small"
-              onClick={() => {
-                setResourceSelectedRowKeys([]);
-                setPage((current) => Math.max(1, current - 1));
-              }}
-            >
-              上一页
-            </Button>
-            <Button
-              className={styles.secondary}
-              disabled={!list?.has_more && page * PAGE_SIZE >= (list?.total || 0)}
-              size="small"
-              onClick={() => {
-                setResourceSelectedRowKeys([]);
-                setPage((current) => current + 1);
-              }}
-            >
-              下一页
-            </Button>
-          </Space>
+        {loading && !filteredItems.length ? (
+          <Skeleton active paragraph={{ rows: 6 }} />
+        ) : filteredItems.length ? (
+          <div className={styles.resourceMasonry}>
+            {filteredItems.map((record) => {
+              const id = getRecordId(resource, record);
+              const selected = id > 0 && selectedKeySet.has(id);
+              const detailRoute = id ? buildResourceEntityPath(resource, id) : null;
+              return (
+                <article
+                  className={cx(styles.resourceCard, selected && styles.resourceCardSelected)}
+                  key={`${resource}-${id || JSON.stringify(record)}`}
+                  onClick={() => {
+                    if (!detailRoute) return;
+                    navigate(routeFor(resource as AskCoreWorkbenchTab, detailRoute));
+                  }}
+                >
+                  <div className={styles.resourceCardHeader}>
+                    <Checkbox
+                      checked={selected}
+                      disabled={id <= 0 || loading}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={(event) => {
+                        if (id <= 0) return;
+                        setResourceSelectedRowKeys(
+                          event.target.checked
+                            ? [...new Set([...selectedRowKeys.map(Number), id])]
+                            : selectedRowKeys.map(Number).filter((key) => key !== id),
+                        );
+                      }}
+                    />
+                    <div className={styles.resourceCardBody}>
+                      <div className={styles.resourceCardTitle}>{getRecordTitle(resource, record)}</div>
+                      <div className={styles.resourceCardMeta}>
+                        {buildResourceEntityPath(resource, id || 0)}
+                      </div>
+                    </div>
+                    <Button
+                      size="small"
+                      type="link"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (!detailRoute) return;
+                        navigate(routeFor(resource as AskCoreWorkbenchTab, detailRoute));
+                      }}
+                    >
+                      管理
+                    </Button>
+                  </div>
+
+                  <div className={styles.resourceCardFields}>
+                    {(config.columns || []).slice(0, 5).map((column) => {
+                      if (resource === 'questions' && column.dataIndex === 'content') {
+                        return (
+                          <div className={styles.resourcePreviewBlock} key={column.dataIndex}>
+                            <QuestionSummaryPreview preview={buildQuestionPreviewDataFromPayload(record)} />
+                          </div>
+                        );
+                      }
+                      const primary = column.displayIndex
+                        ? record[column.displayIndex] || record[column.dataIndex]
+                        : record[column.dataIndex];
+                      const secondary = column.displayIndex
+                        ? record[column.dataIndex]
+                        : column.secondaryIndex
+                          ? record[column.secondaryIndex]
+                          : undefined;
+                      return (
+                        <div className={styles.resourceFieldChip} key={column.displayIndex || column.dataIndex}>
+                          <span>{column.title}</span>
+                          <strong>
+                            {formatCellValue(primary, column)}
+                            {secondary && primary !== secondary ? (
+                              <span className={styles.muted}> #{String(secondary)}</span>
+                            ) : null}
+                          </strong>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className={styles.panel}>
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          </div>
+        )}
+
+        {list?.has_more ? <div className={styles.scrollSentinel} ref={loadMoreTriggerRef} /> : null}
+        <div className={styles.loadMoreStatus}>
+          {loadingMore ? '正在加载更多…' : list?.has_more ? '滚动到底部会自动加载更多记录。' : '已加载完当前结果。'}
         </div>
       </div>
     );

@@ -456,6 +456,118 @@ export const styles = createStaticStyles(({ css }) => ({
     }
   `,
 
+  // Roster waterfall
+  rosterListHeader: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 10px;
+
+    background: ${cssVar.colorFillQuaternary};
+  `,
+  rosterMasonry: css`
+    column-count: 2;
+    column-gap: 12px;
+
+    @media (width <= 860px) {
+      column-count: 1;
+    }
+  `,
+  rosterCard: css`
+    break-inside: avoid;
+    margin-bottom: 12px;
+    padding: 14px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 12px;
+
+    background: ${cssVar.colorBgContainer};
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+    &:hover {
+      border-color: ${cssVar.colorPrimaryBorder};
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    }
+  `,
+  rosterCardSelected: css`
+    border-color: ${cssVar.colorPrimary};
+    box-shadow: 0 0 0 1px ${cssVar.colorPrimaryBorder};
+  `,
+  rosterCardHeader: css`
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  `,
+  rosterCardTitleWrap: css`
+    flex: 1;
+    min-width: 0;
+  `,
+  rosterCardTitle: css`
+    overflow-wrap: anywhere;
+    font-size: 14px;
+    font-weight: 650;
+    line-height: 1.5;
+    color: ${cssVar.colorText};
+  `,
+  rosterCardMeta: css`
+    margin-top: 2px;
+    overflow-wrap: anywhere;
+    font-size: 12px;
+    color: ${cssVar.colorTextDescription};
+  `,
+  rosterCardFields: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  `,
+  rosterFieldChip: css`
+    display: inline-flex;
+    max-width: 100%;
+    gap: 5px;
+    align-items: center;
+
+    padding: 4px 8px;
+    border-radius: 8px;
+
+    overflow-wrap: anywhere;
+    font-size: 12px;
+    line-height: 1.45;
+
+    background: ${cssVar.colorFillQuaternary};
+
+    span {
+      color: ${cssVar.colorTextDescription};
+    }
+
+    strong {
+      min-width: 0;
+      font-weight: 500;
+      color: ${cssVar.colorText};
+    }
+  `,
+  rosterLoadStatus: css`
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px dashed ${cssVar.colorBorderSecondary};
+    border-radius: 10px;
+
+    font-size: 13px;
+    color: ${cssVar.colorTextSecondary};
+    text-align: center;
+
+    background: ${cssVar.colorFillQuaternary};
+  `,
+  scrollSentinel: css`
+    height: 12px;
+  `,
+
   // Animations
   staggerItem: css`
     opacity: 0;

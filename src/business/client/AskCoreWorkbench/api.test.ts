@@ -46,6 +46,39 @@ describe('AskCoreWorkbench API', () => {
     expect(init?.credentials).toBe('include');
   });
 
+  it('builds cursor pagination requests for infinite resource lists', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe(
+        '/api/askcore/workbench/schools?include_total=false&page=1&page_size=20&after_id=42&filters=%7B%22province%22%3A%22%E5%8C%97%E4%BA%AC%22%7D',
+      );
+      return new Response(
+        JSON.stringify({
+          has_more: false,
+          items: [{ school_id: 43 }],
+          next_after_id: null,
+        }),
+        {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new AskCoreWorkbenchApiClient();
+    await expect(
+      client.listResource(
+        'schools',
+        { province: '北京' },
+        { afterId: 42, includeTotal: false, pageSize: 20 },
+      ),
+    ).resolves.toMatchObject({
+      has_more: false,
+      items: [{ school_id: 43 }],
+      next_after_id: null,
+    });
+  });
+
   it('builds first-party action, invocation, preview, and report requests', async () => {
     const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
