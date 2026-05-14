@@ -4,8 +4,11 @@ import {
   assignAskCoreEducationRole,
   bootstrapAskCoreOrganization,
   createAskCoreEducationOrgUnit,
+  createAskCoreCohortUnit,
+  createAskCoreClassUnit,
   createAskCoreOrganization,
   createAskCoreOrganizationInvite,
+  createAskCoreSchoolUnit,
   fetchAskCoreEducationOrgUnits,
   fetchAskCoreOrganizations,
   setActiveAskCoreOrganization,
@@ -34,9 +37,12 @@ describe('AskCoreOrganization api client', () => {
       role: 'member',
     });
     await fetchAskCoreEducationOrgUnits();
-    await createAskCoreEducationOrgUnit({ name: '高一', parent_id: 1, unit_type: 'grade' });
+    await createAskCoreEducationOrgUnit({ entry_year: 2025, name: '2025级', parent_id: 1, unit_type: 'cohort' });
+    await createAskCoreSchoolUnit({ name: 'Seed School' });
+    await createAskCoreCohortUnit({ entryYear: 2025, parentUnitId: 3 });
+    await createAskCoreClassUnit({ name: '高一 1 班', parentUnitId: 4 });
     await assignAskCoreEducationRole({
-      better_auth_user_id: 'user-1',
+      subject: { kind: 'member', userId: 'user-1' },
       org_unit_id: 2,
       role: 'grade_admin',
     });
@@ -52,6 +58,9 @@ describe('AskCoreOrganization api client', () => {
       '/api/askcore/organizations/org-1/invites',
       '/api/askcore/workbench/organization/units',
       '/api/askcore/workbench/organization/units',
+      '/api/askcore/workbench/organization/units',
+      '/api/askcore/workbench/organization/units',
+      '/api/askcore/workbench/organization/units',
       '/api/askcore/workbench/organization/roles',
     ]);
     expect(calls[1][1]).toMatchObject({
@@ -64,10 +73,22 @@ describe('AskCoreOrganization api client', () => {
       method: 'PATCH',
     });
     expect(calls[7][1]).toMatchObject({
-      body: JSON.stringify({ name: '高一', parent_id: 1, unit_type: 'grade' }),
+      body: JSON.stringify({ entry_year: 2025, name: '2025级', parent_id: 1, unit_type: 'cohort' }),
       method: 'POST',
     });
     expect(calls[8][1]).toMatchObject({
+      body: JSON.stringify({ name: 'Seed School', unit_type: 'school' }),
+      method: 'POST',
+    });
+    expect(calls[9][1]).toMatchObject({
+      body: JSON.stringify({ entry_year: 2025, name: '2025级', parent_id: 3, unit_type: 'cohort' }),
+      method: 'POST',
+    });
+    expect(calls[10][1]).toMatchObject({
+      body: JSON.stringify({ name: '高一 1 班', parent_id: 4, unit_type: 'class' }),
+      method: 'POST',
+    });
+    expect(calls[11][1]).toMatchObject({
       body: JSON.stringify({
         better_auth_user_id: 'user-1',
         org_unit_id: 2,

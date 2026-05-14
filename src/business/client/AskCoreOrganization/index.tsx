@@ -55,7 +55,7 @@ import { styles } from './styles';
 
 type OrganizationRosterResource = Extract<
   ResourceKey,
-  'classes' | 'grades' | 'schools' | 'students' | 'subjects' | 'teachers'
+  'grades' | 'students' | 'subjects' | 'teachers'
 >;
 type TabKey = 'hierarchy' | 'members' | 'overview' | OrganizationRosterResource;
 
@@ -63,18 +63,14 @@ const tabs: { key: TabKey; label: string }[] = [
   { key: 'overview', label: '概览' },
   { key: 'members', label: '成员' },
   { key: 'hierarchy', label: '层级' },
-  { key: 'schools', label: '学校' },
-  { key: 'grades', label: '年级' },
-  { key: 'classes', label: '班级' },
+  { key: 'grades', label: '教学年级' },
   { key: 'teachers', label: '教师' },
   { key: 'students', label: '学生' },
   { key: 'subjects', label: '学科' },
 ];
 
 const rosterResources: OrganizationRosterResource[] = [
-  'schools',
   'grades',
-  'classes',
   'teachers',
   'students',
   'subjects',
@@ -83,9 +79,7 @@ const lookupResources = Object.keys(EMPTY_LOOKUPS) as LookupCollectionKey[];
 const ROSTER_PAGE_SIZE = 20;
 const ROSTER_IMPORT_TERMINAL_STATES = new Set(['cancelled', 'failed', 'succeeded']);
 const ROSTER_IMPORT_ACTIONS: Record<OrganizationRosterResource, string> = {
-  classes: 'ops.import.classes',
   grades: 'ops.import.grades',
-  schools: 'ops.import.schools',
   students: 'ops.import.students',
   subjects: 'ops.import.subjects',
   teachers: 'ops.import.teachers',
@@ -128,9 +122,6 @@ const csvImportDefaults = (
   if (resource === 'students' && filterForm.class_id) {
     defaults.class_id = Number(filterForm.class_id);
   }
-  if ((resource === 'classes' || resource === 'teachers') && filterForm.school_id) {
-    defaults.school_id = Number(filterForm.school_id);
-  }
   return defaults;
 };
 
@@ -150,7 +141,7 @@ const labelForField = (resource: OrganizationRosterResource, key: string) => {
     {
       class_name: '班级',
       created_at: '创建时间',
-      grade_name: '年级',
+      grade_name: '教学年级',
       school_name: '学校',
       updated_at: '更新时间',
     }[key] ||
@@ -167,9 +158,7 @@ const displayValue = (value: unknown) => {
 };
 
 const rosterColumnsByResource: Record<OrganizationRosterResource, string[]> = {
-  classes: ['name', 'school_name', 'education_level', 'admission_year', 'graduation_year'],
   grades: ['name', 'education_level', 'grade_order', 'is_graduation_grade'],
-  schools: ['name', 'province', 'city', 'contact_phone'],
   students: ['name', 'student_number', 'class_name', 'gender'],
   subjects: ['name', 'subject_category', 'is_core_subject'],
   teachers: ['real_name', 'username', 'role', 'school_name'],
@@ -694,8 +683,8 @@ export const AskCoreOrganizationRoute = memo(() => {
   const statCards = [
     { label: '成员', value: org.members.length },
     { label: '学校', value: org.educationUnits.filter((u) => u.unit_type === 'school').length },
+    { label: '届别', value: org.educationUnits.filter((u) => u.unit_type === 'cohort').length },
     { label: '班级', value: org.educationUnits.filter((u) => u.unit_type === 'class').length },
-    { label: '创建时间', value: org.current?.createdAt?.slice(0, 10) || '--' },
   ];
 
   return (
@@ -899,12 +888,14 @@ export const AskCoreOrganizationRoute = memo(() => {
 	                  canManage={org.canManage}
                   creatingUnit={org.creatingUnit}
                   error={org.educationError}
-                  loading={org.educationLoading}
+	                  loading={org.educationLoading}
+                  members={org.members}
                   orgRoleForm={org.orgRoleForm}
                   orgUnitForm={org.orgUnitForm}
                   payload={org.educationPayload}
                   onAssignRole={org.handleAssignEducationRole}
-                  onCreateUnit={org.handleCreateEducationUnit}
+                  onAddChild={org.handleAddEducationChild}
+                  onCreateSchool={org.handleCreateSchoolUnit}
 	                  onReload={org.reloadEducationOrgUnits}
 	                />
 	              )}

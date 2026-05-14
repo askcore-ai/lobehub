@@ -128,8 +128,63 @@ export const createAskCoreEducationOrgUnit = (input: AskCoreEducationOrgUnitCrea
     method: 'POST',
   });
 
+export const createAskCoreSchoolUnit = (input: { description?: string; name: string }) =>
+  createAskCoreEducationOrgUnit({
+    description: input.description,
+    name: input.name,
+    unit_type: 'school',
+  });
+
+export const createAskCoreCohortUnit = (input: {
+  description?: string;
+  entryYear: number;
+  name?: string;
+  parentUnitId?: number;
+}) =>
+  createAskCoreEducationOrgUnit({
+    description: input.description,
+    entry_year: input.entryYear,
+    name: input.name || `${input.entryYear}级`,
+    parent_id: input.parentUnitId,
+    unit_type: 'cohort',
+  });
+
+export const createAskCoreClassUnit = (input: {
+  description?: string;
+  name: string;
+  parentUnitId: number;
+}) =>
+  createAskCoreEducationOrgUnit({
+    description: input.description,
+    name: input.name,
+    parent_id: input.parentUnitId,
+    unit_type: 'class',
+  });
+
+const roleAssignmentBody = (input: AskCoreEducationRoleAssignmentCreateInput) => {
+  if (input.subject.kind === 'member') {
+    return {
+      better_auth_user_id: input.subject.userId,
+      org_unit_id: input.org_unit_id,
+      role: input.role,
+    };
+  }
+  if (input.subject.kind === 'teacher') {
+    return {
+      org_unit_id: input.org_unit_id,
+      role: input.role,
+      teacher_id: input.subject.teacherId,
+    };
+  }
+  return {
+    org_unit_id: input.org_unit_id,
+    role: input.role,
+    student_id: input.subject.studentId,
+  };
+};
+
 export const assignAskCoreEducationRole = (input: AskCoreEducationRoleAssignmentCreateInput) =>
   requestJson<AskCoreEducationRoleAssignment>(`${EDUCATION_ORG_API_BASE}/roles`, {
-    body: JSON.stringify(input),
+    body: JSON.stringify(roleAssignmentBody(input)),
     method: 'POST',
   });

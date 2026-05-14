@@ -22,8 +22,14 @@ import {
 
 const unitTypeIcons: Record<AskCoreEducationOrgUnitType, React.ReactNode> = {
   class: <UsersRound size={14} />,
-  grade: <GitBranch size={14} />,
+  cohort: <GitBranch size={14} />,
   school: <Building2 size={14} />,
+};
+
+const unitTypeLabels: Record<AskCoreEducationOrgUnitType, string> = {
+  class: '班级',
+  cohort: '届别',
+  school: '学校',
 };
 
 interface OrgTreeNodeProps {
@@ -31,7 +37,7 @@ interface OrgTreeNodeProps {
   canManage?: boolean;
   depth?: number;
   node: AskCoreEducationOrgUnit;
-  onAddChild?: (parent: AskCoreEducationOrgUnit, name: string) => void;
+  onAddChild?: (parent: AskCoreEducationOrgUnit, name: string) => Promise<void>;
 }
 
 export const OrgTreeNode = memo<OrgTreeNodeProps>(
@@ -46,9 +52,10 @@ export const OrgTreeNode = memo<OrgTreeNodeProps>(
     const handleConfirmAdd = () => {
       const trimmed = addName.trim();
       if (!trimmed || !onAddChild) return;
-      onAddChild(node, trimmed);
-      setAdding(false);
-      setAddName('');
+      void onAddChild(node, trimmed).then(() => {
+        setAdding(false);
+        setAddName('');
+      });
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -78,13 +85,11 @@ export const OrgTreeNode = memo<OrgTreeNodeProps>(
           <span style={{ fontSize: 14, fontWeight: 500, color: cssVar.colorText }}>
             {node.name}
           </span>
-          {node.unit_type === 'class' && (
-            <span className={styles.treeBadge}>班级</span>
-          )}
+          <span className={styles.treeBadge}>{unitTypeLabels[node.unit_type]}</span>
           {canManage && (
             <div className={`tree-node-actions ${styles.treeNodeActions}`}>
               {node.unit_type !== 'class' && (
-                <Tooltip title={`添加${node.unit_type === 'school' ? '年级' : '班级'}`}>
+                <Tooltip title={`添加${node.unit_type === 'school' ? '届别' : '班级'}`}>
                   <Button
                     icon={<Plus size={13} />}
                     size="small"
@@ -101,7 +106,7 @@ export const OrgTreeNode = memo<OrgTreeNodeProps>(
           <div className={styles.treeInlineForm}>
             <Input
               autoFocus
-              placeholder={`输入${node.unit_type === 'school' ? '年级' : '班级'}名称`}
+              placeholder={`输入${node.unit_type === 'school' ? '届别，如 2025级' : '班级名称'}`}
               size="small"
               style={{ width: 200 }}
               value={addName}

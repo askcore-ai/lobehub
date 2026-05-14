@@ -1,7 +1,7 @@
 export type AskCoreOrganizationRole = 'owner' | 'admin' | 'member';
 export type AskCoreInviteChannel = 'email' | 'link' | 'qr';
 export type AskCoreInviteExpiry = '30m' | '1d' | '7d' | '30d';
-export type AskCoreEducationOrgUnitType = 'school' | 'grade' | 'class';
+export type AskCoreEducationOrgUnitType = 'school' | 'cohort' | 'class';
 export type AskCoreEducationRole =
   | 'school_admin'
   | 'grade_admin'
@@ -52,16 +52,13 @@ export interface AskCoreInvitePayload {
 }
 
 export interface AskCoreEducationOrgUnit {
-  class_id?: number | null;
   description?: string | null;
-  grade_level_id?: number | null;
+  entry_year?: number | null;
   id: number;
   name: string;
   org_id: string;
   parent_id?: number | null;
-  school_id?: number | null;
   sort_order: number;
-  tenant_id: number;
   unit_type: AskCoreEducationOrgUnitType;
 }
 
@@ -71,22 +68,23 @@ export interface AskCoreEducationOrgUnitPayload {
 }
 
 export interface AskCoreEducationOrgUnitCreateInput {
-  class_id?: number | null;
   description?: string | null;
-  grade_level_id?: number | null;
+  entry_year?: number | null;
   name: string;
   parent_id?: number | null;
-  school_id?: number | null;
   sort_order?: number;
   unit_type: AskCoreEducationOrgUnitType;
 }
 
+export type AskCoreEducationRoleSubject =
+  | { kind: 'member'; userId: string }
+  | { kind: 'teacher'; teacherId: number }
+  | { kind: 'student'; studentId: number };
+
 export interface AskCoreEducationRoleAssignmentCreateInput {
-  better_auth_user_id?: string | null;
   org_unit_id: number;
   role: AskCoreEducationRole;
-  student_id?: number | null;
-  teacher_id?: number | null;
+  subject: AskCoreEducationRoleSubject;
 }
 
 export interface AskCoreEducationRoleAssignment {

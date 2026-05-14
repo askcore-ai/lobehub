@@ -1540,13 +1540,13 @@ const QuestionEditor = ({
                 />
               </label>
               <label>
-                <div className={styles.muted}>年级</div>
+                <div className={styles.muted}>教学年级</div>
                 <Select
                   allowClear
                   style={{ width: '100%' }}
                   value={model.gradeId || undefined}
                   options={fieldOptions(
-                    { key: 'grade_id', kind: 'select', label: '年级', optionsFrom: 'grades' },
+                    { key: 'grade_id', kind: 'select', label: '教学年级', optionsFrom: 'grades' },
                     lookups,
                   )}
                   onChange={(value) => setModel({ gradeId: value || '' })}
@@ -2804,7 +2804,7 @@ const AssignmentDetailView = ({
               children: displayNode(
                 assignment.grade_name || detail.grade?.name || assignment.grade_id,
               ),
-              label: '年级',
+              label: '教学年级',
             },
             {
               children: formatCellValue(assignment.creation_type, {
@@ -4045,11 +4045,11 @@ const AssignmentManualCreateView = ({
                   )}
                 />
               </Form.Item>
-              <Form.Item label="年级" name="grade_id" rules={[{ required: true }]}>
+              <Form.Item label="教学年级" name="grade_id" rules={[{ required: true }]}>
                 <Select
-                  placeholder="选择年级"
+                  placeholder="选择教学年级"
                   options={fieldOptions(
-                    { key: 'grade_id', kind: 'select', label: '年级', optionsFrom: 'grades' },
+                    { key: 'grade_id', kind: 'select', label: '教学年级', optionsFrom: 'grades' },
                     lookups,
                   )}
                 />
@@ -4175,7 +4175,7 @@ const AssignmentOcrCreateView = ({
               const subjectId = Number(values.subject_id || 0);
               const gradeId = Number(values.grade_id || 0);
               if (!subjectId || !gradeId) {
-                message.warning('请先选择科目和年级');
+                message.warning('请先选择科目和教学年级');
                 return;
               }
               if (inputType === 'upload' && !files.length) {
@@ -4265,11 +4265,11 @@ const AssignmentOcrCreateView = ({
                   )}
                 />
               </Form.Item>
-              <Form.Item label="年级" name="grade_id" rules={[{ required: true }]}>
+              <Form.Item label="教学年级" name="grade_id" rules={[{ required: true }]}>
                 <Select
-                  placeholder="选择年级"
+                  placeholder="选择教学年级"
                   options={fieldOptions(
-                    { key: 'grade_id', kind: 'select', label: '年级', optionsFrom: 'grades' },
+                    { key: 'grade_id', kind: 'select', label: '教学年级', optionsFrom: 'grades' },
                     lookups,
                   )}
                 />
@@ -4637,7 +4637,7 @@ const SubmissionOcrCreateView = ({
                         ? `科目 ${scopeText(item.subject_name || item.subject_id, '--')}`
                         : null,
                       item.grade_name || item.grade_id
-                        ? `年级 ${scopeText(item.grade_name || item.grade_id, '--')}`
+                        ? `教学年级 ${scopeText(item.grade_name || item.grade_id, '--')}`
                         : null,
                     ]
                       .filter(Boolean)
@@ -4771,7 +4771,7 @@ const SubmissionOcrCreateView = ({
                           selectedAssignment.grade_id,
                         '--',
                       ),
-                      label: '年级',
+                      label: '教学年级',
                     },
                     { children: String(recipientCount), label: '发布对象' },
                     {

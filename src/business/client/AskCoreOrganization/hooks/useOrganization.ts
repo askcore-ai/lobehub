@@ -7,9 +7,12 @@ import { message } from '@/components/AntdStaticMethods';
 
 import {
   assignAskCoreEducationRole,
+  createAskCoreClassUnit,
+  createAskCoreCohortUnit,
   createAskCoreEducationOrgUnit,
   createAskCoreOrganization,
   createAskCoreOrganizationInvite,
+  createAskCoreSchoolUnit,
   fetchAskCoreEducationOrgUnits,
   fetchAskCoreOrganizations,
   removeAskCoreOrganizationMember,
@@ -18,6 +21,7 @@ import {
   updateAskCoreOrganizationMemberRole,
 } from '../api';
 import {
+  type AskCoreEducationOrgUnit,
   type AskCoreEducationOrgUnitPayload,
   type AskCoreInviteChannel,
   type AskCoreInviteExpiry,
@@ -154,12 +158,10 @@ export const useOrganization = () => {
     setCreatingUnit(true);
     try {
       await createAskCoreEducationOrgUnit({
-        class_id: values.class_id || undefined,
         description: values.description || undefined,
-        grade_level_id: values.grade_level_id || undefined,
+        entry_year: values.entry_year || undefined,
         name: values.name,
         parent_id: values.parent_id || undefined,
-        school_id: values.school_id || undefined,
         sort_order: values.sort_order ?? 0,
         unit_type: values.unit_type,
       });
@@ -171,18 +173,62 @@ export const useOrganization = () => {
     }
   }, [orgUnitForm, reloadEducationOrgUnits]);
 
+  const handleCreateSchoolUnit = useCallback(async () => {
+    const values = await orgUnitForm.validateFields(['name', 'description']);
+    setCreatingUnit(true);
+    try {
+      await createAskCoreSchoolUnit({
+        description: values.description || undefined,
+        name: values.name,
+      });
+      orgUnitForm.resetFields(['name', 'description']);
+      await reloadEducationOrgUnits();
+      message.success('学校已创建');
+    } finally {
+      setCreatingUnit(false);
+    }
+  }, [orgUnitForm, reloadEducationOrgUnits]);
+
+  const handleAddEducationChild = useCallback(
+    async (parent: AskCoreEducationOrgUnit, name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      setCreatingUnit(true);
+      try {
+        if (parent.unit_type === 'school') {
+          const year = Number(trimmed.match(/\d{4}/)?.[0] || 0);
+          if (!year) {
+            message.error('届别请输入 4 位入学年份，例如 2025级');
+            return;
+          }
+          await createAskCoreCohortUnit({
+            entryYear: year,
+            name: trimmed.endsWith('级') ? trimmed : `${year}级`,
+            parentUnitId: parent.id,
+          });
+          message.success('届别已创建');
+        } else if (parent.unit_type === 'cohort') {
+          await createAskCoreClassUnit({ name: trimmed, parentUnitId: parent.id });
+          message.success('班级已创建');
+        }
+        await reloadEducationOrgUnits();
+      } finally {
+        setCreatingUnit(false);
+      }
+    },
+    [reloadEducationOrgUnits],
+  );
+
   const handleAssignEducationRole = useCallback(async () => {
     const values = await orgRoleForm.validateFields();
     setAssigningRole(true);
     try {
       await assignAskCoreEducationRole({
-        better_auth_user_id: values.better_auth_user_id?.trim() || undefined,
         org_unit_id: values.org_unit_id,
         role: values.role,
-        student_id: values.student_id || undefined,
-        teacher_id: values.teacher_id || undefined,
+        subject: { kind: 'member', userId: values.subject_user_id },
       });
-      orgRoleForm.resetFields(['better_auth_user_id', 'teacher_id', 'student_id']);
+      orgRoleForm.resetFields(['subject_user_id']);
       message.success('教育身份已分配');
     } finally {
       setAssigningRole(false);
@@ -258,6 +304,8 @@ export const useOrganization = () => {
     orgUnitForm,
     orgRoleForm,
     handleCreateEducationUnit,
+    handleCreateSchoolUnit,
+    handleAddEducationChild,
     handleAssignEducationRole,
     reloadEducationOrgUnits,
 

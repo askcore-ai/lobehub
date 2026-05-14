@@ -144,14 +144,14 @@ export const RESOURCE_LABELS: Record<
     singular: '作业',
   },
   classes: {
-    description: '班级列表支持学校和年级筛选，并展示推导出的年级标签。',
+    description: '班级列表支持学校和教学年级筛选，并展示推导出的教学年级标签。',
     label: '班级',
     singular: '班级',
   },
   grades: {
-    description: '年级页支持学段筛选、导入和批量删除。',
-    label: '年级',
-    singular: '年级',
+    description: '教学年级页支持学段筛选、导入和批量删除。',
+    label: '教学年级',
+    singular: '教学年级',
   },
   questions: {
     description: '题目页提供结构化题干、答案和解析编辑。',
@@ -194,16 +194,16 @@ export const RESOURCE_FILTER_FIELDS: Record<ResourceKey, FieldDefinition[]> = {
   assignments: [
     { key: 'query', kind: 'text', label: '标题搜索', placeholder: '输入作业标题关键字' },
     { key: 'subject_id', kind: 'select', label: '科目', numeric: true, optionsFrom: 'subjects' },
-    { key: 'grade_id', kind: 'select', label: '年级', numeric: true, optionsFrom: 'grades' },
+    { key: 'grade_id', kind: 'select', label: '教学年级', numeric: true, optionsFrom: 'grades' },
   ],
   classes: [
     { key: 'school_id', kind: 'select', label: '学校', numeric: true, optionsFrom: 'schools' },
-    { key: 'grade', kind: 'text', label: '年级筛选', placeholder: '如 高一 / 七年级' },
+    { key: 'grade', kind: 'text', label: '教学年级筛选', placeholder: '如 高一 / 七年级' },
   ],
   grades: [{ key: 'education_level', kind: 'text', label: '学段', placeholder: '小学 / 初中 / 高中' }],
   questions: [
     { key: 'subject_id', kind: 'select', label: '科目', numeric: true, optionsFrom: 'subjects' },
-    { key: 'grade_id', kind: 'select', label: '年级', numeric: true, optionsFrom: 'grades' },
+    { key: 'grade_id', kind: 'select', label: '教学年级', numeric: true, optionsFrom: 'grades' },
     { key: 'question_type', kind: 'text', label: '题型', placeholder: 'single_choice / problem_solving' },
   ],
   schools: [
@@ -220,7 +220,7 @@ export const RESOURCE_FILTER_FIELDS: Record<ResourceKey, FieldDefinition[]> = {
     { key: 'assignment_id', kind: 'number', label: '作业 ID' },
     { key: 'class_id', kind: 'select', label: '班级', numeric: true, optionsFrom: 'classes' },
     { key: 'student_id', kind: 'select', label: '学生', numeric: true, optionsFrom: 'students' },
-    { key: 'grade_id', kind: 'select', label: '年级', numeric: true, optionsFrom: 'grades' },
+    { key: 'grade_id', kind: 'select', label: '教学年级', numeric: true, optionsFrom: 'grades' },
     { key: 'subject_id', kind: 'select', label: '科目', numeric: true, optionsFrom: 'subjects' },
     { key: 'status', kind: 'text', label: '状态', placeholder: 'submitted / graded / needs_binding' },
   ],
@@ -234,7 +234,7 @@ export const RESOURCE_FORM_FIELDS: Record<EditableResourceKey, FieldDefinition[]
   assignments: [
     { key: 'title', kind: 'text', label: '标题', required: true },
     { key: 'subject_id', kind: 'select', label: '科目', numeric: true, optionsFrom: 'subjects', required: true },
-    { key: 'grade_id', kind: 'select', label: '年级', numeric: true, optionsFrom: 'grades', required: true },
+    { key: 'grade_id', kind: 'select', label: '教学年级', numeric: true, optionsFrom: 'grades', required: true },
     {
       key: 'creation_type',
       kind: 'select',
@@ -265,7 +265,7 @@ export const RESOURCE_FORM_FIELDS: Record<EditableResourceKey, FieldDefinition[]
     },
   ],
   grades: [
-    { key: 'name', kind: 'text', label: '年级名称', required: true },
+    { key: 'name', kind: 'text', label: '教学年级名称', required: true },
     {
       key: 'education_level',
       kind: 'select',
@@ -281,7 +281,7 @@ export const RESOURCE_FORM_FIELDS: Record<EditableResourceKey, FieldDefinition[]
     {
       key: 'is_graduation_grade',
       kind: 'select',
-      label: '毕业年级',
+      label: '毕业教学年级',
       options: [
         { label: '否', value: 'false' },
         { label: '是', value: 'true' },
@@ -293,7 +293,7 @@ export const RESOURCE_FORM_FIELDS: Record<EditableResourceKey, FieldDefinition[]
     { key: 'content', kind: 'textarea', label: '题干', required: true, rows: 5 },
     { key: 'question_type', kind: 'text', label: '题型', required: true },
     { key: 'subject_id', kind: 'select', label: '科目', numeric: true, optionsFrom: 'subjects' },
-    { key: 'grade_id', kind: 'select', label: '年级', numeric: true, optionsFrom: 'grades' },
+    { key: 'grade_id', kind: 'select', label: '教学年级', numeric: true, optionsFrom: 'grades' },
     { key: 'difficulty', kind: 'number', label: '难度' },
     { key: 'answer', kind: 'textarea', label: '答案', rows: 4 },
     { key: 'explanation', kind: 'textarea', label: '解析', rows: 4 },

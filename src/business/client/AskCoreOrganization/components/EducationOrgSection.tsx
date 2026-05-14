@@ -1,19 +1,23 @@
 'use client';
 
-import { Alert, Button, Empty, Form, Input, InputNumber, Select, Space } from 'antd';
+import { Alert, Button, Empty, Form, Input, Select, Space } from 'antd';
 import { cssVar } from 'antd-style';
 import { Plus, RefreshCw, UserRoundPlus } from 'lucide-react';
 import { memo, useMemo } from 'react';
 
 import { styles } from '../styles';
-import { type AskCoreEducationOrgUnitPayload } from '../types';
+import {
+  type AskCoreEducationOrgUnit,
+  type AskCoreEducationOrgUnitPayload,
+  type AskCoreOrganizationMember,
+} from '../types';
 import { OrgTreeNode } from './OrgTreeNode';
 
-const unitTypeOptions = [
-  { label: '学校', value: 'school' },
-  { label: '年级', value: 'grade' },
-  { label: '班级', value: 'class' },
-];
+const unitTypeLabels = {
+  class: '班级',
+  cohort: '届别',
+  school: '学校',
+};
 
 interface EducationOrgSectionProps {
   assigningRole: boolean;
@@ -21,8 +25,10 @@ interface EducationOrgSectionProps {
   creatingUnit: boolean;
   error: string | undefined;
   loading: boolean;
+  members: AskCoreOrganizationMember[];
+  onAddChild: (parent: AskCoreEducationOrgUnit, name: string) => Promise<void>;
   onAssignRole: () => Promise<void>;
-  onCreateUnit: () => Promise<void>;
+  onCreateSchool: () => Promise<void>;
   onReload: () => void;
   orgRoleForm: ReturnType<typeof Form.useForm>[0];
   orgUnitForm: ReturnType<typeof Form.useForm>[0];
@@ -37,14 +43,24 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
     canManage,
     creatingUnit,
     assigningRole,
+    members,
     orgUnitForm,
     orgRoleForm,
-    onCreateUnit,
+    onCreateSchool,
+    onAddChild,
     onAssignRole,
     onReload,
   }) => {
     const units = useMemo(() => payload?.units ?? [], [payload?.units]);
     const roots = useMemo(() => units.filter((u) => !u.parent_id), [units]);
+    const unitOptions = useMemo(
+      () =>
+        units.map((u) => ({
+          label: `${unitTypeLabels[u.unit_type]} · ${u.name}`,
+          value: u.id,
+        })),
+      [units],
+    );
 
     return (
       <div className={styles.sectionCard}>
@@ -52,7 +68,9 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
           <div className={styles.sectionHeaderLeft}>
             <span className={styles.sectionTitle}>教育组织</span>
             <span className={styles.sectionSubtitle}>
-              {roots.length} 学校 / {units.length} 单元
+              {units.filter((u) => u.unit_type === 'school').length} 学校 /{' '}
+              {units.filter((u) => u.unit_type === 'cohort').length} 届别 /{' '}
+              {units.filter((u) => u.unit_type === 'class').length} 班级
             </span>
           </div>
           <Button
@@ -74,20 +92,19 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
           )}
           {units.length === 0 ? (
             <div className={styles.treeEmpty}>
-              <Empty description="还没有学校" image={Empty.PRESENTED_IMAGE_SIMPLE}>
+              <Empty description="还没有组织层级" image={Empty.PRESENTED_IMAGE_SIMPLE}>
                 {canManage && (
                   <Button
                     className={styles.pillButton}
                     icon={<Plus size={14} />}
                     type="primary"
                     onClick={() => {
-                      orgUnitForm.setFieldsValue({ parent_id: undefined, unit_type: 'school' });
                       document
-                        .getElementById('askcore-create-org-unit')
+                        .getElementById('askcore-create-school-unit')
                         ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }}
                   >
-                    创建第一个学校
+                    添加学校
                   </Button>
                 )}
               </Empty>
@@ -100,6 +117,7 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
                   canManage={canManage}
                   key={root.id}
                   node={root}
+                  onAddChild={onAddChild}
                 />
               ))}
             </div>
@@ -109,57 +127,47 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
             <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${cssVar.colorBorderSecondary}` }}>
               <Form
                 form={orgUnitForm}
-                id="askcore-create-org-unit"
-                initialValues={{ sort_order: 0, unit_type: 'school' }}
+                id="askcore-create-school-unit"
                 layout="vertical"
               >
                 <Space size={8} style={{ marginBottom: 12 }}>
                   <Plus size={14} />
-                  <span style={{ fontSize: 14, fontWeight: 600 }}>创建层级</span>
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>学校</span>
                 </Space>
                 <Space wrap align="start">
-                  <Form.Item label="名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
-                    <Input maxLength={80} placeholder="名称" />
+                  <Form.Item label="学校名称" name="name" rules={[{ required: true, message: '请输入学校名称' }]}>
+                    <Input maxLength={80} placeholder="例如：Seed School" style={{ width: 240 }} />
                   </Form.Item>
-                  <Form.Item label="类型" name="unit_type" rules={[{ required: true }]}>
-                    <Select options={unitTypeOptions} style={{ width: 120 }} />
-                  </Form.Item>
-                  <Form.Item label="上级 ID" name="parent_id">
-                    <InputNumber min={1} placeholder="无" style={{ width: 120 }} />
-                  </Form.Item>
-                  <Form.Item label="排序" name="sort_order">
-                    <InputNumber style={{ width: 100 }} />
+                  <Form.Item label="备注" name="description">
+                    <Input maxLength={200} placeholder="可选" style={{ width: 320 }} />
                   </Form.Item>
                 </Space>
-                <Form.Item label="备注" name="description">
-                  <Input.TextArea autoSize={{ maxRows: 3, minRows: 2 }} maxLength={2000} />
-                </Form.Item>
                 <Button
                   className={styles.pillButton}
                   icon={<Plus size={14} />}
                   loading={creatingUnit}
                   type="primary"
-                  onClick={onCreateUnit}
+                  onClick={onCreateSchool}
                 >
-                  创建层级
+                  添加学校
                 </Button>
               </Form>
 
               <Form form={orgRoleForm} layout="vertical" style={{ marginTop: 20 }}>
                 <Space size={8} style={{ marginBottom: 12 }}>
                   <UserRoundPlus size={14} />
-                  <span style={{ fontSize: 14, fontWeight: 600 }}>分配身份</span>
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>身份分配</span>
                 </Space>
                 <Space wrap align="start">
                   <Form.Item label="组织层级" name="org_unit_id" rules={[{ required: true, message: '请选择层级' }]}>
-                    <Select options={units.map((u) => ({ label: u.name, value: u.id }))} style={{ width: 180 }} />
+                    <Select options={unitOptions} style={{ width: 220 }} />
                   </Form.Item>
                   <Form.Item label="身份" name="role" rules={[{ required: true, message: '请选择身份' }]}>
                     <Select
                       style={{ width: 140 }}
                       options={[
                         { label: '学校管理者', value: 'school_admin' },
-                        { label: '年级管理者', value: 'grade_admin' },
+                        { label: '届别管理者', value: 'grade_admin' },
                         { label: '班主任', value: 'homeroom_teacher' },
                         { label: '教师', value: 'teacher' },
                         { label: '学生', value: 'student' },
@@ -168,14 +176,21 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
                   </Form.Item>
                 </Space>
                 <Space wrap align="start">
-                  <Form.Item label="Better Auth 用户 ID" name="better_auth_user_id">
-                    <Input maxLength={200} placeholder="可选" style={{ width: 220 }} />
-                  </Form.Item>
-                  <Form.Item label="教师 ID" name="teacher_id">
-                    <InputNumber min={1} placeholder="可选" style={{ width: 120 }} />
-                  </Form.Item>
-                  <Form.Item label="学生 ID" name="student_id">
-                    <InputNumber min={1} placeholder="可选" style={{ width: 120 }} />
+                  <Form.Item
+                    label="成员"
+                    name="subject_user_id"
+                    rules={[{ required: true, message: '请选择成员' }]}
+                  >
+                    <Select
+                      showSearch
+                      optionFilterProp="label"
+                      options={members.map((member) => ({
+                        label: member.email ? `${member.name} · ${member.email}` : member.name,
+                        value: member.userId,
+                      }))}
+                      placeholder="搜索成员"
+                      style={{ width: 260 }}
+                    />
                   </Form.Item>
                 </Space>
                 <Button
