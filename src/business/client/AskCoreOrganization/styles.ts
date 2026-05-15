@@ -368,20 +368,16 @@ export const styles = createStaticStyles(({ css }) => ({
     color: ${cssVar.colorTextSecondary};
   `,
   treeRootAddButton: css`
-    min-width: 34px;
-    width: 34px;
-    height: 34px;
-    border: 0;
-    border-radius: 999px;
-    background: ${cssVar.colorText};
-    color: ${cssVar.colorBgContainer};
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
+    min-width: 28px;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    color: ${cssVar.colorTextSecondary};
 
     &:hover,
     &:focus-visible {
-      background: ${cssVar.colorPrimary};
-      color: ${cssVar.colorBgContainer};
-      transform: translateY(-1px);
+      color: ${cssVar.colorText};
+      background: ${cssVar.colorFillQuaternary};
     }
   `,
   treeRootInlineForm: css`
@@ -423,7 +419,7 @@ export const styles = createStaticStyles(({ css }) => ({
     color: ${cssVar.colorPrimary};
   `,
   treeNodeActions: css`
-    opacity: 1;
+    opacity: 0;
     transition: opacity 0.15s ease;
     display: flex;
     align-items: center;
@@ -431,19 +427,15 @@ export const styles = createStaticStyles(({ css }) => ({
     margin-left: auto;
   `,
   treeAddButton: css`
-    min-width: 28px;
-    width: 28px;
-    height: 28px;
-    border-radius: 999px;
-    border: 0;
-    background: ${cssVar.colorText};
-    color: ${cssVar.colorBgContainer};
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.14);
+    min-width: 24px;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    color: ${cssVar.colorTextSecondary};
 
     &:hover {
-      color: ${cssVar.colorBgContainer};
-      background: ${cssVar.colorPrimary};
-      transform: translateY(-1px);
+      color: ${cssVar.colorText};
+      background: ${cssVar.colorFillQuaternary};
     }
   `,
   treeNodeChildren: css`

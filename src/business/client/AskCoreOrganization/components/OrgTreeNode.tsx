@@ -106,6 +106,7 @@ export const OrgTreeNode = memo<OrgTreeNodeProps>(
                     className={styles.treeAddButton}
                     icon={<Plus size={13} />}
                     size="small"
+                    type="text"
                     onClick={(event) => {
                       event.stopPropagation();
                       setAdding(true);

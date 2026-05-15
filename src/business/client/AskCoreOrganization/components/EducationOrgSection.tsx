@@ -238,6 +238,8 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
                       aria-label="新建学校"
                       className={styles.treeRootAddButton}
                       icon={<Plus size={16} />}
+                      size="small"
+                      type="text"
                       onClick={() => setAddingSchool(true)}
                     />
                   </Tooltip>
