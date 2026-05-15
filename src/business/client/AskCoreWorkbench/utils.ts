@@ -36,14 +36,10 @@ export const askCoreWorkbenchTabFromRoute = (route?: string | null): AskCoreWork
 const ORGANIZATION_ROUTE_TABS: Record<string, string> = {
   class: 'classes',
   classes: 'classes',
-  grade: 'grades',
-  grades: 'grades',
   school: 'schools',
   schools: 'schools',
   student: 'students',
   students: 'students',
-  subject: 'subjects',
-  subjects: 'subjects',
   teacher: 'teachers',
   teachers: 'teachers',
 };

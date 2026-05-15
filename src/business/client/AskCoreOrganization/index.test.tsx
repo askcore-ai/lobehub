@@ -83,6 +83,8 @@ describe('AskCoreOrganizationRoute', () => {
     );
 
     await waitFor(() => expect(screen.getAllByText('组织设置').length).toBeGreaterThan(0));
+    expect(screen.queryByRole('button', { name: '教学年级' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '学科' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '成员' }));
     expect(screen.queryByText('邀请成员')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '层级' }));

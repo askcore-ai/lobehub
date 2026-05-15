@@ -38,7 +38,8 @@ describe('AskCoreWorkbench utils', () => {
 
   it('maps organization-owned plugin routes to organization tabs', () => {
     expect(askCoreOrganizationTabFromRoute('/schools')).toBe('schools');
-    expect(askCoreOrganizationTabFromRoute('/subjects')).toBe('subjects');
+    expect(askCoreOrganizationTabFromRoute('/subjects')).toBeNull();
+    expect(askCoreOrganizationTabFromRoute('/grades')).toBeNull();
     expect(askCoreOrganizationTabFromRoute('/students/201')).toBe('students');
     expect(askCoreOrganizationTabFromRoute('/assignments')).toBeNull();
     expect(buildAskCoreOrganizationUrl({ route: '/classes' })).toBe(

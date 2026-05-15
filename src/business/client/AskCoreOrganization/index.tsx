@@ -55,7 +55,7 @@ import { styles } from './styles';
 
 type OrganizationRosterResource = Extract<
   ResourceKey,
-  'grades' | 'students' | 'subjects' | 'teachers'
+  'students' | 'teachers'
 >;
 type TabKey = 'hierarchy' | 'members' | 'overview' | OrganizationRosterResource;
 
@@ -63,25 +63,19 @@ const tabs: { key: TabKey; label: string }[] = [
   { key: 'overview', label: '概览' },
   { key: 'members', label: '成员' },
   { key: 'hierarchy', label: '层级' },
-  { key: 'grades', label: '教学年级' },
   { key: 'teachers', label: '教师' },
   { key: 'students', label: '学生' },
-  { key: 'subjects', label: '学科' },
 ];
 
 const rosterResources: OrganizationRosterResource[] = [
-  'grades',
   'teachers',
   'students',
-  'subjects',
 ];
-const lookupResources: LookupCollectionKey[] = ['grades', 'students', 'subjects', 'teachers'];
+const lookupResources: LookupCollectionKey[] = ['students', 'teachers'];
 const ROSTER_PAGE_SIZE = 20;
 const ROSTER_IMPORT_TERMINAL_STATES = new Set(['cancelled', 'failed', 'succeeded']);
 const ROSTER_IMPORT_ACTIONS: Record<OrganizationRosterResource, string> = {
-  grades: 'ops.import.grades',
   students: 'ops.import.students',
-  subjects: 'ops.import.subjects',
   teachers: 'ops.import.teachers',
 };
 
@@ -158,9 +152,7 @@ const displayValue = (value: unknown) => {
 };
 
 const rosterColumnsByResource: Record<OrganizationRosterResource, string[]> = {
-  grades: ['name', 'education_level', 'grade_order', 'is_graduation_grade'],
   students: ['name', 'student_number', 'class_name', 'gender'],
-  subjects: ['name', 'subject_category', 'is_core_subject'],
   teachers: ['real_name', 'username', 'role', 'school_name'],
 };
 
@@ -896,9 +888,9 @@ export const AskCoreOrganizationRoute = memo(() => {
                   roleLoading={org.educationRoleLoading}
                   students={org.educationStudents}
                   teachers={org.educationTeachers}
+                  onAddChild={org.handleAddEducationChild}
                   onAddSchool={org.handleAddSchoolUnit}
                   onAssignRole={org.handleAssignEducationRole}
-                  onAddChild={org.handleAddEducationChild}
                   onDeleteRole={org.handleDeleteEducationRole}
 	                  onReload={org.reloadEducationOrgUnits}
 	                />
