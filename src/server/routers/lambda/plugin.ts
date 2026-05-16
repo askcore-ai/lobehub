@@ -45,8 +45,15 @@ export const pluginRouter = router({
         return data.identifier;
       }
 
-      // or we can just update the plugin manifest
-      await ctx.pluginModel.update(input.identifier, { manifest: input.manifest });
+      // or refresh the full install payload. MCP plugins keep their connection
+      // contract in customParams, so manifest-only updates leave stale installs broken.
+      await ctx.pluginModel.update(input.identifier, {
+        customParams: input.customParams,
+        manifest: input.manifest,
+        settings: input.settings,
+        source: input.source,
+        type: input.type,
+      });
     }),
 
   createPlugin: pluginProcedure
