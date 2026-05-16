@@ -271,6 +271,18 @@ const styles = createStaticStyles(({ css }) => ({
     border-radius: 8px;
     background: ${cssVar.colorBgContainer};
   `,
+  progressFill: css`
+    height: 100%;
+    border-radius: inherit;
+    background: ${cssVar.colorText};
+    transition: width 0.2s ease;
+  `,
+  progressRail: css`
+    overflow: hidden;
+    height: 8px;
+    border-radius: 999px;
+    background: ${cssVar.colorFillSecondary};
+  `,
   panelTitle: css`
     margin-block: 0 12px;
     margin-inline: 0;
@@ -405,7 +417,10 @@ const styles = createStaticStyles(({ css }) => ({
 
     background: ${cssVar.colorBgContainer};
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease,
+      transform 0.15s ease;
 
     &:hover {
       border-color: ${cssVar.colorPrimaryBorder};
@@ -474,6 +489,22 @@ const styles = createStaticStyles(({ css }) => ({
     width: 100%;
     margin-top: 10px;
     overflow: hidden;
+  `,
+  resultCard: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+
+    padding: 12px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 8px;
+
+    background: ${cssVar.colorFillQuaternary};
+  `,
+  resultCardBody: css`
+    min-width: 0;
   `,
   listStatusBar: css`
     display: flex;
@@ -597,7 +628,6 @@ type WorkbenchRoute =
   | { kind: 'assignment-manual'; path: string }
   | { kind: 'assignment-ocr'; path: string }
   | { kind: 'submission-ocr'; path: string };
-
 
 type DetailState =
   | { item: JsonRecord; kind: 'generic' }
@@ -824,6 +854,250 @@ const extractPublishedAssignmentId = (artifacts: PluginArtifact[]) => {
 
 const artifactTitle = (artifact: PluginArtifact) =>
   String(artifact.title || artifact.summary || artifact.type || artifact.artifact_id);
+
+type AssignmentOcrRunSummaryTone = 'danger' | 'info' | 'success' | 'warning';
+
+type AssignmentOcrRunSummaryItem = {
+  actionLabel?: string;
+  assignmentId?: number | null;
+  description: string;
+  title: string;
+};
+
+type AssignmentOcrRunSummary = {
+  emptyResultText: string;
+  hiddenArtifacts: PluginArtifact[];
+  progressLabel: string;
+  progressPercent: number | null;
+  resultItems: AssignmentOcrRunSummaryItem[];
+  statusDescription: string;
+  statusTitle: string;
+  statusTone: AssignmentOcrRunSummaryTone;
+  technicalItems: Array<{ label: string; value: string }>;
+  trackingLabel: string | null;
+  visibleArtifacts: PluginArtifact[];
+};
+
+const assignmentOcrVisibleArtifactTypes = new Set([
+  'assignment.draft',
+  'assignment.publish.result',
+]);
+const assignmentOcrRelatedActions = new Set([
+  'assignment.draft.create_from_ocr',
+  'assignment.draft.publish',
+]);
+
+const getTrackingLabel = (tracking?: RunState['tracking']) =>
+  tracking === 'stream'
+    ? '实时跟踪'
+    : tracking === 'polling'
+      ? '轮询跟踪'
+      : tracking === 'degraded'
+        ? '跟踪降级'
+        : null;
+
+const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
+
+const getArtifactQuestionCount = (artifact: PluginArtifact, invocation: RunState['invocation']) => {
+  const content = artifact.content || {};
+  if (Array.isArray(content.questions)) return content.questions.length;
+  const explicitCount = Number(content.question_count || content.questions_count || 0) || 0;
+  if (explicitCount > 0) return explicitCount;
+  return Number(invocation?.question_total || invocation?.question_succeeded || 0) || 0;
+};
+
+const assignmentOcrToneColor = (tone: AssignmentOcrRunSummaryTone) => {
+  if (tone === 'success') return 'green';
+  if (tone === 'danger') return 'red';
+  if (tone === 'warning') return 'gold';
+  return 'blue';
+};
+
+const getAssignmentOcrStatus = ({
+  hasDraft,
+  hasPublishedAssignment,
+  invocation,
+  progressStage,
+}: {
+  hasDraft: boolean;
+  hasPublishedAssignment: boolean;
+  invocation: RunState['invocation'];
+  progressStage: string;
+}): Pick<AssignmentOcrRunSummary, 'statusDescription' | 'statusTitle' | 'statusTone'> => {
+  const actionId = String(invocation?.action_id || '').trim();
+  const state = String(invocation?.state || '').toLowerCase();
+  const normalizedStage = String(progressStage || state || '').toLowerCase();
+  const failed = TERMINAL_INVOCATION_STATES.has(state) && state !== 'succeeded';
+
+  if (!invocation) {
+    return {
+      statusDescription: '上传扫描件或调用扫描仪后，系统会开始识别题目并生成作业草稿。',
+      statusTitle: '等待开始 OCR',
+      statusTone: 'info',
+    };
+  }
+
+  if (actionId === 'assignment.draft.publish') {
+    if (failed) {
+      return {
+        statusDescription: invocation.failure_reason || '草稿已生成，但自动发布作业失败。',
+        statusTitle: '发布失败',
+        statusTone: 'danger',
+      };
+    }
+    if (state === 'succeeded' || hasPublishedAssignment) {
+      return {
+        statusDescription: '作业已经创建，可以进入作业详情继续检查发布对象和题目。',
+        statusTitle: '作业已创建并发布',
+        statusTone: 'success',
+      };
+    }
+    return {
+      statusDescription: '草稿已生成，正在根据发布范围创建作业。',
+      statusTitle: '正在发布作业',
+      statusTone: 'info',
+    };
+  }
+
+  if (failed) {
+    return {
+      statusDescription: invocation.failure_reason || '本次 OCR 没有生成可校对的作业草稿。',
+      statusTitle: 'OCR 失败',
+      statusTone: 'danger',
+    };
+  }
+  if (state === 'succeeded' || normalizedStage === 'succeeded') {
+    return hasDraft
+      ? {
+          statusDescription: '作业草稿已经生成，系统会继续按发布范围自动创建作业。',
+          statusTitle: '作业草稿已生成',
+          statusTone: 'success',
+        }
+      : {
+          statusDescription: '任务已结束，但这次没有返回作业草稿。',
+          statusTitle: 'OCR 已完成',
+          statusTone: 'warning',
+        };
+  }
+  if (normalizedStage === 'recognizing_questions') {
+    return {
+      statusDescription: '正在把扫描件解析成题目结构，完成后会生成作业草稿。',
+      statusTitle: '正在识别题目',
+      statusTone: 'info',
+    };
+  }
+  if (normalizedStage === 'building_draft') {
+    return {
+      statusDescription: '题目已识别，正在写入作业草稿。',
+      statusTitle: '正在生成作业草稿',
+      statusTone: 'info',
+    };
+  }
+  if (normalizedStage === 'indexing') {
+    return {
+      statusDescription: '正在整理扫描件并建立 OCR 识别上下文。',
+      statusTitle: '正在准备 OCR',
+      statusTone: 'info',
+    };
+  }
+  return {
+    statusDescription: '后台正在处理 OCR，完成后会在运行结果里显示作业草稿。',
+    statusTitle: 'OCR 处理中',
+    statusTone: 'info',
+  };
+};
+
+export const buildAssignmentOcrRunSummary = (run: RunState): AssignmentOcrRunSummary => {
+  const invocation = run.invocation;
+  const actionId = String(invocation?.action_id || '').trim();
+  const isRelatedAction = !actionId || assignmentOcrRelatedActions.has(actionId);
+  const visibleArtifacts = isRelatedAction
+    ? run.artifacts.filter((artifact) => assignmentOcrVisibleArtifactTypes.has(artifact.type))
+    : [];
+  const hiddenArtifactIds = new Set(visibleArtifacts.map((artifact) => artifact.artifact_id));
+  const hiddenArtifacts = run.artifacts.filter(
+    (artifact) => !hiddenArtifactIds.has(artifact.artifact_id),
+  );
+  const questionTotal = Number(invocation?.question_total || 0) || 0;
+  const questionSucceeded = Number(invocation?.question_succeeded || 0) || 0;
+  const questionFailed = Number(invocation?.question_failed || 0) || 0;
+  const currentQuestion = Number(invocation?.current_question_order_index || 0) || 0;
+  const processedQuestions = questionTotal
+    ? Math.min(questionTotal, Math.max(questionSucceeded + questionFailed, currentQuestion))
+    : 0;
+  const progressLabel = questionTotal
+    ? `已处理 ${processedQuestions}/${questionTotal}`
+    : '等待后端进度';
+  const progressPercent = questionTotal
+    ? clampPercent((processedQuestions / questionTotal) * 100)
+    : null;
+  const hasDraft = visibleArtifacts.some((artifact) => artifact.type === 'assignment.draft');
+  const hasPublishedAssignment = visibleArtifacts.some(
+    (artifact) =>
+      artifact.type === 'assignment.publish.result' && positiveId(artifact.content.assignment_id),
+  );
+  const progressStage = String(invocation?.progress_stage || invocation?.state || '').trim();
+  const status = isRelatedAction
+    ? getAssignmentOcrStatus({
+        hasDraft,
+        hasPublishedAssignment,
+        invocation,
+        progressStage,
+      })
+    : {
+        statusDescription: '当前跟踪的不是作业草稿 OCR 任务。',
+        statusTitle: '正在跟踪其他任务',
+        statusTone: 'warning' as const,
+      };
+  const resultItems = visibleArtifacts.map((artifact) => {
+    if (artifact.type === 'assignment.publish.result') {
+      const assignmentId = positiveId(artifact.content.assignment_id);
+      return {
+        actionLabel: assignmentId ? '打开作业' : undefined,
+        assignmentId: assignmentId || null,
+        description: assignmentId ? `作业 ${assignmentId}` : '作业已创建',
+        title: '作业已创建并发布',
+      };
+    }
+    const questionCount = getArtifactQuestionCount(artifact, invocation);
+    const draftTitle = String(artifact.content.title || artifact.title || '').trim();
+    const shortId = artifact.artifact_id.slice(0, 8);
+    const description = [
+      draftTitle || null,
+      questionCount > 0 ? `识别题目 ${questionCount} 道` : null,
+      `草稿 ${shortId}`,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    return {
+      description,
+      title: '已生成作业草稿',
+    };
+  });
+
+  return {
+    emptyResultText:
+      invocation &&
+      TERMINAL_INVOCATION_STATES.has(String(invocation.state || '').toLowerCase()) &&
+      invocation.state !== 'succeeded'
+        ? '本次没有生成作业草稿。'
+        : '识别完成后会在这里生成作业草稿。',
+    hiddenArtifacts,
+    progressLabel,
+    progressPercent,
+    resultItems,
+    ...status,
+    technicalItems: [
+      { label: 'Invocation', value: invocation?.invocation_id || '--' },
+      { label: '状态', value: invocation?.state || '--' },
+      { label: '阶段', value: progressStage || '--' },
+      { label: '跟踪方式', value: getTrackingLabel(run.tracking || undefined) || '--' },
+      { label: '结果数', value: String(invocation?.artifact_count ?? run.artifacts.length) },
+    ],
+    trackingLabel: getTrackingLabel(run.tracking || undefined),
+    visibleArtifacts,
+  };
+};
 
 const runNoticeForUploadProgress =
   (prefix: string) =>
@@ -2044,14 +2318,113 @@ const BatchResultTable = ({
 );
 
 const RunStatusPanel = ({
+  onOpenAssignment,
   onOpenSubmission,
   run,
   title = '运行状态',
+  variant = 'default',
 }: {
+  onOpenAssignment?: (assignmentId: number) => void;
   onOpenSubmission?: (submissionId: number) => void;
   run: RunState;
   title?: string;
+  variant?: 'assignment-ocr' | 'default';
 }) => {
+  if (variant === 'assignment-ocr') {
+    const summary = buildAssignmentOcrRunSummary(run);
+    return (
+      <div className={styles.stack}>
+        <div className={styles.panel}>
+          <div className={styles.actionBar}>
+            <h3 className={styles.panelTitle}>运行状态</h3>
+            <Tag color={assignmentOcrToneColor(summary.statusTone)}>
+              {summary.statusTone === 'success'
+                ? '已完成'
+                : summary.statusTone === 'danger'
+                  ? '失败'
+                  : summary.statusTone === 'warning'
+                    ? '注意'
+                    : '运行中'}
+            </Tag>
+          </div>
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 650, lineHeight: 1.35 }}>
+                {summary.statusTitle}
+              </div>
+              <div className={styles.muted} style={{ marginTop: 4 }}>
+                {summary.statusDescription}
+              </div>
+            </div>
+            <div>
+              <div className={styles.actionBar} style={{ marginBottom: 8 }}>
+                <span>{summary.progressLabel}</span>
+                {summary.trackingLabel ? (
+                  <span className={styles.muted}>{summary.trackingLabel}</span>
+                ) : null}
+              </div>
+              <div aria-label="OCR 进度" className={styles.progressRail}>
+                {summary.progressPercent == null ? null : (
+                  <div
+                    className={styles.progressFill}
+                    style={{ width: `${summary.progressPercent}%` }}
+                  />
+                )}
+              </div>
+            </div>
+            {run.notice ? <Alert showIcon message={run.notice} type="info" /> : null}
+            {run.error ? <Alert showIcon message={run.error} type="error" /> : null}
+            {run.invocation ? (
+              <details>
+                <summary className={styles.muted} style={{ cursor: 'pointer' }}>
+                  技术信息
+                </summary>
+                <Descriptions
+                  column={1}
+                  size="small"
+                  style={{ marginTop: 8 }}
+                  items={summary.technicalItems.map((item) => ({
+                    children: item.value,
+                    label: item.label,
+                  }))}
+                />
+              </details>
+            ) : null}
+          </Space>
+        </div>
+
+        <div className={styles.panel}>
+          <h3 className={styles.panelTitle}>运行结果</h3>
+          {summary.resultItems.length ? (
+            <Space direction="vertical" style={{ width: '100%' }}>
+              {summary.resultItems.map((item) => (
+                <div className={styles.resultCard} key={`${item.title}-${item.description}`}>
+                  <div className={styles.resultCardBody}>
+                    <div style={{ fontWeight: 600 }}>{item.title}</div>
+                    <div className={styles.muted} style={{ marginTop: 4 }}>
+                      {item.description}
+                    </div>
+                  </div>
+                  {item.assignmentId && item.actionLabel ? (
+                    <Button
+                      className={styles.secondary}
+                      size="small"
+                      onClick={() => onOpenAssignment?.(item.assignmentId!)}
+                    >
+                      {item.actionLabel}
+                    </Button>
+                  ) : null}
+                </div>
+              ))}
+            </Space>
+          ) : (
+            <Empty description={summary.emptyResultText} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const invocation = run.invocation;
   const batchArtifact = run.artifacts.find(
     (artifact) => artifact.type === 'submission.ocr.batch.result',
@@ -2518,7 +2891,9 @@ const AssignmentDetailView = ({
         });
         const createdCount = Number(result.item.created_count || 0) || 0;
         const skippedCount = Number(result.item.skipped_count || 0) || 0;
-        message.success(`已新增 ${createdCount} 个发布对象${skippedCount ? `，跳过 ${skippedCount} 个已有学生` : ''}`);
+        message.success(
+          `已新增 ${createdCount} 个发布对象${skippedCount ? `，跳过 ${skippedCount} 个已有学生` : ''}`,
+        );
       }
       setSelectedClassId('');
       setSelectedStudentId('');
@@ -2549,7 +2924,9 @@ const AssignmentDetailView = ({
       );
       setRecipientSelectedIds((current) => current.filter((id) => !removed.has(id)));
       if (failures.length) {
-        message.error(`已移除 ${removed.size} 个发布对象，失败 ${failures.length} 个：${failures[0]}`);
+        message.error(
+          `已移除 ${removed.size} 个发布对象，失败 ${failures.length} 个：${failures[0]}`,
+        );
       } else {
         message.success(`已移除 ${removed.size} 个发布对象`);
       }
@@ -4409,7 +4786,7 @@ const AssignmentOcrCreateView = ({
             </Button>
           </Form>
         </div>
-        <RunStatusPanel run={run} />
+        <RunStatusPanel run={run} variant="assignment-ocr" onOpenAssignment={onOpenAssignment} />
       </div>
     </div>
   );
@@ -4968,27 +5345,26 @@ const AskCoreWorkbenchPage = memo(() => {
       classes = [];
     }
 
-    setLookups({ ...EMPTY_LOOKUPS, ...Object.fromEntries(entries), classes, schools } as LookupCollections);
+    setLookups({
+      ...EMPTY_LOOKUPS,
+      ...Object.fromEntries(entries),
+      classes,
+      schools,
+    } as LookupCollections);
   }, []);
 
   const reloadListOrDashboard = useCallback(async () => {
     const requestVersion = listVersionRef.current + 1;
     listVersionRef.current = requestVersion;
     setError(undefined);
-    if (
-      currentRoute.kind !== 'list' &&
-      currentRoute.kind !== 'dashboard'
-    ) {
+    if (currentRoute.kind !== 'list' && currentRoute.kind !== 'dashboard') {
       setLoading(false);
       return;
     }
     setLoading(true);
     setLoadingMore(false);
     try {
-      if (
-        currentRoute.kind === 'dashboard' ||
-        !activeConfig.resource
-      ) {
+      if (currentRoute.kind === 'dashboard' || !activeConfig.resource) {
         const payload = await askCoreWorkbenchClient.getDashboard();
         if (listVersionRef.current !== requestVersion) return;
         setDashboard(payload || emptyAskCoreWorkbenchDashboard());
@@ -5055,7 +5431,15 @@ const AskCoreWorkbenchPage = memo(() => {
     } finally {
       if (listVersionRef.current === requestVersion) setLoadingMore(false);
     }
-  }, [currentRoute, filterForm, list?.has_more, list?.next_after_id, loading, loadingMore, lookups]);
+  }, [
+    currentRoute,
+    filterForm,
+    list?.has_more,
+    list?.next_after_id,
+    loading,
+    loadingMore,
+    lookups,
+  ]);
 
   const reloadDetail = useCallback(async () => {
     if (currentRoute.kind !== 'detail' && currentRoute.kind !== 'edit') return;
@@ -5136,7 +5520,14 @@ const AskCoreWorkbenchPage = memo(() => {
     );
     observer.observe(target);
     return () => observer.disconnect();
-  }, [currentRoute.kind, list?.has_more, list?.next_after_id, loading, loadingMore, loadMoreListItems]);
+  }, [
+    currentRoute.kind,
+    list?.has_more,
+    list?.next_after_id,
+    loading,
+    loadingMore,
+    loadMoreListItems,
+  ]);
 
   const filteredItems = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
@@ -5209,11 +5600,15 @@ const AskCoreWorkbenchPage = memo(() => {
   const renderResourceList = (resource: ResourceKey) => {
     const config = ASKCORE_WORKBENCH_TABS.find((tab) => tab.resource === resource)!;
     const filters = RESOURCE_FILTER_FIELDS[resource] || [];
-    const visibleIds = new Set(filteredItems.map((item) => getRecordId(resource, item)).filter((id) => id > 0));
+    const visibleIds = new Set(
+      filteredItems.map((item) => getRecordId(resource, item)).filter((id) => id > 0),
+    );
     const selectedRowKeys = selectedRowKeysByResource[resource] || [];
     const setResourceSelectedRowKeys = (keys: Key[]) =>
       setSelectedRowKeysByResource((current) => ({ ...current, [resource]: keys }));
-    const selectedKeySet = new Set(selectedRowKeys.map((key) => Number(key)).filter((id) => id > 0));
+    const selectedKeySet = new Set(
+      selectedRowKeys.map((key) => Number(key)).filter((id) => id > 0),
+    );
     const selectedIds = [...visibleIds].filter((id) => selectedKeySet.has(id));
     const allVisibleSelected =
       visibleIds.size > 0 && [...visibleIds].every((id) => selectedKeySet.has(id));
@@ -5331,7 +5726,9 @@ const AskCoreWorkbenchPage = memo(() => {
                   }
                 }
                 if (failed.length) {
-                  message.error(`已删除 ${deleted.length} 条，失败 ${failed.length} 条：${failed[0]}`);
+                  message.error(
+                    `已删除 ${deleted.length} 条，失败 ${failed.length} 条：${failed[0]}`,
+                  );
                 } else {
                   message.success('批量删除完成');
                 }
@@ -5375,7 +5772,8 @@ const AskCoreWorkbenchPage = memo(() => {
             全选当前显示记录
           </Checkbox>
           <span>
-            已加载 {list?.items.length ?? 0} 条{list?.total != null ? ` / ${list.total} 条` : ''}，当前显示 {filteredItems.length} 条。
+            已加载 {list?.items.length ?? 0} 条{list?.total != null ? ` / ${list.total} 条` : ''}
+            ，当前显示 {filteredItems.length} 条。
           </span>
         </div>
 
@@ -5411,7 +5809,9 @@ const AskCoreWorkbenchPage = memo(() => {
                       }}
                     />
                     <div className={styles.resourceCardBody}>
-                      <div className={styles.resourceCardTitle}>{getRecordTitle(resource, record)}</div>
+                      <div className={styles.resourceCardTitle}>
+                        {getRecordTitle(resource, record)}
+                      </div>
                       <div className={styles.resourceCardMeta}>
                         {buildResourceEntityPath(resource, id || 0)}
                       </div>
@@ -5434,7 +5834,9 @@ const AskCoreWorkbenchPage = memo(() => {
                       if (resource === 'questions' && column.dataIndex === 'content') {
                         return (
                           <div className={styles.resourcePreviewBlock} key={column.dataIndex}>
-                            <QuestionSummaryPreview preview={buildQuestionPreviewDataFromPayload(record)} />
+                            <QuestionSummaryPreview
+                              preview={buildQuestionPreviewDataFromPayload(record)}
+                            />
                           </div>
                         );
                       }
@@ -5447,7 +5849,10 @@ const AskCoreWorkbenchPage = memo(() => {
                           ? record[column.secondaryIndex]
                           : undefined;
                       return (
-                        <div className={styles.resourceFieldChip} key={column.displayIndex || column.dataIndex}>
+                        <div
+                          className={styles.resourceFieldChip}
+                          key={column.displayIndex || column.dataIndex}
+                        >
                           <span>{column.title}</span>
                           <strong>
                             {formatCellValue(primary, column)}
@@ -5471,7 +5876,11 @@ const AskCoreWorkbenchPage = memo(() => {
 
         {list?.has_more ? <div className={styles.scrollSentinel} ref={loadMoreTriggerRef} /> : null}
         <div className={styles.loadMoreStatus}>
-          {loadingMore ? '正在加载更多…' : list?.has_more ? '滚动到底部会自动加载更多记录。' : '已加载完当前结果。'}
+          {loadingMore
+            ? '正在加载更多…'
+            : list?.has_more
+              ? '滚动到底部会自动加载更多记录。'
+              : '已加载完当前结果。'}
         </div>
       </div>
     );
@@ -5576,7 +5985,10 @@ const AskCoreWorkbenchPage = memo(() => {
         onEdit={() => navigate(routeFor(currentRoute.resource as AskCoreWorkbenchTab, editRoute))}
         onDelete={async () => {
           try {
-            await askCoreWorkbenchClient.deleteResource(currentRoute.resource, currentRoute.entityId);
+            await askCoreWorkbenchClient.deleteResource(
+              currentRoute.resource,
+              currentRoute.entityId,
+            );
           } catch (error) {
             if (!isAskCoreWorkbenchDeleteNotFound(error)) throw error;
           }
