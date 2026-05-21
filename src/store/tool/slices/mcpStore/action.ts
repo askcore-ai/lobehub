@@ -36,6 +36,20 @@ const log = debug('lobe-mcp:store:action');
 
 const n = setNamespace('mcpStore');
 
+type RuntimeProcessLike = { platform?: unknown };
+
+export function getRuntimePlatform(
+  detectedPlatform?: string,
+  runtimeProcess?: RuntimeProcessLike,
+) {
+  if (detectedPlatform) return detectedPlatform;
+
+  const processLike =
+    arguments.length > 1 ? runtimeProcess : typeof process !== 'undefined' ? process : undefined;
+
+  return typeof processLike?.platform === 'string' ? processLike.platform : 'web';
+}
+
 const doesConfigSchemaRequireInput = (configSchema?: any) => {
   if (!configSchema) return false;
 
@@ -598,7 +612,7 @@ export class PluginMCPStoreActionImpl {
           resources: (manifest as any).resources,
           tools: (manifest as any).tools,
         },
-        platform: result?.platform || process.platform,
+        platform: getRuntimePlatform(result?.platform),
         success: true,
         userAgent,
         version: manifest.version || data.version,
@@ -686,7 +700,7 @@ export class PluginMCPStoreActionImpl {
         installDurationMs,
         installParams: connection,
         metadata: errorInfo.metadata,
-        platform: result?.platform || process.platform,
+        platform: getRuntimePlatform(result?.platform),
         success: false,
         userAgent,
         version: data?.version,

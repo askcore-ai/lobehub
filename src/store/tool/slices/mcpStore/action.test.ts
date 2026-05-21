@@ -12,6 +12,7 @@ import { type CheckMcpInstallResult } from '@/types/plugins';
 import { MCPInstallStep } from '@/types/plugins';
 
 import { useToolStore } from '../../store';
+import { getRuntimePlatform } from './action';
 
 vi.mock('@/libs/trpc/client', () => ({
   asyncClient: {},
@@ -122,6 +123,20 @@ afterAll(() => {
 });
 
 describe('mcpStore actions', () => {
+  describe('getRuntimePlatform', () => {
+    it('should prefer detected platform from MCP installation result', () => {
+      expect(getRuntimePlatform('darwin', undefined)).toBe('darwin');
+    });
+
+    it('should return web when no Node process is available', () => {
+      expect(getRuntimePlatform(undefined, undefined)).toBe('web');
+    });
+
+    it('should return web when process has no string platform', () => {
+      expect(getRuntimePlatform(undefined, {})).toBe('web');
+    });
+  });
+
   describe('updateMCPInstallProgress', () => {
     it('should update install progress for an identifier', () => {
       const { result } = renderHook(() => useToolStore());
