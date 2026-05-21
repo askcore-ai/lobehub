@@ -12,6 +12,7 @@ import { marketUserInfo, serverDatabase, telemetry } from '@/libs/trpc/lambda/mi
 import { marketSDK, requireMarketAuth } from '@/libs/trpc/lambda/middleware/marketSDK';
 import { isTrustedClientEnabled } from '@/libs/trusted-client';
 import { FileS3 } from '@/server/modules/S3';
+import { buildWorkbenchAssertionForHeaders } from '@/server/services/askcoreAssertion';
 import { DiscoverService } from '@/server/services/discover';
 import { FileService } from '@/server/services/file';
 import { MarketService } from '@/server/services/market';
@@ -322,8 +323,41 @@ export const marketRouter = router({
           log('callCloudMcpEndpoint: using trusted client authentication');
         }
 
+        let askCoreHeaders: Record<string, string> | undefined;
+        if (input.identifier === 'documents') {
+          if (!ctx.requestHeaders) {
+            throw new TRPCError({
+              code: 'UNAUTHORIZED',
+              message: 'AskCore session headers are required for Documents.',
+            });
+          }
+
+          let assertionResult: Awaited<ReturnType<typeof buildWorkbenchAssertionForHeaders>>;
+          try {
+            assertionResult = await buildWorkbenchAssertionForHeaders(ctx.requestHeaders);
+          } catch (error) {
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message:
+                error instanceof Error && error.message
+                  ? error.message
+                  : 'Unable to create AskCore assertion for Documents.',
+            });
+          }
+
+          if (!assertionResult) {
+            throw new TRPCError({
+              code: 'UNAUTHORIZED',
+              message: 'An authenticated AskCore session is required for Documents.',
+            });
+          }
+
+          askCoreHeaders = { [assertionResult.headerName]: assertionResult.assertion };
+        }
+
         const cloudResult = await ctx.discoverService.callCloudMcpEndpoint({
           apiParams: input.apiParams,
+          headers: askCoreHeaders,
           identifier: input.identifier,
           toolName: input.toolName,
           userAccessToken,

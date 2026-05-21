@@ -260,6 +260,7 @@ describe('DiscoverService', () => {
         ]),
       },
       plugins: {
+        callCloudGateway: vi.fn().mockResolvedValue({ content: [], isError: false }),
         getCategories: vi.fn().mockResolvedValue([
           { category: 'tools', count: 5 },
           { category: 'utilities', count: 3 },
@@ -289,6 +290,32 @@ describe('DiscoverService', () => {
 
     service = new DiscoverService();
     service.market = mockMarket;
+  });
+
+  describe('Cloud MCP gateway', () => {
+    it('forwards AskCore assertion headers with the market access token', async () => {
+      await service.callCloudMcpEndpoint({
+        apiParams: { title: 'Lesson' },
+        headers: { 'X-AskCore-Billing-Assertion': 'assertion-token' },
+        identifier: 'documents',
+        toolName: 'generate_docx',
+        userAccessToken: 'market-token',
+      });
+
+      expect(mockMarket.plugins.callCloudGateway).toHaveBeenCalledWith(
+        {
+          apiParams: { title: 'Lesson' },
+          identifier: 'documents',
+          toolName: 'generate_docx',
+        },
+        {
+          headers: {
+            Authorization: 'Bearer market-token',
+            'X-AskCore-Billing-Assertion': 'assertion-token',
+          },
+        },
+      );
+    });
   });
 
   describe('Assistant Market (new source)', () => {

@@ -153,6 +153,7 @@ export class DiscoverService {
 
   async callCloudMcpEndpoint(params: {
     apiParams: Record<string, any>;
+    headers?: Record<string, string>;
     identifier: string;
     toolName: string;
     userAccessToken?: string;
@@ -167,7 +168,7 @@ export class DiscoverService {
     try {
       // Build headers - only include Authorization if userAccessToken is provided
       // When userAccessToken is not provided, MarketSDK will use trustedClientToken for authentication
-      const headers: Record<string, string> = {};
+      const headers: Record<string, string> = { ...(params.headers ?? {}) };
       if (params.userAccessToken) {
         headers.Authorization = `Bearer ${params.userAccessToken}`;
       }

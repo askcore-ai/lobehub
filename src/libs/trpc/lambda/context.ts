@@ -69,6 +69,7 @@ export interface AuthContext {
   marketAccessToken?: string;
   // Add OIDC authentication information
   oidcAuth?: OIDCAuth | null;
+  requestHeaders?: Headers;
   resHeaders?: Headers;
   traceContext?: OtContext;
   userAgent?: string;
@@ -84,6 +85,7 @@ export const createContextInner = async (params?: {
   clientIp?: string | null;
   marketAccessToken?: string;
   oidcAuth?: OIDCAuth | null;
+  requestHeaders?: Headers;
   traceContext?: OtContext;
   userAgent?: string;
   userEmail?: string | null;
@@ -96,6 +98,7 @@ export const createContextInner = async (params?: {
     clientIp: params?.clientIp,
     marketAccessToken: params?.marketAccessToken,
     oidcAuth: params?.oidcAuth,
+    requestHeaders: params?.requestHeaders,
     resHeaders: responseHeaders,
     traceContext: params?.traceContext,
     userAgent: params?.userAgent,
@@ -139,6 +142,7 @@ export const createLambdaContext = async (request: NextRequest): Promise<LambdaC
   const commonContext = {
     clientIp,
     marketAccessToken,
+    requestHeaders: request.headers,
     userAgent,
   };
 
