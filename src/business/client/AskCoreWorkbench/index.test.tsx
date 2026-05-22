@@ -2,7 +2,11 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { AskCoreWorkbenchRoute, buildAssignmentOcrRunSummary } from './index';
+import {
+  AskCoreWorkbenchRoute,
+  buildAssignmentOcrRunSummary,
+  buildSubmissionOcrRunSummary,
+} from './index';
 
 describe('AskCoreWorkbenchRoute assignment detail', () => {
   afterEach(() => {
@@ -157,6 +161,101 @@ describe('AskCoreWorkbenchRoute assignment OCR run summary', () => {
   ])('maps %s to a teacher readable OCR status', (stage, state, expectedTitle) => {
     const summary = buildAssignmentOcrRunSummary({
       artifacts: state === 'succeeded' ? [artifact('assignment.draft', 'draft-1')] : [],
+      busy: state === 'running',
+      error: state === 'failed' ? 'boom' : null,
+      invocation: {
+        ...invocation,
+        failure_reason: state === 'failed' ? 'boom' : null,
+        progress_stage: stage,
+        state,
+      },
+      notice: null,
+      tracking: 'polling',
+    });
+
+    expect(summary.statusTitle).toBe(expectedTitle);
+  });
+});
+
+describe('AskCoreWorkbenchRoute submission OCR run summary', () => {
+  const invocation = {
+    action_id: 'submission.create_from_ocr',
+    artifact_count: 3,
+    created_at: '2026-05-16T00:00:00Z',
+    current_question_order_index: null,
+    failure_reason: null,
+    finished_at: null,
+    invocation_id: 'inv-submission-ocr-1',
+    last_event_at: null,
+    plugin_id: 'aitutor-suite',
+    progress_stage: 'running_submission_ocr',
+    question_failed: 1,
+    question_succeeded: 1,
+    question_total: 4,
+    run_id: 20,
+    started_at: '2026-05-16T00:00:00Z',
+    state: 'running',
+    workflow_name: 'workbench.submission_create_from_ocr',
+  };
+
+  const artifact = (type: string, artifactId: string, content = {}) => ({
+    artifact_id: artifactId,
+    content,
+    created_at: '2026-05-16T00:00:00Z',
+    redaction: {},
+    references: [],
+    run_id: 20,
+    schema_version: 'v1',
+    summary: null,
+    title: null,
+    type,
+  });
+
+  it('summarizes student submission batch results and hides raw grading artifacts', () => {
+    const summary = buildSubmissionOcrRunSummary({
+      artifacts: [
+        artifact('grading.result.student', 'grading-1'),
+        artifact('submission.ocr.batch.result', 'batch-1', {
+          assignment_title: '函数作业',
+          auto_bound: [{ submission_id: 101 }],
+          created_count: 3,
+          explained_count: 1,
+          failed: [{ submission_id: 103 }],
+          graded_count: 1,
+          needs_binding: [{ submission_id: 102 }],
+        }),
+        artifact('grading.explanation', 'explanation-1'),
+      ],
+      busy: false,
+      error: null,
+      invocation: { ...invocation, progress_stage: 'succeeded', state: 'succeeded' },
+      notice: null,
+      tracking: 'polling',
+    });
+
+    expect(summary.statusTitle).toBe('学生提交处理完成');
+    expect(summary.progressLabel).toBe('已处理 2/4 份提交');
+    expect(summary.visibleArtifacts.map((item) => item.type)).toEqual([
+      'submission.ocr.batch.result',
+    ]);
+    expect(summary.hiddenArtifacts.map((item) => item.type)).toEqual([
+      'grading.result.student',
+      'grading.explanation',
+    ]);
+    expect(summary.resultItems[0]).toMatchObject({
+      description: '函数作业 · 创建 3 份 · 自动绑定 1 · 待处理 1 · 失败 1 · 已批改 1',
+      title: '学生提交批量处理结果',
+    });
+  });
+
+  it.each([
+    ['running_submission_ocr', 'running', '正在识别并批改提交'],
+    ['finalizing_batch', 'running', '正在汇总批次结果'],
+    ['succeeded', 'succeeded', '学生提交处理完成'],
+    ['failed', 'failed', '提交 OCR 失败'],
+  ])('maps %s to a teacher readable submission OCR status', (stage, state, expectedTitle) => {
+    const summary = buildSubmissionOcrRunSummary({
+      artifacts: state === 'succeeded' ? [artifact('submission.ocr.batch.result', 'batch-1')] : [],
       busy: state === 'running',
       error: state === 'failed' ? 'boom' : null,
       invocation: {

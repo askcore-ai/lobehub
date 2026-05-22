@@ -886,6 +886,8 @@ const assignmentOcrRelatedActions = new Set([
   'assignment.draft.create_from_ocr',
   'assignment.draft.publish',
 ]);
+const submissionOcrVisibleArtifactTypes = new Set(['submission.ocr.batch.result']);
+const submissionOcrRelatedActions = new Set(['submission.create_from_ocr']);
 
 const getTrackingLabel = (tracking?: RunState['tracking']) =>
   tracking === 'stream'
@@ -1082,6 +1084,163 @@ export const buildAssignmentOcrRunSummary = (run: RunState): AssignmentOcrRunSum
       invocation.state !== 'succeeded'
         ? '本次没有生成作业草稿。'
         : '识别完成后会在这里生成作业草稿。',
+    hiddenArtifacts,
+    progressLabel,
+    progressPercent,
+    resultItems,
+    ...status,
+    technicalItems: [
+      { label: 'Invocation', value: invocation?.invocation_id || '--' },
+      { label: '状态', value: invocation?.state || '--' },
+      { label: '阶段', value: progressStage || '--' },
+      { label: '跟踪方式', value: getTrackingLabel(run.tracking || undefined) || '--' },
+      { label: '结果数', value: String(invocation?.artifact_count ?? run.artifacts.length) },
+    ],
+    trackingLabel: getTrackingLabel(run.tracking || undefined),
+    visibleArtifacts,
+  };
+};
+
+const getSubmissionOcrStatus = ({
+  hasBatchResult,
+  invocation,
+  progressStage,
+}: {
+  hasBatchResult: boolean;
+  invocation: RunState['invocation'];
+  progressStage: string;
+}): Pick<AssignmentOcrRunSummary, 'statusDescription' | 'statusTitle' | 'statusTone'> => {
+  const state = String(invocation?.state || '').toLowerCase();
+  const normalizedStage = String(progressStage || state || '').toLowerCase();
+  const failed = TERMINAL_INVOCATION_STATES.has(state) && state !== 'succeeded';
+
+  if (!invocation) {
+    return {
+      statusDescription: '选择作业和扫描件后，系统会切分学生提交、识别答案并自动批改。',
+      statusTitle: '等待开始 OCR',
+      statusTone: 'info',
+    };
+  }
+
+  if (failed) {
+    return {
+      statusDescription: invocation.failure_reason || '本次提交 OCR 没有生成可用的批量处理结果。',
+      statusTitle: '提交 OCR 失败',
+      statusTone: 'danger',
+    };
+  }
+  if (state === 'succeeded' || normalizedStage === 'succeeded') {
+    return hasBatchResult
+      ? {
+          statusDescription: '学生提交已完成 OCR、匹配和批改汇总，可继续处理未自动绑定的提交。',
+          statusTitle: '学生提交处理完成',
+          statusTone: 'success',
+        }
+      : {
+          statusDescription: '任务已结束，但这次没有返回学生提交批量处理结果。',
+          statusTitle: '提交 OCR 已完成',
+          statusTone: 'warning',
+        };
+  }
+  if (normalizedStage === 'finalizing_batch') {
+    return {
+      statusDescription: '每份提交已处理完成，正在汇总自动绑定、待处理和失败项。',
+      statusTitle: '正在汇总批次结果',
+      statusTone: 'info',
+    };
+  }
+  if (normalizedStage === 'running_submission_ocr') {
+    return {
+      statusDescription: '正在逐份识别学生答案、匹配发布对象并生成批改结果。',
+      statusTitle: '正在识别并批改提交',
+      statusTone: 'info',
+    };
+  }
+  if (normalizedStage === 'preparing_batch') {
+    return {
+      statusDescription: '正在按每生页数切分扫描件并创建学生提交。',
+      statusTitle: '正在切分提交',
+      statusTone: 'info',
+    };
+  }
+  return {
+    statusDescription: '后台正在处理学生提交 OCR，完成后会显示批量处理结果。',
+    statusTitle: '提交 OCR 处理中',
+    statusTone: 'info',
+  };
+};
+
+export const buildSubmissionOcrRunSummary = (run: RunState): AssignmentOcrRunSummary => {
+  const invocation = run.invocation;
+  const actionId = String(invocation?.action_id || '').trim();
+  const isRelatedAction = !actionId || submissionOcrRelatedActions.has(actionId);
+  const visibleArtifacts = isRelatedAction
+    ? run.artifacts.filter((artifact) => submissionOcrVisibleArtifactTypes.has(artifact.type))
+    : [];
+  const hiddenArtifactIds = new Set(visibleArtifacts.map((artifact) => artifact.artifact_id));
+  const hiddenArtifacts = run.artifacts.filter(
+    (artifact) => !hiddenArtifactIds.has(artifact.artifact_id),
+  );
+  const submissionTotal = Number(invocation?.question_total || 0) || 0;
+  const submissionSucceeded = Number(invocation?.question_succeeded || 0) || 0;
+  const submissionFailed = Number(invocation?.question_failed || 0) || 0;
+  const currentSubmission = Number(invocation?.current_question_order_index || 0) || 0;
+  const processedSubmissions = submissionTotal
+    ? Math.min(submissionTotal, Math.max(submissionSucceeded + submissionFailed, currentSubmission))
+    : 0;
+  const progressLabel = submissionTotal
+    ? `已处理 ${processedSubmissions}/${submissionTotal} 份提交`
+    : '等待后端进度';
+  const progressPercent = submissionTotal
+    ? clampPercent((processedSubmissions / submissionTotal) * 100)
+    : null;
+  const hasBatchResult = visibleArtifacts.some(
+    (artifact) => artifact.type === 'submission.ocr.batch.result',
+  );
+  const progressStage = String(invocation?.progress_stage || invocation?.state || '').trim();
+  const status = isRelatedAction
+    ? getSubmissionOcrStatus({
+        hasBatchResult,
+        invocation,
+        progressStage,
+      })
+    : {
+        statusDescription: '当前跟踪的不是学生提交 OCR 任务。',
+        statusTitle: '正在跟踪其他任务',
+        statusTone: 'warning' as const,
+      };
+  const resultItems = visibleArtifacts.map((artifact) => {
+    const content = artifact.content || {};
+    const autoBound = readRecordArray(content.auto_bound);
+    const needsBinding = readRecordArray(content.needs_binding);
+    const failed = readRecordArray(content.failed);
+    const createdCount =
+      Number(content.created_count || 0) || autoBound.length + needsBinding.length + failed.length;
+    const gradedCount = Number(content.graded_count || 0) || 0;
+    const assignmentTitle = String(content.assignment_title || artifact.title || '').trim();
+    const description = [
+      assignmentTitle || null,
+      `创建 ${createdCount} 份`,
+      `自动绑定 ${autoBound.length}`,
+      `待处理 ${needsBinding.length}`,
+      `失败 ${failed.length}`,
+      gradedCount > 0 ? `已批改 ${gradedCount}` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    return {
+      description,
+      title: '学生提交批量处理结果',
+    };
+  });
+
+  return {
+    emptyResultText:
+      invocation &&
+      TERMINAL_INVOCATION_STATES.has(String(invocation.state || '').toLowerCase()) &&
+      invocation.state !== 'succeeded'
+        ? '本次没有生成学生提交批量处理结果。'
+        : '识别完成后会在这里显示学生提交批量处理结果。',
     hiddenArtifacts,
     progressLabel,
     progressPercent,
@@ -2328,10 +2487,20 @@ const RunStatusPanel = ({
   onOpenSubmission?: (submissionId: number) => void;
   run: RunState;
   title?: string;
-  variant?: 'assignment-ocr' | 'default';
+  variant?: 'assignment-ocr' | 'default' | 'submission-ocr';
 }) => {
-  if (variant === 'assignment-ocr') {
-    const summary = buildAssignmentOcrRunSummary(run);
+  if (variant === 'assignment-ocr' || variant === 'submission-ocr') {
+    const summary =
+      variant === 'assignment-ocr'
+        ? buildAssignmentOcrRunSummary(run)
+        : buildSubmissionOcrRunSummary(run);
+    const batchArtifact = summary.visibleArtifacts.find(
+      (artifact) => artifact.type === 'submission.ocr.batch.result',
+    );
+    const batchContent = batchArtifact?.content || {};
+    const autoBound = readRecordArray(batchContent.auto_bound);
+    const needsBinding = readRecordArray(batchContent.needs_binding);
+    const failed = readRecordArray(batchContent.failed);
     return (
       <div className={styles.stack}>
         <div className={styles.panel}>
@@ -2421,6 +2590,64 @@ const RunStatusPanel = ({
             <Empty description={summary.emptyResultText} image={Empty.PRESENTED_IMAGE_SIMPLE} />
           )}
         </div>
+
+        {variant === 'submission-ocr' && batchArtifact ? (
+          <div className={styles.panel}>
+            <h3 className={styles.panelTitle}>学生提交批量处理结果</h3>
+            <Descriptions
+              column={2}
+              size="small"
+              items={[
+                {
+                  children: String(
+                    batchContent.created_count ||
+                      autoBound.length + needsBinding.length + failed.length,
+                  ),
+                  label: '已创建提交',
+                },
+                { children: String(autoBound.length), label: '自动绑定' },
+                { children: String(needsBinding.length), label: '待人工处理' },
+                { children: String(batchContent.graded_count || 0), label: '已批改' },
+                { children: String(batchContent.explained_count || 0), label: '已生成讲解' },
+                {
+                  children: String(batchContent.ocr_failed_count || failed.length),
+                  label: 'OCR 失败',
+                },
+              ]}
+            />
+            <Tabs
+              items={[
+                {
+                  children: autoBound.length ? (
+                    <BatchResultTable rows={autoBound} onOpenSubmission={onOpenSubmission} />
+                  ) : (
+                    <Empty description="暂无自动绑定提交" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                  ),
+                  key: 'auto_bound',
+                  label: `自动绑定 (${autoBound.length})`,
+                },
+                {
+                  children: needsBinding.length ? (
+                    <BatchResultTable rows={needsBinding} onOpenSubmission={onOpenSubmission} />
+                  ) : (
+                    <Empty description="暂无待人工处理提交" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                  ),
+                  key: 'needs_binding',
+                  label: `待人工处理 (${needsBinding.length})`,
+                },
+                {
+                  children: failed.length ? (
+                    <BatchResultTable rows={failed} />
+                  ) : (
+                    <Empty description="暂无失败项" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                  ),
+                  key: 'failed',
+                  label: `失败 (${failed.length})`,
+                },
+              ]}
+            />
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -5244,7 +5471,7 @@ const SubmissionOcrCreateView = ({
             </Space>
           </div>
         </div>
-        <RunStatusPanel run={run} onOpenSubmission={onOpenSubmission} />
+        <RunStatusPanel run={run} variant="submission-ocr" onOpenSubmission={onOpenSubmission} />
       </div>
     </div>
   );
