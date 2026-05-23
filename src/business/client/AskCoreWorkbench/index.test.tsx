@@ -331,6 +331,19 @@ describe('AskCoreWorkbenchRoute assignment OCR run summary', () => {
 
     expect(summary.statusTitle).toBe(expectedTitle);
   });
+
+  it('labels assignment OCR progress as in progress until the invocation is terminal', () => {
+    const summary = buildAssignmentOcrRunSummary({
+      artifacts: [],
+      busy: true,
+      error: null,
+      invocation,
+      notice: null,
+      tracking: 'polling',
+    });
+
+    expect(summary.progressLabel).toBe('正在处理 5/8');
+  });
 });
 
 describe('AskCoreWorkbenchRoute submission OCR run summary', () => {
@@ -425,5 +438,18 @@ describe('AskCoreWorkbenchRoute submission OCR run summary', () => {
     });
 
     expect(summary.statusTitle).toBe(expectedTitle);
+  });
+
+  it('labels submission OCR progress as in progress until the invocation is terminal', () => {
+    const summary = buildSubmissionOcrRunSummary({
+      artifacts: [],
+      busy: true,
+      error: null,
+      invocation,
+      notice: null,
+      tracking: 'polling',
+    });
+
+    expect(summary.progressLabel).toBe('正在处理 2/4 份提交');
   });
 });

@@ -889,6 +889,9 @@ const assignmentOcrRelatedActions = new Set([
 const submissionOcrVisibleArtifactTypes = new Set(['submission.ocr.batch.result']);
 const submissionOcrRelatedActions = new Set(['submission.create_from_ocr']);
 
+const getProcessingProgressVerb = (invocation: RunState['invocation']) =>
+  isTerminalInvocationState(invocation?.state) ? '已处理' : '正在处理';
+
 const getTrackingLabel = (tracking?: RunState['tracking']) =>
   tracking === 'stream'
     ? '实时跟踪'
@@ -1028,7 +1031,7 @@ export const buildAssignmentOcrRunSummary = (run: RunState): AssignmentOcrRunSum
     ? Math.min(questionTotal, Math.max(questionSucceeded + questionFailed, currentQuestion))
     : 0;
   const progressLabel = questionTotal
-    ? `已处理 ${processedQuestions}/${questionTotal}`
+    ? `${getProcessingProgressVerb(invocation)} ${processedQuestions}/${questionTotal}`
     : '等待后端进度';
   const progressPercent = questionTotal
     ? clampPercent((processedQuestions / questionTotal) * 100)
@@ -1189,7 +1192,7 @@ export const buildSubmissionOcrRunSummary = (run: RunState): AssignmentOcrRunSum
     ? Math.min(submissionTotal, Math.max(submissionSucceeded + submissionFailed, currentSubmission))
     : 0;
   const progressLabel = submissionTotal
-    ? `已处理 ${processedSubmissions}/${submissionTotal} 份提交`
+    ? `${getProcessingProgressVerb(invocation)} ${processedSubmissions}/${submissionTotal} 份提交`
     : '等待后端进度';
   const progressPercent = submissionTotal
     ? clampPercent((processedSubmissions / submissionTotal) * 100)
