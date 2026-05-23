@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -87,6 +87,162 @@ describe('AskCoreWorkbenchRoute assignment detail', () => {
 
     expect(screen.getByText('张三')).toBeInTheDocument();
     expect(screen.getByText('高一 1 班')).toBeInTheDocument();
+  });
+});
+
+describe('AskCoreWorkbenchRoute submission detail binding', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const emptyListResponse = {
+    has_more: false,
+    items: [],
+    next_after_id: null,
+    page: 1,
+    page_size: 100,
+    total: 0,
+  };
+
+  const submissionDetail = (status: string, assignmentStudentId: number | null = null) => ({
+    assignment: {
+      assignment_id: 501,
+      title: '高三数学 2026-05-22 2',
+    },
+    assignment_questions: [],
+    classroom: null,
+    explanation_artifact: null,
+    files: [],
+    grade: null,
+    questions: [],
+    report: null,
+    student: null,
+    students: [
+      {
+        assigned_at: '2026-05-22T00:00:00Z',
+        assignment_student_id: 847,
+        classroom: {
+          class_id: 201,
+          name: '高三 2 班',
+        },
+        status: 'assigned',
+        student: {
+          name: '李常奕',
+          student_id: 1001,
+          student_number: '1014233712',
+        },
+      },
+      {
+        assigned_at: '2026-05-22T00:00:00Z',
+        assignment_student_id: 848,
+        classroom: {
+          class_id: 201,
+          name: '高三 2 班',
+        },
+        status: 'removed',
+        student: {
+          name: '不应显示',
+          student_id: 1002,
+          student_number: '1014233713',
+        },
+      },
+    ],
+    subject: null,
+    submission: {
+      assignment_id: 501,
+      assignment_student_id: assignmentStudentId,
+      score: 0,
+      status,
+      submission_id: 1109,
+      submitted_at: '2026-05-23T00:25:45Z',
+      total_score: 0,
+    },
+  });
+
+  const renderSubmissionDetail = (status: string, assignmentStudentId: number | null = null) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url === '/api/askcore/workbench/submissions/1109/detail') {
+        return new Response(JSON.stringify(submissionDetail(status, assignmentStudentId)), {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        });
+      }
+
+      if (url === '/api/askcore/workbench/submissions/1109' && init?.method === 'PATCH') {
+        return new Response(
+          JSON.stringify({
+            item: {
+              assignment_id: 501,
+              assignment_student_id: 847,
+              status: 'submitted',
+              submission_id: 1109,
+            },
+          }),
+          {
+            headers: { 'content-type': 'application/json' },
+            status: 200,
+          },
+        );
+      }
+
+      if (url === '/api/askcore/workbench/organization/units') {
+        return new Response(JSON.stringify({ org_id: 'org-test', units: [] }), {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        });
+      }
+
+      return new Response(JSON.stringify(emptyListResponse), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter
+        initialEntries={['/askcore/workbench?tab=submissions&route=%2Fsubmissions%2F1109']}
+      >
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    return fetchMock;
+  };
+
+  it('shows binding only for needs_binding submissions and saves an assigned student choice', async () => {
+    const fetchMock = renderSubmissionDetail('needs_binding');
+
+    await waitFor(() => expect(screen.getByText('学生归属')).toBeInTheDocument());
+
+    fireEvent.mouseDown(screen.getByText('选择已发布学生'));
+    const option = await screen.findByText('李常奕 · 学号 1014233712 · 班级 高三 2 班 · 作业学生 #847');
+    expect(option).toBeInTheDocument();
+    expect(screen.queryByText(/不应显示/)).not.toBeInTheDocument();
+
+    fireEvent.click(option);
+    fireEvent.click(screen.getByRole('button', { name: '保存绑定' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/askcore/workbench/submissions/1109',
+        expect.objectContaining({
+          body: JSON.stringify({ patch: { assignment_student_id: 847 } }),
+          method: 'PATCH',
+        }),
+      ),
+    );
+  });
+
+  it('hides binding controls for already bound submissions', async () => {
+    renderSubmissionDetail('graded', 847);
+
+    await waitFor(() => expect(screen.getByText('提交信息')).toBeInTheDocument());
+
+    expect(screen.queryByText('学生归属')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '保存绑定' })).not.toBeInTheDocument();
   });
 });
 

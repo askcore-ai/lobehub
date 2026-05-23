@@ -3772,6 +3772,34 @@ const SubmissionDetailView = ({
   const [questionDropIndex, setQuestionDropIndex] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [binding, setBinding] = useState(String(submission.assignment_student_id || ''));
+  const isNeedsBinding = String(submission.status || '').toLowerCase() === 'needs_binding';
+  const bindingOptions = useMemo(
+    () =>
+      readRecordArray(detail.students)
+        .map((row) => {
+          const assignmentStudentId = positiveId(row.assignment_student_id || row.id);
+          const status = String(row.status || 'assigned').toLowerCase();
+          if (!assignmentStudentId || status !== 'assigned') return null;
+          const student = isJsonRecord(row.student) ? row.student : {};
+          const classroom = isJsonRecord(row.classroom) ? row.classroom : {};
+          const studentName = String(
+            student.name || student.student_number || student.student_id || DEFAULT_STUDENT_LABEL,
+          );
+          const studentNumber = String(student.student_number || '').trim();
+          const className = String(classroom.name || '').trim();
+          const label = [
+            studentName,
+            studentNumber ? `学号 ${studentNumber}` : '',
+            className ? `班级 ${className}` : '',
+            `作业学生 #${assignmentStudentId}`,
+          ]
+            .filter(Boolean)
+            .join(' · ');
+          return { label, value: String(assignmentStudentId) };
+        })
+        .filter((option): option is { label: string; value: string } => Boolean(option)),
+    [detail.students],
+  );
 
   useEffect(() => {
     setQuestionItems(
@@ -3784,6 +3812,10 @@ const SubmissionDetailView = ({
     setQuestionError(null);
     setQuestionNotice(null);
   }, [candidateByQuestionId, detail.questions]);
+
+  useEffect(() => {
+    setBinding(String(submission.assignment_student_id || ''));
+  }, [submission.assignment_student_id]);
 
   const questionSelectedKeySet = useMemo(
     () => new Set(questionSelectedKeys),
@@ -4330,30 +4362,50 @@ const SubmissionDetailView = ({
         />
       </div>
 
-      <div className={styles.panel}>
-        <h3 className={styles.panelTitle}>绑定</h3>
-        <Space wrap>
-          <Input
-            placeholder="assignment_student_id"
-            style={{ width: 220 }}
-            value={binding}
-            onChange={(event) => setBinding(event.target.value)}
-          />
-          <Button
-            className={styles.secondary}
-            disabled={!submissionId || !binding}
-            onClick={async () => {
-              await client.updateResource('submissions', submissionId, {
-                assignment_student_id: Number(binding),
-              });
-              message.success('绑定已更新');
-              void onReload();
-            }}
-          >
-            保存绑定
-          </Button>
-        </Space>
-      </div>
+      {isNeedsBinding ? (
+        <div className={styles.panel}>
+          <h3 className={styles.panelTitle}>学生归属</h3>
+          <Space wrap>
+            <Select
+              allowClear
+              showSearch
+              disabled={!bindingOptions.length || busy}
+              notFoundContent="当前作业没有可绑定的已发布学生"
+              optionFilterProp="label"
+              options={bindingOptions}
+              placeholder="选择已发布学生"
+              style={{ minWidth: 360 }}
+              value={binding || undefined}
+              onChange={(value) => setBinding(value || '')}
+            />
+            <Button
+              className={styles.secondary}
+              disabled={!submissionId || !binding || busy}
+              loading={busy}
+              onClick={async () => {
+                if (!binding) return;
+                setBusy(true);
+                try {
+                  await client.updateResource('submissions', submissionId, {
+                    assignment_student_id: Number(binding),
+                  });
+                  message.success('绑定已更新');
+                  await onReload();
+                } catch (reason) {
+                  message.error(asError(reason));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              保存绑定
+            </Button>
+          </Space>
+          <div className={styles.muted} style={{ marginTop: 8 }}>
+            仅待绑定提交需要手工确认学生归属；保存后会写入 assignment_student_id。
+          </div>
+        </div>
+      ) : null}
 
       <div className={styles.panel}>
         <div className={styles.actionBar}>
