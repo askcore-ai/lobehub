@@ -570,13 +570,19 @@ describe('AskCoreWorkbenchRoute submission OCR run summary', () => {
       ],
       busy: false,
       error: null,
-      invocation: { ...invocation, progress_stage: 'succeeded', state: 'succeeded' },
+      invocation: {
+        ...invocation,
+        progress_stage: 'succeeded',
+        question_failed: 1,
+        question_succeeded: 3,
+        state: 'succeeded',
+      },
       notice: null,
       tracking: 'polling',
     });
 
     expect(summary.statusTitle).toBe('学生提交处理完成');
-    expect(summary.progressLabel).toBe('已处理 2/4 份提交');
+    expect(summary.progressLabel).toBe('已完成处理 4/4 份提交，剩余 0 份');
     expect(summary.visibleArtifacts.map((item) => item.type)).toEqual([
       'submission.ocr.batch.result',
     ]);
@@ -613,16 +619,36 @@ describe('AskCoreWorkbenchRoute submission OCR run summary', () => {
     expect(summary.statusTitle).toBe(expectedTitle);
   });
 
-  it('labels submission OCR progress as in progress until the invocation is terminal', () => {
+  it('labels submission OCR progress by completed and remaining submissions', () => {
     const summary = buildSubmissionOcrRunSummary({
       artifacts: [],
       busy: true,
       error: null,
-      invocation,
+      invocation: { ...invocation, current_question_order_index: 4 },
       notice: null,
       tracking: 'polling',
     });
 
-    expect(summary.progressLabel).toBe('正在处理 2/4 份提交');
+    expect(summary.progressLabel).toBe('已完成处理 2/4 份提交，剩余 2 份');
+  });
+
+  it('does not describe a fully counted running submission OCR batch as still processing every submission', () => {
+    const summary = buildSubmissionOcrRunSummary({
+      artifacts: [],
+      busy: true,
+      error: null,
+      invocation: {
+        ...invocation,
+        question_failed: 0,
+        question_succeeded: 24,
+        question_total: 24,
+        state: 'running',
+      },
+      notice: null,
+      tracking: 'polling',
+    });
+
+    expect(summary.progressLabel).toBe('已完成处理 24/24 份提交，剩余 0 份');
+    expect(summary.progressLabel).not.toContain('正在处理 24/24 份提交');
   });
 });

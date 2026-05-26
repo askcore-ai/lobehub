@@ -761,12 +761,30 @@ const nonNegativeCount = (value: unknown) => {
   return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
 };
 
+const isSubmissionOcrInvocation = (record?: InvocationDisplayRecord | null) =>
+  normalizedInvocationAction(record) === 'submission.create_from_ocr';
+
+const getCompletedProgressCounts = (record?: InvocationDisplayRecord | null) => {
+  const total = nonNegativeCount(record?.question_total);
+  const succeeded = nonNegativeCount(record?.question_succeeded);
+  const failed = nonNegativeCount(record?.question_failed);
+  const completed = total > 0 ? Math.min(total, succeeded + failed) : succeeded + failed;
+  const remaining = total > 0 ? Math.max(total - completed, 0) : 0;
+  return { completed, remaining, total };
+};
+
 const invocationProgressLabel = (record?: InvocationDisplayRecord | null) => {
   const action = normalizedInvocationAction(record);
   if (action === 'submission.create_from_ocr') return '提交处理进度';
   if (action === 'submission.grade.run' || action === 'submission.grade.retry') return '批改进度';
   if (action === 'assignment.draft.create_from_ocr') return '题目录入进度';
   return '任务进度';
+};
+
+const formatSubmissionOcrProgressSummary = (record?: InvocationDisplayRecord | null) => {
+  const { completed, remaining, total } = getCompletedProgressCounts(record);
+  if (total <= 0) return '等待后端进度';
+  return `已完成处理 ${completed}/${total} 份提交，剩余 ${remaining} 份`;
 };
 
 const formatCompletedInvocationResult = (
@@ -795,10 +813,7 @@ const invocationArtifactNoun = (record?: InvocationDisplayRecord | null) => {
 
 const formatInvocationResultSummary = (record?: InvocationDisplayRecord | null) => {
   const state = String(record?.state || '').toLowerCase();
-  const total = nonNegativeCount(record?.question_total);
-  const succeeded = nonNegativeCount(record?.question_succeeded);
-  const failed = nonNegativeCount(record?.question_failed);
-  const completed = total > 0 ? Math.min(total, succeeded + failed) : succeeded + failed;
+  const { completed, total } = getCompletedProgressCounts(record);
   if (!isTerminalInvocationState(state)) {
     if (total > 0) return `${invocationProgressLabel(record)} ${completed}/${total}`;
     return '处理中，等待进度上报';
@@ -1030,6 +1045,12 @@ const submissionOcrRelatedActions = new Set(['submission.create_from_ocr']);
 
 const getProcessingProgressVerb = (invocation: RunState['invocation']) =>
   isTerminalInvocationState(invocation?.state) ? '已处理' : '正在处理';
+
+const formatInvocationRunNotice = (invocation: RunState['invocation']) => {
+  if (!invocation) return '任务正在运行…';
+  if (isSubmissionOcrInvocation(invocation)) return formatSubmissionOcrProgressSummary(invocation);
+  return formatInvocationStageLabel(invocation.progress_stage || invocation.state);
+};
 
 const getTrackingLabel = (tracking?: RunState['tracking']) =>
   tracking === 'stream'
@@ -1323,16 +1344,9 @@ export const buildSubmissionOcrRunSummary = (run: RunState): AssignmentOcrRunSum
   const hiddenArtifacts = run.artifacts.filter(
     (artifact) => !hiddenArtifactIds.has(artifact.artifact_id),
   );
-  const submissionTotal = Number(invocation?.question_total || 0) || 0;
-  const submissionSucceeded = Number(invocation?.question_succeeded || 0) || 0;
-  const submissionFailed = Number(invocation?.question_failed || 0) || 0;
-  const currentSubmission = Number(invocation?.current_question_order_index || 0) || 0;
-  const processedSubmissions = submissionTotal
-    ? Math.min(submissionTotal, Math.max(submissionSucceeded + submissionFailed, currentSubmission))
-    : 0;
-  const progressLabel = submissionTotal
-    ? `${getProcessingProgressVerb(invocation)} ${processedSubmissions}/${submissionTotal} 份提交`
-    : '等待后端进度';
+  const { completed: processedSubmissions, total: submissionTotal } =
+    getCompletedProgressCounts(invocation);
+  const progressLabel = formatSubmissionOcrProgressSummary(invocation);
   const progressPercent = submissionTotal
     ? clampPercent((processedSubmissions / submissionTotal) * 100)
     : null;
@@ -2537,7 +2551,7 @@ const waitForInvocation = async ({
           ? invocation.failure_reason || '任务失败'
           : null,
       invocation,
-      notice: terminal ? '任务已结束。' : invocation.progress_stage || '任务正在运行…',
+      notice: terminal ? '任务已结束。' : formatInvocationRunNotice(invocation),
       tracking: 'polling',
     };
     setRun(lastRun);
@@ -5957,7 +5971,7 @@ const AskCoreWorkbenchPage = memo(() => {
             ? invocation.failure_reason || '任务失败'
             : null,
         invocation,
-        notice: terminal ? '任务已结束。' : formatInvocationStageLabel(invocation.progress_stage),
+        notice: terminal ? '任务已结束。' : formatInvocationRunNotice(invocation),
         tracking: 'polling',
       });
     } catch (err) {
