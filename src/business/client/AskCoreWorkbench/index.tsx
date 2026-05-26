@@ -105,6 +105,7 @@ import {
   type FileDescriptor,
   type JsonRecord,
   type PluginArtifact,
+  type PluginInvocation,
   type ResourceKey,
   type RunState,
   type ScannerDevice,
@@ -625,6 +626,7 @@ type WorkbenchRoute =
   | { kind: 'new'; path: string; resource: ResourceKey }
   | { entityId: number; kind: 'detail'; path: string; resource: ResourceKey }
   | { entityId: number; kind: 'edit'; path: string; resource: ResourceKey }
+  | { invocationId: string; kind: 'invocation'; path: string }
   | { kind: 'assignment-manual'; path: string }
   | { kind: 'assignment-ocr'; path: string }
   | { kind: 'submission-ocr'; path: string };
@@ -661,6 +663,46 @@ const statusLabelMap: Record<string, string> = {
   succeeded: '完成',
 };
 
+const invocationActionLabelMap: Record<string, string> = {
+  'assignment.draft.create_from_ocr': 'OCR 创建作业',
+  'assignment.draft.create_manual': '手动创建作业',
+  'assignment.draft.publish': '发布作业',
+  'document.generate.docx': '生成文档',
+  'ops.import.classes': '导入班级',
+  'ops.import.grades': '导入年级',
+  'ops.import.schools': '导入学校',
+  'ops.import.students': '导入学生',
+  'ops.import.subjects': '导入科目',
+  'ops.import.teachers': '导入教师',
+  'submission.create_from_ocr': '批量导入学生提交',
+  'submission.explanation.regenerate': '重新生成讲解',
+  'submission.explanation.save': '保存讲解',
+  'submission.grade.retry': '重新批改提交',
+  'submission.grade.run': '批改提交',
+  'submission.report.generate': '生成提交报告',
+  'submission.report.print': '打印提交报告',
+  'submission.report.print_batch': '批量打印提交报告',
+};
+
+const invocationStageLabelMap: Record<string, string> = {
+  building_draft: '正在生成作业草稿',
+  cancelled: '已取消',
+  cancelling: '正在取消',
+  failed: '失败',
+  finalizing_batch: '正在汇总批次结果',
+  grading_questions: '正在批改题目',
+  indexing: '正在准备 OCR',
+  pending: '待处理',
+  preparing_batch: '正在切分提交',
+  queued: '排队中',
+  recognizing_questions: '正在识别题目',
+  running: '处理中',
+  running_submission_ocr: '正在识别并批改提交',
+  starting: '正在启动',
+  succeeded: '已完成',
+  waiting_for_input: '等待输入',
+};
+
 const statusColor = (value: string) => {
   const normalized = value.toLowerCase();
   if (
@@ -680,6 +722,62 @@ const statusColor = (value: string) => {
 const compactDate = (value: string) => {
   if (!/^\d{4}-\d{2}-\d{2}/.test(value)) return value;
   return value.replace('T', ' ').replace(/\.\d+/, '').slice(0, 19);
+};
+
+type InvocationDisplayRecord =
+  | AskCoreWorkbenchRecord
+  | Pick<PluginInvocation, 'action_id' | 'artifact_count' | 'state' | 'workflow_name'>;
+
+const normalizedInvocationAction = (record?: InvocationDisplayRecord | null) =>
+  String(record?.action_id || record?.workflow_name || '').trim();
+
+const formatInvocationActionLabel = (record?: InvocationDisplayRecord | null) => {
+  const action = normalizedInvocationAction(record);
+  if (!action) return '后台任务';
+  if (invocationActionLabelMap[action]) return invocationActionLabelMap[action];
+  if (action.startsWith('ops.import.')) return '批量导入';
+  if (action.startsWith('assignment.')) return '作业任务';
+  if (action.startsWith('submission.')) return '提交任务';
+  return '后台任务';
+};
+
+const formatInvocationStageLabel = (value: unknown) => {
+  const stage = String(value || '').trim().toLowerCase();
+  if (!stage) return '阶段未上报';
+  return invocationStageLabelMap[stage] || '处理中';
+};
+
+const invocationResultNoun = (record?: InvocationDisplayRecord | null) => {
+  const action = normalizedInvocationAction(record);
+  if (action === 'submission.create_from_ocr') return '提交处理结果';
+  if (action === 'submission.grade.run' || action === 'submission.grade.retry') return '批改结果';
+  if (action.startsWith('submission.report.')) return '报告';
+  if (action.startsWith('submission.explanation.')) return '讲解';
+  if (action === 'assignment.draft.create_from_ocr' || action === 'assignment.draft.create_manual')
+    return '作业草稿';
+  if (action === 'assignment.draft.publish') return '作业发布结果';
+  if (action.startsWith('ops.import.')) return '导入结果';
+  if (action === 'document.generate.docx') return '文档';
+  return '运行结果';
+};
+
+const formatInvocationResultSummary = (record?: InvocationDisplayRecord | null) => {
+  const count = Number(record?.artifact_count || 0) || 0;
+  if (count > 0) return `生成 ${count} 项${invocationResultNoun(record)}`;
+  const state = String(record?.state || '').toLowerCase();
+  if (isTerminalInvocationState(state)) return '未生成内容';
+  return '处理中，完成后显示生成内容';
+};
+
+const runPanelVariantForInvocation = (
+  invocation: RunState['invocation'],
+): 'assignment-ocr' | 'default' | 'submission-ocr' => {
+  const action = String(invocation?.action_id || '').trim();
+  if (action === 'assignment.draft.create_from_ocr' || action === 'assignment.draft.publish') {
+    return 'assignment-ocr';
+  }
+  if (action === 'submission.create_from_ocr') return 'submission-ocr';
+  return 'default';
 };
 
 const getNestedPreview = (value: unknown): string => {
@@ -1320,6 +1418,11 @@ const parseWorkbenchRoute = (
   if (path === '/submissions/new/ocr') return { kind: 'submission-ocr', path };
 
   const parts = path.replace(/^\/+/, '').split('/').filter(Boolean);
+  if (parts[0] === 'invocations') {
+    const invocationId = decodeURIComponent(parts[1] || '').trim();
+    if (invocationId) return { invocationId, kind: 'invocation', path };
+    return { kind: 'dashboard', path: '/dashboard' };
+  }
   const resource = routeResourceAliases[parts[0]];
   if (!resource) return { kind: 'dashboard', path: '/dashboard' };
   if (parts.length === 1) return { kind: 'list', path, resource };
@@ -1342,12 +1445,15 @@ const downloadBlob = (blob: Blob, filename: string) => {
   URL.revokeObjectURL(url);
 };
 
-const invocationColumns: ColumnsType<AskCoreWorkbenchRecord> = [
+const buildInvocationColumns = (
+  onOpenInvocation: (record: AskCoreWorkbenchRecord) => void,
+): ColumnsType<AskCoreWorkbenchRecord> => [
   {
     dataIndex: 'action_id',
     key: 'action_id',
-    render: (_, row) => String(row.action_id || row.workflow_name || row.invocation_id || '--'),
-    title: '运行',
+    render: (_, row) => formatInvocationActionLabel(row),
+    title: '任务',
+    width: 220,
   },
   {
     dataIndex: 'state',
@@ -1355,38 +1461,61 @@ const invocationColumns: ColumnsType<AskCoreWorkbenchRecord> = [
     render: (value) =>
       formatCellValue(value, { dataIndex: 'state', isStatus: true, title: '状态' }),
     title: '状态',
-    width: 120,
+    width: 110,
   },
   {
     dataIndex: 'progress_stage',
     key: 'progress_stage',
-    render: (value) => formatCellValue(value),
+    render: (value) => formatInvocationStageLabel(value),
     title: '阶段',
-    width: 160,
+    width: 180,
   },
   {
     dataIndex: 'artifact_count',
     key: 'artifact_count',
-    render: (value) => formatCellValue(value),
-    title: '结果',
-    width: 100,
+    render: (_, row) => formatInvocationResultSummary(row),
+    title: '生成内容',
+    width: 190,
   },
   {
     dataIndex: 'created_at',
     key: 'created_at',
     render: (value) => formatCellValue(value),
     title: '创建时间',
-    width: 180,
+    width: 170,
+  },
+  {
+    dataIndex: 'finished_at',
+    key: 'finished_at',
+    render: (value) => formatCellValue(value),
+    title: '结束时间',
+    width: 170,
+  },
+  {
+    key: 'operation',
+    render: (_, row) => {
+      const invocationId = String(row.invocation_id || '').trim();
+      if (!invocationId) return <span className={styles.muted}>--</span>;
+      return (
+        <Button className={styles.secondary} size="small" onClick={() => onOpenInvocation(row)}>
+          查看任务
+        </Button>
+      );
+    },
+    title: '操作',
+    width: 110,
   },
 ];
 
 const DetailHeader = ({
   actions,
+  backLabel = '返回列表',
   onBack,
   subtitle,
   title,
 }: {
   actions?: ReactNode;
+  backLabel?: string;
   onBack: () => void;
   subtitle?: string;
   title: string;
@@ -1394,7 +1523,7 @@ const DetailHeader = ({
   <div className={styles.detailHeader}>
     <Space align="start">
       <Button className={styles.secondary} icon={<ArrowLeft size={14} />} onClick={onBack}>
-        返回列表
+        {backLabel}
       </Button>
       <div>
         <h2 className={styles.detailTitle}>{title}</h2>
@@ -5553,6 +5682,10 @@ const AskCoreWorkbenchPage = memo(() => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detail, setDetail] = useState<DetailState | null>(null);
+  const [invocationDetailLoading, setInvocationDetailLoading] = useState(false);
+  const [invocationDetailRun, setInvocationDetailRun] = useState<RunState>(() =>
+    emptyRunState(),
+  );
   const [error, setError] = useState<string>();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterForm, setFilterForm] = useState<Record<string, string>>({});
@@ -5764,6 +5897,36 @@ const AskCoreWorkbenchPage = memo(() => {
     }
   }, [currentRoute, lookups]);
 
+  const reloadInvocationDetail = useCallback(async () => {
+    if (currentRoute.kind !== 'invocation') return;
+    setError(undefined);
+    setInvocationDetailLoading(true);
+    try {
+      const invocation = await askCoreWorkbenchClient.getInvocation(currentRoute.invocationId);
+      const artifacts = await loadInvocationArtifacts(
+        askCoreWorkbenchClient,
+        currentRoute.invocationId,
+      ).catch(() => []);
+      const terminal = isTerminalInvocationState(invocation.state);
+      setInvocationDetailRun({
+        artifacts,
+        busy: !terminal,
+        error:
+          terminal && String(invocation.state).toLowerCase() === 'failed'
+            ? invocation.failure_reason || '任务失败'
+            : null,
+        invocation,
+        notice: terminal ? '任务已结束。' : formatInvocationStageLabel(invocation.progress_stage),
+        tracking: 'polling',
+      });
+    } catch (err) {
+      setInvocationDetailRun(emptyRunState());
+      setError(err instanceof Error ? err.message : '任务内容加载失败');
+    } finally {
+      setInvocationDetailLoading(false);
+    }
+  }, [currentRoute]);
+
   useEffect(() => {
     void loadLookups();
   }, [loadLookups]);
@@ -5780,6 +5943,10 @@ const AskCoreWorkbenchPage = memo(() => {
   useEffect(() => {
     void reloadDetail();
   }, [reloadDetail]);
+
+  useEffect(() => {
+    void reloadInvocationDetail();
+  }, [reloadInvocationDetail]);
 
   useEffect(() => {
     const target = loadMoreTriggerRef.current;
@@ -5823,6 +5990,11 @@ const AskCoreWorkbenchPage = memo(() => {
     const active = dashboard.active_invocations || [];
     const drafts = dashboard.drafts || [];
     const counts = dashboard.counts || {};
+    const invocationColumns = buildInvocationColumns((record) => {
+      const invocationId = String(record.invocation_id || '').trim();
+      if (!invocationId) return;
+      navigate(routeFor('overview', `/invocations/${encodeURIComponent(invocationId)}`));
+    });
     const stats = [
       { key: 'submissions', label: '提交', value: counts.submissions || 0 },
       { key: 'assignments', label: '作业', value: counts.assignments || 0 },
@@ -5846,6 +6018,7 @@ const AskCoreWorkbenchPage = memo(() => {
             locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
             pagination={false}
             rowKey={(record) => String(record.invocation_id || record.run_id)}
+            scroll={{ x: 1150 }}
             size="middle"
           />
         </div>
@@ -6281,8 +6454,71 @@ const AskCoreWorkbenchPage = memo(() => {
     );
   };
 
+  const renderInvocationDetail = () => {
+    if (currentRoute.kind !== 'invocation') {
+      return <Empty description="未找到任务" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+    }
+    if (invocationDetailLoading) return <Skeleton active paragraph={{ rows: 6 }} />;
+    const invocation = invocationDetailRun.invocation;
+    if (!invocation) return <Empty description="未找到任务" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+    return (
+      <div className={styles.view}>
+        <DetailHeader
+          backLabel="返回总览"
+          title="任务内容"
+          subtitle={formatInvocationActionLabel(invocation)}
+          actions={
+            <Button
+              className={styles.secondary}
+              icon={<RefreshCw size={14} />}
+              onClick={() => void reloadInvocationDetail()}
+            >
+              刷新
+            </Button>
+          }
+          onBack={() => navigate(routeFor('overview', '/dashboard'))}
+        />
+        <div className={styles.panel}>
+          <h3 className={styles.panelTitle}>任务信息</h3>
+          <Descriptions
+            column={2}
+            size="small"
+            items={[
+              { children: formatInvocationActionLabel(invocation), label: '任务' },
+              {
+                children: formatCellValue(invocation.state, {
+                  dataIndex: 'state',
+                  isStatus: true,
+                  title: '状态',
+                }),
+                label: '状态',
+              },
+              { children: formatInvocationStageLabel(invocation.progress_stage), label: '阶段' },
+              { children: formatInvocationResultSummary(invocation), label: '生成内容' },
+              { children: formatCellValue(invocation.created_at), label: '创建时间' },
+              { children: formatCellValue(invocation.started_at), label: '开始时间' },
+              { children: formatCellValue(invocation.finished_at), label: '结束时间' },
+              { children: invocation.failure_reason || '--', label: '失败原因' },
+            ]}
+          />
+        </div>
+        <RunStatusPanel
+          run={invocationDetailRun}
+          variant={runPanelVariantForInvocation(invocation)}
+          onOpenAssignment={(assignmentId) =>
+            navigate(routeFor('assignments', buildResourceEntityPath('assignments', assignmentId)))
+          }
+          onOpenSubmission={(submissionId) =>
+            navigate(routeFor('submissions', buildResourceEntityPath('submissions', submissionId)))
+          }
+        />
+      </div>
+    );
+  };
+
   const renderMain = () => {
     if (currentRoute.kind === 'dashboard') return renderDashboard();
+    if (currentRoute.kind === 'invocation') return renderInvocationDetail();
     if (currentRoute.kind === 'list') return renderResourceList(currentRoute.resource);
     if (currentRoute.kind === 'new') return renderEditOrCreate(currentRoute.resource, 'create');
     if (currentRoute.kind === 'detail' || currentRoute.kind === 'edit') return renderDetail();
@@ -6351,6 +6587,7 @@ const AskCoreWorkbenchPage = memo(() => {
                 onClick={() => {
                   void reloadListOrDashboard();
                   void reloadDetail();
+                  void reloadInvocationDetail();
                 }}
               >
                 重试

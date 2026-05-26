@@ -8,6 +8,158 @@ import {
   buildSubmissionOcrRunSummary,
 } from './index';
 
+describe('AskCoreWorkbenchRoute dashboard overview', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const emptyListResponse = {
+    has_more: false,
+    items: [],
+    next_after_id: null,
+    page: 1,
+    page_size: 100,
+    total: 0,
+  };
+
+  const invocation = {
+    action_id: 'submission.create_from_ocr',
+    artifact_count: 69,
+    created_at: '2026-05-23T14:25:32',
+    current_question_order_index: null,
+    failure_reason: null,
+    finished_at: '2026-05-23T14:28:10',
+    invocation_id: 'inv-submission-ocr-1',
+    last_event_at: '2026-05-23T14:28:10',
+    plugin_id: 'aitutor-suite',
+    progress_stage: 'finalizing_batch',
+    question_failed: 0,
+    question_succeeded: 69,
+    question_total: 69,
+    run_id: 20,
+    started_at: '2026-05-23T14:25:40',
+    state: 'succeeded',
+    workflow_name: 'workbench.submission_create_from_ocr',
+  };
+
+  const fetchDashboard = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+
+    if (url === '/api/askcore/workbench/dashboard') {
+      return new Response(
+        JSON.stringify({
+          active_invocations: [],
+          counts: { assignments: 1, questions: 342, submissions: 0 },
+          drafts: [],
+          recent_invocations: [invocation],
+        }),
+        { headers: { 'content-type': 'application/json' }, status: 200 },
+      );
+    }
+
+    if (url === '/api/askcore/workbench/invocations/inv-submission-ocr-1') {
+      return new Response(JSON.stringify(invocation), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      });
+    }
+
+    if (url === '/api/askcore/workbench/invocations/inv-submission-ocr-1/artifacts') {
+      return new Response(
+        JSON.stringify({
+          artifacts: [
+            {
+              artifact_id: 'batch-1',
+              created_at: '2026-05-23T14:28:10',
+              run_id: 20,
+              schema_version: 'v1',
+              summary: null,
+              title: null,
+              type: 'submission.ocr.batch.result',
+            },
+          ],
+          invocation_id: 'inv-submission-ocr-1',
+          run_id: 20,
+        }),
+        { headers: { 'content-type': 'application/json' }, status: 200 },
+      );
+    }
+
+    if (url === '/api/askcore/workbench/artifacts/batch-1') {
+      return new Response(
+        JSON.stringify({
+          artifact_id: 'batch-1',
+          content: {
+            assignment_title: '函数作业',
+            auto_bound: [{ submission_id: 101 }],
+            created_count: 69,
+            explained_count: 4,
+            failed: [],
+            graded_count: 4,
+            needs_binding: [],
+          },
+          created_at: '2026-05-23T14:28:10',
+          redaction: {},
+          references: [],
+          run_id: 20,
+          schema_version: 'v1',
+          summary: null,
+          title: null,
+          type: 'submission.ocr.batch.result',
+        }),
+        { headers: { 'content-type': 'application/json' }, status: 200 },
+      );
+    }
+
+    return new Response(JSON.stringify(emptyListResponse), {
+      headers: { 'content-type': 'application/json' },
+      status: 200,
+    });
+  });
+
+  it('renders recent runs with teacher-readable labels, result meaning, and finish time', async () => {
+    vi.stubGlobal('fetch', fetchDashboard);
+
+    render(
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=overview']}>
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText('批量导入学生提交')).toBeInTheDocument());
+
+    expect(screen.queryByText('submission.create_from_ocr')).not.toBeInTheDocument();
+    expect(screen.queryByText('finalizing_batch')).not.toBeInTheDocument();
+    expect(screen.getByText('正在汇总批次结果')).toBeInTheDocument();
+    expect(screen.getByText('生成 69 项提交处理结果')).toBeInTheDocument();
+    expect(screen.getAllByText('结束时间').length).toBeGreaterThan(0);
+    expect(screen.getByText('2026-05-23 14:28:10')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看任务' })).toBeInTheDocument();
+  });
+
+  it('opens a task detail page from a recent run row', async () => {
+    vi.stubGlobal('fetch', fetchDashboard);
+
+    render(
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=overview']}>
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: '查看任务' }));
+
+    await waitFor(() => expect(screen.getByText('任务内容')).toBeInTheDocument());
+
+    expect(fetchDashboard).toHaveBeenCalledWith(
+      '/api/askcore/workbench/invocations/inv-submission-ocr-1',
+      expect.any(Object),
+    );
+    expect(screen.getAllByText('批量导入学生提交').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('学生提交批量处理结果').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: '返回总览' })).toBeInTheDocument();
+  });
+});
+
 describe('AskCoreWorkbenchRoute assignment detail', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
