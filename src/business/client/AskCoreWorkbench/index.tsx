@@ -726,7 +726,16 @@ const compactDate = (value: string) => {
 
 type InvocationDisplayRecord =
   | AskCoreWorkbenchRecord
-  | Pick<PluginInvocation, 'action_id' | 'artifact_count' | 'state' | 'workflow_name'>;
+  | Pick<
+      PluginInvocation,
+      | 'action_id'
+      | 'artifact_count'
+      | 'question_failed'
+      | 'question_succeeded'
+      | 'question_total'
+      | 'state'
+      | 'workflow_name'
+    >;
 
 const normalizedInvocationAction = (record?: InvocationDisplayRecord | null) =>
   String(record?.action_id || record?.workflow_name || '').trim();
@@ -747,10 +756,33 @@ const formatInvocationStageLabel = (value: unknown) => {
   return invocationStageLabelMap[stage] || '处理中';
 };
 
-const invocationResultNoun = (record?: InvocationDisplayRecord | null) => {
+const nonNegativeCount = (value: unknown) => {
+  const count = Number(value);
+  return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+};
+
+const invocationProgressLabel = (record?: InvocationDisplayRecord | null) => {
   const action = normalizedInvocationAction(record);
-  if (action === 'submission.create_from_ocr') return '提交处理结果';
-  if (action === 'submission.grade.run' || action === 'submission.grade.retry') return '批改结果';
+  if (action === 'submission.create_from_ocr') return '提交处理进度';
+  if (action === 'submission.grade.run' || action === 'submission.grade.retry') return '批改进度';
+  if (action === 'assignment.draft.create_from_ocr') return '题目录入进度';
+  return '任务进度';
+};
+
+const formatCompletedInvocationResult = (
+  record: InvocationDisplayRecord | null | undefined,
+  total: number,
+) => {
+  const action = normalizedInvocationAction(record);
+  if (action === 'submission.create_from_ocr') return `处理 ${total} 份提交`;
+  if (action === 'submission.grade.run' || action === 'submission.grade.retry')
+    return `批改 ${total} 道题`;
+  if (action === 'assignment.draft.create_from_ocr') return `识别 ${total} 道题`;
+  return `完成 ${total} 项任务`;
+};
+
+const invocationArtifactNoun = (record?: InvocationDisplayRecord | null) => {
+  const action = normalizedInvocationAction(record);
   if (action.startsWith('submission.report.')) return '报告';
   if (action.startsWith('submission.explanation.')) return '讲解';
   if (action === 'assignment.draft.create_from_ocr' || action === 'assignment.draft.create_manual')
@@ -762,11 +794,20 @@ const invocationResultNoun = (record?: InvocationDisplayRecord | null) => {
 };
 
 const formatInvocationResultSummary = (record?: InvocationDisplayRecord | null) => {
-  const count = Number(record?.artifact_count || 0) || 0;
-  if (count > 0) return `生成 ${count} 项${invocationResultNoun(record)}`;
   const state = String(record?.state || '').toLowerCase();
-  if (isTerminalInvocationState(state)) return '未生成内容';
-  return '处理中，完成后显示生成内容';
+  const total = nonNegativeCount(record?.question_total);
+  const succeeded = nonNegativeCount(record?.question_succeeded);
+  const failed = nonNegativeCount(record?.question_failed);
+  const completed = total > 0 ? Math.min(total, succeeded + failed) : succeeded + failed;
+  if (!isTerminalInvocationState(state)) {
+    if (total > 0) return `${invocationProgressLabel(record)} ${completed}/${total}`;
+    return '处理中，等待进度上报';
+  }
+  if (state === 'succeeded' && total > 0) return formatCompletedInvocationResult(record, total);
+  if (total > 0) return `已处理 ${completed}/${total}`;
+  const artifactCount = nonNegativeCount(record?.artifact_count);
+  if (artifactCount > 0) return `生成 ${artifactCount} 个${invocationArtifactNoun(record)}`;
+  return '未生成内容';
 };
 
 const runPanelVariantForInvocation = (
@@ -1474,7 +1515,7 @@ const buildInvocationColumns = (
     dataIndex: 'artifact_count',
     key: 'artifact_count',
     render: (_, row) => formatInvocationResultSummary(row),
-    title: '生成内容',
+    title: '进度/结果',
     width: 190,
   },
   {
@@ -6494,7 +6535,7 @@ const AskCoreWorkbenchPage = memo(() => {
                 label: '状态',
               },
               { children: formatInvocationStageLabel(invocation.progress_stage), label: '阶段' },
-              { children: formatInvocationResultSummary(invocation), label: '生成内容' },
+              { children: formatInvocationResultSummary(invocation), label: '进度/结果' },
               { children: formatCellValue(invocation.created_at), label: '创建时间' },
               { children: formatCellValue(invocation.started_at), label: '开始时间' },
               { children: formatCellValue(invocation.finished_at), label: '结束时间' },

@@ -42,6 +42,22 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
     workflow_name: 'workbench.submission_create_from_ocr',
   };
 
+  const runningInvocation = {
+    ...invocation,
+    artifact_count: 0,
+    created_at: '2026-05-23T14:35:32',
+    finished_at: null,
+    invocation_id: 'inv-submission-ocr-running',
+    last_event_at: '2026-05-23T14:36:10',
+    progress_stage: 'running_submission_ocr',
+    question_failed: 0,
+    question_succeeded: 6,
+    question_total: 24,
+    run_id: 21,
+    started_at: '2026-05-23T14:35:40',
+    state: 'running',
+  };
+
   const fetchDashboard = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
 
@@ -51,7 +67,7 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
           active_invocations: [],
           counts: { assignments: 1, questions: 342, submissions: 0 },
           drafts: [],
-          recent_invocations: [invocation],
+          recent_invocations: [runningInvocation, invocation],
         }),
         { headers: { 'content-type': 'application/json' }, status: 200 },
       );
@@ -126,15 +142,19 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(screen.getByText('批量导入学生提交')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getAllByText('批量导入学生提交').length).toBeGreaterThan(0),
+    );
 
     expect(screen.queryByText('submission.create_from_ocr')).not.toBeInTheDocument();
     expect(screen.queryByText('finalizing_batch')).not.toBeInTheDocument();
+    expect(screen.getByText('提交处理进度 6/24')).toBeInTheDocument();
     expect(screen.getByText('正在汇总批次结果')).toBeInTheDocument();
-    expect(screen.getByText('生成 69 项提交处理结果')).toBeInTheDocument();
+    expect(screen.getByText('处理 69 份提交')).toBeInTheDocument();
+    expect(screen.queryByText('生成 69 项提交处理结果')).not.toBeInTheDocument();
     expect(screen.getAllByText('结束时间').length).toBeGreaterThan(0);
     expect(screen.getByText('2026-05-23 14:28:10')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '查看任务' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '查看任务' }).length).toBeGreaterThan(0);
   });
 
   it('opens a task detail page from a recent run row', async () => {
@@ -146,7 +166,8 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: '查看任务' }));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: '查看任务' }).length).toBe(2));
+    fireEvent.click(screen.getAllByRole('button', { name: '查看任务' })[1]);
 
     await waitFor(() => expect(screen.getByText('任务内容')).toBeInTheDocument());
 
