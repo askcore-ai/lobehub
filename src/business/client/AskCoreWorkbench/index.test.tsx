@@ -66,7 +66,7 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
         JSON.stringify({
           active_invocations: [],
           counts: { assignments: 1, questions: 342, submissions: 0 },
-          drafts: [],
+          drafts: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }],
           recent_invocations: [runningInvocation, invocation],
         }),
         { headers: { 'content-type': 'application/json' }, status: 200 },
@@ -149,9 +149,14 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
     expect(screen.queryByText('submission.create_from_ocr')).not.toBeInTheDocument();
     expect(screen.queryByText('finalizing_batch')).not.toBeInTheDocument();
     expect(screen.getByText('提交处理进度 6/24')).toBeInTheDocument();
-    expect(screen.getByText('正在汇总批次结果')).toBeInTheDocument();
+    expect(screen.getByText('已汇总批次结果')).toBeInTheDocument();
+    expect(screen.queryByText('正在汇总批次结果')).not.toBeInTheDocument();
     expect(screen.getByText('处理 69 份提交')).toBeInTheDocument();
     expect(screen.queryByText('生成 69 项提交处理结果')).not.toBeInTheDocument();
+    expect(screen.queryByText(/草稿/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '创建作业' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '导入提交' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '刷新' })).not.toBeInTheDocument();
     expect(screen.getAllByText('结束时间').length).toBeGreaterThan(0);
     expect(screen.getByText('2026-05-23 14:28:10')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: '查看任务' }).length).toBeGreaterThan(0);

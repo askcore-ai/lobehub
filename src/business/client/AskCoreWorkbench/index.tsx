@@ -685,7 +685,7 @@ const invocationActionLabelMap: Record<string, string> = {
 };
 
 const invocationStageLabelMap: Record<string, string> = {
-  building_draft: '正在生成作业草稿',
+  building_draft: '正在生成作业',
   cancelled: '已取消',
   cancelling: '正在取消',
   failed: '失败',
@@ -701,6 +701,16 @@ const invocationStageLabelMap: Record<string, string> = {
   starting: '正在启动',
   succeeded: '已完成',
   waiting_for_input: '等待输入',
+};
+
+const completedInvocationStageLabelMap: Record<string, string> = {
+  building_draft: '已生成作业',
+  finalizing_batch: '已汇总批次结果',
+  grading_questions: '已完成批改',
+  indexing: '已完成 OCR 准备',
+  preparing_batch: '已完成提交切分',
+  recognizing_questions: '已识别题目',
+  running_submission_ocr: '已完成提交处理',
 };
 
 const statusColor = (value: string) => {
@@ -733,6 +743,7 @@ type InvocationDisplayRecord =
       | 'question_failed'
       | 'question_succeeded'
       | 'question_total'
+      | 'progress_stage'
       | 'state'
       | 'workflow_name'
     >;
@@ -750,11 +761,21 @@ const formatInvocationActionLabel = (record?: InvocationDisplayRecord | null) =>
   return '后台任务';
 };
 
-const formatInvocationStageLabel = (value: unknown) => {
+const formatInvocationStageLabel = (value: unknown, stateValue?: unknown) => {
   const stage = String(value || '').trim().toLowerCase();
+  const state = String(stateValue || '').trim().toLowerCase();
+  if (state === 'succeeded' || state === 'completed') {
+    if (!stage) return '已完成';
+    return completedInvocationStageLabelMap[stage] || '已完成';
+  }
+  if (state === 'failed') return '处理失败';
+  if (state === 'cancelled' || state === 'canceled') return '已取消';
   if (!stage) return '阶段未上报';
   return invocationStageLabelMap[stage] || '处理中';
 };
+
+const formatInvocationStageLabelForRecord = (record?: InvocationDisplayRecord | null) =>
+  formatInvocationStageLabel(record?.progress_stage || record?.state, record?.state);
 
 const nonNegativeCount = (value: unknown) => {
   const count = Number(value);
@@ -1521,7 +1542,7 @@ const buildInvocationColumns = (
   {
     dataIndex: 'progress_stage',
     key: 'progress_stage',
-    render: (value) => formatInvocationStageLabel(value),
+    render: (_, row) => formatInvocationStageLabelForRecord(row),
     title: '阶段',
     width: 180,
   },
@@ -2869,7 +2890,7 @@ const RunStatusPanel = ({
                 }),
                 label: '状态',
               },
-              { children: invocation.progress_stage || run.notice || '--', label: '阶段' },
+              { children: formatInvocationStageLabelForRecord(invocation), label: '阶段' },
               { children: invocation.failure_reason || run.error || '--', label: '错误' },
               { children: run.tracking || '--', label: '跟踪方式' },
               { children: String(run.artifacts.length), label: '结果数' },
@@ -6042,8 +6063,6 @@ const AskCoreWorkbenchPage = memo(() => {
 
   const renderDashboard = () => {
     const recent = dashboard.recent_invocations || [];
-    const active = dashboard.active_invocations || [];
-    const drafts = dashboard.drafts || [];
     const counts = dashboard.counts || {};
     const invocationColumns = buildInvocationColumns((record) => {
       const invocationId = String(record.invocation_id || '').trim();
@@ -6076,32 +6095,6 @@ const AskCoreWorkbenchPage = memo(() => {
             scroll={{ x: 1150 }}
             size="middle"
           />
-        </div>
-        <div className={styles.footer}>
-          <span>
-            共 {drafts.length} 个草稿，{active.length} 个后台任务正在运行。
-          </span>
-          <Space wrap>
-            <Button
-              className={styles.secondary}
-              onClick={() => navigate(routeFor('assignments', '/assignments/new/manual'))}
-            >
-              创建作业
-            </Button>
-            <Button
-              className={styles.secondary}
-              onClick={() => navigate(routeFor('submissions', '/submissions/new/ocr'))}
-            >
-              导入提交
-            </Button>
-            <Button
-              className={styles.secondary}
-              icon={<RefreshCw size={14} />}
-              onClick={reloadListOrDashboard}
-            >
-              刷新
-            </Button>
-          </Space>
         </div>
       </div>
     );
@@ -6548,7 +6541,7 @@ const AskCoreWorkbenchPage = memo(() => {
                 }),
                 label: '状态',
               },
-              { children: formatInvocationStageLabel(invocation.progress_stage), label: '阶段' },
+              { children: formatInvocationStageLabelForRecord(invocation), label: '阶段' },
               { children: formatInvocationResultSummary(invocation), label: '进度/结果' },
               { children: formatCellValue(invocation.created_at), label: '创建时间' },
               { children: formatCellValue(invocation.started_at), label: '开始时间' },
