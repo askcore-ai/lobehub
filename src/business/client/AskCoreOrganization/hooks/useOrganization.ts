@@ -197,6 +197,15 @@ export const useOrganization = () => {
     }
   }, [current, inviteChannel, inviteForm]);
 
+  const handleInviteChannelChange = useCallback(
+    (nextChannel: AskCoreInviteChannel) => {
+      setInviteChannel(nextChannel);
+      setInviteResult(null);
+      inviteForm.resetFields(['email']);
+    },
+    [inviteForm],
+  );
+
   const handleCreateEducationUnit = useCallback(async () => {
     const values = await orgUnitForm.validateFields();
     setCreatingUnit(true);
@@ -367,7 +376,7 @@ export const useOrganization = () => {
 
     // Invite
     inviteChannel,
-    setInviteChannel,
+    setInviteChannel: handleInviteChannelChange,
     inviteResult,
     setInviteResult,
     inviteLoading,

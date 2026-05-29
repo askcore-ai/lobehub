@@ -56,6 +56,7 @@ describe('AskCore organization route', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
     delete (globalThis as Record<string, unknown>).__ASKCORE_ORGANIZATION_ROUTE_AUTH__;
     delete (globalThis as Record<string, unknown>).__ASKCORE_ORGANIZATION_ROUTE_SERVICE__;
   });
@@ -133,5 +134,52 @@ describe('AskCore organization route', () => {
       'org-1',
       expect.objectContaining({ channel: 'qr', expiresIn: '7d' }),
     );
+  });
+
+  it('uses the public proxy origin for invite link generation', async () => {
+    authApi.getSession.mockResolvedValue({ session: { id: 'session-1' }, user: { id: 'user-1' } });
+    serviceMock.createInvite.mockResolvedValue({ link: 'https://askcore.cn/join/organization/t' });
+    vi.stubEnv('APP_URL', 'http://0.0.0.0:3210');
+    const serviceFactory = vi.fn(() => serviceMock);
+    (globalThis as Record<string, unknown>).__ASKCORE_ORGANIZATION_ROUTE_SERVICE__ =
+      serviceFactory;
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      new NextRequest('http://0.0.0.0:3210/api/askcore/organizations/org-1/invites', {
+        body: JSON.stringify({ channel: 'link', expiresIn: '7d', role: 'member' }),
+        headers: {
+          'x-forwarded-host': 'askcore.cn',
+          'x-forwarded-proto': 'https',
+        },
+        method: 'POST',
+      }),
+      routeContext(['org-1', 'invites']),
+    );
+
+    expect(response.status).toBe(200);
+    expect(serviceFactory).toHaveBeenCalledWith('https://askcore.cn');
+  });
+
+  it('allows the public AskCore origin when the internal request origin is a bind address', async () => {
+    authApi.getSession.mockResolvedValue({ session: { id: 'session-1' }, user: { id: 'user-1' } });
+    serviceMock.createInvite.mockResolvedValue({ link: 'https://askcore.cn/join/organization/t' });
+    vi.stubEnv('APP_URL', 'http://0.0.0.0:3210');
+    const serviceFactory = vi.fn(() => serviceMock);
+    (globalThis as Record<string, unknown>).__ASKCORE_ORGANIZATION_ROUTE_SERVICE__ =
+      serviceFactory;
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      new NextRequest('http://0.0.0.0:3210/api/askcore/organizations/org-1/invites', {
+        body: JSON.stringify({ channel: 'link', expiresIn: '7d', role: 'member' }),
+        headers: { origin: 'https://askcore.cn' },
+        method: 'POST',
+      }),
+      routeContext(['org-1', 'invites']),
+    );
+
+    expect(response.status).toBe(200);
+    expect(serviceFactory).toHaveBeenCalledWith('https://askcore.cn');
   });
 });

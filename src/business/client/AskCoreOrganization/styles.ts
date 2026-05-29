@@ -289,6 +289,18 @@ export const styles = createStaticStyles(({ css }) => ({
   `,
 
   // Invite
+  inviteSegmented: css`
+    width: 100%;
+    margin-bottom: 20px;
+
+    .ant-segmented-item-label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 40px;
+    }
+  `,
   inviteChannels: css`
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -321,6 +333,22 @@ export const styles = createStaticStyles(({ css }) => ({
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 12px;
     background: ${cssVar.colorFillQuaternary};
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  `,
+  inviteResultTitle: css`
+    font-size: 14px;
+    font-weight: 600;
+    color: ${cssVar.colorText};
+  `,
+  inviteResultMeta: css`
+    overflow-wrap: anywhere;
+    font-size: 13px;
+    color: ${cssVar.colorTextSecondary};
+  `,
+  inviteQrResult: css`
+    align-items: center;
   `,
 
   // Tree

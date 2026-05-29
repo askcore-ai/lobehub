@@ -1,6 +1,8 @@
 'use client';
 
-import { Button, Drawer, Form, Input, QRCode, Select, Space } from 'antd';
+import type { ReactNode } from 'react';
+
+import { Button, Drawer, Form, Input, QRCode, Segmented, Select } from 'antd';
 import { Copy, Link2, Mail, QrCode } from 'lucide-react';
 import { memo } from 'react';
 
@@ -52,11 +54,45 @@ export const InviteSlideOver = memo<InviteSlideOverProps>(
       navigator.clipboard.writeText(text).then(() => message.success('已复制'));
     };
 
-    const channels: { icon: React.ReactNode; key: AskCoreInviteChannel; label: string }[] = [
+    const channels: { icon: ReactNode; key: AskCoreInviteChannel; label: string }[] = [
       { icon: <Mail size={18} />, key: 'email', label: '邮箱' },
       { icon: <Link2 size={18} />, key: 'link', label: '链接' },
       { icon: <QrCode size={18} />, key: 'qr', label: '二维码' },
     ];
+    const currentResult = inviteResult?.channel === channel ? inviteResult : null;
+
+    const renderResult = () => {
+      if (!currentResult) return null;
+
+      if (channel === 'email') {
+        return (
+          <div className={styles.inviteResultBox}>
+            <div className={styles.inviteResultTitle}>邀请邮件已发送</div>
+            <div className={styles.inviteResultMeta}>{currentResult.email}</div>
+          </div>
+        );
+      }
+
+      if (channel === 'qr') {
+        return (
+          <div className={`${styles.inviteResultBox} ${styles.inviteQrResult}`}>
+            <QRCode size={180} value={currentResult.link} />
+            <Button icon={<Copy size={14} />} onClick={() => handleCopy(currentResult.link)}>
+              复制链接
+            </Button>
+          </div>
+        );
+      }
+
+      return (
+        <div className={styles.inviteResultBox}>
+          <Input readOnly value={currentResult.link} />
+          <Button icon={<Copy size={14} />} onClick={() => handleCopy(currentResult.link)}>
+            复制链接
+          </Button>
+        </div>
+      );
+    };
 
     return (
       <Drawer
@@ -67,20 +103,17 @@ export const InviteSlideOver = memo<InviteSlideOverProps>(
         title="邀请成员"
         onClose={onClose}
       >
-        <div className={styles.inviteChannels}>
-          {channels.map((c) => (
-            <div
-              className={`${styles.inviteChannelCard} ${channel === c.key ? styles.inviteChannelActive : ''}`}
-              key={c.key}
-              role="button"
-              tabIndex={0}
-              onClick={() => onChannelChange(c.key)}
-            >
-              {c.icon}
-              <span style={{ fontSize: 13, fontWeight: 500 }}>{c.label}</span>
-            </div>
-          ))}
-        </div>
+        <Segmented
+          block
+          className={styles.inviteSegmented}
+          options={channels.map((c) => ({
+            icon: c.icon,
+            label: c.label,
+            value: c.key,
+          }))}
+          value={channel}
+          onChange={(value) => onChannelChange(value as AskCoreInviteChannel)}
+        />
 
         <Form form={inviteForm} layout="vertical">
           {channel === 'email' && (
@@ -89,7 +122,7 @@ export const InviteSlideOver = memo<InviteSlideOverProps>(
               name="email"
               rules={[{ required: true, message: '请输入邮箱' }]}
             >
-              <Input placeholder="可输入多个，用逗号或空格分隔" />
+              <Input placeholder="请输入收件人邮箱" />
             </Form.Item>
           )}
           <Form.Item
@@ -120,17 +153,7 @@ export const InviteSlideOver = memo<InviteSlideOverProps>(
           {channel === 'email' ? '发送邀请' : '生成邀请'}
         </Button>
 
-        {inviteResult && (
-          <div className={styles.inviteResultBox}>
-            <Input readOnly value={inviteResult.link} />
-            <Space style={{ marginTop: 12 }}>
-              {channel === 'qr' && <QRCode size={104} value={inviteResult.link} />}
-              <Button icon={<Copy size={14} />} onClick={() => handleCopy(inviteResult.link)}>
-                复制链接
-              </Button>
-            </Space>
-          </div>
-        )}
+        {renderResult()}
       </Drawer>
     );
   },
