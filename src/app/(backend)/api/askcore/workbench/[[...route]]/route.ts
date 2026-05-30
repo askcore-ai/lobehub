@@ -25,6 +25,9 @@ type AskCoreWorkbenchRouteTestGlobal = typeof globalThis & {
   __ASKCORE_WORKBENCH_ROUTE_AUTH__?: {
     api: AskCoreWorkbenchRouteAuthApi;
   };
+  __ASKCORE_WORKBENCH_ROUTE_BOOTSTRAP_ORGANIZATION__?: (
+    session: SessionRecord,
+  ) => Promise<SessionRecord | undefined>;
   __ASKCORE_WORKBENCH_ROUTE_PERSISTED_ACTIVE_ORG_ID__?: (
     session: SessionRecord,
   ) => Promise<string | undefined>;
@@ -39,6 +42,12 @@ const ASKCORE_WORKBENCH_PLUGIN_ID = 'aitutor-suite';
 const ALLOWED_METHODS = ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'];
 
 const jsonError = (status: number, detail: string) => NextResponse.json({ detail }, { status });
+
+const htmlError = (status: number, title: string, detail: string) =>
+  new NextResponse(`<html><body><h1>${title}</h1><p>${detail}</p></body></html>`, {
+    headers: { 'content-type': 'text/html; charset=utf-8' },
+    status,
+  });
 
 const stringValue = (value: unknown): string | undefined =>
   typeof value === 'string' && value ? value : undefined;
@@ -69,6 +78,21 @@ const getPersistedActiveOrganizationId = async (session: SessionRecord) => {
     '@/server/services/askcoreOrganization'
   );
   return persistedActiveOrganizationIdFromSession(session).catch(() => undefined);
+};
+
+const bootstrapOrganizationForSession = async (session: SessionRecord) => {
+  const testBootstrap = (globalThis as AskCoreWorkbenchRouteTestGlobal)
+    .__ASKCORE_WORKBENCH_ROUTE_BOOTSTRAP_ORGANIZATION__;
+  if (testBootstrap) return testBootstrap(session);
+
+  const { AskCoreOrganizationService } = await import('@/server/services/askcoreOrganization');
+  const payload = await new AskCoreOrganizationService().bootstrap(session);
+  const current = recordValue(payload.current);
+  if (!current) return undefined;
+  return {
+    ...current,
+    members: Array.isArray(payload.members) ? payload.members : [],
+  };
 };
 
 const compactClaims = (claims: Record<string, unknown>) =>
@@ -249,6 +273,9 @@ const isAllowedSameOriginWrite = (request: NextRequest) => {
   return origin === requestOrigin || origin === appOrigin;
 };
 
+const isDeviceAgentLinkRoute = (route: string[]) =>
+  route[0] === 'device-agent' && route[1] === 'link' && route[2] === 'start';
+
 const forwardWorkbenchRequest = async (request: NextRequest, context: RouteContext) => {
   if (!ALLOWED_METHODS.includes(request.method)) {
     return new NextResponse(null, {
@@ -268,11 +295,22 @@ const forwardWorkbenchRequest = async (request: NextRequest, context: RouteConte
 
   const authApi = await getAuthApi();
   const session = await authApi.getSession({ headers: request.headers });
-  const fullOrganization = session
+  const { route = [] } = await context.params;
+  let fullOrganization = session
     ? await resolveFullOrganization(request.headers, session)
     : undefined;
+  if (!fullOrganization && session && isDeviceAgentLinkRoute(route)) {
+    fullOrganization = await bootstrapOrganizationForSession(session).catch(() => undefined);
+  }
   const claims = session ? resolveWorkbenchPrincipalClaims(session, fullOrganization) : null;
   if (!claims) return jsonError(401, 'LobeHub session is required for workbench');
+  if (isDeviceAgentLinkRoute(route) && !claims.active_org_id) {
+    return htmlError(
+      409,
+      'AskCore device binding needs an active organization',
+      'Open AskCore organization settings once, then return to the device assistant and retry binding.',
+    );
+  }
 
   let assertion: string;
   try {
@@ -284,7 +322,6 @@ const forwardWorkbenchRequest = async (request: NextRequest, context: RouteConte
     );
   }
 
-  const { route = [] } = await context.params;
   const target = buildWorkbenchAuthorityUrl(request, route);
   const headers = new Headers();
   const assertionHeader = process.env.ASKCORE_BILLING_ASSERTION_HEADER || DEFAULT_ASSERTION_HEADER;

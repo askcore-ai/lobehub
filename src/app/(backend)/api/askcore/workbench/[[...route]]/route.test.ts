@@ -16,6 +16,7 @@ vi.mock('@/auth', () => ({
 }));
 
 const askCoreOrganizationMock = vi.hoisted(() => ({
+  bootstrapOrganizationForSession: vi.fn(async () => undefined),
   persistedActiveOrganizationIdFromSession: vi.fn(async () => undefined),
 }));
 
@@ -35,6 +36,8 @@ describe('AskCore workbench proxy route', () => {
     (globalThis as Record<string, unknown>).__ASKCORE_WORKBENCH_ROUTE_AUTH__ = {
       api: authApi,
     };
+    (globalThis as Record<string, unknown>).__ASKCORE_WORKBENCH_ROUTE_BOOTSTRAP_ORGANIZATION__ =
+      askCoreOrganizationMock.bootstrapOrganizationForSession;
     (globalThis as Record<string, unknown>).__ASKCORE_WORKBENCH_ROUTE_PERSISTED_ACTIVE_ORG_ID__ =
       askCoreOrganizationMock.persistedActiveOrganizationIdFromSession;
   });
@@ -44,7 +47,9 @@ describe('AskCore workbench proxy route', () => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     delete (globalThis as Record<string, unknown>).__ASKCORE_WORKBENCH_ROUTE_AUTH__;
+    delete (globalThis as Record<string, unknown>).__ASKCORE_WORKBENCH_ROUTE_BOOTSTRAP_ORGANIZATION__;
     delete (globalThis as Record<string, unknown>).__ASKCORE_WORKBENCH_ROUTE_PERSISTED_ACTIVE_ORG_ID__;
+    askCoreOrganizationMock.bootstrapOrganizationForSession.mockResolvedValue(undefined);
     askCoreOrganizationMock.persistedActiveOrganizationIdFromSession.mockResolvedValue(undefined);
   });
 
@@ -201,5 +206,61 @@ describe('AskCore workbench proxy route', () => {
     );
     expect(payload.active_org_id).toBe('org-1');
     expect(payload.organization_role).toBe('owner');
+  });
+
+  it('bootstraps an organization for device agent link callbacks without an active organization', async () => {
+    vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'test-lobehub-workbench');
+    vi.stubEnv('AITUTOR_API_BASE_URL', 'http://api:8000');
+    const session = {
+      session: {},
+      user: { email: 'teacher@askcore.cn', id: 'user-1' },
+    } as any;
+    authApi.getSession.mockResolvedValue(session);
+    authApi.listOrganizations.mockResolvedValue([
+      { id: 'org-1', name: 'First School' },
+      { id: 'org-2', name: 'Second School' },
+    ]);
+    askCoreOrganizationMock.bootstrapOrganizationForSession.mockResolvedValue({
+      id: 'org-2',
+      members: [{ role: 'admin', userId: 'user-1' }],
+      name: 'Second School',
+    });
+    const { GET } = await loadRoute();
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('<html>linked</html>', {
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await GET(
+      new NextRequest(
+        'https://askcore.cn/api/askcore/workbench/device-agent/link/start?session_id=dals_1',
+      ),
+      routeContext(['device-agent', 'link', 'start']),
+    );
+
+    expect(response.status).toBe(200);
+    expect(askCoreOrganizationMock.bootstrapOrganizationForSession).toHaveBeenCalledWith(session);
+
+    const [target, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(target.toString()).toBe(
+      'http://api:8000/api/lobe/plugins/v1/aitutor-suite/ui/device-agent/link/start?session_id=dals_1',
+    );
+
+    const assertion = (init.headers as Headers).get('X-AskCore-Billing-Assertion');
+    const { payload } = await jwtVerify(
+      assertion!,
+      new TextEncoder().encode('test-lobehub-workbench'),
+      {
+        audience: 'aitutor-billing',
+        issuer: 'askcore-lobehub',
+      },
+    );
+    expect(payload.active_org_id).toBe('org-2');
+    expect(payload.active_org_name).toBe('Second School');
+    expect(payload.organization_role).toBe('admin');
   });
 });
