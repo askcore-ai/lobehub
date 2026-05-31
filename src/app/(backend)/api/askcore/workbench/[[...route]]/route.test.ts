@@ -16,7 +16,9 @@ vi.mock('@/auth', () => ({
 }));
 
 const askCoreOrganizationMock = vi.hoisted(() => ({
-  bootstrapOrganizationForSession: vi.fn(async () => undefined),
+  bootstrapOrganizationForSession: vi.fn(
+    async (): Promise<Record<string, unknown> | undefined> => undefined,
+  ),
   persistedActiveOrganizationIdFromSession: vi.fn(async () => undefined),
 }));
 
