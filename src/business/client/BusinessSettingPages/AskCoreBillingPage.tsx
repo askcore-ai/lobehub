@@ -410,6 +410,8 @@ const enCopy = {
     expiresAt: 'Expires At',
     failed: 'Payment failed',
     pollFailed: 'Unable to refresh payment status',
+    returnError: 'Unable to refresh returned payment.',
+    returnTitle: 'Payment status',
     refunded: 'Refunded',
     scanHint: 'Scan with WeChat to complete payment.',
     succeeded: 'Payment completed',
@@ -608,6 +610,8 @@ const zhCopy: typeof enCopy = {
     expiresAt: '过期时间',
     failed: '支付失败',
     pollFailed: '无法刷新支付状态',
+    returnError: '无法刷新支付结果。',
+    returnTitle: '支付状态',
     refunded: '已退款',
     scanHint: '请使用微信扫一扫完成支付。',
     succeeded: '支付完成',
@@ -1059,7 +1063,7 @@ export const resolveDefaultProvider = (
   providers?: AskCorePlansPayload['providers'],
   options: { isChinese?: boolean } = {},
 ): BillingProvider | null => {
-  const candidates: BillingProvider[] = options.isChinese ? ['wechat'] : ['stripe'];
+  const candidates: BillingProvider[] = options.isChinese ? ['alipay', 'wechat'] : ['stripe'];
   return (
     candidates.find((provider) => {
       const config = providers?.[provider];
@@ -1088,7 +1092,9 @@ export const buildAskCoreBillingEmbedUrl = ({
   language,
   origin,
   page,
+  checkoutId,
 }: {
+  checkoutId?: string;
   language?: string;
   origin: string;
   page: AskCoreBillingPageKey;
@@ -1104,6 +1110,7 @@ export const buildAskCoreBillingEmbedUrl = ({
   base.search = '';
   base.hash = '';
   if (language) base.searchParams.set('hl', language);
+  if (checkoutId) base.searchParams.set('p33_checkout', checkoutId);
   return base.toString();
 };
 
@@ -1142,6 +1149,7 @@ const requestParentOpenUrl = (url: string) => {
 };
 
 const WECHAT_PAYMENT_POLL_INTERVAL_MS = 2500;
+const PAYMENT_RETURN_POLL_INTERVAL_MS = 2500;
 
 const paymentStatusText = (status: string | null | undefined, copy: BillingCopy) => {
   const normalized = String(status || '').toLowerCase();
@@ -1251,6 +1259,85 @@ const WechatCheckoutModal = memo<{
 });
 
 WechatCheckoutModal.displayName = 'WechatCheckoutModal';
+
+const paymentAlertType = (
+  status: string | null | undefined,
+): 'error' | 'info' | 'success' | 'warning' => {
+  const normalized = String(status || '').toLowerCase();
+  if (normalized === 'succeeded') return 'success';
+  if (normalized === 'failed') return 'error';
+  if (normalized === 'closed' || normalized === 'refunded') return 'warning';
+  return 'info';
+};
+
+const PaymentReturnAlert = memo<{
+  copy: BillingCopy;
+  onSuccess: () => void;
+}>(({ copy, onSuccess }) => {
+  const checkoutId = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('p33_checkout') || '';
+  }, []);
+  const [checkout, setCheckout] = useState<CheckoutResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const reportedSuccessRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!checkoutId) return;
+
+    let closed = false;
+    let timer: number | undefined;
+    const pollPath = `/payments/${encodeURIComponent(checkoutId)}`;
+
+    const poll = async () => {
+      try {
+        const next = await billingJson<CheckoutResponse>(pollPath);
+        if (closed) return;
+        setCheckout(next);
+        setError(null);
+        if (next.status === 'succeeded' && reportedSuccessRef.current !== checkoutId) {
+          reportedSuccessRef.current = checkoutId;
+          onSuccess();
+        }
+        if (!isTerminalPaymentStatus(next.status)) {
+          timer = window.setTimeout(poll, PAYMENT_RETURN_POLL_INTERVAL_MS);
+        }
+      } catch (pollError) {
+        if (closed) return;
+        setError(pollError instanceof Error ? pollError.message : copy.payment.returnError);
+        timer = window.setTimeout(poll, PAYMENT_RETURN_POLL_INTERVAL_MS);
+      }
+    };
+
+    void poll();
+
+    return () => {
+      closed = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [checkoutId, copy.payment.returnError, onSuccess]);
+
+  if (!checkoutId) return null;
+
+  if (error && !checkout) {
+    return <Alert showIcon message={error} type="warning" />;
+  }
+
+  return (
+    <Alert
+      showIcon
+      description={
+        checkout?.amount?.display
+          ? `${paymentStatusText(checkout.status, copy)} · ${checkout.amount.display}`
+          : paymentStatusText(checkout?.status, copy)
+      }
+      message={copy.payment.returnTitle}
+      type={paymentAlertType(checkout?.status)}
+    />
+  );
+});
+
+PaymentReturnAlert.displayName = 'PaymentReturnAlert';
 
 const formatCredits = (value: number | null | undefined, copy: BillingCopy) =>
   `${compactNumberFormatter.format(Number(value || 0))} ${copy.units.credits}`;
@@ -2491,6 +2578,7 @@ const AskCoreBillingPage = memo<{ page: AskCoreBillingPageKey }>(({ page }) => {
           page={page}
           plansPayload={plansState.data}
         />
+        <PaymentReturnAlert copy={copy} onSuccess={handleCheckoutSuccess} />
         {page === 'plans' && (
           <PlansView
             account={accountState.data}

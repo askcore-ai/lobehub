@@ -44,6 +44,19 @@ describe('AskCore billing embed helpers', () => {
     expect(url).toBe('https://billing.askcore.cn/embed/subscription/billing');
   });
 
+  it('carries returned payment checkout ids into the embed URL', () => {
+    const url = buildAskCoreBillingEmbedUrl({
+      checkoutId: 'p33a_checkout',
+      language: 'zh-CN',
+      origin: 'https://askcore.cn',
+      page: 'billing',
+    });
+
+    expect(url).toBe(
+      'https://askcore.cn/embed/subscription/billing?hl=zh-CN&p33_checkout=p33a_checkout',
+    );
+  });
+
   it('keeps plan data backend-driven and resolves enabled providers', () => {
     const payload = normalizePlansPayload({
       billing_periods: [{ id: 'yearly', label: 'Yearly' }],
@@ -66,16 +79,26 @@ describe('AskCore billing embed helpers', () => {
     expect(resolveDefaultProvider({ alipay: { enabled: true }, stripe: { enabled: false } })).toBeNull();
     expect(
       resolveDefaultProvider(
-        { stripe: { enabled: true }, wechat: { enabled: true } },
+        { alipay: { enabled: true }, stripe: { enabled: true }, wechat: { enabled: true } },
+        { isChinese: true },
+      ),
+    ).toBe('alipay');
+    expect(
+      resolveDefaultProvider(
+        {
+          alipay: { checkout_available: false, enabled: true },
+          stripe: { enabled: true },
+          wechat: { enabled: true },
+        },
         { isChinese: true },
       ),
     ).toBe('wechat');
     expect(
       resolveDefaultProvider(
-        { stripe: { enabled: true }, wechat: { checkout_available: false, enabled: true } },
-        { isChinese: true },
+        { alipay: { enabled: true }, stripe: { enabled: true }, wechat: { enabled: true } },
+        { isChinese: false },
       ),
-    ).toBeNull();
+    ).toBe('stripe');
     expect(
       resolveDefaultProvider(
         { stripe: { enabled: true }, wechat: { enabled: true } },
@@ -134,6 +157,15 @@ describe('AskCore billing embed helpers', () => {
         appOrigin: 'https://askcore.cn',
         embedOrigin: 'https://askcore.cn',
       }),
+    ).toBe(true);
+    expect(
+      isAllowedBillingExternalUrl(
+        'https://openapi.alipay.com/gateway.do?method=alipay.trade.page.pay',
+        {
+          appOrigin: 'https://askcore.cn',
+          embedOrigin: 'https://askcore.cn',
+        },
+      ),
     ).toBe(true);
     expect(
       isAllowedBillingExternalUrl('https://billing.example.com/embed/subscription/plans', {

@@ -26,6 +26,11 @@ interface SubscriptionIframeWrapperProps {
 
 const currentOrigin = () => (typeof window === 'undefined' ? 'https://askcore.cn' : window.location.origin);
 
+const currentPaymentCheckoutId = () =>
+  typeof window === 'undefined'
+    ? undefined
+    : new URLSearchParams(window.location.search).get('p33_checkout') || undefined;
+
 export const SubscriptionIframeWrapper = memo<SubscriptionIframeWrapperProps>(({ page }) => {
   const [sessionReady, setSessionReady] = useState(!isDesktop);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +41,7 @@ export const SubscriptionIframeWrapper = memo<SubscriptionIframeWrapperProps>(({
   const iframeUrl = useMemo(
     () =>
       buildAskCoreBillingEmbedUrl({
+        checkoutId: currentPaymentCheckoutId(),
         language: i18n.language,
         origin: currentOrigin(),
         page,
