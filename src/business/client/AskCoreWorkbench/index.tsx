@@ -3981,6 +3981,16 @@ const SubmissionDetailView = ({
   const [busy, setBusy] = useState(false);
   const [binding, setBinding] = useState(String(submission.assignment_student_id || ''));
   const isNeedsBinding = String(submission.status || '').toLowerCase() === 'needs_binding';
+  const hasSubmissionImages = useMemo(
+    () =>
+      detail.files.some((file) => {
+        const mediaType = String(file.media_type || '').toLowerCase();
+        if (mediaType.startsWith('image/')) return true;
+        const name = `${file.name || ''} ${file.object_key || ''}`.toLowerCase();
+        return /\.(jpe?g|png|webp|heic|heif|bmp|tiff?)($|\?)/.test(name);
+      }),
+    [detail.files],
+  );
   const bindingOptions = useMemo(
     () =>
       readRecordArray(detail.students)
@@ -4059,6 +4069,24 @@ const SubmissionDetailView = ({
       await client.invokeAction(action, params);
       message.success('后台任务已提交');
       void onReload();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const rerunSubmissionOcr = async () => {
+    if (!submissionId || !hasSubmissionImages) return;
+    setBusy(true);
+    try {
+      await client.invokeAction(
+        'submission.ocr.rerun',
+        { submission_id: submissionId },
+        createConfirmationId(),
+      );
+      message.success('重新 OCR 任务已提交');
+      void onReload();
+    } catch (reason) {
+      message.error(asError(reason));
     } finally {
       setBusy(false);
     }
@@ -4524,6 +4552,20 @@ const SubmissionDetailView = ({
             <Button className={styles.secondary} icon={<Pencil size={14} />} onClick={onEdit}>
               编辑提交
             </Button>
+            <Popconfirm
+              disabled={busy || !submissionId || !hasSubmissionImages}
+              title="重新 OCR 并批改该提交？"
+              description="会使用当前上传图片覆盖题目结果，并按本次 OCR 重新识别学生归属。"
+              onConfirm={rerunSubmissionOcr}
+            >
+              <Button
+                className={styles.secondary}
+                disabled={busy || !submissionId || !hasSubmissionImages}
+                icon={<RefreshCw size={14} />}
+              >
+                重新 OCR 并批改
+              </Button>
+            </Popconfirm>
             <Button
               className={styles.secondary}
               disabled={busy || !submissionId}
