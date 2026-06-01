@@ -6208,8 +6208,10 @@ const AskCoreWorkbenchPage = memo(() => {
   const renderResourceList = (resource: ResourceKey) => {
     const config = ASKCORE_WORKBENCH_TABS.find((tab) => tab.resource === resource)!;
     const filters = RESOURCE_FILTER_FIELDS[resource] || [];
+    const listPending = loading && !loadingMore;
+    const displayedItems = listPending ? [] : filteredItems;
     const visibleIds = new Set(
-      filteredItems.map((item) => getRecordId(resource, item)).filter((id) => id > 0),
+      displayedItems.map((item) => getRecordId(resource, item)).filter((id) => id > 0),
     );
     const selectedRowKeys = selectedRowKeysByResource[resource] || [];
     const setResourceSelectedRowKeys = (keys: Key[]) =>
@@ -6789,16 +6791,19 @@ const AskCoreWorkbenchPage = memo(() => {
             全选当前显示记录
           </Checkbox>
           <span>
-            已加载 {list?.items.length ?? 0} 条{list?.total != null ? ` / ${list.total} 条` : ''}
-            ，当前显示 {filteredItems.length} 条。
+            {listPending
+              ? '正在加载…'
+              : `已加载 ${list?.items.length ?? 0} 条${
+                  list?.total != null ? ` / ${list.total} 条` : ''
+                }，当前显示 ${displayedItems.length} 条。`}
           </span>
         </div>
 
-        {loading && !filteredItems.length ? (
+        {listPending ? (
           <Skeleton active paragraph={{ rows: 6 }} />
-        ) : filteredItems.length ? (
+        ) : displayedItems.length ? (
           <div className={styles.resourceMasonry}>
-            {filteredItems.map((record) => {
+            {displayedItems.map((record) => {
               const id = getRecordId(resource, record);
               const selected = id > 0 && selectedKeySet.has(id);
               const detailRoute = id ? buildResourceEntityPath(resource, id) : null;
@@ -6893,11 +6898,13 @@ const AskCoreWorkbenchPage = memo(() => {
 
         {list?.has_more ? <div className={styles.scrollSentinel} ref={loadMoreTriggerRef} /> : null}
         <div className={styles.loadMoreStatus}>
-          {loadingMore
-            ? '正在加载更多…'
-            : list?.has_more
-              ? '滚动到底部会自动加载更多记录。'
-              : '已加载完当前结果。'}
+          {listPending
+            ? '正在加载当前结果…'
+            : loadingMore
+              ? '正在加载更多…'
+              : list?.has_more
+                ? '滚动到底部会自动加载更多记录。'
+                : '已加载完当前结果。'}
         </div>
       </div>
     );

@@ -901,6 +901,200 @@ describe('AskCoreWorkbenchRoute submission list batch actions', () => {
   }, 15_000);
 });
 
+describe('AskCoreWorkbenchRoute resource list loading states', () => {
+  afterEach(() => {
+    message.destroy();
+    Modal.destroyAll();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  const jsonResponse = (payload: unknown) =>
+    new Response(JSON.stringify(payload), {
+      headers: { 'content-type': 'application/json' },
+      status: 200,
+    });
+
+  const listResponse = (resource: string, items: unknown[]) => ({
+    has_more: false,
+    items,
+    next_after_id: null,
+    page: 1,
+    page_size: 20,
+    resource,
+    total: items.length,
+  });
+
+  const emptyListResponse = (resource = 'teachers') => listResponse(resource, []);
+
+  const deferredResponse = () => {
+    let resolve!: (value: Response) => void;
+    const promise = new Promise<Response>((next) => {
+      resolve = next;
+    });
+    return { promise, resolve };
+  };
+
+  const emptyLookupFetch = (url: string) => {
+    if (url === '/api/askcore/workbench/organization/units') {
+      return jsonResponse({ units: [] });
+    }
+    return jsonResponse(emptyListResponse());
+  };
+
+  it('hides submission rows while an assignment tab request is still loading', async () => {
+    const assignmentResponse = deferredResponse();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.startsWith('/api/askcore/workbench/submissions?')) {
+        return jsonResponse(
+          listResponse('submissions', [
+            { status: 'graded', student_name: '张三', submission_id: 1109 },
+            { status: 'graded', student_name: '李四', submission_id: 1110 },
+          ]),
+        );
+      }
+
+      if (url.startsWith('/api/askcore/workbench/assignments?')) {
+        return assignmentResponse.promise;
+      }
+
+      return emptyLookupFetch(url);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=submissions']}>
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    await screen.findAllByText('张三');
+
+    fireEvent.click(screen.getAllByText('作业')[0]);
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([input]) =>
+          String(input).startsWith('/api/askcore/workbench/assignments?'),
+        ),
+      ).toBe(true),
+    );
+
+    expect(screen.queryAllByText('张三')).toHaveLength(0);
+    expect(screen.queryAllByText('李四')).toHaveLength(0);
+    expect(screen.getByText('正在加载…')).toBeInTheDocument();
+
+    assignmentResponse.resolve(
+      jsonResponse(
+        listResponse('assignments', [{ assignment_id: 501, title: '期中练习' }]),
+      ),
+    );
+
+    expect(await screen.findAllByText('期中练习')).toHaveLength(2);
+    expect(screen.queryByText('正在加载…')).not.toBeInTheDocument();
+  });
+
+  it('hides assignment rows while a question tab request is still loading', async () => {
+    const questionResponse = deferredResponse();
+    let assignmentCalls = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.startsWith('/api/askcore/workbench/assignments?')) {
+        assignmentCalls += 1;
+        return jsonResponse(
+          listResponse('assignments', [{ assignment_id: 501, title: '旧作业' }]),
+        );
+      }
+
+      if (url.startsWith('/api/askcore/workbench/questions?')) {
+        return questionResponse.promise;
+      }
+
+      return emptyLookupFetch(url);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=assignments']}>
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    await screen.findAllByText('旧作业');
+    await waitFor(() => expect(assignmentCalls).toBeGreaterThanOrEqual(1));
+
+    fireEvent.click(screen.getByRole('radio', { name: '题目' }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([input]) =>
+          String(input).startsWith('/api/askcore/workbench/questions?'),
+        ),
+      ).toBe(true),
+    );
+
+    expect(screen.queryAllByText('旧作业')).toHaveLength(0);
+    expect(screen.getByText('正在加载…')).toBeInTheDocument();
+
+    questionResponse.resolve(
+      jsonResponse(
+        listResponse('questions', [
+          { question_id: 301, question_type: 'short_answer', title: '压轴题' },
+        ]),
+      ),
+    );
+
+    expect(await screen.findAllByText('压轴题')).toHaveLength(1);
+    expect(screen.queryByText('正在加载…')).not.toBeInTheDocument();
+  });
+
+  it('hides existing assignment rows while the current list is refreshing', async () => {
+    const refreshResponse = deferredResponse();
+    let assignmentCalls = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.startsWith('/api/askcore/workbench/assignments?')) {
+        assignmentCalls += 1;
+        if (assignmentCalls <= 2) {
+          return jsonResponse(
+            listResponse('assignments', [{ assignment_id: 501, title: '旧作业' }]),
+          );
+        }
+        return refreshResponse.promise;
+      }
+
+      return emptyLookupFetch(url);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=assignments']}>
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    await screen.findAllByText('旧作业');
+
+    const callsBeforeRefresh = assignmentCalls;
+    fireEvent.click(screen.getByRole('button', { name: /筛\s*选/ }));
+    await waitFor(() => expect(assignmentCalls).toBeGreaterThan(callsBeforeRefresh));
+
+    expect(screen.queryAllByText('旧作业')).toHaveLength(0);
+    expect(screen.getByText('正在加载…')).toBeInTheDocument();
+
+    refreshResponse.resolve(
+      jsonResponse(
+        listResponse('assignments', [{ assignment_id: 502, title: '新作业' }]),
+      ),
+    );
+
+    expect(await screen.findAllByText('新作业')).toHaveLength(2);
+    expect(screen.queryAllByText('旧作业')).toHaveLength(0);
+  }, 15_000);
+});
+
 describe('AskCoreWorkbenchRoute submission OCR run summary', () => {
   const invocation = {
     action_id: 'submission.create_from_ocr',
