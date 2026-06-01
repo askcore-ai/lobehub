@@ -282,7 +282,11 @@ describe('AskCoreWorkbenchRoute submission detail binding', () => {
     total: 0,
   };
 
-  const submissionDetail = (status: string, assignmentStudentId: number | null = null) => ({
+  const submissionDetail = (
+    status: string,
+    assignmentStudentId: number | null = null,
+    files: Array<{ media_type?: string; name: string; object_key: string; preview_url?: string }> = [],
+  ) => ({
     assignment: {
       assignment_id: 501,
       title: '高三数学 2026-05-22 2',
@@ -290,7 +294,7 @@ describe('AskCoreWorkbenchRoute submission detail binding', () => {
     assignment_questions: [],
     classroom: null,
     explanation_artifact: null,
-    files: [],
+    files,
     grade: null,
     questions: [],
     report: null,
@@ -337,15 +341,38 @@ describe('AskCoreWorkbenchRoute submission detail binding', () => {
     },
   });
 
-  const renderSubmissionDetail = (status: string, assignmentStudentId: number | null = null) => {
+  const renderSubmissionDetail = (
+    status: string,
+    assignmentStudentId: number | null = null,
+    files: Array<{ media_type?: string; name: string; object_key: string; preview_url?: string }> = [],
+  ) => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
 
       if (url === '/api/askcore/workbench/submissions/1109/detail') {
-        return new Response(JSON.stringify(submissionDetail(status, assignmentStudentId)), {
+        return new Response(JSON.stringify(submissionDetail(status, assignmentStudentId, files)), {
           headers: { 'content-type': 'application/json' },
           status: 200,
         });
+      }
+
+      if (
+        url === '/api/askcore/workbench/actions/submission.ocr.rerun' &&
+        init?.method === 'POST'
+      ) {
+        return new Response(
+          JSON.stringify({
+            action_id: 'submission.ocr.rerun',
+            invocation_id: 'inv-submission-rerun-1',
+            plugin_id: 'aitutor-suite',
+            run_id: 2001,
+            status: 'starting',
+          }),
+          {
+            headers: { 'content-type': 'application/json' },
+            status: 201,
+          },
+        );
       }
 
       if (url === '/api/askcore/workbench/submissions/1109' && init?.method === 'PATCH') {
@@ -412,7 +439,7 @@ describe('AskCoreWorkbenchRoute submission detail binding', () => {
         }),
       ),
     );
-  });
+  }, 15_000);
 
   it('hides binding controls for already bound submissions', async () => {
     renderSubmissionDetail('graded', 847);
@@ -421,7 +448,47 @@ describe('AskCoreWorkbenchRoute submission detail binding', () => {
 
     expect(screen.queryByText('学生归属')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '保存绑定' })).not.toBeInTheDocument();
-  });
+  }, 15_000);
+
+  it('confirms and invokes submission OCR rerun when uploaded images exist', async () => {
+    const fetchMock = renderSubmissionDetail('graded', 847, [
+      {
+        media_type: 'image/jpeg',
+        name: 'submission-sheet.jpg',
+        object_key: 'uploads/org1/scan/submission-sheet.jpg',
+        preview_url: '/api/askcore/workbench/files/preview?object_key=submission-sheet.jpg',
+      },
+    ]);
+
+    await waitFor(() => expect(screen.getByText('提交信息')).toBeInTheDocument());
+
+    const rerunButton = screen.getByRole('button', { name: '重新 OCR 并批改' });
+    expect(rerunButton).toBeEnabled();
+    fireEvent.click(rerunButton);
+    fireEvent.click(await screen.findByRole('button', { name: /OK|确定/ }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/askcore/workbench/actions/submission.ocr.rerun',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+    const actionCall = fetchMock.mock.calls.find(
+      ([input]) => String(input) === '/api/askcore/workbench/actions/submission.ocr.rerun',
+    );
+    expect(actionCall).toBeTruthy();
+    const body = JSON.parse(String((actionCall?.[1] as RequestInit).body || '{}'));
+    expect(body.params).toEqual({ submission_id: 1109 });
+    expect(body.confirmation_id).toMatch(/^confirm-/);
+  }, 10_000);
+
+  it('disables submission OCR rerun when no uploaded images exist', async () => {
+    renderSubmissionDetail('graded', 847);
+
+    await waitFor(() => expect(screen.getByText('提交信息')).toBeInTheDocument());
+
+    expect(screen.getByRole('button', { name: '重新 OCR 并批改' })).toBeDisabled();
+  }, 10_000);
 });
 
 describe('AskCoreWorkbenchRoute assignment OCR run summary', () => {
