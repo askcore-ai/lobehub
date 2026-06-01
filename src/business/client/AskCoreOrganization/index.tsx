@@ -159,25 +159,27 @@ const rosterColumnsByResource: Record<OrganizationRosterResource, string[]> = {
 const RosterField = ({
   field,
   lookups,
+  ...controlProps
 }: {
   field: FieldDefinition;
   lookups: LookupCollections;
-}) => {
+} & Record<string, unknown>) => {
   if (field.kind === 'select') {
     return (
       <Select
+        {...controlProps}
         allowClear={!field.required}
         options={fieldOptions(field, lookups)}
         placeholder={field.placeholder || field.label}
       />
     );
   }
-  if (field.kind === 'number') return <InputNumber style={{ width: '100%' }} />;
-  if (field.kind === 'datetime') return <Input type="datetime-local" />;
+  if (field.kind === 'number') return <InputNumber {...controlProps} style={{ width: '100%' }} />;
+  if (field.kind === 'datetime') return <Input {...controlProps} type="datetime-local" />;
   if (field.kind === 'textarea' || field.kind === 'json') {
-    return <Input.TextArea rows={field.rows || (field.kind === 'json' ? 8 : 3)} />;
+    return <Input.TextArea {...controlProps} rows={field.rows || (field.kind === 'json' ? 8 : 3)} />;
   }
-  return <Input placeholder={field.placeholder || field.label} />;
+  return <Input {...controlProps} placeholder={field.placeholder || field.label} />;
 };
 
 const OrganizationRosterSection = memo<{

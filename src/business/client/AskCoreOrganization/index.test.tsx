@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -13,6 +13,7 @@ vi.mock('@/components/AntdStaticMethods', () => ({
 
 describe('AskCoreOrganizationRoute', () => {
   afterEach(() => {
+    cleanup();
     vi.clearAllMocks();
     vi.unstubAllGlobals();
   });
@@ -241,4 +242,105 @@ describe('AskCoreOrganizationRoute', () => {
     expect(screen.getByText('李老师')).toBeInTheDocument();
     expect(screen.queryByText(/9001/)).not.toBeInTheDocument();
   });
+
+  it('submits student roster form values after validation', async () => {
+    const payload = {
+      current: {
+        id: 'org-1',
+        isActive: true,
+        name: 'Seed 的组织',
+        role: 'owner',
+        slug: 'seed',
+      },
+      members: [
+        {
+          email: 'owner@askcore.cn',
+          id: 'mem-owner',
+          name: 'Owner',
+          role: 'owner',
+          userId: 'user-owner',
+        },
+      ],
+      organizations: [
+        {
+          id: 'org-1',
+          isActive: true,
+          name: 'Seed 的组织',
+          role: 'owner',
+          slug: 'seed',
+        },
+      ],
+      permissions: {
+        canInvite: true,
+        canManageMembers: true,
+        canUpdateMeta: true,
+      },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/units')) {
+        return new Response(JSON.stringify({ org_id: 'org-1', units: [] }), { status: 200 });
+      }
+      if (url.includes('/api/askcore/workbench/students') && init?.method === 'POST') {
+        return new Response(JSON.stringify({ id: 7002, resource: 'students' }), { status: 200 });
+      }
+      if (url.includes('/api/askcore/workbench/students')) {
+        return new Response(
+          JSON.stringify({
+            has_more: false,
+            items: [],
+            page: 1,
+            page_size: 20,
+            resource: 'students',
+            total: 0,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes('/api/askcore/workbench/teachers')) {
+        return new Response(
+          JSON.stringify({
+            has_more: false,
+            items: [],
+            page: 1,
+            page_size: 100,
+            resource: 'teachers',
+            total: 0,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify(payload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getAllByText('组织设置').length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole('button', { name: '学生' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /新建学生/ })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /新建学生/ }));
+    fireEvent.change(await screen.findByLabelText('学号'), { target: { value: '60' } });
+    fireEvent.change(screen.getByLabelText('姓名'), { target: { value: '杨博宇' } });
+    fireEvent.click(screen.getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() => {
+      const createCall = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          String(input).includes('/api/askcore/workbench/students') && init?.method === 'POST',
+      );
+      expect(createCall).toBeTruthy();
+      expect(JSON.parse(String(createCall?.[1]?.body))).toEqual({
+        payload: {
+          name: '杨博宇',
+          student_number: '60',
+        },
+      });
+    });
+  }, 20_000);
 });
