@@ -146,4 +146,29 @@ describe('AskCoreWorkbench API', () => {
       false,
     );
   });
+
+  it('reports progress while downloading submission report ZIPs when content length is known', async () => {
+    const progress: Array<{ loaded: number; percent: number | null; phase: string }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response('zip', {
+          headers: {
+            'content-length': '3',
+            'content-type': 'application/zip',
+          },
+          status: 200,
+        }),
+      ),
+    );
+
+    const client = new AskCoreWorkbenchApiClient();
+    await client.downloadSubmissionReportsZip([12, 13], {
+      onProgress: (item) =>
+        progress.push({ loaded: item.loaded, percent: item.percent, phase: item.phase }),
+    });
+
+    expect(progress[0]).toEqual({ loaded: 0, percent: 0, phase: 'downloading' });
+    expect(progress.at(-1)).toEqual({ loaded: 3, percent: 100, phase: 'completed' });
+  });
 });

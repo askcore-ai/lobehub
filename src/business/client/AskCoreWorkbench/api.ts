@@ -160,6 +160,13 @@ type BlobResponse = {
   mediaType: string;
 };
 
+export type BlobDownloadProgress = {
+  loaded: number;
+  percent: number | null;
+  phase: 'completed' | 'downloading';
+  total: number | null;
+};
+
 type ScanUploadProgress = {
   completed: number;
   fileName: string;
@@ -200,9 +207,50 @@ export class AskCoreWorkbenchApiClient {
     return fallbackName;
   }
 
+  private async readBlobWithProgress(
+    response: Response,
+    mediaType: string,
+    onProgress: ((progress: BlobDownloadProgress) => void) | undefined,
+  ) {
+    if (!onProgress || !response.body) return response.blob();
+
+    const totalHeader = Number(response.headers.get('content-length') || 0) || 0;
+    const total = totalHeader > 0 ? totalHeader : null;
+    const reader = response.body.getReader();
+    const chunks: ArrayBuffer[] = [];
+    let loaded = 0;
+    onProgress({ loaded, percent: total ? 0 : null, phase: 'downloading', total });
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      const chunk = new Uint8Array(value.byteLength);
+      chunk.set(value);
+      chunks.push(chunk.buffer);
+      loaded += value.byteLength;
+      onProgress({
+        loaded,
+        percent: total ? Math.min(100, Math.round((loaded / total) * 100)) : null,
+        phase: 'downloading',
+        total,
+      });
+    }
+
+    onProgress({ loaded, percent: total ? 100 : null, phase: 'completed', total });
+    return new Blob(chunks, { type: mediaType });
+  }
+
   private async requestBlob(
     path: string,
-    { fallbackName = 'download.bin', ...init }: RequestInit & { fallbackName?: string } = {},
+    {
+      fallbackName = 'download.bin',
+      onProgress,
+      ...init
+    }: RequestInit & {
+      fallbackName?: string;
+      onProgress?: (progress: BlobDownloadProgress) => void;
+    } = {},
   ): Promise<BlobResponse> {
     const response = await fetch(this.url(path), {
       ...init,
@@ -213,10 +261,11 @@ export class AskCoreWorkbenchApiClient {
       throw new AskCoreWorkbenchApiError(await readErrorMessage(response), response.status);
     }
 
+    const mediaType = response.headers.get('content-type') || 'application/octet-stream';
     return {
-      blob: await response.blob(),
+      blob: await this.readBlobWithProgress(response, mediaType, onProgress),
       filename: this.resolveDownloadFilename(response, fallbackName),
-      mediaType: response.headers.get('content-type') || 'application/octet-stream',
+      mediaType,
     };
   }
 
@@ -474,12 +523,16 @@ export class AskCoreWorkbenchApiClient {
     return URL.createObjectURL(response.blob);
   }
 
-  downloadSubmissionReportsZip(submissionIds: number[]) {
+  downloadSubmissionReportsZip(
+    submissionIds: number[],
+    options: { onProgress?: (progress: BlobDownloadProgress) => void } = {},
+  ) {
     return this.requestBlob('/submissions/reports/download', {
       body: JSON.stringify({ submission_ids: submissionIds }),
       fallbackName: 'submission-reports.zip',
       headers: { 'Content-Type': 'application/json' },
       method: 'POST',
+      onProgress: options.onProgress,
     });
   }
 }

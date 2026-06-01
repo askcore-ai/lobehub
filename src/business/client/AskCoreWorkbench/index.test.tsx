@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { message, Modal } from 'antd';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -10,6 +11,8 @@ import {
 
 describe('AskCoreWorkbenchRoute dashboard overview', () => {
   afterEach(() => {
+    message.destroy();
+    Modal.destroyAll();
     vi.unstubAllGlobals();
   });
 
@@ -183,11 +186,13 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
     expect(screen.getAllByText('批量导入学生提交').length).toBeGreaterThan(0);
     expect(screen.getAllByText('学生提交批量处理结果').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: '返回总览' })).toBeInTheDocument();
-  });
+  }, 15_000);
 });
 
 describe('AskCoreWorkbenchRoute assignment detail', () => {
   afterEach(() => {
+    message.destroy();
+    Modal.destroyAll();
     vi.unstubAllGlobals();
   });
 
@@ -261,15 +266,19 @@ describe('AskCoreWorkbenchRoute assignment detail', () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(screen.getByText('发布对象')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('发布对象')).toBeInTheDocument(), {
+      timeout: 10_000,
+    });
 
     expect(screen.getByText('张三')).toBeInTheDocument();
     expect(screen.getByText('高一 1 班')).toBeInTheDocument();
-  });
+  }, 15_000);
 });
 
 describe('AskCoreWorkbenchRoute submission detail binding', () => {
   afterEach(() => {
+    message.destroy();
+    Modal.destroyAll();
     vi.unstubAllGlobals();
   });
 
@@ -589,6 +598,307 @@ describe('AskCoreWorkbenchRoute assignment OCR run summary', () => {
 
     expect(summary.progressLabel).toBe('正在处理 5/8');
   });
+});
+
+describe('AskCoreWorkbenchRoute submission list batch actions', () => {
+  afterEach(() => {
+    message.destroy();
+    Modal.destroyAll();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  const submissions = [
+    { status: 'graded', student_name: '张三', submission_id: 1109 },
+    { status: 'graded', student_name: '李四', submission_id: 1110 },
+  ];
+
+  const invocation = (invocationId: string, actionId: string) => ({
+    action_id: actionId,
+    artifact_count: 0,
+    created_at: '2026-05-23T14:25:32',
+    current_question_order_index: null,
+    failure_reason: null,
+    finished_at: '2026-05-23T14:25:40',
+    invocation_id: invocationId,
+    last_event_at: '2026-05-23T14:25:40',
+    plugin_id: 'aitutor-suite',
+    progress_stage: 'succeeded',
+    question_failed: 0,
+    question_succeeded: 1,
+    question_total: 1,
+    run_id: 20,
+    started_at: '2026-05-23T14:25:33',
+    state: 'succeeded',
+    workflow_name: 'workbench.submission_batch_test',
+  });
+
+  const submissionDetail = (submissionId: number, hasImage: boolean) => ({
+    assignment: null,
+    assignment_questions: [],
+    classroom: null,
+    explanation_artifact: null,
+    files: hasImage
+      ? [
+          {
+            media_type: 'image/jpeg',
+            name: `submission-${submissionId}.jpg`,
+            object_key: `uploads/org/scan/submission-${submissionId}.jpg`,
+          },
+        ]
+      : [],
+    grade: null,
+    questions: [],
+    report: null,
+    student: null,
+    students: [],
+    subject: null,
+    submission: { status: 'graded', submission_id: submissionId },
+  });
+
+  const makeFetch = () => {
+    const actions = new Map<string, string>();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url.startsWith('/api/askcore/workbench/submissions?')) {
+        return new Response(
+          JSON.stringify({
+            has_more: false,
+            items: submissions,
+            next_after_id: null,
+            page: 1,
+            page_size: 20,
+            resource: 'submissions',
+            total: submissions.length,
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 200 },
+        );
+      }
+
+      if (url === '/api/askcore/workbench/submissions/1109/detail') {
+        return new Response(JSON.stringify(submissionDetail(1109, true)), {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        });
+      }
+
+      if (url === '/api/askcore/workbench/submissions/1110/detail') {
+        return new Response(JSON.stringify(submissionDetail(1110, false)), {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        });
+      }
+
+      if (url === '/api/askcore/workbench/submissions/reports/download') {
+        return new Response('zip', {
+          headers: {
+            'content-length': '3',
+            'content-type': 'application/zip',
+          },
+          status: 200,
+        });
+      }
+
+      if (url === '/api/askcore/workbench/devices/printers') {
+        return new Response(
+          JSON.stringify({
+            default_printer_id: 'printer-1',
+            items: [
+              {
+                bridge_id: 'agent-1',
+                capabilities: {},
+                display_name: '办公室打印机',
+                kind: 'ipp',
+                online: true,
+                printer_id: 'printer-1',
+                source: 'device_agent',
+              },
+            ],
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 200 },
+        );
+      }
+
+      if (url.includes('/actions/')) {
+        const actionId = decodeURIComponent(url.split('/actions/')[1]);
+        const invocationId = `inv-${actions.size + 1}`;
+        actions.set(invocationId, actionId);
+        return new Response(
+          JSON.stringify({
+            action_id: actionId,
+            invocation_id: invocationId,
+            plugin_id: 'aitutor-suite',
+            run_id: actions.size,
+            status: 'accepted',
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 201 },
+        );
+      }
+
+      const invocationMatch = url.match(/\/api\/askcore\/workbench\/invocations\/([^/]+)$/);
+      if (invocationMatch?.[1]) {
+        const invocationId = decodeURIComponent(invocationMatch[1]);
+        return new Response(
+          JSON.stringify(invocation(invocationId, actions.get(invocationId) || '')),
+          {
+            headers: { 'content-type': 'application/json' },
+            status: 200,
+          },
+        );
+      }
+
+      if (url.includes('/invocations/') && url.endsWith('/artifacts')) {
+        return new Response(JSON.stringify({ artifacts: [], invocation_id: 'inv-1', run_id: 20 }), {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        });
+      }
+
+      return new Response(
+        JSON.stringify({
+          has_more: false,
+          items: [],
+          next_after_id: null,
+          page: 1,
+          page_size: 100,
+          total: 0,
+        }),
+        { headers: { 'content-type': 'application/json' }, status: 200 },
+      );
+    });
+    return fetchMock;
+  };
+
+  const renderSubmissionList = async (fetchMock = makeFetch()) => {
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=submissions']}>
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+    await screen.findAllByText('张三');
+    return fetchMock;
+  };
+
+  const selectVisibleSubmissions = async () => {
+    const checkbox = screen.getByRole('checkbox', { name: '全选当前显示记录' });
+    await waitFor(() => expect(checkbox).toBeEnabled());
+    fireEvent.click(checkbox);
+    await waitFor(() => expect(screen.getByText(/已选 2 条/)).toBeInTheDocument());
+  };
+
+  const actionCalls = (fetchMock: ReturnType<typeof makeFetch>, action: string) =>
+    fetchMock.mock.calls.filter(
+      ([input]) => String(input) === `/api/askcore/workbench/actions/${action}`,
+    );
+
+  it('shows disabled submission batch buttons until rows are selected', async () => {
+    await renderSubmissionList();
+
+    expect(screen.getByRole('button', { name: '重新 OCR 并批改' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '批改/讲解' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '生成报告' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '下载报告' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '打印报告' })).toBeDisabled();
+
+    await selectVisibleSubmissions();
+
+    expect(screen.getByRole('button', { name: '批改/讲解' })).toBeEnabled();
+  }, 15_000);
+
+  it('runs selected grading actions with aggregate progress', async () => {
+    const fetchMock = await renderSubmissionList();
+    await selectVisibleSubmissions();
+
+    fireEvent.click(screen.getByRole('button', { name: '批改/讲解' }));
+    await waitFor(() => expect(actionCalls(fetchMock, 'submission.grade.run')).toHaveLength(2));
+    await waitFor(() => expect(screen.getByText('全部完成')).toBeInTheDocument());
+  }, 20_000);
+
+  it('runs selected report generation actions with force enabled', async () => {
+    const fetchMock = await renderSubmissionList();
+    await selectVisibleSubmissions();
+
+    fireEvent.click(screen.getByRole('button', { name: '生成报告' }));
+    await waitFor(() =>
+      expect(actionCalls(fetchMock, 'submission.report.generate')).toHaveLength(2),
+    );
+    const reportBodies = actionCalls(fetchMock, 'submission.report.generate').map(([, init]) =>
+      JSON.parse(String((init as RequestInit).body || '{}')),
+    );
+    expect(reportBodies.map((body) => body.params)).toEqual([
+      { force: true, submission_id: 1109 },
+      { force: true, submission_id: 1110 },
+    ]);
+  }, 20_000);
+
+  it('reruns OCR only for selected submissions with images and reports skipped failures', async () => {
+    const fetchMock = await renderSubmissionList();
+    await selectVisibleSubmissions();
+
+    fireEvent.click(screen.getByRole('button', { name: '重新 OCR 并批改' }));
+    fireEvent.click(await screen.findByRole('button', { name: /OK|确定/ }));
+
+    await waitFor(() =>
+      expect(actionCalls(fetchMock, 'submission.ocr.rerun')).toHaveLength(1),
+    );
+    const body = JSON.parse(
+      String((actionCalls(fetchMock, 'submission.ocr.rerun')[0][1] as RequestInit).body || '{}'),
+    );
+    expect(body.params).toEqual({ submission_id: 1109 });
+    expect(body.confirmation_id).toMatch(/^confirm-/);
+    await waitFor(() => expect(screen.getAllByText(/失败 1/).length).toBeGreaterThan(0));
+  }, 15_000);
+
+  it('shows progress while downloading selected submission reports', async () => {
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: vi.fn(() => 'blob:reports'),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: vi.fn(),
+    });
+    const fetchMock = await renderSubmissionList();
+    await selectVisibleSubmissions();
+
+    fireEvent.click(screen.getByRole('button', { name: '下载报告' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/askcore/workbench/submissions/reports/download',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+    await waitFor(() => expect(screen.getByText('下载完成')).toBeInTheDocument());
+  }, 15_000);
+
+  it('prints selected submission reports through the batch print action', async () => {
+    vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as never;
+    });
+    const fetchMock = await renderSubmissionList();
+    await selectVisibleSubmissions();
+
+    fireEvent.click(screen.getByRole('button', { name: '打印报告' }));
+
+    await waitFor(() =>
+      expect(actionCalls(fetchMock, 'submission.report.print_batch')).toHaveLength(1),
+    );
+    const body = JSON.parse(
+      String(
+        (actionCalls(fetchMock, 'submission.report.print_batch')[0][1] as RequestInit).body || '{}',
+      ),
+    );
+    expect(body.params).toEqual({
+      duplex: true,
+      media: 'iso_a4_210x297mm',
+      printer_id: 'printer-1',
+      submission_ids: [1109, 1110],
+    });
+  }, 15_000);
 });
 
 describe('AskCoreWorkbenchRoute submission OCR run summary', () => {

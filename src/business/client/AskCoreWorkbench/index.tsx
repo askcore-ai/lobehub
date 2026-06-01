@@ -10,6 +10,7 @@ import {
   Input,
   InputNumber,
   message,
+  Modal,
   Popconfirm,
   Segmented,
   Select,
@@ -53,7 +54,7 @@ import {
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import type { AskCoreWorkbenchApiClient } from './api';
+import type { AskCoreWorkbenchApiClient, BlobDownloadProgress } from './api';
 import {
   askCoreWorkbenchClient,
   emptyAskCoreWorkbenchDashboard,
@@ -106,6 +107,7 @@ import {
   type JsonRecord,
   type PluginArtifact,
   type PluginInvocation,
+  type PrinterDevice,
   type ResourceKey,
   type RunState,
   type ScannerDevice,
@@ -2525,6 +2527,65 @@ const ImageReferenceRail = ({
 };
 
 type RunStateSetter = Dispatch<SetStateAction<RunState>>;
+
+type SubmissionListBatchStatus = {
+  busy: boolean;
+  completed: number;
+  current: string | null;
+  error: string | null;
+  failed: number;
+  phase: string;
+  percent: number | null;
+  title: string;
+  total: number;
+};
+
+const createSubmissionListBatchStatus = ({
+  phase,
+  title,
+  total,
+}: {
+  phase: string;
+  title: string;
+  total: number;
+}): SubmissionListBatchStatus => ({
+  busy: true,
+  completed: 0,
+  current: null,
+  error: null,
+  failed: 0,
+  percent: total > 0 ? 0 : null,
+  phase,
+  title,
+  total,
+});
+
+const submissionListBatchPercent = (completed: number, total: number) =>
+  total > 0 ? Math.round(clampPercent((completed / total) * 100)) : null;
+
+const runWithLimitedConcurrency = async <T,>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<void>,
+) => {
+  let nextIndex = 0;
+  const workerCount = Math.max(1, Math.min(limit, items.length));
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        await worker(items[index], index);
+      }
+    }),
+  );
+};
+
+const formatDownloadProgressLabel = (progress: BlobDownloadProgress) => {
+  if (progress.percent != null) return `正在下载 ${progress.percent}%`;
+  const loadedMb = progress.loaded / 1024 / 1024;
+  return `正在下载 ${loadedMb >= 0.1 ? `${loadedMb.toFixed(1)} MB` : `${progress.loaded} B`}`;
+};
 
 const loadInvocationArtifacts = async (client: AskCoreWorkbenchApiClient, invocationId: string) => {
   const response = await client.listInvocationArtifacts(invocationId);
@@ -5810,6 +5871,8 @@ const AskCoreWorkbenchPage = memo(() => {
   const [selectedRowKeysByResource, setSelectedRowKeysByResource] = useState<
     Partial<Record<ResourceKey, Key[]>>
   >({});
+  const [submissionListBatchStatus, setSubmissionListBatchStatus] =
+    useState<SubmissionListBatchStatus | null>(null);
   const listVersionRef = useRef(0);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
 
@@ -6157,6 +6220,324 @@ const AskCoreWorkbenchPage = memo(() => {
     const selectedIds = [...visibleIds].filter((id) => selectedKeySet.has(id));
     const allVisibleSelected =
       visibleIds.size > 0 && [...visibleIds].every((id) => selectedKeySet.has(id));
+    const submissionBatchBusy = Boolean(submissionListBatchStatus?.busy);
+    const updateSubmissionBatchProgress = (
+      updater: (
+        current: SubmissionListBatchStatus,
+      ) => SubmissionListBatchStatus,
+    ) => {
+      setSubmissionListBatchStatus((current) => (current ? updater(current) : current));
+    };
+    const markSubmissionBatchItemDone = ({
+      failed,
+      message: failureMessage,
+    }: {
+      failed: boolean;
+      message?: string;
+    }) => {
+      updateSubmissionBatchProgress((current) => {
+        const completed = Math.min(current.total, current.completed + 1);
+        return {
+          ...current,
+          completed,
+          error: failureMessage || current.error,
+          failed: failed ? current.failed + 1 : current.failed,
+          percent: submissionListBatchPercent(completed, current.total),
+        };
+      });
+    };
+    const runSubmissionDurableBatch = async ({
+      action,
+      confirmation,
+      concurrency,
+      paramsForId,
+      prepare,
+      title,
+    }: {
+      action: string;
+      confirmation?: boolean;
+      concurrency: number;
+      paramsForId: (submissionId: number) => JsonRecord;
+      prepare?: (submissionId: number) => Promise<void>;
+      title: string;
+    }) => {
+      const targets = [...selectedIds];
+      if (!targets.length || submissionBatchBusy) return;
+      const failures: string[] = [];
+      setSubmissionListBatchStatus(
+        createSubmissionListBatchStatus({
+          phase: '正在提交后台任务',
+          title,
+          total: targets.length,
+        }),
+      );
+
+      await runWithLimitedConcurrency(targets, concurrency, async (submissionId, index) => {
+        const label = `提交 ${submissionId}`;
+        updateSubmissionBatchProgress((current) => ({
+          ...current,
+          current: `${label} (${index + 1}/${targets.length})`,
+          phase: '正在准备',
+        }));
+        try {
+          await prepare?.(submissionId);
+          const result = await askCoreWorkbenchClient.invokeAction(
+            action,
+            paramsForId(submissionId),
+            confirmation ? createConfirmationId() : undefined,
+          );
+          const finalRun = await waitForInvocation({
+            client: askCoreWorkbenchClient,
+            invocationId: result.invocation_id,
+            setRun: (value) => {
+              const nextRun = typeof value === 'function' ? value(emptyRunState()) : value;
+              updateSubmissionBatchProgress((current) => ({
+                ...current,
+                current: label,
+                phase: nextRun.invocation
+                  ? `${formatInvocationStageLabelForRecord(nextRun.invocation)} · ${formatInvocationRunNotice(nextRun.invocation)}`
+                  : '后台任务运行中',
+              }));
+            },
+          });
+          if (finalRun.error) throw new Error(finalRun.error);
+          markSubmissionBatchItemDone({ failed: false });
+        } catch (reason) {
+          const error = asError(reason);
+          failures.push(`${label}: ${error}`);
+          markSubmissionBatchItemDone({ failed: true, message: error });
+        }
+      });
+
+      const failedCount = failures.length;
+      setSubmissionListBatchStatus((current) =>
+        current
+          ? {
+              ...current,
+              busy: false,
+              current: null,
+              error: failedCount ? failures[0] : null,
+              failed: failedCount,
+              phase: failedCount
+                ? `已完成 ${targets.length - failedCount} 条，失败 ${failedCount} 条`
+                : '全部完成',
+              percent: 100,
+            }
+          : current,
+      );
+      if (failedCount) {
+        message.error(`批量任务完成，失败 ${failedCount} 条：${failures[0]}`);
+      } else {
+        message.success(`${title}完成`);
+        setResourceSelectedRowKeys([]);
+      }
+      await reloadListOrDashboard();
+    };
+    const runSubmissionOcrBatch = () =>
+      runSubmissionDurableBatch({
+        action: 'submission.ocr.rerun',
+        concurrency: 1,
+        confirmation: true,
+        paramsForId: (submissionId) => ({ submission_id: submissionId }),
+        prepare: async (submissionId) => {
+          const payload = await askCoreWorkbenchClient.getSubmissionDetail(submissionId);
+          if (!payload.files.some(isImageFile)) throw new Error('该提交没有可用于 OCR 的上传图片');
+        },
+        title: '批量重新 OCR 并批改',
+      });
+    const runSubmissionGradeBatch = () =>
+      runSubmissionDurableBatch({
+        action: 'submission.grade.run',
+        concurrency: 2,
+        paramsForId: (submissionId) => ({ submission_id: submissionId }),
+        title: '批量批改/讲解',
+      });
+    const runSubmissionReportGenerateBatch = () =>
+      runSubmissionDurableBatch({
+        action: 'submission.report.generate',
+        concurrency: 2,
+        paramsForId: (submissionId) => ({ force: true, submission_id: submissionId }),
+        title: '批量生成报告',
+      });
+    const runSubmissionReportDownloadBatch = async () => {
+      const targets = [...selectedIds];
+      if (!targets.length || submissionBatchBusy) return;
+      setSubmissionListBatchStatus(
+        createSubmissionListBatchStatus({
+          phase: '正在打包报告',
+          title: '批量下载报告',
+          total: targets.length,
+        }),
+      );
+      try {
+        const result = await askCoreWorkbenchClient.downloadSubmissionReportsZip(targets, {
+          onProgress: (progress) => {
+            setSubmissionListBatchStatus((current) =>
+              current
+                ? {
+                    ...current,
+                    completed: progress.phase === 'completed' ? targets.length : current.completed,
+                    phase:
+                      progress.phase === 'completed'
+                        ? '下载完成'
+                        : formatDownloadProgressLabel(progress),
+                    percent:
+                      progress.phase === 'completed'
+                        ? 100
+                        : progress.percent ?? current.percent,
+                  }
+                : current,
+            );
+          },
+        });
+        downloadBlob(result.blob, result.filename || 'submission-reports.zip');
+        setSubmissionListBatchStatus((current) =>
+          current
+            ? {
+                ...current,
+                busy: false,
+                completed: targets.length,
+                current: null,
+                error: null,
+                failed: 0,
+                phase: '下载完成',
+                percent: 100,
+              }
+            : current,
+        );
+        message.success('批量报告下载完成');
+        setResourceSelectedRowKeys([]);
+      } catch (reason) {
+        const error = asError(reason);
+        setSubmissionListBatchStatus((current) =>
+          current
+            ? {
+                ...current,
+                busy: false,
+                current: null,
+                error,
+                failed: targets.length,
+                phase: '下载失败',
+              }
+            : current,
+        );
+        message.error(`批量报告下载失败：${error}`);
+      }
+    };
+    const selectPrinterForSubmissionBatch = async (): Promise<PrinterDevice | null> => {
+      const payload = await askCoreWorkbenchClient.listPrinterDevices();
+      const printers = payload.items.filter((printer) => printer.online);
+      if (!printers.length) {
+        message.error('没有在线打印机');
+        return null;
+      }
+      let selectedPrinterId =
+        printers.find((printer) => printer.printer_id === payload.default_printer_id)
+          ?.printer_id || printers[0].printer_id;
+      return new Promise((resolve) => {
+        Modal.confirm({
+          cancelText: '取消',
+          content: (
+            <Select
+              defaultValue={selectedPrinterId}
+              options={printers.map((printer) => ({
+                label: printer.display_name || printer.printer_id,
+                value: printer.printer_id,
+              }))}
+              style={{ width: '100%' }}
+              onChange={(value) => {
+                selectedPrinterId = value;
+              }}
+            />
+          ),
+          okText: '开始打印',
+          onCancel: () => resolve(null),
+          onOk: () =>
+            resolve(
+              printers.find((printer) => printer.printer_id === selectedPrinterId) || printers[0],
+            ),
+          title: '选择打印机',
+        });
+      });
+    };
+    const runSubmissionReportPrintBatch = async () => {
+      const targets = [...selectedIds];
+      if (!targets.length || submissionBatchBusy) return;
+      let printer: PrinterDevice | null = null;
+      try {
+        printer = await selectPrinterForSubmissionBatch();
+      } catch (reason) {
+        message.error(`加载打印机失败：${asError(reason)}`);
+        return;
+      }
+      if (!printer) return;
+      setSubmissionListBatchStatus(
+        createSubmissionListBatchStatus({
+          phase: '正在提交批量打印任务',
+          title: '批量打印报告',
+          total: targets.length,
+        }),
+      );
+      try {
+        const result = await askCoreWorkbenchClient.invokeAction('submission.report.print_batch', {
+          duplex: true,
+          media: 'iso_a4_210x297mm',
+          printer_id: printer.printer_id,
+          submission_ids: targets,
+        });
+        const finalRun = await waitForInvocation({
+          client: askCoreWorkbenchClient,
+          invocationId: result.invocation_id,
+          setRun: (value) => {
+            const nextRun = typeof value === 'function' ? value(emptyRunState()) : value;
+            setSubmissionListBatchStatus((current) =>
+              current
+                ? {
+                    ...current,
+                    current: printer?.display_name || printer?.printer_id || null,
+                    phase: nextRun.invocation
+                      ? `${formatInvocationStageLabelForRecord(nextRun.invocation)} · ${formatInvocationRunNotice(nextRun.invocation)}`
+                      : '后台任务运行中',
+                  }
+                : current,
+            );
+          },
+        });
+        if (finalRun.error) throw new Error(finalRun.error);
+        setSubmissionListBatchStatus((current) =>
+          current
+            ? {
+                ...current,
+                busy: false,
+                completed: targets.length,
+                current: null,
+                error: null,
+                failed: 0,
+                phase: '打印任务已提交',
+                percent: 100,
+              }
+            : current,
+        );
+        message.success('批量打印任务已提交');
+        setResourceSelectedRowKeys([]);
+        await reloadListOrDashboard();
+      } catch (reason) {
+        const error = asError(reason);
+        setSubmissionListBatchStatus((current) =>
+          current
+            ? {
+                ...current,
+                busy: false,
+                current: null,
+                error,
+                failed: targets.length,
+                phase: '打印失败',
+              }
+            : current,
+        );
+        message.error(`批量打印失败：${error}`);
+      }
+    };
 
     return (
       <div className={styles.view}>
@@ -6253,7 +6634,7 @@ const AskCoreWorkbenchPage = memo(() => {
         <div className={styles.actionBar}>
           <Space wrap>
             <Popconfirm
-              disabled={!selectedIds.length}
+              disabled={!selectedIds.length || submissionBatchBusy}
               title={`批量删除 ${selectedIds.length} 条记录？`}
               onConfirm={async () => {
                 const deleted: number[] = [];
@@ -6281,29 +6662,120 @@ const AskCoreWorkbenchPage = memo(() => {
                 await reloadListOrDashboard();
               }}
             >
-              <Button danger disabled={!selectedIds.length} icon={<Trash2 size={14} />}>
+              <Button
+                danger
+                disabled={!selectedIds.length || submissionBatchBusy}
+                icon={<Trash2 size={14} />}
+              >
                 批量删除
               </Button>
             </Popconfirm>
             {resource === 'submissions' ? (
-              <Button
-                className={styles.secondary}
-                disabled={!selectedIds.length}
-                icon={<Download size={14} />}
-                onClick={async () => {
-                  const result =
-                    await askCoreWorkbenchClient.downloadSubmissionReportsZip(selectedIds);
-                  downloadBlob(result.blob, result.filename || 'submission-reports.zip');
-                }}
-              >
-                下载报告
-              </Button>
+              <>
+                <Popconfirm
+                  disabled={!selectedIds.length || submissionBatchBusy}
+                  title={`重新 OCR 并批改 ${selectedIds.length} 份提交？`}
+                  description="会使用各提交已有图片覆盖 OCR、批改和学生归属结果；没有图片的提交会记录为失败。"
+                  onConfirm={() => void runSubmissionOcrBatch()}
+                >
+                  <Button
+                    className={styles.secondary}
+                    disabled={!selectedIds.length || submissionBatchBusy}
+                    icon={<RefreshCw size={14} />}
+                  >
+                    重新 OCR 并批改
+                  </Button>
+                </Popconfirm>
+                <Button
+                  className={styles.secondary}
+                  disabled={!selectedIds.length || submissionBatchBusy}
+                  onClick={() => void runSubmissionGradeBatch()}
+                >
+                  批改/讲解
+                </Button>
+                <Button
+                  className={styles.secondary}
+                  disabled={!selectedIds.length || submissionBatchBusy}
+                  onClick={() => void runSubmissionReportGenerateBatch()}
+                >
+                  生成报告
+                </Button>
+                <Button
+                  className={styles.secondary}
+                  disabled={!selectedIds.length || submissionBatchBusy}
+                  icon={<Download size={14} />}
+                  onClick={() => void runSubmissionReportDownloadBatch()}
+                >
+                  下载报告
+                </Button>
+                <Button
+                  className={styles.secondary}
+                  disabled={!selectedIds.length || submissionBatchBusy}
+                  icon={<Printer size={14} />}
+                  onClick={() => void runSubmissionReportPrintBatch()}
+                >
+                  打印报告
+                </Button>
+              </>
             ) : null}
           </Space>
           <span className={styles.muted}>
             已选 {selectedIds.length} 条。详情页将占用整个工作区，不再打开右侧抽屉。
           </span>
         </div>
+
+        {resource === 'submissions' && submissionListBatchStatus ? (
+          <div className={styles.panel}>
+            <div className={styles.actionBar} style={{ marginBottom: 8 }}>
+              <Space wrap>
+                <strong>{submissionListBatchStatus.title}</strong>
+                <Tag
+                  color={
+                    submissionListBatchStatus.busy
+                      ? 'blue'
+                      : submissionListBatchStatus.error
+                        ? 'red'
+                        : 'green'
+                  }
+                >
+                  {submissionListBatchStatus.busy
+                    ? '运行中'
+                    : submissionListBatchStatus.error
+                      ? '有失败'
+                      : '完成'}
+                </Tag>
+              </Space>
+              <span className={styles.muted}>
+                已处理 {submissionListBatchStatus.completed}/{submissionListBatchStatus.total}
+                {submissionListBatchStatus.failed
+                  ? `，失败 ${submissionListBatchStatus.failed}`
+                  : ''}
+              </span>
+            </div>
+            <div className={styles.actionBar} style={{ marginBottom: 8 }}>
+              <span>{submissionListBatchStatus.phase}</span>
+              {submissionListBatchStatus.current ? (
+                <span className={styles.muted}>{submissionListBatchStatus.current}</span>
+              ) : null}
+            </div>
+            <div aria-label="批量任务进度" className={styles.progressRail}>
+              {submissionListBatchStatus.percent == null ? null : (
+                <div
+                  className={styles.progressFill}
+                  style={{ width: `${submissionListBatchStatus.percent}%` }}
+                />
+              )}
+            </div>
+            {submissionListBatchStatus.error ? (
+              <Alert
+                showIcon
+                style={{ marginTop: 10 }}
+                title={submissionListBatchStatus.error}
+                type="error"
+              />
+            ) : null}
+          </div>
+        ) : null}
 
         <div className={styles.listStatusBar}>
           <Checkbox
