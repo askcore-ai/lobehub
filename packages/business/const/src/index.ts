@@ -1,4 +1,5 @@
-export * from './bedrock-model-mapping';
+import { BRANDING_PROVIDER } from './branding';
+
 export * from './branding';
 export * from './llm';
 export * from './url';
@@ -10,3 +11,8 @@ export const ENABLE_BUSINESS_FEATURES = true;
 export const ENABLE_LOBEHUB_CLOUD_PROVIDER = false;
 
 export const AGENT_ONBOARDING_ENABLED = isDev;
+
+export const OFFICIAL_PROVIDER_DISABLE_ERROR = 'The official provider cannot be disabled.';
+
+export const isOfficialProvider = (id: string) =>
+  ENABLE_BUSINESS_FEATURES && id === BRANDING_PROVIDER;

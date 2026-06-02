@@ -12,9 +12,15 @@ export class PluginStore {
     this.baseUrl = baseUrl || appEnv.PLUGINS_INDEX_URL;
   }
 
-  getPluginIndexUrl = (lang: Locales = DEFAULT_LANG) => {
+  getPluginIndexUrl = (lang?: Locales) => {
+    if (!lang) return this.baseUrl;
     if (isLocaleNotSupport(lang)) return this.baseUrl;
-    return urlJoin(this.baseUrl, `index.${normalizeLocale(lang)}.json`);
+
+    const localizedIndex = `index.${normalizeLocale(lang)}.json`;
+
+    return /\/index(?:\.[^/?#]+)?\.json$/.test(this.baseUrl)
+      ? this.baseUrl.replace(/\/index(?:\.[^/?#]+)?\.json$/, `/${localizedIndex}`)
+      : urlJoin(this.baseUrl, localizedIndex);
   };
 
   getPluginList = async (locale?: string): Promise<any[]> => {

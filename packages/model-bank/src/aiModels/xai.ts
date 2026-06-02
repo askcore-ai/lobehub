@@ -9,6 +9,56 @@ const xaiChatModels: AIChatModelCard[] = [
       structuredOutput: true,
       vision: true,
     },
+    contextWindowTokens: 1_000_000,
+    description: 'The most truth-seeking large language model in the world',
+    displayName: 'Grok 4.3',
+    enabled: true,
+    id: 'grok-4.3',
+    pricing: {
+      units: [
+        {
+          name: 'textInput_cacheRead',
+          strategy: 'tiered',
+          tiers: [
+            { rate: 0.2, upTo: 200_000 },
+            { rate: 0.4, upTo: 'infinity' },
+          ],
+          unit: 'millionTokens',
+        },
+        {
+          name: 'textInput',
+          strategy: 'tiered',
+          tiers: [
+            { rate: 1.25, upTo: 200_000 },
+            { rate: 2.5, upTo: 'infinity' },
+          ],
+          unit: 'millionTokens',
+        },
+        {
+          name: 'textOutput',
+          strategy: 'tiered',
+          tiers: [
+            { rate: 2.5, upTo: 200_000 },
+            { rate: 5, upTo: 'infinity' },
+          ],
+          unit: 'millionTokens',
+        },
+      ],
+    },
+    releasedAt: '2026-05-01',
+    settings: {
+      extendParams: ['grok4_3ReasoningEffort'],
+      searchImpl: 'params',
+    },
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      search: true,
+      structuredOutput: true,
+      vision: true,
+    },
     contextWindowTokens: 2_000_000,
     description: 'A non-reasoning variant for simple use cases',
     displayName: 'Grok 4.20 (Non-Reasoning)',
@@ -20,7 +70,7 @@ const xaiChatModels: AIChatModelCard[] = [
           name: 'textInput_cacheRead',
           strategy: 'tiered',
           tiers: [
-            { rate: 0.2, upTo: 0.2 },
+            { rate: 0.2, upTo: 200_000 },
             { rate: 0.4, upTo: 'infinity' },
           ],
           unit: 'millionTokens',
@@ -29,7 +79,7 @@ const xaiChatModels: AIChatModelCard[] = [
           name: 'textInput',
           strategy: 'tiered',
           tiers: [
-            { rate: 2, upTo: 0.2 },
+            { rate: 2, upTo: 200_000 },
             { rate: 4, upTo: 'infinity' },
           ],
           unit: 'millionTokens',
@@ -38,7 +88,7 @@ const xaiChatModels: AIChatModelCard[] = [
           name: 'textOutput',
           strategy: 'tiered',
           tiers: [
-            { rate: 6, upTo: 0.2 },
+            { rate: 6, upTo: 200_000 },
             { rate: 12, upTo: 'infinity' },
           ],
           unit: 'millionTokens',
@@ -70,7 +120,7 @@ const xaiChatModels: AIChatModelCard[] = [
           name: 'textInput_cacheRead',
           strategy: 'tiered',
           tiers: [
-            { rate: 0.2, upTo: 0.2 },
+            { rate: 0.2, upTo: 200_000 },
             { rate: 0.4, upTo: 'infinity' },
           ],
           unit: 'millionTokens',
@@ -79,7 +129,7 @@ const xaiChatModels: AIChatModelCard[] = [
           name: 'textInput',
           strategy: 'tiered',
           tiers: [
-            { rate: 2, upTo: 0.2 },
+            { rate: 2, upTo: 200_000 },
             { rate: 4, upTo: 'infinity' },
           ],
           unit: 'millionTokens',
@@ -88,7 +138,7 @@ const xaiChatModels: AIChatModelCard[] = [
           name: 'textOutput',
           strategy: 'tiered',
           tiers: [
-            { rate: 6, upTo: 0.2 },
+            { rate: 6, upTo: 200_000 },
             { rate: 12, upTo: 'infinity' },
           ],
           unit: 'millionTokens',
@@ -120,7 +170,7 @@ const xaiChatModels: AIChatModelCard[] = [
           name: 'textInput_cacheRead',
           strategy: 'tiered',
           tiers: [
-            { rate: 0.2, upTo: 0.2 },
+            { rate: 0.2, upTo: 200_000 },
             { rate: 0.4, upTo: 'infinity' },
           ],
           unit: 'millionTokens',
@@ -129,7 +179,7 @@ const xaiChatModels: AIChatModelCard[] = [
           name: 'textInput',
           strategy: 'tiered',
           tiers: [
-            { rate: 2, upTo: 0.2 },
+            { rate: 2, upTo: 200_000 },
             { rate: 4, upTo: 'infinity' },
           ],
           unit: 'millionTokens',
@@ -138,7 +188,7 @@ const xaiChatModels: AIChatModelCard[] = [
           name: 'textOutput',
           strategy: 'tiered',
           tiers: [
-            { rate: 6, upTo: 0.2 },
+            { rate: 6, upTo: 200_000 },
             { rate: 12, upTo: 'infinity' },
           ],
           unit: 'millionTokens',
@@ -152,98 +202,15 @@ const xaiChatModels: AIChatModelCard[] = [
     },
     type: 'chat',
   },
-  {
-    abilities: {
-      functionCall: true,
-      search: true,
-      structuredOutput: true,
-      vision: true,
-    },
-    contextWindowTokens: 2_000_000,
-    description: 'A frontier multimodal model optimized for high-performance agent tool use.',
-    displayName: 'Grok 4.1 Fast (Non-Reasoning)',
-    enabled: true,
-    id: 'grok-4-1-fast-non-reasoning',
-    pricing: {
-      units: [
-        { name: 'textInput_cacheRead', rate: 0.05, strategy: 'fixed', unit: 'millionTokens' },
-        {
-          name: 'textInput',
-          strategy: 'tiered',
-          tiers: [
-            { rate: 0.2, upTo: 0.128 },
-            { rate: 0.4, upTo: 'infinity' },
-          ],
-          unit: 'millionTokens',
-        },
-        {
-          name: 'textOutput',
-          strategy: 'tiered',
-          tiers: [
-            { rate: 0.5, upTo: 0.128 },
-            { rate: 1, upTo: 'infinity' },
-          ],
-          unit: 'millionTokens',
-        },
-      ],
-    },
-    releasedAt: '2025-11-20',
-    settings: {
-      searchImpl: 'params',
-    },
-    type: 'chat',
-  },
-  {
-    abilities: {
-      functionCall: true,
-      reasoning: true,
-      search: true,
-      structuredOutput: true,
-      vision: true,
-    },
-    contextWindowTokens: 2_000_000,
-    description: 'A frontier multimodal model optimized for high-performance agent tool use.',
-    displayName: 'Grok 4.1 Fast',
-    enabled: true,
-    id: 'grok-4-1-fast-reasoning',
-    pricing: {
-      units: [
-        { name: 'textInput_cacheRead', rate: 0.05, strategy: 'fixed', unit: 'millionTokens' },
-        {
-          name: 'textInput',
-          strategy: 'tiered',
-          tiers: [
-            { rate: 0.2, upTo: 0.128 },
-            { rate: 0.4, upTo: 'infinity' },
-          ],
-          unit: 'millionTokens',
-        },
-        {
-          name: 'textOutput',
-          strategy: 'tiered',
-          tiers: [
-            { rate: 0.5, upTo: 0.128 },
-            { rate: 1, upTo: 'infinity' },
-          ],
-          unit: 'millionTokens',
-        },
-      ],
-    },
-    releasedAt: '2025-11-20',
-    settings: {
-      searchImpl: 'params',
-    },
-    type: 'chat',
-  },
 ];
 
 const xaiImageModels: AIImageModelCard[] = [
   {
     description:
       'Generate images from text prompts, edit existing images with natural language, or iteratively refine images through multi-turn conversations.',
-    displayName: 'Grok Imagine Image Pro',
+    displayName: 'Grok Imagine Image Quality',
     enabled: true,
-    id: 'grok-imagine-image-pro',
+    id: 'grok-imagine-image-quality',
     parameters: {
       aspectRatio: {
         default: 'auto',
@@ -274,9 +241,9 @@ const xaiImageModels: AIImageModelCard[] = [
       },
     },
     pricing: {
-      units: [{ name: 'imageGeneration', rate: 0.07, strategy: 'fixed', unit: 'image' }],
+      units: [{ name: 'imageGeneration', rate: 0.05, strategy: 'fixed', unit: 'image' }],
     },
-    releasedAt: '2026-01-28',
+    releasedAt: '2026-05-06',
     type: 'image',
   },
   {

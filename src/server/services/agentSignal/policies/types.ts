@@ -33,6 +33,9 @@ export const AGENT_SIGNAL_POLICY_SIGNAL_TYPES = {
 /** Server-owned built-in AgentSignal action type identifiers. */
 export const AGENT_SIGNAL_POLICY_ACTION_TYPES = {
   nudgeHandle: 'action.nudge.handle',
+  // TODO: Keep persona actions reserved until Agent Signal has a durable prompt/persona artifact,
+  // proposal payload, apply/revert path, and UI projection. The current analyze-intent path must
+  // not silently mutate persona state from prompt-shaped feedback.
   personaHandle: 'action.persona.handle',
   skillManagementHandle: 'action.skill-management.handle',
   userMemoryHandle: 'action.user-memory.handle',
@@ -51,6 +54,49 @@ export type AgentSignalFeedbackSatisfactionResult = 'neutral' | 'not_satisfied' 
 export type AgentSignalFeedbackDomainTarget = 'memory' | 'none' | 'prompt' | 'skill';
 
 export type AgentSignalFeedbackPhase1DomainTarget = 'memory' | 'prompt' | 'skill';
+
+export type AgentSignalSkillIntentExplicitness =
+  | 'explicit_action'
+  | 'implicit_strong_learning'
+  | 'non_skill_preference'
+  | 'weak_positive';
+
+export type AgentSignalSkillActionIntent =
+  | 'consolidate'
+  | 'create'
+  | 'maintain'
+  | 'noop'
+  | 'refine';
+
+export type AgentSignalSkillIntentRoute = 'accumulate' | 'direct_decision' | 'non_skill';
+
+/** Sanitized classifier error details safe enough for traces and eval diagnostics. */
+export interface AgentSignalClassifierErrorSummary {
+  /** Sanitized one-hop cause summary when the runtime attached `error.cause`. */
+  cause?: string;
+  /** Error message with likely secrets redacted and length bounded. */
+  message: string;
+  /** Error class or runtime-provided error type. */
+  name?: string;
+}
+
+/**
+ * Compact routing decision for one skill-domain feedback signal.
+ */
+export interface AgentSignalSkillIntentClassification {
+  /** Durable skill-management action hint selected before the decision agent runs. */
+  actionIntent?: AgentSignalSkillActionIntent;
+  /** Sanitized classifier failure details when fallback classification failed. */
+  classifierError?: AgentSignalClassifierErrorSummary;
+  /** Confidence of the rule or model classifier, from 0 to 1. */
+  confidence: number;
+  /** Whether the feedback is explicit, implicit strong learning, weak positive, or non-skill preference. */
+  explicitness: AgentSignalSkillIntentExplicitness;
+  /** Short private-safe reason suitable for traces and eval assertions. */
+  reason: string;
+  /** Runtime route used by action planning. */
+  route: AgentSignalSkillIntentRoute;
+}
 
 export interface AgentSignalFeedbackEvidence {
   cue: string;
@@ -72,6 +118,12 @@ export interface AgentSignalFeedbackDomainStagePayload<
   confidence: number;
   evidence: AgentSignalFeedbackEvidence[];
   reason: string;
+  skillActionIntent?: AgentSignalSkillActionIntent;
+  skillIntentConfidence?: number;
+  skillIntentError?: AgentSignalClassifierErrorSummary;
+  skillIntentExplicitness?: AgentSignalSkillIntentExplicitness;
+  skillIntentReason?: string;
+  skillRoute?: AgentSignalSkillIntentRoute;
   target: TTarget;
 }
 
@@ -105,6 +157,8 @@ export interface AgentSignalPolicySignalPayloadMap {
     sourceHints?: AgentSignalFeedbackSourceHints;
     target: 'memory';
     topicId?: string;
+    /** Source event trigger copied from the original feedback input when available. */
+    trigger?: string;
   };
   [AGENT_SIGNAL_POLICY_SIGNAL_TYPES.feedbackDomainNone]: {
     agentId?: string;
@@ -119,6 +173,8 @@ export interface AgentSignalPolicySignalPayloadMap {
     sourceHints?: AgentSignalFeedbackSourceHints;
     target: 'none';
     topicId?: string;
+    /** Source event trigger copied from the original feedback input when available. */
+    trigger?: string;
   };
   [AGENT_SIGNAL_POLICY_SIGNAL_TYPES.feedbackDomainPrompt]: {
     agentId?: string;
@@ -133,6 +189,8 @@ export interface AgentSignalPolicySignalPayloadMap {
     sourceHints?: AgentSignalFeedbackSourceHints;
     target: 'prompt';
     topicId?: string;
+    /** Source event trigger copied from the original feedback input when available. */
+    trigger?: string;
   };
   [AGENT_SIGNAL_POLICY_SIGNAL_TYPES.feedbackDomainSkill]: {
     agentId?: string;
@@ -144,9 +202,17 @@ export interface AgentSignalPolicySignalPayloadMap {
     reason: string;
     satisfactionResult: AgentSignalFeedbackSatisfactionResult;
     serializedContext?: string;
+    skillActionIntent?: AgentSignalSkillActionIntent;
+    skillIntentError?: AgentSignalClassifierErrorSummary;
+    skillIntentConfidence?: number;
+    skillIntentExplicitness?: AgentSignalSkillIntentExplicitness;
+    skillIntentReason?: string;
+    skillRoute?: AgentSignalSkillIntentRoute;
     sourceHints?: AgentSignalFeedbackSourceHints;
     target: 'skill';
     topicId?: string;
+    /** Source event trigger copied from the original feedback input when available. */
+    trigger?: string;
   };
   [AGENT_SIGNAL_POLICY_SIGNAL_TYPES.feedbackSatisfaction]: {
     agentId?: string;
@@ -159,6 +225,8 @@ export interface AgentSignalPolicySignalPayloadMap {
     serializedContext?: string;
     sourceHints?: AgentSignalFeedbackSourceHints;
     topicId?: string;
+    /** Source event trigger copied from the original feedback input when available. */
+    trigger?: string;
   };
   [AGENT_SIGNAL_POLICY_SIGNAL_TYPES.nudgeMemoryConditionMatched]: {
     agentId?: string;

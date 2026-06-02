@@ -19,12 +19,12 @@ interface ImageNumSelectorProps {
 
 const ImageNum = memo<ImageNumSelectorProps>(
   ({ presetCounts = [1, 2, 4, 8], min = 1, max, disabled = false }) => {
+    const imageNum = useImageStore(imageGenerationConfigSelectors.imageNum);
+    const setImageNum = useImageStore((s) => s.setImageNum);
     const enableBusinessFeatures = useServerConfigStore(
       serverConfigSelectors.enableBusinessFeatures,
     );
     const resolvedMax = max ?? (enableBusinessFeatures ? 8 : 50);
-    const imageNum = useImageStore(imageGenerationConfigSelectors.imageNum);
-    const setImageNum = useImageStore((s) => s.setImageNum);
     const [isEditing, setIsEditing] = useState(false);
     const [customCount, setCustomCount] = useState<number | null>(null);
     const customCountRef = useRef<number | null>(null);
@@ -126,9 +126,9 @@ const ImageNum = memo<ImageNumSelectorProps>(
       return (
         <Flexbox horizontal gap={8} style={{ width: '100%' }}>
           <InputNumber
-            max={max}
+            max={resolvedMax}
             min={min}
-            placeholder={`${min}-${max}`}
+            placeholder={`${min}-${resolvedMax}`}
             ref={inputRef}
             size="small"
             style={{ flex: 1 }}

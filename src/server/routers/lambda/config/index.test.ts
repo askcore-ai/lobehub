@@ -187,18 +187,33 @@ describe('configRouter', () => {
           }
         });
       });
+
+      it('should enable the default DeepSeek provider without a server API key', async () => {
+        const originalApiKey = process.env.DEEPSEEK_API_KEY;
+        delete process.env.DEEPSEEK_API_KEY;
+
+        const response = await router.getGlobalConfig();
+
+        expect(response.serverConfig.aiProvider?.deepseek?.enabled).toBe(true);
+
+        if (originalApiKey === undefined) {
+          delete process.env.DEEPSEEK_API_KEY;
+        } else {
+          process.env.DEEPSEEK_API_KEY = originalApiKey;
+        }
+      });
     });
   });
 
   describe('getDefaultAgentConfig', () => {
     it('should return the default agent config', async () => {
       process.env.DEFAULT_AGENT_CONFIG =
-        'plugins=search-engine,lobe-image-designer;enableAutoCreateTopic=true;model=gemini-pro;provider=google;';
+        'plugins=search-engine,lobe-image-designer;enableHistoryCount=true;model=gemini-pro;provider=google;';
 
       const response = await router.getDefaultAgentConfig();
 
       expect(response).toEqual({
-        enableAutoCreateTopic: true,
+        enableHistoryCount: true,
         model: 'gemini-pro',
         plugins: ['search-engine', 'lobe-image-designer'],
         provider: 'google',
@@ -209,12 +224,12 @@ describe('configRouter', () => {
 
     it('should return another config', async () => {
       process.env.DEFAULT_AGENT_CONFIG =
-        'model=meta-11ama/11ama-3-70b-instruct:nitro;provider=openrouter;enableAutoCreateTopic=true;params.max_tokens=700';
+        'model=meta-11ama/11ama-3-70b-instruct:nitro;provider=openrouter;enableHistoryCount=true;params.max_tokens=700';
 
       const response = await router.getDefaultAgentConfig();
 
       expect(response).toEqual({
-        enableAutoCreateTopic: true,
+        enableHistoryCount: true,
         model: 'meta-11ama/11ama-3-70b-instruct:nitro',
         params: { max_tokens: 700 },
         provider: 'openrouter',

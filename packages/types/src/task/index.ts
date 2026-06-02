@@ -1,4 +1,5 @@
 import type { BriefArtifacts } from '../brief';
+import type { ChatFileItem } from '../message/ui/chat';
 
 // ── Task type aliases ──
 
@@ -54,7 +55,33 @@ export interface WorkspaceData {
   tree: WorkspaceTreeNode[];
 }
 
+/**
+ * Audit record of the brief-emission decision for a completed topic.
+ *
+ * Persisted under `taskTopics.handoff.briefDecision`. Written for *every*
+ * synthesizeTopicBrief invocation (rule-conclusive and LLM-deferred alike) so
+ * the emit/skip outcome is inspectable per topic.
+ *
+ * - source='rule' — the deterministic gate (`shouldEmitTopicBrief`) was
+ *   conclusive on its own. `reason` mirrors the rule's reason string.
+ * - source='llm-judge' — the rule returned 'unknown' and an LLM made the call
+ *   via `chainJudgeBriefEmit`. `model` records which model voted.
+ */
+export interface BriefDecision {
+  decidedAt: string;
+  emit: boolean;
+  model?: string;
+  reason: string;
+  source: 'rule' | 'llm-judge';
+}
+
 export interface TaskTopicHandoff {
+  /**
+   * Outcome of the emit-vs-skip decision for the brief on this topic. The
+   * three LLM-produced fields above are agent-internal; this one is metadata
+   * about the brief delivery itself, written by the lifecycle service.
+   */
+  briefDecision?: BriefDecision;
   keyFindings?: string[];
   nextAction?: string;
   summary?: string;
@@ -102,6 +129,7 @@ export interface TaskItem {
   createdByUserId: string;
   currentTopicId: string | null;
   description: string | null;
+  editorData: unknown;
   error: string | null;
   heartbeatInterval: number | null;
   heartbeatTimeout: number | null;
@@ -140,6 +168,7 @@ export interface NewTask {
   createdByUserId: string;
   currentTopicId?: string | null;
   description?: string | null;
+  editorData?: unknown;
   error?: string | null;
   heartbeatInterval?: number | null;
   heartbeatTimeout?: number | null;
@@ -210,8 +239,9 @@ export interface TaskDetailActivityAgent {
 
 export interface TaskDetailActivity {
   actions?: unknown;
+  /** Brief-only: avatar of the agent that produced this brief; `null` when the agent is unknown or has been deleted. */
+  agent?: TaskDetailActivityAgent | null;
   agentId?: string | null;
-  agents?: TaskDetailActivityAgent[];
   artifacts?: BriefArtifacts | null;
   author?: TaskDetailActivityAuthor;
   briefType?: string;
@@ -224,6 +254,10 @@ export interface TaskDetailActivity {
   content?: string;
   createdAt?: string;
   cronJobId?: string | null;
+  /** Comment-only: rich Lexical JSON state. When present, supersedes `content` for rendering. */
+  editorData?: unknown;
+  /** Comment-only: files attached to this comment for rendering in the UI. */
+  files?: ChatFileItem[];
   id?: string;
   /**
    * Topic-only: persisted Gateway operation ID for the task topic, sourced
@@ -269,7 +303,11 @@ export interface TaskDetailData {
   createdAt?: string;
   dependencies?: Array<{ dependsOn: string; type: string }>;
   description?: string | null;
+  /** Rich-editor JSON state for the instruction; preserves details markdown drops (image size, etc.). */
+  editorData?: unknown;
   error?: string | null;
+  /** Files attached to the task instruction (persistent context for every run). */
+  files?: ChatFileItem[];
   // heartbeat.interval: periodic execution interval | heartbeat.timeout+lastAt: watchdog monitoring (detects stuck tasks)
   heartbeat?: {
     interval?: number | null;
@@ -279,7 +317,7 @@ export interface TaskDetailData {
   identifier: string;
   instruction: string;
   name?: string | null;
-  parent?: { identifier: string; name: string | null } | null;
+  parent?: { agentId?: string | null; identifier: string; name: string | null } | null;
   priority?: number | null;
   review?: Record<string, any> | null;
   schedule?: {

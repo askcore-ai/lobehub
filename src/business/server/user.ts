@@ -30,6 +30,13 @@ export function isBusinessFeatureEnabledForUser(user: BusinessFeatureUser = {}) 
   return false;
 }
 
+export interface OnUserActivityForBusinessParams {
+  currentTime: Date;
+  previousLastActiveAt: Date;
+  userCreatedAt: Date;
+  userId: string;
+}
+
 export async function getReferralStatus(userId: string): Promise<ReferralStatusString | undefined> {
   void userId;
   return undefined;
@@ -46,4 +53,10 @@ export async function initNewUserForBusiness(
 ): Promise<void> {
   void userId;
   void createdAt;
+}
+
+export async function onUserActivityForBusiness(
+  params: OnUserActivityForBusinessParams,
+): Promise<void> {
+  void params;
 }

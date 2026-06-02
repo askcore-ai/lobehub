@@ -7,6 +7,8 @@ import { useFetchAgentDocuments } from '@/hooks/useFetchAgentDocuments';
 import { useFetchTopicMemories } from '@/hooks/useFetchMemoryForTopic';
 import { useFetchNotebookDocuments } from '@/hooks/useFetchNotebookDocuments';
 import { useChatStore } from '@/store/chat';
+import { operationSelectors } from '@/store/chat/selectors';
+import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
 import { useUserStore } from '@/store/user';
 import { settingsSelectors } from '@/store/user/selectors';
 
@@ -16,7 +18,9 @@ import MessageItem from '../Messages';
 import type { WorkflowExpandLevelDefault } from '../Messages/AssistantGroup/components/WorkflowCollapse';
 import { MessageActionProvider } from '../Messages/Contexts/MessageActionProvider';
 import { dataSelectors, useConversationStore } from '../store';
+import AgentSignalReceiptList from './components/AgentSignalReceiptList';
 import VirtualizedList from './components/VirtualizedList';
+import { useAgentSignalReceipts } from './hooks/useAgentSignalReceipts';
 
 export interface ChatListProps {
   /**
@@ -34,6 +38,17 @@ export interface ChatListProps {
    * Disable the actions bar for all messages (e.g., in share page)
    */
   disableActionsBar?: boolean;
+  /**
+   * Optional content rendered as the last item inside the virtualized list —
+   * scrolls with the messages instead of being pinned to the viewport bottom.
+   * Used e.g. for the SubAgent read-only hint after the last message.
+   */
+  footerSlot?: ReactNode;
+  /**
+   * Optional content rendered as the first item inside the virtualized list.
+   * It scrolls with messages and does not participate in conversation state.
+   */
+  headerSlot?: ReactNode;
   /**
    * Custom item renderer. If not provided, uses default ChatItem.
    */
@@ -53,7 +68,15 @@ export interface ChatListProps {
  * Uses ConversationStore for message data and fetching.
  */
 const ChatList = memo<ChatListProps>(
-  ({ defaultWorkflowExpandLevel, disableActionsBar, welcome, itemContent, showWelcome }) => {
+  ({
+    defaultWorkflowExpandLevel,
+    disableActionsBar,
+    footerSlot,
+    headerSlot,
+    welcome,
+    itemContent,
+    showWelcome,
+  }) => {
     // Fetch messages (SWR key is null when skipFetch is true)
     const context = useConversationStore((s) => s.context);
     const enableUserMemories = useUserStore(settingsSelectors.memoryEnabled);
@@ -62,10 +85,29 @@ const ChatList = memo<ChatListProps>(
       s.useFetchMessages,
     ]);
     const activeAgentId = useChatStore((s) => s.activeAgentId);
-    useFetchMessages(context, skipFetch);
+    // Suppress SWR focus revalidate while the current topic is streaming —
+    // the server-pushed UIChatMessage[] snapshot at step boundaries is the
+    // source of truth during that window. A focus refetch could hit DB
+    // mid-fan-out and clobber the in-memory streamed state with a stale
+    // assistant placeholder.
+    const isStreaming = useChatStore(operationSelectors.isAgentRuntimeRunningByContext(context));
+    const { enableAgentSelfIteration } = useServerConfigStore(featureFlagsSelectors);
+    useFetchMessages(context, { revalidateOnFocus: !isStreaming, skipFetch });
+    const displayMessages = useConversationStore(dataSelectors.displayMessages);
+    const displayMessageIds = useConversationStore(dataSelectors.displayMessageIds);
+    const latestMessageId = displayMessageIds.at(-1);
 
     // Skip fetching notebook and memories for share pages (they require authentication)
     const isSharePage = !!context.topicShareId;
+    // TODO: Migrate Agent Signal receipts behind a dedicated user-visible receipt capability.
+    const canShowAgentSignalReceipts = enableAgentSelfIteration === true && !isSharePage;
+    const { receiptsByAnchor } = useAgentSignalReceipts({
+      agentId: canShowAgentSignalReceipts ? activeAgentId : undefined,
+      displayMessages,
+      enabled: canShowAgentSignalReceipts,
+      pollingSignal: latestMessageId,
+      topicId: canShowAgentSignalReceipts ? context.topicId : undefined,
+    });
 
     // Fetch notebook documents when topic is selected (skip for share pages)
     useFetchAgentDocuments(isSharePage ? undefined : activeAgentId);
@@ -74,21 +116,26 @@ const ChatList = memo<ChatListProps>(
 
     // Use selectors for data
 
-    const displayMessageIds = useConversationStore(dataSelectors.displayMessageIds);
-
     const defaultItemContent = useCallback(
       (index: number, id: string) => {
         const isLatestItem = displayMessageIds.length === index + 1;
+        const anchoredReceipts = receiptsByAnchor.get(id) ?? [];
+        const receiptRender =
+          anchoredReceipts.length > 0 ? (
+            <AgentSignalReceiptList receipts={anchoredReceipts} />
+          ) : undefined;
+
         return (
           <MessageItem
             defaultWorkflowExpandLevel={defaultWorkflowExpandLevel}
+            footerRender={receiptRender}
             id={id}
             index={index}
             isLatestItem={isLatestItem}
           />
         );
       },
-      [displayMessageIds.length, defaultWorkflowExpandLevel],
+      [displayMessageIds.length, defaultWorkflowExpandLevel, receiptsByAnchor],
     );
     const messagesInit = useConversationStore(dataSelectors.messagesInit);
 
@@ -120,6 +167,8 @@ const ChatList = memo<ChatListProps>(
       <MessageActionProvider withSingletonActionsBar={!disableActionsBar}>
         <VirtualizedList
           dataSource={displayMessageIds}
+          footerSlot={footerSlot}
+          headerSlot={headerSlot}
           itemContent={itemContent ?? defaultItemContent}
         />
       </MessageActionProvider>

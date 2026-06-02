@@ -1,9 +1,8 @@
 'use client';
 
-import type { ReactNode } from 'react';
-
 import { Button, Drawer, Form, Input, QRCode, Segmented, Select } from 'antd';
 import { Copy, Link2, Mail, QrCode } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { memo } from 'react';
 
 import { message } from '@/components/AntdStaticMethods';
@@ -106,12 +105,12 @@ export const InviteSlideOver = memo<InviteSlideOverProps>(
         <Segmented
           block
           className={styles.inviteSegmented}
+          value={channel}
           options={channels.map((c) => ({
             icon: c.icon,
             label: c.label,
             value: c.key,
           }))}
-          value={channel}
           onChange={(value) => onChannelChange(value as AskCoreInviteChannel)}
         />
 

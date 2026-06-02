@@ -50,7 +50,9 @@ export class TopicService {
       includeTriggers: params.includeTriggers,
       isInbox: params.isInbox,
       pageSize: params.pageSize,
+      sortBy: params.sortBy,
       triggers: params.triggers,
+      withDetails: params.withDetails,
     }) as any;
   };
 

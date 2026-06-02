@@ -411,24 +411,26 @@ const styles = createStaticStyles(({ css }) => ({
   `,
   resourceCard: css`
     cursor: pointer;
+
     break-inside: avoid;
 
-    margin-bottom: 14px;
+    margin-block-end: 14px;
     padding: 14px;
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 8px;
 
     background: ${cssVar.colorBgContainer};
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 3%);
+
     transition:
       border-color 0.15s ease,
       box-shadow 0.15s ease,
       transform 0.15s ease;
 
     &:hover {
-      border-color: ${cssVar.colorPrimaryBorder};
-      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.05);
       transform: translateY(-1px);
+      border-color: ${cssVar.colorPrimaryBorder};
+      box-shadow: 0 6px 18px rgb(0 0 0 / 5%);
     }
   `,
   resourceCardSelected: css`
@@ -445,36 +447,37 @@ const styles = createStaticStyles(({ css }) => ({
     min-width: 0;
   `,
   resourceCardTitle: css`
-    overflow-wrap: anywhere;
     font-size: 14px;
     font-weight: 650;
     line-height: 1.5;
     color: ${cssVar.colorText};
+    overflow-wrap: anywhere;
   `,
   resourceCardMeta: css`
-    margin-top: 2px;
-    overflow-wrap: anywhere;
+    margin-block-start: 2px;
     font-size: 12px;
     color: ${cssVar.colorTextDescription};
+    overflow-wrap: anywhere;
   `,
   resourceCardFields: css`
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin-top: 12px;
+    margin-block-start: 12px;
   `,
   resourceFieldChip: css`
     display: inline-flex;
-    max-width: 100%;
     gap: 5px;
     align-items: center;
 
-    padding: 4px 8px;
+    max-width: 100%;
+    padding-block: 4px;
+    padding-inline: 8px;
     border-radius: 8px;
 
-    overflow-wrap: anywhere;
     font-size: 12px;
     line-height: 1.45;
+    overflow-wrap: anywhere;
 
     background: ${cssVar.colorFillQuaternary};
 
@@ -489,9 +492,9 @@ const styles = createStaticStyles(({ css }) => ({
     }
   `,
   resourcePreviewBlock: css`
-    width: 100%;
-    margin-top: 10px;
     overflow: hidden;
+    width: 100%;
+    margin-block-start: 10px;
   `,
   resultCard: css`
     display: flex;
@@ -4048,7 +4051,7 @@ const SubmissionDetailView = ({
         const mediaType = String(file.media_type || '').toLowerCase();
         if (mediaType.startsWith('image/')) return true;
         const name = `${file.name || ''} ${file.object_key || ''}`.toLowerCase();
-        return /\.(jpe?g|png|webp|heic|heif|bmp|tiff?)($|\?)/.test(name);
+        return /\.(?:jpe?g|png|webp|heic|heif|bmp|tiff?)(?:$|\?)/.test(name);
       }),
     [detail.files],
   );

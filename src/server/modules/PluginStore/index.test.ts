@@ -1,26 +1,32 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 
-import { PluginStore } from './index';
+import { appEnv } from '@/envs/app';
 
-const baseURL = 'https://registry.npmmirror.com/@lobehub/plugins-index/v1/files/public';
+import { PluginStore } from './index';
 
 describe('PluginStore', () => {
   it('should return the default index URL when no language is provided', () => {
     const pluginStore = new PluginStore();
     const url = pluginStore.getPluginIndexUrl();
-    expect(url).toBe(`${baseURL}/index.en-US.json`);
+    expect(url).toBe(appEnv.PLUGINS_INDEX_URL);
   });
 
   it('should return the index URL for a supported language', () => {
     const pluginStore = new PluginStore();
     const url = pluginStore.getPluginIndexUrl('en-US');
-    expect(url).toBe(`${baseURL}/index.en-US.json`);
+    expect(url).toBe(appEnv.PLUGINS_INDEX_URL.replace('/index.json', '/index.en-US.json'));
   });
 
   it('should return the base URL if the provided language is not supported', () => {
     const pluginStore = new PluginStore();
-    const url = pluginStore.getPluginIndexUrl('fr-FR');
-    expect(url).toBe(`${baseURL}/index.fr-FR.json`);
+    const url = pluginStore.getPluginIndexUrl('xx-XX' as any);
+    expect(url).toBe(appEnv.PLUGINS_INDEX_URL);
+  });
+
+  it('should keep directory-style base URLs compatible with upstream plugin indexes', () => {
+    const pluginStore = new PluginStore('https://example.com/plugins');
+    const url = pluginStore.getPluginIndexUrl('zh-CN');
+    expect(url).toBe('https://example.com/plugins/index.zh-CN.json');
   });
 });

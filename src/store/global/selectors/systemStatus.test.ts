@@ -4,11 +4,17 @@ import { merge } from '@/utils/merge';
 
 import type { GlobalState } from '../initialState';
 import {
+  DEFAULT_HOME_SIDEBAR_EXPANDED_KEYS,
   DEFAULT_MODEL_DETAIL_PANEL_EXPANDED_KEYS,
   INITIAL_STATUS,
   initialState,
 } from '../initialState';
-import { DEFAULT_SIDEBAR_ITEMS, reorderSidebarItems, systemStatusSelectors } from './systemStatus';
+import {
+  DEFAULT_SIDEBAR_ITEMS,
+  reorderSidebarItems,
+  SIDEBAR_SPACER_ID,
+  systemStatusSelectors,
+} from './systemStatus';
 
 // Mock version constants
 vi.mock('@/const/version', () => ({
@@ -45,6 +51,7 @@ describe('systemStatusSelectors', () => {
         showSystemRole: true,
         mobileShowTopic: true,
         mobileShowPortal: true,
+        showAgentBuilderPanel: true,
         showRightPanel: true,
         showLeftPanel: true,
         showFilePanel: true,
@@ -63,6 +70,7 @@ describe('systemStatusSelectors', () => {
       expect(systemStatusSelectors.showSystemRole(s)).toBe(true);
       expect(systemStatusSelectors.mobileShowTopic(s)).toBe(true);
       expect(systemStatusSelectors.mobileShowPortal(s)).toBe(true);
+      expect(systemStatusSelectors.showAgentBuilderPanel(s)).toBe(true);
       expect(systemStatusSelectors.showRightPanel(s)).toBe(true);
       expect(systemStatusSelectors.showLeftPanel(s)).toBe(true);
       expect(systemStatusSelectors.showFilePanel(s)).toBe(true);
@@ -80,6 +88,7 @@ describe('systemStatusSelectors', () => {
       const zenState = merge(s, {
         status: { zenMode: true },
       });
+      expect(systemStatusSelectors.showAgentBuilderPanel(zenState)).toBe(false);
       expect(systemStatusSelectors.showRightPanel(zenState)).toBe(false);
       expect(systemStatusSelectors.showLeftPanel(zenState)).toBe(false);
       expect(systemStatusSelectors.showChatHeader(zenState)).toBe(false);
@@ -124,8 +133,8 @@ describe('systemStatusSelectors', () => {
       expect(systemStatusSelectors.sidebarItems(initialState)).toEqual(DEFAULT_SIDEBAR_ITEMS);
     });
 
-    it('should return stored items when set', () => {
-      const custom = [
+    it('should preserve stored order while inserting missing known items at default positions', () => {
+      const stored = [
         'agent',
         'recents',
         'pages',
@@ -137,9 +146,51 @@ describe('systemStatusSelectors', () => {
         'memory',
       ];
       const s: GlobalState = merge(initialState, {
-        status: { sidebarItems: custom },
+        status: { sidebarItems: stored },
       });
-      expect(systemStatusSelectors.sidebarItems(s)).toEqual(custom);
+      expect(systemStatusSelectors.sidebarItems(s)).toEqual([
+        'organization',
+        'agent',
+        'recents',
+        'pages',
+        'askcore',
+        'tasks',
+        SIDEBAR_SPACER_ID,
+        'image',
+        'community',
+        'resource',
+        'memory',
+      ]);
+    });
+
+    it('should respect a stored spacer position while restoring missing AskCore entries', () => {
+      const stored = [
+        'pages',
+        'recents',
+        'agent',
+        SIDEBAR_SPACER_ID,
+        'image',
+        'tasks',
+        'community',
+        'resource',
+        'memory',
+      ];
+      const s: GlobalState = merge(initialState, {
+        status: { sidebarItems: stored },
+      });
+      expect(systemStatusSelectors.sidebarItems(s)).toEqual([
+        'pages',
+        'organization',
+        'askcore',
+        'recents',
+        'agent',
+        SIDEBAR_SPACER_ID,
+        'image',
+        'tasks',
+        'community',
+        'resource',
+        'memory',
+      ]);
     });
 
     it('should insert missing known keys at default relative positions', () => {
@@ -149,10 +200,12 @@ describe('systemStatusSelectors', () => {
       const items = systemStatusSelectors.sidebarItems(s);
       expect(items).toEqual([
         'pages',
+        'organization',
         'askcore',
         'tasks',
         'recents',
         'agent',
+        SIDEBAR_SPACER_ID,
         'image',
         'community',
         'resource',
@@ -168,10 +221,12 @@ describe('systemStatusSelectors', () => {
       // accordion slot in the default list now uses the user's legacy order
       expect(items).toEqual([
         'pages',
+        'organization',
         'askcore',
         'tasks',
         'agent',
         'recents',
+        SIDEBAR_SPACER_ID,
         'image',
         'community',
         'resource',
@@ -197,16 +252,42 @@ describe('systemStatusSelectors', () => {
       const items = systemStatusSelectors.sidebarItems(s);
       expect(items).toEqual([
         'pages',
+        'organization',
         'askcore',
         'tasks',
         'recents',
         'agent',
+        SIDEBAR_SPACER_ID,
         'image',
         'community',
         'resource',
         'memory',
       ]);
       expect(items.indexOf('recents')).toBeLessThan(items.indexOf('agent'));
+    });
+  });
+
+  describe('sidebarExpandedKeys', () => {
+    it('should expand sidebar accordion sections by default', () => {
+      const s: GlobalState = {
+        ...initialState,
+        status: {
+          ...initialState.status,
+          sidebarExpandedKeys: undefined,
+        },
+      };
+
+      expect(systemStatusSelectors.sidebarExpandedKeys(s)).toEqual(
+        DEFAULT_HOME_SIDEBAR_EXPANDED_KEYS,
+      );
+    });
+
+    it('should preserve an empty stored preference when all sections are collapsed', () => {
+      const s: GlobalState = merge(initialState, {
+        status: { sidebarExpandedKeys: [] },
+      });
+
+      expect(systemStatusSelectors.sidebarExpandedKeys(s)).toEqual([]);
     });
   });
 

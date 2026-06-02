@@ -43,6 +43,15 @@ export const UserLabSchema = z.object({
    */
   enableAgentSelfIteration: z.boolean().optional(),
   /**
+   * enable the floating chat panel in agent document preview
+   */
+  enableAgentDocumentFloatingChatPanel: z.boolean().optional(),
+  /**
+   * surface the execution-device switcher for heterogeneous agents
+   * (lets users pick local / cloud sandbox / a bound device)
+   */
+  enableExecutionDeviceSwitcher: z.boolean().optional(),
+  /**
    * enable server-side agent execution via Gateway WebSocket
    */
   enableGatewayMode: z.boolean().optional(),
@@ -51,14 +60,24 @@ export const UserLabSchema = z.object({
    */
   enableGroupChat: z.boolean().optional(),
   /**
+   * enable the iMessage channel (BlueBubbles Desktop bridge)
+   */
+  enableImessage: z.boolean().optional(),
+  /**
    * enable markdown rendering in chat input editor
    */
   enableInputMarkdown: z.boolean().optional(),
+  /**
+   * show the "Add Platform Agent" entry in the create menu
+   */
+  enablePlatformAgent: z.boolean().optional(),
 });
 
 export type UserLab = z.infer<typeof UserLabSchema>;
 
 export interface UserPreference {
+  /** Last-used app for "Open working directory in…" split button. Empty/unknown values fall back to platform default. */
+  defaultOpenInApp?: string;
   /**
    * disable markdown rendering in chat input editor
    * @deprecated Use lab.enableInputMarkdown instead
@@ -137,11 +156,12 @@ export interface SSOProvider {
 
 export const UserPreferenceSchema = z
   .object({
+    defaultOpenInApp: z.string().optional(),
     guide: UserGuideSchema.optional(),
     hideSyncAlert: z.boolean().optional(),
     lab: UserLabSchema.optional(),
     telemetry: z.boolean().nullable(),
-    topicGroupMode: z.enum(['byTime', 'byProject', 'flat']).optional(),
+    topicGroupMode: z.enum(['byTime', 'byProject', 'flat', 'byStatus']).optional(),
     topicIncludeCompleted: z.boolean().optional(),
     topicSortBy: z.enum(['createdAt', 'updatedAt']).optional(),
     useCmdEnterToSend: z.boolean().optional(),

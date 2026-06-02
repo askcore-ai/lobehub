@@ -5,10 +5,10 @@ import {
 import { describe, expect, it } from 'vitest';
 
 import {
-  SKILL_TOOL_REDACTED_CONTENT,
   redactSkillMessageForDisplay,
   redactSkillToolResultForDisplay,
   shouldRenderToolCall,
+  SKILL_TOOL_REDACTED_CONTENT,
   stripSelectedSkillContextForDisplay,
 } from './toolRenderRules';
 

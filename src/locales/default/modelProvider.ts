@@ -267,6 +267,8 @@ export default {
     'For GPT-5.2 series; controls reasoning intensity.',
   'providerModels.item.modelConfig.extendParams.options.grok4_20ReasoningEffort.hint':
     'For Grok 4.20 series; controls reasoning intensity. Low/Medium uses 4 agents, High/XHigh uses 16 agents.',
+  'providerModels.item.modelConfig.extendParams.options.grok4_3ReasoningEffort.hint':
+    'For Grok 4.3 series; controls reasoning intensity.',
   'providerModels.item.modelConfig.extendParams.options.hy3ReasoningEffort.hint':
     'For Hy3 models; controls reasoning intensity. no_think (ultra-fast response), low (quick reasoning), and high (deep reasoning)—to accommodate varying latency and depth requirements, from high-frequency interactions to complex engineering tasks.',
   'providerModels.item.modelConfig.extendParams.options.deepseekV4ReasoningEffort.hint':
@@ -280,7 +282,7 @@ export default {
   'providerModels.item.modelConfig.extendParams.options.imageResolution2.hint':
     'For Gemini 3.1 Flash Image models; controls resolution of generated images (supports 512px).',
   'providerModels.item.modelConfig.extendParams.options.opus47Effort.hint':
-    'For Claude Opus 4.7; controls effort level (low/medium/high/xhigh/max).',
+    'For Claude Opus 4.7 and later; controls effort level (low/medium/high/xhigh/max).',
   'providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken.hint':
     'For Claude, Qwen3 and similar; controls token budget for reasoning.',
   'providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken32k.hint':
@@ -289,6 +291,8 @@ export default {
     'For Qwen3 series; controls token budget for reasoning (max 80k).',
   'providerModels.item.modelConfig.extendParams.options.reasoningEffort.hint':
     'For OpenAI and other reasoning-capable models; controls reasoning effort.',
+  'providerModels.item.modelConfig.extendParams.options.step3_5ReasoningEffort.hint':
+    'For Step 3.5 series; controls reasoning intensity.',
   'providerModels.item.modelConfig.extendParams.options.textVerbosity.hint':
     'For GPT-5+ series; controls output verbosity.',
   'providerModels.item.modelConfig.extendParams.options.thinking.hint':
@@ -303,8 +307,6 @@ export default {
     'For Gemini 3.1 Pro Preview models; controls thinking depth with low/medium/high levels.',
   'providerModels.item.modelConfig.extendParams.options.thinkingLevel4.hint':
     'For Gemini 3.1 Flash Image models; toggle thinking on/off.',
-  'providerModels.item.modelConfig.extendParams.options.thinkingLevel5.hint':
-    'For Gemini 3.1 Flash-Lite Preview; controls thinking depth with minimal/low/medium/high levels.',
   'providerModels.item.modelConfig.extendParams.options.urlContext.hint':
     'For Gemini series; supports providing URL context.',
   'providerModels.item.modelConfig.extendParams.placeholder':

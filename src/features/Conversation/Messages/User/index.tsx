@@ -13,11 +13,11 @@ import { userProfileSelectors } from '@/store/user/selectors';
 
 import { useDoubleClickEdit } from '../../hooks/useDoubleClickEdit';
 import { dataSelectors, messageStateSelectors, useConversationStore } from '../../store';
+import { stripSelectedSkillContextForDisplay } from '../AssistantGroup/toolRenderRules';
 import {
   useSetMessageItemActionElementPortialContext,
   useSetMessageItemActionTypeContext,
 } from '../Contexts/message-action-context';
-import { stripSelectedSkillContextForDisplay } from '../AssistantGroup/toolRenderRules';
 import Actions from './Actions';
 import UserMessageContent from './components/MessageContent';
 import { UserMessageExtra } from './Extra';

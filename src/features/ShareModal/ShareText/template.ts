@@ -1,5 +1,4 @@
 import { type UIChatMessage } from '@lobechat/types';
-import { template } from 'es-toolkit/compat';
 
 import { LOADING_FLAT } from '@/const/message';
 import {
@@ -8,54 +7,6 @@ import {
 } from '@/features/Conversation/Messages/AssistantGroup/toolRenderRules';
 import { normalizeThinkTags, processWithArtifact } from '@/features/Conversation/utils/markdown';
 import { type FieldType } from '@/features/ShareModal/ShareText/type';
-
-const markdownTemplate = template(
-  `# {{title}}
-
-<% if (systemRole) { %>
-\`\`\`\`md
-{{systemRole}}
-\`\`\`\`
-<% } %>
-
-<% messages.forEach(function(chat) { %>
-
-<% if (withRole) { %>
-
-<% if (chat.role === 'user') { %>
-##### User:
-<% } else if (chat.role === 'assistant') { %>
-##### Assistant:
-<% } else if (chat.role === 'tool') { %>
-##### Tools Calling:
-<% } %>
-
-<% } %>
-
-<% if (chat.role === 'tool') { %>
-\`\`\`json
-{{chat.content}}
-\`\`\`
-<% } else { %>
-
-{{chat.content}}
-
-<% if (includeTool && chat.tools) { %>
-
-\`\`\`json
-{{JSON.stringify(chat.tools, null, 2)}}
-\`\`\`
-
-<% } %>
-<% } %>
-
-<% }); %>
-`,
-  {
-    evaluate: /<%([\s\S]+?)%>/g,
-    interpolate: /\{\{([\s\S]+?)\}\}/g,
-  },
-);
 
 interface MarkdownParams extends FieldType {
   messages: UIChatMessage[];
@@ -71,19 +22,46 @@ export const generateMarkdown = ({
   withSystemRole,
   withRole,
   systemRole,
-}: MarkdownParams) =>
-  markdownTemplate({
-    includeTool,
-    messages: messages
-      .filter((m) => m.content !== LOADING_FLAT)
-      .filter((m) => (!includeUser ? m.role !== 'user' : true))
-      .filter((m) => (!includeTool ? m.role !== 'tool' : true))
-      .map(redactSkillMessageForDisplay)
-      .map((message) => ({
-        ...message,
-        content: normalizeThinkTags(processWithArtifact(message.content)),
-      })),
-    systemRole: withSystemRole ? stripSelectedSkillContextForDisplay(systemRole) : undefined,
-    title,
-    withRole,
-  });
+}: MarkdownParams): string => {
+  const parts: string[] = [`# ${title}`, ''];
+
+  if (withSystemRole && systemRole) {
+    parts.push('````md', stripSelectedSkillContextForDisplay(systemRole), '````', '');
+  }
+
+  const filteredMessages = messages
+    .filter((m) => m.content !== LOADING_FLAT)
+    .filter((m) => (!includeUser ? m.role !== 'user' : true))
+    .filter((m) => (!includeTool ? m.role !== 'tool' : true))
+    .map(redactSkillMessageForDisplay)
+    .map((message) => ({
+      ...message,
+      content: normalizeThinkTags(processWithArtifact(message.content)),
+    }));
+
+  for (const chat of filteredMessages) {
+    parts.push('');
+
+    if (withRole) {
+      if (chat.role === 'user') {
+        parts.push('##### User:', '');
+      } else if (chat.role === 'assistant') {
+        parts.push('##### Assistant:', '');
+      } else if (chat.role === 'tool') {
+        parts.push('##### Tools Calling:', '');
+      }
+    }
+
+    if (chat.role === 'tool') {
+      parts.push('```json', String(chat.content), '```');
+    } else {
+      parts.push(String(chat.content));
+
+      if (includeTool && chat.tools && chat.tools.length > 0) {
+        parts.push('', '```json', JSON.stringify(chat.tools, null, 2), '```');
+      }
+    }
+  }
+
+  return parts.join('\n');
+};

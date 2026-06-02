@@ -34,8 +34,37 @@ interface AgentDocumentRecord {
 interface AgentDocumentOperationContext {
   agentId?: string | null;
   currentDocumentId?: string | null;
+  messageId?: string | null;
+  operationId?: string | null;
   scope?: string | null;
+  taskId?: string | null;
+  toolCallId?: string | null;
   topicId?: string | null;
+}
+
+/**
+ * Attribution data captured from a builtin tool call that creates an agent document.
+ */
+interface AgentDocumentToolContext {
+  messageId: string;
+  operationId?: string;
+  taskId?: string | null;
+  toolCallId: string;
+  topicId?: string;
+}
+
+/**
+ * Tool-call attribution input for document create operations.
+ */
+interface AgentDocumentToolTriggerInput {
+  /**
+   * Same-turn tool-call context used by create-class services to attribute generated documents.
+   */
+  toolContext?: AgentDocumentToolContext;
+  /**
+   * Set to `'tool'` only when the same-turn user message id and tool call id are both available.
+   */
+  trigger?: 'tool';
 }
 
 const CURRENT_PAGE_DOCUMENT_WRITE_ERROR_CODE = 'CURRENT_PAGE_DOCUMENT_WRITE_FORBIDDEN';
@@ -50,13 +79,13 @@ export interface AgentDocumentsRuntimeService {
   createDocument: (
     params: CreateDocumentArgs & {
       agentId: string;
-    },
+    } & AgentDocumentToolTriggerInput,
   ) => Promise<AgentDocumentRecord | undefined>;
   createTopicDocument: (
     params: CreateDocumentArgs & {
       agentId: string;
       topicId: string;
-    },
+    } & AgentDocumentToolTriggerInput,
   ) => Promise<AgentDocumentRecord | undefined>;
   listDocuments: (
     params: ListDocumentsArgs & {
@@ -119,6 +148,26 @@ export class AgentDocumentsExecutionRuntime {
     return context.topicId;
   }
 
+  private buildToolTriggerInput(
+    context?: AgentDocumentOperationContext,
+  ): AgentDocumentToolTriggerInput {
+    if (!context?.messageId || !context.toolCallId) return {};
+
+    const toolContext: AgentDocumentToolContext = {
+      messageId: context.messageId,
+      toolCallId: context.toolCallId,
+    };
+
+    if (context.operationId) toolContext.operationId = context.operationId;
+    if (context.taskId) toolContext.taskId = context.taskId;
+    if (context.topicId) toolContext.topicId = context.topicId;
+
+    return {
+      toolContext,
+      trigger: 'tool',
+    };
+  }
+
   private buildCurrentPageDocumentWriteBlockedResult(apiName: string): BuiltinServerRuntimeOutput {
     const message =
       `Cannot use lobe-agent-documents.${apiName} on the current page document ` +
@@ -172,9 +221,10 @@ export class AgentDocumentsExecutionRuntime {
       };
     }
 
-    const target = args.target ?? 'agent';
+    const scope = args.scope ?? 'agent';
+    const sourceType = args.sourceType ?? 'all';
     const topicId = this.resolveTopicId(context);
-    if (target === 'currentTopic' && !topicId) {
+    if (scope === 'currentTopic' && !topicId) {
       return {
         content: 'Cannot list current topic documents without topicId context.',
         success: false,
@@ -182,9 +232,9 @@ export class AgentDocumentsExecutionRuntime {
     }
 
     const docs =
-      target === 'currentTopic'
-        ? await this.service.listTopicDocuments({ agentId, target, topicId: topicId! })
-        : await this.service.listDocuments({ agentId, target });
+      scope === 'currentTopic'
+        ? await this.service.listTopicDocuments({ agentId, scope, sourceType, topicId: topicId! })
+        : await this.service.listDocuments({ agentId, scope, sourceType });
     const list = docs.map((d) => ({
       ...(d.documentId ? { documentId: d.documentId } : {}),
       filename: d.filename ?? d.title ?? '',
@@ -211,24 +261,30 @@ export class AgentDocumentsExecutionRuntime {
       };
     }
 
-    const target = args.target ?? 'agent';
+    const scope = args.scope ?? 'agent';
     const topicId = this.resolveTopicId(context);
-    if (target === 'currentTopic' && !topicId) {
+    if (scope === 'currentTopic' && !topicId) {
       return {
         content: 'Cannot create current topic document without topicId context.',
         success: false,
       };
     }
 
+    const toolTriggerInput = this.buildToolTriggerInput(context);
     const created =
-      target === 'currentTopic'
-        ? await this.service.createTopicDocument({ ...args, agentId, topicId: topicId! })
-        : await this.service.createDocument({ ...args, agentId });
+      scope === 'currentTopic'
+        ? await this.service.createTopicDocument({
+            ...args,
+            ...toolTriggerInput,
+            agentId,
+            topicId: topicId!,
+          })
+        : await this.service.createDocument({ ...args, ...toolTriggerInput, agentId });
     if (!created) return { content: 'Failed to create agent document.', success: false };
 
     return {
       content: `Created document "${created.title || args.title}" (${created.id}).`,
-      state: { documentId: created.documentId },
+      state: { agentDocumentId: created.id, documentId: created.documentId },
       success: true,
     };
   }

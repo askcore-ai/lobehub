@@ -144,9 +144,14 @@ const createAnswerRenderBlock = (
   block: AssistantContentBlock,
   overrides: Partial<RenderableAssistantContentBlock> = {},
 ): RenderableAssistantContentBlock => {
+  const content = 'content' in overrides ? overrides.content : block.content;
+  const tools = 'tools' in overrides ? overrides.tools : block.tools;
+
   return {
     ...block,
+    contentOverride: content,
     domId: `${block.id}${ANSWER_DOM_ID_SUFFIX}`,
+    hasToolsOverride: !!tools?.length,
     renderKey: `${block.id}${ANSWER_DOM_ID_SUFFIX}`,
     ...overrides,
   };
@@ -156,9 +161,14 @@ const createWorkflowRenderBlock = (
   block: AssistantContentBlock,
   overrides: Partial<RenderableAssistantContentBlock> = {},
 ): RenderableAssistantContentBlock => {
+  const content = 'content' in overrides ? overrides.content : block.content;
+  const tools = 'tools' in overrides ? overrides.tools : block.tools;
+
   return {
     ...block,
+    contentOverride: content,
     domId: `${block.id}${WORKFLOW_DOM_ID_SUFFIX}`,
+    hasToolsOverride: !!tools?.length,
     renderKey: `${block.id}${WORKFLOW_DOM_ID_SUFFIX}`,
     ...overrides,
   };
@@ -199,6 +209,31 @@ const appendWorkflowRangeBlock = (
   block: AssistantContentBlock,
   allowLeadingSentencePromotion = false,
 ) => {
+  if (block.error) {
+    if (hasTools(block)) {
+      appendWorkflowBlock(
+        segments,
+        createWorkflowRenderBlock(block, {
+          content: '',
+          error: undefined,
+          imageList: undefined,
+          reasoning: undefined,
+        }),
+      );
+      appendAnswerBlock(
+        segments,
+        createAnswerRenderBlock(block, {
+          reasoning: undefined,
+          tools: undefined,
+        }),
+      );
+      return;
+    }
+
+    appendAnswerBlock(segments, block);
+    return;
+  }
+
   if (!shouldPromoteMixedBlockContent(block)) {
     const leadingSentenceSplit =
       allowLeadingSentencePromotion && segments.length === 0 && hasTools(block)
@@ -360,10 +395,10 @@ const partitionBlocks = (
 
 const withMarkdownStreamingState = (
   block: RenderableAssistantContentBlock,
-  firstBlockId: string | undefined,
+  lastBlockId: string | undefined,
 ): RenderableAssistantContentBlock => ({
   ...block,
-  disableMarkdownStreaming: block.disableMarkdownStreaming || block.id === firstBlockId,
+  disableMarkdownStreaming: block.disableMarkdownStreaming || block.id !== lastBlockId,
 });
 
 const shouldInlineWorkflowSegment = (blocks: RenderableAssistantContentBlock[]): boolean => {
@@ -392,7 +427,7 @@ const Group = memo<GroupChildrenProps>(
       messageStateSelectors.isAssistantGroupItemGenerating(id)(s),
     ]);
     const contextValue = useMemo(() => ({ assistantGroupId: id }), [id]);
-    const firstBlockId = blocks[0]?.id;
+    const lastBlockId = blocks.at(-1)?.id;
 
     const { segments, postToolTailPromoted } = useMemo(
       () => partitionBlocks(blocks, isGenerating),
@@ -420,7 +455,7 @@ const Group = memo<GroupChildrenProps>(
 
               if (shouldInlineWorkflowSegment(segment.blocks)) {
                 return segment.blocks.map((block, blockIndex) => {
-                  const item = withMarkdownStreamingState(block, firstBlockId);
+                  const item = withMarkdownStreamingState(block, lastBlockId);
                   if (!isGenerating && isEmptyBlock(item)) return null;
 
                   return (
@@ -444,7 +479,7 @@ const Group = memo<GroupChildrenProps>(
                   key={segment.blocks[0]?.renderKey ?? `${id}.workflow.${index}`}
                   workflowChromeComplete={workflowChromeComplete}
                   blocks={segment.blocks.map((block) =>
-                    withMarkdownStreamingState(block, firstBlockId),
+                    withMarkdownStreamingState(block, lastBlockId),
                   )}
                 />
               );
@@ -455,7 +490,7 @@ const Group = memo<GroupChildrenProps>(
 
             return (
               <GroupItem
-                {...withMarkdownStreamingState(item, firstBlockId)}
+                {...withMarkdownStreamingState(item, lastBlockId)}
                 assistantId={id}
                 contentId={contentId}
                 disableEditing={disableEditing}

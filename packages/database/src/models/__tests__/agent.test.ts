@@ -15,6 +15,7 @@ import {
   knowledgeBases,
   sessionGroups,
   sessions,
+  topics,
   users,
 } from '../../schemas';
 import type { LobeChatDatabase } from '../../type';
@@ -182,6 +183,51 @@ describe('AgentModel', () => {
       const result = await agentModel.getAgentConfigById(agentId);
 
       // Should return null since user1 cannot access user2's agent
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getAgentModelConfig', () => {
+    it('returns model + provider when both are configured', async () => {
+      const agentId = 'snap-agent-1';
+      await serverDB
+        .insert(agents)
+        .values({ id: agentId, model: 'claude-sonnet-4-6', provider: 'anthropic', userId });
+
+      const result = await agentModel.getAgentModelConfig(agentId);
+
+      expect(result).toEqual({ model: 'claude-sonnet-4-6', provider: 'anthropic' });
+    });
+
+    it('resolves by slug when id does not match', async () => {
+      const agentId = 'snap-agent-by-slug';
+      const slug = 'snap-slug';
+      await serverDB
+        .insert(agents)
+        .values({ id: agentId, model: 'gpt-4o', provider: 'openai', slug, userId });
+
+      const result = await agentModel.getAgentModelConfig(slug);
+
+      expect(result).toEqual({ model: 'gpt-4o', provider: 'openai' });
+    });
+
+    it('returns null when model or provider is missing', async () => {
+      const agentId = 'snap-agent-incomplete';
+      await serverDB.insert(agents).values({ id: agentId, model: 'gpt-4o', userId });
+
+      const result = await agentModel.getAgentModelConfig(agentId);
+
+      expect(result).toBeNull();
+    });
+
+    it('does not leak across users', async () => {
+      const agentId = 'snap-agent-other-user';
+      await serverDB
+        .insert(agents)
+        .values({ id: agentId, model: 'gpt-4o', provider: 'openai', userId: userId2 });
+
+      const result = await agentModel.getAgentModelConfig(agentId);
+
       expect(result).toBeNull();
     });
   });
@@ -1959,6 +2005,84 @@ describe('AgentModel', () => {
 
       expect((result?.params as any)?.temperature).toBeNull();
       expect((result?.params as any)?.topP).toBe(0.5);
+    });
+  });
+
+  describe('rank', () => {
+    it('should rank agents by topic count, excluding agents with no topics', async () => {
+      await serverDB.insert(agents).values([
+        { avatar: 'av1', backgroundColor: 'bg1', id: 'ra1', title: 'Agent 1', userId },
+        { id: 'ra2', title: 'Agent 2', userId },
+        { id: 'ra3', title: 'Agent 3', userId }, // no topics → excluded
+      ]);
+      await serverDB.insert(topics).values([
+        { agentId: 'ra1', id: 'rt1', userId },
+        { agentId: 'ra1', id: 'rt2', userId },
+        { agentId: 'ra1', id: 'rt3', userId },
+        { agentId: 'ra2', id: 'rt4', userId },
+        { agentId: 'ra2', id: 'rt5', userId },
+      ]);
+
+      const result = await agentModel.rank();
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({
+        avatar: 'av1',
+        backgroundColor: 'bg1',
+        count: 3,
+        id: 'ra1',
+        title: 'Agent 1',
+      });
+      expect(result[1]).toMatchObject({ count: 2, id: 'ra2' });
+    });
+
+    it('should include the inbox agent but exclude other virtual agents', async () => {
+      await serverDB.insert(agents).values([
+        { id: 'inbox-agent', slug: 'inbox', title: 'Inbox', userId, virtual: true },
+        { id: 'virtual-agent', title: 'Virtual', userId, virtual: true },
+        { id: 'normal-agent', title: 'Normal', userId },
+      ]);
+      await serverDB.insert(topics).values([
+        { agentId: 'inbox-agent', id: 'it1', userId },
+        { agentId: 'virtual-agent', id: 'vt1', userId },
+        { agentId: 'normal-agent', id: 'nt1', userId },
+      ]);
+
+      const ids = (await agentModel.rank()).map((r) => r.id);
+
+      expect(ids).toContain('inbox-agent');
+      expect(ids).toContain('normal-agent');
+      expect(ids).not.toContain('virtual-agent');
+    });
+
+    it('should only rank the current user agents', async () => {
+      await serverDB.insert(agents).values([
+        { id: 'mine', title: 'Mine', userId },
+        { id: 'theirs', title: 'Theirs', userId: userId2 },
+      ]);
+      await serverDB.insert(topics).values([
+        { agentId: 'mine', id: 'mt1', userId },
+        { agentId: 'theirs', id: 'tt1', userId: userId2 },
+      ]);
+
+      const result = await agentModel.rank();
+
+      expect(result.map((r) => r.id)).toEqual(['mine']);
+    });
+
+    it('should respect the limit parameter', async () => {
+      await serverDB.insert(agents).values([
+        { id: 'la1', title: 'A1', userId },
+        { id: 'la2', title: 'A2', userId },
+      ]);
+      await serverDB.insert(topics).values([
+        { agentId: 'la1', id: 'lt1', userId },
+        { agentId: 'la2', id: 'lt2', userId },
+      ]);
+
+      const result = await agentModel.rank(1);
+
+      expect(result).toHaveLength(1);
     });
   });
 });

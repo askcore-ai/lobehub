@@ -23,12 +23,6 @@ export const deepseekChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-04-24',
     settings: {
-      extendParamOptions: {
-        enableReasoning: {
-          defaultValue: true,
-          includeBudget: false,
-        },
-      },
       extendParams: ['enableReasoning', 'deepseekV4ReasoningEffort'],
     },
     type: 'chat',
@@ -56,12 +50,6 @@ export const deepseekChatModels: AIChatModelCard[] = [
     },
     releasedAt: '2026-04-24',
     settings: {
-      extendParamOptions: {
-        enableReasoning: {
-          defaultValue: true,
-          includeBudget: false,
-        },
-      },
       extendParams: ['enableReasoning', 'deepseekV4ReasoningEffort'],
     },
     type: 'chat',

@@ -78,17 +78,30 @@ export class AgentManagerRuntime {
    */
   async createAgent(params: CreateAgentParams): Promise<BuiltinToolResult> {
     try {
+      // Guard against LLM double-encoding: if array fields are JSON strings, parse them.
+      // Use `as any` to bypass TS narrowing — at runtime LLMs can send strings for typed array params.
+      const parseArrayParam = (v: any): string[] | undefined => {
+        if (typeof v === 'string') {
+          try {
+            return JSON.parse(v);
+          } catch {
+            return undefined;
+          }
+        }
+        return v;
+      };
+
       const config = {
         avatar: params.avatar,
         backgroundColor: params.backgroundColor,
         description: params.description,
         model: params.model,
         openingMessage: params.openingMessage,
-        openingQuestions: params.openingQuestions,
-        plugins: params.plugins,
+        openingQuestions: parseArrayParam(params.openingQuestions),
+        plugins: parseArrayParam(params.plugins),
         provider: params.provider,
         systemRole: params.systemRole,
-        tags: params.tags,
+        tags: parseArrayParam(params.tags),
         title: params.title,
       };
 
@@ -872,8 +885,9 @@ export class AgentManagerRuntime {
     }
 
     // Need OAuth authorization
+    // Skip redirectUri on desktop (app:// protocol) since the system browser can't navigate to it
     const redirectUri =
-      typeof window !== 'undefined'
+      typeof window !== 'undefined' && window.location.protocol.startsWith('http')
         ? `${window.location.origin}/oauth/callback/success?provider=${encodeURIComponent(identifier)}`
         : undefined;
     const authInfo = await getToolStoreState().getLobehubSkillAuthorizeUrl(identifier, {

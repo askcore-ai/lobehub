@@ -20,6 +20,10 @@ const activeTaskPriority = (s: TaskStoreState) => activeTaskDetail(s)?.priority 
 
 const activeTaskInstruction = (s: TaskStoreState) => activeTaskDetail(s)?.instruction;
 
+const activeTaskEditorData = (s: TaskStoreState) => activeTaskDetail(s)?.editorData;
+
+const activeTaskFiles = (s: TaskStoreState) => activeTaskDetail(s)?.files;
+
 const activeTaskDescription = (s: TaskStoreState) => activeTaskDetail(s)?.description;
 
 const activeTaskAgentId = (s: TaskStoreState) => activeTaskDetail(s)?.agentId;
@@ -85,10 +89,7 @@ const taskSaveStatus = (s: TaskStoreState) => s.taskSaveStatus;
 
 const activeTopicDrawerTopicId = (s: TaskStoreState) => s.activeTopicDrawerTopicId;
 
-const activePageModalId = (s: TaskStoreState) => s.activePageModalId;
-
 export const taskDetailSelectors = {
-  activePageModalId,
   activeTaskAgentId,
   activeTaskAutomationMode,
   activeTaskCheckpoint,
@@ -96,7 +97,9 @@ export const taskDetailSelectors = {
   activeTaskDependencies,
   activeTaskDescription,
   activeTaskDetail,
+  activeTaskEditorData,
   activeTaskError,
+  activeTaskFiles,
   activeTaskId,
   activeTaskInstruction,
   activeTaskName,

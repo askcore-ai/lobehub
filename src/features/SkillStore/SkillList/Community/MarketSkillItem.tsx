@@ -1,8 +1,8 @@
 'use client';
 
 import { ActionIcon, Avatar, Block, DropdownMenu, Flexbox, Icon, Modal, Tag } from '@lobehub/ui';
+import { confirmModal } from '@lobehub/ui/base-ui';
 import { SkillsIcon } from '@lobehub/ui/icons';
-import { App } from 'antd';
 import { createStaticStyles, cssVar } from 'antd-style';
 import { Loader2, MoreVerticalIcon, Plus, Trash2 } from 'lucide-react';
 import { lazy, memo, Suspense, useCallback, useState } from 'react';
@@ -39,7 +39,6 @@ const MarketSkillItem = memo<DiscoverSkillItem>(({ name, icon, description, iden
   const { t } = useTranslation('plugin');
   const [detailOpen, setDetailOpen] = useState(false);
   const [installing, setInstalling] = useState(false);
-  const { modal } = App.useApp();
 
   const installed = useToolStore(agentSkillsSelectors.isAgentSkill(identifier));
   const installedSkill = useToolStore(agentSkillsSelectors.getAgentSkillByIdentifier(identifier));
@@ -63,16 +62,14 @@ const MarketSkillItem = memo<DiscoverSkillItem>(({ name, icon, description, iden
 
   const handleUninstall = useCallback(() => {
     if (!installedSkill) return;
-    modal.confirm({
-      centered: true,
+    confirmModal({
       okButtonProps: { danger: true },
       onOk: async () => {
         await deleteAgentSkill(installedSkill.id);
       },
       title: t('store.actions.confirmUninstall'),
-      type: 'error',
     });
-  }, [installedSkill, deleteAgentSkill, modal, t]);
+  }, [installedSkill, deleteAgentSkill, t]);
 
   const renderAction = () => {
     if (installed) {

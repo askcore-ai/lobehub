@@ -1,11 +1,22 @@
+import { TRACING_SCENARIOS } from '@lobechat/const';
+import type { TracingOptions } from '@lobechat/llm-generation-tracing';
 import {
   chainGenerateBrief,
+  chainJudgeBriefEmit,
   chainTaskTopicHandoff,
+  GENERATE_BRIEF_PROMPT_VERSION,
   GENERATE_BRIEF_SCHEMA,
+  GENERATE_BRIEF_SCHEMA_NAME,
+  JUDGE_BRIEF_EMIT_PROMPT_VERSION,
+  JUDGE_BRIEF_EMIT_SCHEMA,
+  JUDGE_BRIEF_EMIT_SCHEMA_NAME,
+  TASK_TOPIC_HANDOFF_PROMPT_VERSION,
   TASK_TOPIC_HANDOFF_SCHEMA,
+  TASK_TOPIC_HANDOFF_SCHEMA_NAME,
 } from '@lobechat/prompts';
 import type {
   BriefArtifacts,
+  BriefDecision,
   TaskItem,
   TaskSchedulerContext,
   TaskTopicHandoff,
@@ -48,7 +59,7 @@ const TERMINAL_STATUSES = new Set(['canceled', 'completed', 'failed']);
 const isTerminal = (status: string) => TERMINAL_STATUSES.has(status);
 
 // Consecutive 'error' reasons after which we stop re-arming and let the
-// urgent brief surface for human attention. Hardcoded for now (per LOBE-8233);
+// urgent brief surface for human attention. Hardcoded for now (per );
 // move to task.config later if it needs to be tunable per-task.
 const HEARTBEAT_FAILURE_FUSE = 3;
 
@@ -132,7 +143,7 @@ export class TaskLifecycleService {
 
       // 4. Synthesize a programmatic brief for the user (auto mode only).
       //    The agent-driven `createBrief` tool path stays the default until
-      //    the GrowthBook flag flips. See LOBE-8333 for the rollout plan.
+      //    the GrowthBook flag flips. See for the rollout plan.
       if (getBriefMode(currentTask) === 'auto' && currentTask && topicId && lastAssistantContent) {
         await this.synthesizeTopicBrief(
           taskId,
@@ -145,17 +156,30 @@ export class TaskLifecycleService {
       }
 
       // 5. Default post-tick transition.
-      //    - Automation tasks (heartbeat / schedule) loop running ↔ scheduled, so
-      //      a successful tick parks the task at 'scheduled' to wait for the next
-      //      tick. They never auto-pause on success — only `reason === 'error'`
-      //      below puts them in 'paused' for human attention.
-      //    - Non-automation tasks fall back to the legacy "pause for user review"
-      //      behavior: a 'result' brief from the agent is a *proposal* of
-      //      completion, and the user must explicitly approve via the brief action
-      //      to transition to 'completed'. Auto-complete only happens via the
-      //      Judge path above.
+      //    - Schedule-mode task that just consumed its final allowed run
+      //      (count ≥ maxExecutions) → park at 'completed' so the UI reflects
+      //      the cap immediately. Without this, a daily cron with
+      //      maxExecutions=1 would advertise itself as 'scheduled' for
+      //      another 24h before the pre-tick check in runScheduleTick
+      //      noticed.
+      //    - Other automation tasks (heartbeat, schedule under cap) loop
+      //      running ↔ scheduled, so a successful tick parks them at
+      //      'scheduled' to wait for the next tick. They never auto-pause
+      //      on success — only `reason === 'error'` below puts them in
+      //      'paused' for human attention.
+      //    - Non-automation tasks fall back to the legacy "pause for user
+      //      review" behavior: a 'result' brief from the agent is a
+      //      *proposal* of completion, and the user must explicitly approve
+      //      via the brief action to transition to 'completed'. Auto-complete
+      //      only happens via the Judge path above.
       if (currentTask) {
-        if (currentTask.automationMode) {
+        if (
+          currentTask.automationMode === 'schedule' &&
+          (await this.scheduleCapReached(currentTask))
+        ) {
+          log('cap reached for task=%s — marking completed post-tick', taskIdentifier);
+          await this.taskModel.updateStatus(taskId, 'completed', { completedAt: new Date() });
+        } else if (currentTask.automationMode) {
           await this.taskModel.updateStatus(taskId, 'scheduled', { error: null });
         } else if (this.taskModel.shouldPauseOnTopicComplete(currentTask)) {
           await this.taskModel.updateStatus(taskId, 'paused', { error: null });
@@ -169,10 +193,12 @@ export class TaskLifecycleService {
 
       await this.briefModel.create({
         actions: DEFAULT_BRIEF_ACTIONS['error'],
+        agentId: currentTask?.assigneeAgentId || undefined,
         priority: 'urgent',
         summary: `Execution failed: ${errorMessage || 'Unknown error'}`,
         taskId,
         title: `${taskIdentifier} topic${topicRef} error`,
+        trigger: 'task',
         type: 'error',
       });
 
@@ -184,6 +210,41 @@ export class TaskLifecycleService {
     // next tick.
     const finalTask = await this.taskModel.findById(taskId);
     if (finalTask) await this.maybeRearmHeartbeat(finalTask, reason);
+  }
+
+  /**
+   * Has the task already consumed every allowed scheduled execution?
+   *
+   * Counts `task_topics` rows created since `context.scheduler.scheduleStartedAt`
+   * (stamped by `TaskService.updateStatus` on user-initiated start/restart) and
+   * compares against `config.schedule.maxExecutions`. Returns false when:
+   *   - the task isn't in schedule mode
+   *   - no cap is configured (null / 0)
+   *   - no `scheduleStartedAt` is stamped (pre-PR tasks fall through; enforcement
+   *     begins only after the user pauses + restarts)
+   *
+   * Mirrors the pre-tick check in `runScheduleTick` so a daily cron with
+   * `maxExecutions=1` doesn't sit in `scheduled` for 24h after consuming
+   * its single allowed run.
+   */
+  private async scheduleCapReached(task: TaskItem): Promise<boolean> {
+    if (task.automationMode !== 'schedule') return false;
+    const scheduleConfig =
+      ((task.config as { schedule?: { maxExecutions?: number | null } } | null) ?? {}).schedule ??
+      {};
+    const maxExecutions = scheduleConfig.maxExecutions ?? null;
+    if (maxExecutions == null || maxExecutions <= 0) return false;
+
+    const scheduler =
+      ((task.context as { scheduler?: { scheduleStartedAt?: string } } | null) ?? {}).scheduler ??
+      {};
+    const startedAtIso = scheduler.scheduleStartedAt;
+    if (!startedAtIso) return false;
+
+    const runCount = await this.taskTopicModel.countByTask(task.id, {
+      since: new Date(startedAtIso),
+    });
+    return runCount >= maxExecutions;
   }
 
   /**
@@ -281,12 +342,14 @@ export class TaskLifecycleService {
     currentTask: any,
   ): Promise<void> {
     try {
-      const { model, provider } = await (this.systemAgentService as any).getTaskModelConfig(
-        'topic',
-      );
+      const [{ model, provider }, responseLanguage] = await Promise.all([
+        (this.systemAgentService as any).getTaskModelConfig('topic'),
+        this.systemAgentService.getUserLocale(),
+      ]);
 
       const payload = chainTaskTopicHandoff({
         lastAssistantContent,
+        responseLanguage,
         taskInstruction: currentTask?.instruction || '',
         taskName: currentTask?.name || taskIdentifier,
       });
@@ -296,9 +359,16 @@ export class TaskLifecycleService {
         {
           messages: payload.messages as any[],
           model,
-          schema: { name: 'task_topic_handoff', schema: TASK_TOPIC_HANDOFF_SCHEMA },
+          schema: { name: TASK_TOPIC_HANDOFF_SCHEMA_NAME, schema: TASK_TOPIC_HANDOFF_SCHEMA },
         },
-        { metadata: { trigger: 'task-handoff' } },
+        {
+          metadata: { trigger: 'task_handoff' },
+          tracing: {
+            promptVersion: TASK_TOPIC_HANDOFF_PROMPT_VERSION,
+            scenario: TRACING_SCENARIOS.TaskHandoff,
+            schemaName: TASK_TOPIC_HANDOFF_SCHEMA_NAME,
+          } satisfies TracingOptions,
+        },
       );
 
       const handoff = result as {
@@ -326,15 +396,19 @@ export class TaskLifecycleService {
    * Programmatic brief synthesis for a completed topic.
    *
    * Fired only in `brief.mode === 'auto'` and only when neither the error nor
-   * the judge path has already produced a brief. Three-layer split:
-   *  - decision (whether to emit, which type, which priority): two stages —
-   *    a pure-rule pre-filter (`shouldEmitTopicBrief`) for cheap structural
-   *    skips, then an LLM verdict on the actual content (mid-process working
-   *    notes shouldn't surface as a delivery report)
-   *  - artifacts: programmatic DB query against task_documents
-   *  - title / summary: produced by the same LLM call as the verdict, in
-   *    user-facing language (deliberately separate from handoff, which is
-   *    agent-internal)
+   * the judge path has already produced a brief. Two-stage decision:
+   *  1. Rule layer (`shouldEmitTopicBrief`) — deterministic. Returns
+   *     `'yes'` / `'no'` (caller persists the verdict and is done with the
+   *     decision phase) or `'unknown'` (defer to LLM).
+   *  2. LLM judge (`chainJudgeBriefEmit`) — semantic. Runs only on the
+   *     `'unknown'` branch, returns `{emit, reason}` for content the rule
+   *     can't classify (manual/non-scheduled topic with non-trivial output).
+   *
+   * The verdict (rule or LLM) is persisted to `taskTopics.handoff.briefDecision`
+   * so the emit/skip outcome is auditable per topic. Generation
+   * (`chainGenerateBrief`) is a separate LLM call that runs only when the
+   * decision is `emit: true` — never wasting tokens drafting copy for a
+   * brief that won't be persisted.
    *
    * Failures are swallowed — a missing brief should never block the task
    * lifecycle. The caller still proceeds to the post-tick state transition.
@@ -359,12 +433,77 @@ export class TaskLifecycleService {
         task: currentTask,
       };
 
-      const decision = shouldEmitTopicBrief(decisionInput);
+      const ruleVerdict = shouldEmitTopicBrief(decisionInput);
+
+      // Inputs needed by both the LLM judge (when ruleVerdict === 'unknown')
+      // and by chainGenerateBrief (when emit ends up true). Hoisted so we
+      // only fetch them once.
+      const topicLink = await this.taskTopicModel.findByTopicId(topicId);
+      const topicStartedAt = topicLink?.createdAt ?? new Date(0);
+      const pinnedDocs = await this.taskModel.getDocumentsPinnedSince(taskId, topicStartedAt);
+      const artifacts: BriefArtifacts = { documents: pinnedDocs };
+      const handoff = (topicLink?.handoff as TaskTopicHandoff | null) ?? null;
+
+      const [{ model, provider }, responseLanguage] = await Promise.all([
+        (this.systemAgentService as any).getTaskModelConfig('topic'),
+        this.systemAgentService.getUserLocale(),
+      ]);
+
+      let decision: BriefDecision;
+      if (ruleVerdict.emit === 'unknown') {
+        // Rule can't decide — ask the LLM judge. Title/summary are NOT
+        // produced here; they come from chainGenerateBrief if emit=true.
+        const judgePayload = chainJudgeBriefEmit({
+          artifacts,
+          handoff,
+          lastAssistantContent,
+          taskInstruction: currentTask.instruction || '',
+          taskName: currentTask.name || taskIdentifier,
+        });
+
+        const modelRuntime = await initModelRuntimeFromDB(this.db, this.userId, provider);
+        const judgeResult = (await modelRuntime.generateObject(
+          {
+            messages: judgePayload.messages as any[],
+            model,
+            schema: { name: JUDGE_BRIEF_EMIT_SCHEMA_NAME, schema: JUDGE_BRIEF_EMIT_SCHEMA },
+          },
+          {
+            metadata: { trigger: 'task_brief_judge' },
+            tracing: {
+              promptVersion: JUDGE_BRIEF_EMIT_PROMPT_VERSION,
+              scenario: TRACING_SCENARIOS.TaskBriefJudge,
+              schemaName: JUDGE_BRIEF_EMIT_SCHEMA_NAME,
+            } satisfies TracingOptions,
+          },
+        )) as { emit?: boolean; reason?: string };
+
+        decision = {
+          decidedAt: new Date().toISOString(),
+          emit: judgeResult.emit === true,
+          model,
+          reason: judgeResult.reason || 'llm-judge-unknown',
+          source: 'llm-judge',
+        };
+      } else {
+        decision = {
+          decidedAt: new Date().toISOString(),
+          emit: ruleVerdict.emit === 'yes',
+          reason: ruleVerdict.reason,
+          source: 'rule',
+        };
+      }
+
+      // Persist the decision regardless of outcome — gives the operator a
+      // per-topic audit trail of why a brief was or wasn't produced.
+      await this.taskTopicModel.updateBriefDecision(taskId, topicId, decision);
+
       if (!decision.emit) {
         log(
-          'synthesize: skip task=%s topic=%s reason=%s',
+          'synthesize: skip task=%s topic=%s source=%s reason=%s',
           taskIdentifier,
           topicId,
+          decision.source,
           decision.reason,
         );
         return;
@@ -373,22 +512,11 @@ export class TaskLifecycleService {
       const briefType = selectBriefType(decisionInput);
       const priority = selectBriefPriority(decisionInput);
 
-      const topicLink = await this.taskTopicModel.findByTopicId(topicId);
-      const topicStartedAt = topicLink?.createdAt ?? new Date(0);
-
-      const pinnedDocs = await this.taskModel.getDocumentsPinnedSince(taskId, topicStartedAt);
-      const artifacts: BriefArtifacts = { documents: pinnedDocs };
-
-      const handoff = (topicLink?.handoff as TaskTopicHandoff | null) ?? null;
-
-      const { model, provider } = await (this.systemAgentService as any).getTaskModelConfig(
-        'topic',
-      );
-
       const payload = chainGenerateBrief({
         artifacts,
         handoff,
         lastAssistantContent,
+        responseLanguage,
         taskInstruction: currentTask.instruction || '',
         taskName: currentTask.name || taskIdentifier,
       });
@@ -398,25 +526,19 @@ export class TaskLifecycleService {
         {
           messages: payload.messages as any[],
           model,
-          schema: { name: 'task_topic_brief', schema: GENERATE_BRIEF_SCHEMA },
+          schema: { name: GENERATE_BRIEF_SCHEMA_NAME, schema: GENERATE_BRIEF_SCHEMA },
         },
-        { metadata: { trigger: 'task-brief' } },
+        {
+          metadata: { trigger: 'task_brief' },
+          tracing: {
+            promptVersion: GENERATE_BRIEF_PROMPT_VERSION,
+            scenario: TRACING_SCENARIOS.TaskBrief,
+            schemaName: GENERATE_BRIEF_SCHEMA_NAME,
+          } satisfies TracingOptions,
+        },
       );
 
-      const generated = result as { emit?: boolean; summary?: string; title?: string };
-      // The LLM is the second-stage gate: even when the rule layer says "this
-      // could be a delivery", the model judges from actual content whether
-      // it's worth surfacing. Mid-process working notes / clarifications get
-      // emit=false here.
-      if (generated.emit === false) {
-        log(
-          'synthesize: LLM voted skip task=%s topic=%s reason=%s',
-          taskIdentifier,
-          topicId,
-          generated.summary?.slice(0, 80) || '(none)',
-        );
-        return;
-      }
+      const generated = result as { summary?: string; title?: string };
       if (!generated.title || !generated.summary) {
         log(
           'synthesize: LLM returned empty title/summary task=%s topic=%s',
@@ -432,12 +554,14 @@ export class TaskLifecycleService {
 
       await this.briefModel.create({
         actions,
+        agentId: currentTask.assigneeAgentId || undefined,
         artifacts,
         priority,
         summary: generated.summary,
         taskId,
         title: generated.title,
         topicId,
+        trigger: 'task',
         type: briefType,
       });
 
@@ -503,6 +627,7 @@ export class TaskLifecycleService {
         // (no actionable buttons in the UI) and the task transitions to 'completed'.
         const now = new Date();
         await this.briefModel.create({
+          agentId: currentTask?.assigneeAgentId || undefined,
           priority: 'info',
           resolvedAction: 'auto-judge-pass',
           resolvedAt: now,
@@ -510,18 +635,22 @@ export class TaskLifecycleService {
           summary: `Review passed (score: ${reviewResult.overallScore}%, iteration: ${iteration}). ${content.slice(0, 150)}`,
           taskId,
           title: `${taskIdentifier} review passed`,
+          trigger: 'task',
           type: 'result',
         });
         await this.taskModel.updateStatus(taskId, 'completed', { error: null });
+        await this.cascadeAfterAutoComplete(taskId);
         return true;
       }
 
       if (reviewConfig.autoRetry && iteration < reviewConfig.maxIterations) {
         await this.briefModel.create({
+          agentId: currentTask?.assigneeAgentId || undefined,
           priority: 'normal',
           summary: `Review failed (score: ${reviewResult.overallScore}%, iteration ${iteration}/${reviewConfig.maxIterations}). Auto-retrying...`,
           taskId,
           title: `${taskIdentifier} review failed, retrying`,
+          trigger: 'task',
           type: 'insight',
         });
 
@@ -535,10 +664,12 @@ export class TaskLifecycleService {
       // accept signal (force-pass) by BriefService.resolve. Result briefs render
       // a fixed single-button UI, so no custom actions are persisted.
       await this.briefModel.create({
+        agentId: currentTask?.assigneeAgentId || undefined,
         priority: 'urgent',
         summary: `Review failed after ${iteration} iteration(s) (score: ${reviewResult.overallScore}%). Suggestions: ${reviewResult.suggestions?.join('; ') || 'none'}`,
         taskId,
         title: `${taskIdentifier} review failed — needs attention`,
+        trigger: 'task',
         type: 'result',
       });
       await this.taskModel.updateStatus(taskId, 'paused', { error: null });
@@ -546,6 +677,22 @@ export class TaskLifecycleService {
     } catch (e) {
       console.warn('[TaskLifecycle] auto-review failed:', e);
       return false;
+    }
+  }
+
+  /**
+   * Trigger downstream task kickoff after this task auto-completes via judge.
+   *
+   * Lazy-imports `TaskRunnerService` to break the runner ↔ lifecycle import
+   * cycle (the runner already constructs a lifecycle for its own hooks).
+   */
+  private async cascadeAfterAutoComplete(completedTaskId: string): Promise<void> {
+    try {
+      const { TaskRunnerService } = await import('@/server/services/taskRunner');
+      const runner = new TaskRunnerService(this.db, this.userId);
+      await runner.cascadeOnCompletion(completedTaskId);
+    } catch (e) {
+      console.warn('[TaskLifecycle] dependency cascade failed:', e);
     }
   }
 }

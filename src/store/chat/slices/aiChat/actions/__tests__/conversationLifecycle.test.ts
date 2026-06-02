@@ -9,6 +9,7 @@ import { chatService } from '@/services/chat';
 import { messageService } from '@/services/message';
 import * as agentGroupStore from '@/store/agentGroup';
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
+import { topicMapKey } from '@/store/chat/utils/topicMapKey';
 import { getSessionStoreState } from '@/store/session';
 import * as toolStoreModule from '@/store/tool';
 
@@ -67,7 +68,7 @@ beforeEach(() => {
     useChatStore.setState({
       refreshMessages: vi.fn(),
       refreshTopic: vi.fn(),
-      internal_execAgentRuntime: vi.fn(),
+      executeClientAgent: vi.fn(),
       mainInputEditor: null,
     });
   });
@@ -99,7 +100,7 @@ describe('ConversationLifecycle actions', () => {
           });
         });
 
-        expect(result.current.internal_execAgentRuntime).not.toHaveBeenCalled();
+        expect(result.current.executeClientAgent).not.toHaveBeenCalled();
       });
 
       it('should not send when message is empty and no files are provided', async () => {
@@ -112,7 +113,7 @@ describe('ConversationLifecycle actions', () => {
           });
         });
 
-        expect(result.current.internal_execAgentRuntime).not.toHaveBeenCalled();
+        expect(result.current.executeClientAgent).not.toHaveBeenCalled();
       });
 
       it('should not send when message is empty with empty files array', async () => {
@@ -126,7 +127,7 @@ describe('ConversationLifecycle actions', () => {
           });
         });
 
-        expect(result.current.internal_execAgentRuntime).not.toHaveBeenCalled();
+        expect(result.current.executeClientAgent).not.toHaveBeenCalled();
       });
     });
 
@@ -246,7 +247,7 @@ describe('ConversationLifecycle actions', () => {
           });
         });
 
-        expect(result.current.internal_execAgentRuntime).not.toHaveBeenCalled();
+        expect(result.current.executeClientAgent).not.toHaveBeenCalled();
       });
 
       it('should restore the pre-send editor snapshot when server send fails', async () => {
@@ -320,7 +321,7 @@ describe('ConversationLifecycle actions', () => {
           });
         });
 
-        expect(result.current.internal_execAgentRuntime).toHaveBeenCalled();
+        expect(result.current.executeClientAgent).toHaveBeenCalled();
       });
 
       it('should persist selected slash skills into user message content before sending', async () => {
@@ -418,7 +419,7 @@ describe('ConversationLifecycle actions', () => {
             }),
           ]),
         );
-        expect(result.current.internal_execAgentRuntime).toHaveBeenCalled();
+        expect(result.current.executeClientAgent).toHaveBeenCalled();
       });
 
       it('should work when sending from home page (activeAgentId is empty but context.agentId exists)', async () => {
@@ -463,7 +464,7 @@ describe('ConversationLifecycle actions', () => {
           }),
           expect.any(AbortController),
         );
-        expect(result.current.internal_execAgentRuntime).toHaveBeenCalled();
+        expect(result.current.executeClientAgent).toHaveBeenCalled();
       });
 
       it('should persist selected tool tags into user message content before runtime execution', async () => {
@@ -520,7 +521,7 @@ describe('ConversationLifecycle actions', () => {
         expect(requestPayload?.newUserMessage.content).toContain('name="Notebook"');
         expect(requestPayload?.newUserMessage.content).toContain('identifier="lobe-artifacts"');
         expect(requestPayload?.newUserMessage.content).toContain('name="Artifacts"');
-        expect(result.current.internal_execAgentRuntime).toHaveBeenCalled();
+        expect(result.current.executeClientAgent).toHaveBeenCalled();
       });
 
       it('should preserve editorData when enqueueing a queued message', async () => {
@@ -586,7 +587,7 @@ describe('ConversationLifecycle actions', () => {
       });
 
       it('should enqueue when an execHeterogeneousAgent op is running (CC queue mode)', async () => {
-        // LOBE-7346: With Plan A, sends during a running CC turn must hit the
+        // With Plan A, sends during a running CC turn must hit the
         // same queue path used by client mode — without this we'd spawn a
         // second `claude` process in parallel.
         const { result } = renderHook(() => useChatStore());
@@ -916,7 +917,7 @@ describe('ConversationLifecycle actions', () => {
         const payload = sendMessageInServerSpy.mock.calls[0]?.[0];
         expect(payload?.newUserMessage.metadata?.localSystemToolSnapshots).toMatchObject([
           {
-            apiName: 'readLocalFile',
+            apiName: 'readFile',
             arguments: { path: '/Users/me/project/foo.ts' },
             content: expect.stringContaining('export const x = 1;'),
             identifier: 'lobe-local-system',
@@ -984,15 +985,14 @@ describe('ConversationLifecycle actions', () => {
           });
         });
 
-        const runtimePayload = vi.mocked(result.current.internal_execAgentRuntime).mock
-          .calls[0]?.[0];
+        const runtimePayload = vi.mocked(result.current.executeClientAgent).mock.calls[0]?.[0];
         const runtimeUserMessage = runtimePayload?.messages.find(
           (message) => message.id === TEST_IDS.USER_MESSAGE_ID,
         );
 
         expect(runtimeUserMessage?.metadata?.localSystemToolSnapshots).toMatchObject([
           {
-            apiName: 'readLocalFile',
+            apiName: 'readFile',
             arguments: { path: '/Users/me/project/foo.ts' },
             content: expect.stringContaining('export const x = 1;'),
             identifier: 'lobe-local-system',
@@ -1120,7 +1120,7 @@ describe('ConversationLifecycle actions', () => {
         );
 
         // But runtime should receive mentionedAgents in initialContext
-        expect(result.current.internal_execAgentRuntime).toHaveBeenCalledWith(
+        expect(result.current.executeClientAgent).toHaveBeenCalledWith(
           expect.objectContaining({
             initialContext: expect.objectContaining({
               initialContext: expect.objectContaining({
@@ -1234,7 +1234,7 @@ describe('ConversationLifecycle actions', () => {
           }),
         );
 
-        const execCall = (result.current.internal_execAgentRuntime as any).mock.calls[0]?.[0];
+        const execCall = (result.current.executeClientAgent as any).mock.calls[0]?.[0];
         expect(execCall).toEqual(
           expect.objectContaining({
             context: expect.objectContaining({
@@ -1304,7 +1304,7 @@ describe('ConversationLifecycle actions', () => {
         });
 
         expect(agentService.getAgentConfigById).not.toHaveBeenCalledWith('agent-a');
-        expect(result.current.internal_execAgentRuntime).toHaveBeenCalledWith(
+        expect(result.current.executeClientAgent).toHaveBeenCalledWith(
           expect.objectContaining({
             initialContext: expect.objectContaining({
               initialContext: expect.objectContaining({
@@ -1375,7 +1375,7 @@ describe('ConversationLifecycle actions', () => {
         });
 
         // Runtime should NOT receive mentionedAgents in group context
-        const execCall = (result.current.internal_execAgentRuntime as any).mock.calls[0]?.[0];
+        const execCall = (result.current.executeClientAgent as any).mock.calls[0]?.[0];
         const initialCtx = execCall?.initialContext?.initialContext;
         expect(initialCtx?.mentionedAgents).toBeUndefined();
       });
@@ -1623,7 +1623,6 @@ describe('ConversationLifecycle actions', () => {
             createMockMessage({ id: 'new-user-msg', role: 'user', topicId: newTopicId }),
             createMockMessage({ id: 'new-assistant-msg', role: 'assistant', topicId: newTopicId }),
           ],
-          topics: { items: [{ id: newTopicId, title: 'New Topic' }], total: 1 },
           topicId: newTopicId,
           isCreateNewTopic: true,
           assistantMessageId: 'new-assistant-msg',
@@ -1649,6 +1648,12 @@ describe('ConversationLifecycle actions', () => {
         // After new topic creation, the _new key should be cleared
         const messagesInNewKey = useChatStore.getState().messagesMap[newKey];
         expect(messagesInNewKey ?? []).toHaveLength(0);
+
+        const newTopicKey = messageMapKey({ agentId, topicId: newTopicId });
+        expect(useChatStore.getState().messagesMap[newTopicKey]).toHaveLength(2);
+        expect(useChatStore.getState().topicDataMap[topicMapKey({ agentId })]?.items[0]).toEqual(
+          expect.objectContaining({ id: newTopicId }),
+        );
       });
     });
   });

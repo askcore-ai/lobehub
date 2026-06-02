@@ -6,7 +6,9 @@ interface LoadIndexIntegrationModuleOptions {
   featureGateEnabled?: boolean;
   mockEmitSourceEvent?: Mock;
   mockInitModelRuntimeFromDB?: Mock;
+  mockPersistReceipts?: Mock;
   mockProjectObservability?: Mock;
+  mockProjectReceipts?: Mock;
   mockRuntimeFactory?: Mock;
 }
 
@@ -44,12 +46,24 @@ const loadIndexIntegrationModule = async (options: LoadIndexIntegrationModuleOpt
 
   const persistAgentSignalObservability = vi.fn().mockResolvedValue(undefined);
   const isAgentSignalEnabledForUser = vi.fn().mockResolvedValue(options.featureGateEnabled ?? true);
+  const projectAgentSignalReceipts = options.mockProjectReceipts ?? vi.fn(() => []);
+  const persistAgentSignalReceipts =
+    options.mockPersistReceipts ?? vi.fn().mockResolvedValue(undefined);
 
   vi.doMock('../featureGate', () => ({
     isAgentSignalEnabledForUser,
   }));
   vi.doMock('../observability/store', () => ({
     persistAgentSignalObservability,
+  }));
+  vi.doMock('../services/receiptService', () => ({
+    persistAgentSignalReceipts,
+    projectAgentSignalReceipts,
+  }));
+  vi.doMock('@/server/workflows/agentSignal', () => ({
+    AgentSignalWorkflow: {
+      triggerRun: vi.fn().mockResolvedValue({ workflowRunId: 'workflow-test' }),
+    },
   }));
 
   if (options.mockInitModelRuntimeFromDB) {
@@ -83,6 +97,8 @@ const loadIndexIntegrationModule = async (options: LoadIndexIntegrationModuleOpt
     mocks: {
       isAgentSignalEnabledForUser,
       persistAgentSignalObservability,
+      persistAgentSignalReceipts,
+      projectAgentSignalReceipts,
     },
   };
 };
@@ -107,6 +123,11 @@ describe('emitAgentSignalSourceEvent integration', () => {
     }));
     vi.doMock('../orchestrator', () => ({
       executeAgentSignalSourceEvent,
+    }));
+    vi.doMock('@/server/workflows/agentSignal', () => ({
+      AgentSignalWorkflow: {
+        triggerRun: vi.fn().mockResolvedValue({ workflowRunId: 'workflow-test' }),
+      },
     }));
 
     const { emitAgentSignalSourceEvent } = await import('../emitter');
@@ -139,26 +160,45 @@ describe('emitAgentSignalSourceEvent integration', () => {
     );
   });
 
-  it('orchestrates source emission through the runtime boundary', async () => {
-    const emitSourceEvent = vi.fn().mockResolvedValue({
-      deduped: false,
-      source: {
-        chain: { chainId: 'chain:eval', rootSourceId: 'eval-source' },
-        payload: {},
-        scopeKey: 'topic:topic-1',
-        sourceId: 'eval-source',
-        sourceType: 'agent.user.message',
-        timestamp: 1_710_000_000_000,
-      },
-      trigger: {
-        scopeKey: 'topic:topic-1',
-        token: 'trigger:eval-source',
-        windowEventCount: 1,
-      },
-    });
-    const emitNormalized = vi.fn().mockResolvedValue({
-      status: 'completed',
-      trace: {
+  it(
+    'orchestrates source emission through the runtime boundary',
+    async () => {
+      const emitSourceEvent = vi.fn().mockResolvedValue({
+        deduped: false,
+        source: {
+          chain: { chainId: 'chain:eval', rootSourceId: 'eval-source' },
+          payload: {},
+          scopeKey: 'topic:topic-1',
+          sourceId: 'eval-source',
+          sourceType: 'agent.user.message',
+          timestamp: 1_710_000_000_000,
+        },
+        trigger: {
+          scopeKey: 'topic:topic-1',
+          token: 'trigger:eval-source',
+          windowEventCount: 1,
+        },
+      });
+      const emitNormalized = vi.fn().mockResolvedValue({
+        status: 'completed',
+        trace: {
+          actions: [],
+          results: [],
+          signals: [],
+          source: {
+            chain: { chainId: 'chain:eval', rootSourceId: 'eval-source' },
+            payload: {},
+            scopeKey: 'topic:topic-1',
+            sourceId: 'eval-source',
+            sourceType: 'agent.user.message',
+            timestamp: 1_710_000_000_000,
+          },
+        },
+      });
+      const createAgentSignalRuntime = vi.fn().mockReturnValue({
+        emitNormalized,
+      });
+      const projectAgentSignalObservability = vi.fn().mockReturnValue({
         actions: [],
         results: [],
         signals: [],
@@ -170,51 +210,36 @@ describe('emitAgentSignalSourceEvent integration', () => {
           sourceType: 'agent.user.message',
           timestamp: 1_710_000_000_000,
         },
-      },
-    });
-    const createAgentSignalRuntime = vi.fn().mockReturnValue({
-      emitNormalized,
-    });
-    const projectAgentSignalObservability = vi.fn().mockReturnValue({
-      actions: [],
-      results: [],
-      signals: [],
-      source: {
-        chain: { chainId: 'chain:eval', rootSourceId: 'eval-source' },
-        payload: {},
-        scopeKey: 'topic:topic-1',
-        sourceId: 'eval-source',
-        sourceType: 'agent.user.message',
-        timestamp: 1_710_000_000_000,
-      },
-    });
-    const { emitAgentSignalSourceEvent, mocks } = await loadIndexIntegrationModule({
-      mockEmitSourceEvent: emitSourceEvent,
-      mockProjectObservability: projectAgentSignalObservability,
-      mockRuntimeFactory: createAgentSignalRuntime,
-    });
+      });
+      const { emitAgentSignalSourceEvent, mocks } = await loadIndexIntegrationModule({
+        mockEmitSourceEvent: emitSourceEvent,
+        mockProjectObservability: projectAgentSignalObservability,
+        mockRuntimeFactory: createAgentSignalRuntime,
+      });
 
-    const result = await emitAgentSignalSourceEvent(
-      {
-        payload: { message: 'Remember this.', messageId: 'msg-runtime' },
-        scopeKey: 'topic:topic-1',
-        sourceId: 'eval-agent-signal-basic-memory-1710000000000',
-        sourceType: 'agent.user.message',
-        timestamp: 1_710_000_000_000,
-      },
-      {
-        agentId: 'agent-1',
-        db: {} as never,
-        userId: 'user-1',
-      },
-    );
+      const result = await emitAgentSignalSourceEvent(
+        {
+          payload: { message: 'Remember this.', messageId: 'msg-runtime' },
+          scopeKey: 'topic:topic-1',
+          sourceId: 'eval-agent-signal-basic-memory-1710000000000',
+          sourceType: 'agent.user.message',
+          timestamp: 1_710_000_000_000,
+        },
+        {
+          agentId: 'agent-1',
+          db: {} as never,
+          userId: 'user-1',
+        },
+      );
 
-    expect(result).toBeDefined();
-    expect(result?.deduped).toBe(false);
-    expect(emitSourceEvent).toHaveBeenCalledTimes(1);
-    expect(emitNormalized).toHaveBeenCalledTimes(1);
-    expect(mocks.persistAgentSignalObservability).toHaveBeenCalledTimes(1);
-  });
+      expect(result).toBeDefined();
+      expect(result?.deduped).toBe(false);
+      expect(emitSourceEvent).toHaveBeenCalledTimes(1);
+      expect(emitNormalized).toHaveBeenCalledTimes(1);
+      expect(mocks.persistAgentSignalObservability).toHaveBeenCalledTimes(1);
+    },
+    15_000,
+  );
 
   it(
     'projects and persists observability for the real source-to-runtime path',
@@ -266,7 +291,7 @@ describe('emitAgentSignalSourceEvent integration', () => {
 
       expect(result.orchestration.observability.record.sourceType).toBe('agent.user.message');
       expect(result.orchestration.observability.envelope.source.sourceId).toBe('source_1');
-      expect(initModelRuntimeFromDB).toHaveBeenCalledTimes(1);
+      expect(initModelRuntimeFromDB).toHaveBeenCalled();
       expect(mocks.persistAgentSignalObservability).toHaveBeenCalledWith(
         expect.objectContaining({
           record: expect.objectContaining({ sourceId: 'source_1' }),

@@ -3,6 +3,7 @@
 import { discord } from './discord/definition';
 import { feishu } from './feishu/definitions/feishu';
 import { lark } from './feishu/definitions/lark';
+import { imessage } from './imessage/definition';
 import { line } from './line/definition';
 import { qq } from './qq/definition';
 import { PlatformRegistry } from './registry';
@@ -20,6 +21,9 @@ export {
   extractDmSettings,
   extractGroupSettings,
   extractUserAllowlist,
+  extractWatchKeywordEntries,
+  extractWatchKeywords,
+  findMatchingWatchKeywordEntries,
   getBotReplyLocale,
   getStepReactionEmoji,
   type GroupPolicy,
@@ -28,6 +32,7 @@ export {
   makeGroupPolicyFields,
   makeServerIdField,
   makeUserIdField,
+  messageMatchesWatchKeyword,
   normalizeAllowFromEntries,
   normalizeBotReplyLocale,
   RECEIVED_REACTION_EMOJI,
@@ -37,16 +42,20 @@ export {
   THINKING_REACTION_EMOJI,
   type UserAllowlist,
   validateAccessSettings,
+  type WatchKeywordEntry,
+  watchKeywordsField,
   WORKING_REACTION_EMOJI,
 } from './const';
 export { PlatformRegistry } from './registry';
 export type {
+  BotMessageAttachment,
   BotPlatformRedisClient,
   BotPlatformRuntimeContext,
   BotProviderConfig,
   ConnectionMode,
   ExtractFilesResult,
   FieldSchema,
+  MessengerContent,
   PlatformClient,
   PlatformDefinition,
   PlatformDocumentation,
@@ -55,7 +64,7 @@ export type {
   UsageStats,
   ValidationResult,
 } from './types';
-export { ClientFactory } from './types';
+export { ClientFactory, messengerContentText } from './types';
 export type { ProviderConfigInput, ResolvedBotProviderConfig } from './utils';
 export {
   buildRuntimeKey,
@@ -74,6 +83,7 @@ export {
 export { discord } from './discord/definition';
 export { feishu } from './feishu/definitions/feishu';
 export { lark } from './feishu/definitions/lark';
+export { imessage } from './imessage/definition';
 export { line } from './line/definition';
 export { qq } from './qq/definition';
 export { slack } from './slack/definition';
@@ -86,6 +96,7 @@ platformRegistry.register(discord);
 platformRegistry.register(telegram);
 platformRegistry.register(slack);
 platformRegistry.register(feishu);
+platformRegistry.register(imessage);
 platformRegistry.register(lark);
 platformRegistry.register(qq);
 platformRegistry.register(wechat);

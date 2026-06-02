@@ -16,7 +16,6 @@ import EditorCanvas from './EditorCanvas';
 import Header from './Header';
 import { PageAgentProvider } from './PageAgentProvider';
 import { PageEditorProvider } from './PageEditorProvider';
-import PageTitle from './PageTitle';
 import RightPanel from './RightPanel';
 import { usePageEditorStore } from './store';
 import TitleSection from './TitleSection';
@@ -50,6 +49,12 @@ const styles = StyleSheet.create({
 
 interface PageEditorProps {
   emoji?: string;
+  /**
+   * When true, the header spans the full editor width above the body and the
+   * right panel only fills the body area. Defaults to false (header sits in
+   * the left column only, right panel runs floor-to-ceiling).
+   */
+  fullWidthHeader?: boolean;
   header?: PageEditorHeader;
   knowledgeBaseId?: string;
   onBack?: () => void;
@@ -63,10 +68,11 @@ interface PageEditorProps {
 }
 
 interface PageEditorCanvasProps {
+  fullWidthHeader?: boolean;
   header?: PageEditorHeader;
 }
 
-const PageEditorCanvas = memo<PageEditorCanvasProps>(({ header }) => {
+const PageEditorCanvas = memo<PageEditorCanvasProps>(({ header, fullWidthHeader }) => {
   const editor = usePageEditorStore((s) => s.editor);
   const documentId = usePageEditorStore((s) => s.documentId);
 
@@ -75,30 +81,43 @@ const PageEditorCanvas = memo<PageEditorCanvasProps>(({ header }) => {
 
   const headerSlot = header === undefined ? <Header /> : header;
 
-  return (
-    <>
-      <PageTitle />
-      <Flexbox
-        horizontal
-        height={'100%'}
-        style={{ backgroundColor: cssVar.colorBgContainer }}
-        width={'100%'}
-      >
-        <Flexbox flex={1} height={'100%'} style={styles.editorContainer}>
-          {headerSlot}
-          <Flexbox horizontal height={'100%'} style={styles.contentWrapper} width={'100%'}>
-            <WideScreenContainer wrapperStyle={{ cursor: 'text' }} onClick={() => editor?.focus()}>
-              <Flexbox flex={1} style={styles.editorContent}>
-                <TitleSection />
-                <EditorCanvas />
-              </Flexbox>
-            </WideScreenContainer>
+  const editorPane = (
+    <Flexbox flex={1} height={'100%'} style={styles.editorContainer}>
+      {!fullWidthHeader && headerSlot}
+      <Flexbox horizontal height={'100%'} style={styles.contentWrapper} width={'100%'}>
+        <WideScreenContainer wrapperStyle={{ cursor: 'text' }} onClick={() => editor?.focus()}>
+          <Flexbox flex={1} style={styles.editorContent}>
+            <TitleSection />
+            <EditorCanvas />
           </Flexbox>
-          {documentId && <DiffAllToolbar documentId={documentId} editor={editor} />}
-        </Flexbox>
-        <RightPanel />
+        </WideScreenContainer>
       </Flexbox>
-    </>
+      {documentId && <DiffAllToolbar documentId={documentId} editor={editor} />}
+    </Flexbox>
+  );
+
+  if (fullWidthHeader) {
+    return (
+      <Flexbox height={'100%'} style={{ backgroundColor: cssVar.colorBgContainer }} width={'100%'}>
+        {headerSlot}
+        <Flexbox horizontal flex={1} style={{ minHeight: 0 }} width={'100%'}>
+          {editorPane}
+          <RightPanel />
+        </Flexbox>
+      </Flexbox>
+    );
+  }
+
+  return (
+    <Flexbox
+      horizontal
+      height={'100%'}
+      style={{ backgroundColor: cssVar.colorBgContainer }}
+      width={'100%'}
+    >
+      {editorPane}
+      <RightPanel />
+    </Flexbox>
   );
 });
 
@@ -110,6 +129,7 @@ const PageEditorCanvas = memo<PageEditorCanvasProps>(({ header }) => {
 export const PageEditor: FC<PageEditorProps> = ({
   pageId,
   header,
+  fullWidthHeader,
   knowledgeBaseId,
   onDocumentIdChange,
   onEmojiChange,
@@ -136,7 +156,7 @@ export const PageEditor: FC<PageEditorProps> = ({
           onSave={onSave}
           onTitleChange={onTitleChange}
         >
-          <PageEditorCanvas header={header} />
+          <PageEditorCanvas fullWidthHeader={fullWidthHeader} header={header} />
         </PageEditorProvider>
       </EditorProvider>
     </PageAgentProvider>

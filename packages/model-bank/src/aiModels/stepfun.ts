@@ -8,6 +8,34 @@ const stepfunChatModels: AIChatModelCard[] = [
       functionCall: true,
       reasoning: true,
       search: true,
+      vision: true,
+      video: true,
+    },
+    contextWindowTokens: 256_000,
+    description:
+      'The flagship multimodal reasoning model from StepFun. Building on the high-speed reasoning and tool-calling capabilities of step-3.5-flash, it adds native multimodal input support, enabling direct understanding of images and video content without relying on visual MCPs or additional vision models. The model supports three reasoning levels (low / medium / high), making it a fast and reliable choice for agent workflows, coding tasks, and multimodal applications.',
+    displayName: 'Step 3.7 Flash',
+    enabled: true,
+    id: 'step-3.7-flash',
+    pricing: {
+      currency: 'CNY',
+      units: [
+        { name: 'textInput_cacheRead', rate: 0.27, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textInput', rate: 1.35, strategy: 'fixed', unit: 'millionTokens' },
+        { name: 'textOutput', rate: 8.1, strategy: 'fixed', unit: 'millionTokens' },
+      ],
+    },
+    settings: {
+      extendParams: ['reasoningEffort'],
+      searchImpl: 'params',
+    },
+    type: 'chat',
+  },
+  {
+    abilities: {
+      functionCall: true,
+      reasoning: true,
+      search: true,
     },
     contextWindowTokens: 256_000,
     description:
@@ -22,6 +50,10 @@ const stepfunChatModels: AIChatModelCard[] = [
         { name: 'textInput', rate: 0.7, strategy: 'fixed', unit: 'millionTokens' },
         { name: 'textOutput', rate: 2.1, strategy: 'fixed', unit: 'millionTokens' },
       ],
+    },
+    settings: {
+      extendParams: ['step3_5ReasoningEffort'],
+      searchImpl: 'params',
     },
     type: 'chat',
   },
@@ -55,7 +87,6 @@ const stepfunChatModels: AIChatModelCard[] = [
     description:
       'This model has strong visual perception and complex reasoning, accurately handling cross-domain knowledge understanding, math-vision cross analysis, and a wide range of everyday visual analysis tasks.',
     displayName: 'Step 3',
-    enabled: true,
     id: 'step-3',
     pricing: {
       currency: 'CNY',
@@ -93,9 +124,7 @@ const stepfunChatModels: AIChatModelCard[] = [
   },
   {
     abilities: {
-      // functionCall: true,
       reasoning: true,
-      // search: true,
       vision: true,
     },
     contextWindowTokens: 100_000,
@@ -111,9 +140,6 @@ const stepfunChatModels: AIChatModelCard[] = [
         { name: 'textOutput', rate: 8, strategy: 'fixed', unit: 'millionTokens' },
       ],
     },
-    // settings: {
-    //   searchImpl: 'params',
-    // },
     type: 'chat',
   },
   {
@@ -342,14 +368,39 @@ const stepfunChatModels: AIChatModelCard[] = [
 ];
 
 const stepfunImageModels: AIImageModelCard[] = [
-  // https://platform.stepfun.com/docs/llm/image
+  {
+    description:
+      'A lightweight editing model from Stepfun’s latest iteration that supports both text-to-image generation and image editing within a single model. Despite having fewer than 6 billion parameters, it achieves state-of-the-art performance at its scale, rivaling open-source models in the 12B–20B parameter range across tiers. Each editing task takes only 1–2 seconds, redefining the experience of real-time interactive image editing.',
+    displayName: 'Step Image Edit 2',
+    enabled: true,
+    id: 'step-image-edit-2',
+    parameters: {
+      cfg: { default: 1, max: 10, min: 1, step: 0.1 },
+      imageUrl: { default: null },
+      prompt: {
+        default: '',
+      },
+      seed: { default: null },
+      size: {
+        default: '1024x1024',
+        enum: ['1024x1024', '768x1360', '896x1184', '1360x768', '1184x896'],
+      },
+      steps: { default: 8, max: 50, min: 1 },
+    },
+    pricing: {
+      currency: 'CNY',
+      units: [{ name: 'imageGeneration', rate: 0.02, strategy: 'fixed', unit: 'image' }],
+    },
+    releasedAt: '2026-04-28',
+    type: 'image',
+  },
   {
     description:
       'A new-generation StepFun image model focused on image generation, producing high-quality images from text prompts. It delivers more realistic texture and stronger Chinese/English text rendering.',
     displayName: 'Step 2X Large',
-    enabled: true,
     id: 'step-2x-large',
     parameters: {
+      cfg: { default: 7.5, max: 10, min: 1, step: 0.1 },
       prompt: {
         default: '',
       },
@@ -374,6 +425,8 @@ const stepfunImageModels: AIImageModelCard[] = [
     enabled: true,
     id: 'step-1x-medium',
     parameters: {
+      cfg: { default: 7.5, max: 10, min: 1, step: 0.1 },
+      imageUrl: { default: null },
       prompt: {
         default: '',
       },
@@ -398,6 +451,7 @@ const stepfunImageModels: AIImageModelCard[] = [
     enabled: true,
     id: 'step-1x-edit',
     parameters: {
+      cfg: { default: 6, max: 10, min: 1, step: 0.1 },
       imageUrl: { default: null },
       prompt: {
         default: '',

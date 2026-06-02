@@ -3,34 +3,43 @@ import { createStaticStyles, cssVar } from 'antd-style';
 export const styles = createStaticStyles(({ css }) => ({
   page: css`
     overflow: auto;
+
     width: 100%;
     min-height: 100%;
     padding: 24px;
+
     background: ${cssVar.colorBgLayout};
   `,
   pageInner: css`
-    width: min(960px, 100%);
-    margin: 0 auto;
     display: flex;
     flex-direction: column;
     gap: 20px;
+
+    width: min(960px, 100%);
+    margin-block: 0;
+    margin-inline: auto;
   `,
 
   // Hero Card
   heroCard: css`
     position: relative;
+
     overflow: hidden;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+
+    padding-block: 20px;
+    padding-inline: 24px;
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 16px;
-    padding: 20px 24px;
+
     background: ${cssVar.colorBgContainer};
+
     transition: box-shadow 0.25s ease, transform 0.25s ease;
-    display: flex;
-    align-items: center;
-    gap: 16px;
 
     &:hover {
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+      box-shadow: 0 8px 24px rgb(0 0 0 / 6%);
     }
   `,
   heroAvatarWrap: css`
@@ -40,14 +49,15 @@ export const styles = createStaticStyles(({ css }) => ({
   `,
   heroAvatar: css`
     border: 2px solid ${cssVar.colorBgContainer};
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 2px 6px rgb(0 0 0 / 8%);
   `,
   heroBody: css`
-    flex: 1;
-    min-width: 0;
     display: flex;
+    flex: 1;
     flex-direction: column;
     gap: 4px;
+
+    min-width: 0;
   `,
   heroName: css`
     font-size: 20px;
@@ -56,74 +66,87 @@ export const styles = createStaticStyles(({ css }) => ({
     color: ${cssVar.colorText};
   `,
   heroDesc: css`
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+
     font-size: 13px;
     font-weight: 400;
     line-height: 1.5;
     color: ${cssVar.colorTextSecondary};
-    display: -webkit-box;
-    -webkit-line-clamp: 1;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
   `,
   heroStats: css`
     display: flex;
-    align-items: center;
-    gap: 10px;
     flex-wrap: wrap;
-    margin-top: 2px;
+    gap: 10px;
+    align-items: center;
+
+    margin-block-start: 2px;
   `,
   heroEditForm: css`
     max-width: 480px;
-    margin: 20px auto 0;
-    text-align: left;
+    margin-block: 20px 0;
+    margin-inline: auto;
+
+    text-align: start;
+
     transition: all 0.3s ease;
   `,
   heroEditActions: css`
     display: flex;
-    justify-content: flex-end;
     gap: 10px;
-    margin-top: 12px;
+    justify-content: flex-end;
+    margin-block-start: 12px;
   `,
 
   // Tab Navigation
   tabNav: css`
     display: flex;
+    gap: 4px;
     align-items: center;
     justify-content: center;
-    gap: 4px;
+
+    width: fit-content;
+    margin-block: 0;
+    margin-inline: auto;
     padding: 4px;
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 12px;
+
     background: ${cssVar.colorBgContainer};
-    width: fit-content;
-    margin: 0 auto;
   `,
   tabButton: css`
-    padding: 8px 24px;
-    border-radius: 10px;
+    cursor: pointer;
+
+    padding-block: 8px;
+    padding-inline: 24px;
     border: none;
-    background: transparent;
-    color: ${cssVar.colorTextSecondary};
+    border-radius: 10px;
+
     font-size: 14px;
     font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
     line-height: 1.4;
+    color: ${cssVar.colorTextSecondary};
+
+    background: transparent;
+
+    transition: all 0.2s ease;
 
     &:hover {
       color: ${cssVar.colorText};
     }
   `,
   tabButtonActive: css`
-    background: ${cssVar.colorText};
     color: ${cssVar.colorBgContainer};
+    background: ${cssVar.colorText};
 
     &:hover {
       color: ${cssVar.colorBgContainer};
     }
   `,
   tabContent: css`
-    animation: orgFadeUp 0.35s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+    animation: org-fade-up 0.35s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
   `,
 
   // Stat Cards
@@ -139,18 +162,23 @@ export const styles = createStaticStyles(({ css }) => ({
   statCard: css`
     display: flex;
     flex-direction: column;
-    align-items: center;
     gap: 6px;
-    padding: 20px 12px;
+    align-items: center;
+
+    padding-block: 20px;
+    padding-inline: 12px;
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 14px;
-    background: ${cssVar.colorBgContainer};
+
     text-align: center;
+
+    background: ${cssVar.colorBgContainer};
+
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 
     &:hover {
       transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      box-shadow: 0 4px 12px rgb(0 0 0 / 5%);
     }
   `,
   statValue: css`
@@ -166,28 +194,33 @@ export const styles = createStaticStyles(({ css }) => ({
 
   // Section Cards
   sectionCard: css`
+    overflow: hidden;
+
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 16px;
+
     background: ${cssVar.colorBgContainer};
-    overflow: hidden;
+
     transition: box-shadow 0.25s ease, transform 0.25s ease;
 
     &:hover {
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+      box-shadow: 0 4px 12px rgb(0 0 0 / 4%);
     }
   `,
   sectionHeader: css`
     display: flex;
     align-items: center;
     justify-content: space-between;
+
     min-height: 52px;
-    padding: 14px 20px;
-    border-bottom: 1px solid ${cssVar.colorBorderSecondary};
+    padding-block: 14px;
+    padding-inline: 20px;
+    border-block-end: 1px solid ${cssVar.colorBorderSecondary};
   `,
   sectionHeaderLeft: css`
     display: flex;
-    align-items: center;
     gap: 10px;
+    align-items: center;
   `,
   sectionTitle: css`
     font-size: 16px;
@@ -200,50 +233,55 @@ export const styles = createStaticStyles(({ css }) => ({
     color: ${cssVar.colorTextSecondary};
   `,
   sectionBody: css`
-    padding: 16px 20px;
+    padding-block: 16px;
+padding-inline: 20px;
   `,
 
   // Member Card
   memberCard: css`
     display: flex;
-    align-items: center;
     gap: 14px;
-    padding: 14px 0;
-    border-bottom: 1px solid ${cssVar.colorFillQuaternary};
+    align-items: center;
+
+    padding-block: 14px;
+    padding-inline: 0;
+    border-block-end: 1px solid ${cssVar.colorFillQuaternary};
+
     transition: background 0.15s ease;
 
     &:last-child {
-      border-bottom: 0;
+      border-block-end: 0;
     }
 
     &:hover {
+      margin-block: 0;
+      margin-inline: -20px;
+      padding-inline: 20px;
       background: ${cssVar.colorFillQuaternary};
-      margin: 0 -20px;
-      padding-left: 20px;
-      padding-right: 20px;
     }
   `,
   memberAvatar: css`
     flex-shrink: 0;
   `,
   memberInfo: css`
-    flex: 1;
-    min-width: 0;
     display: flex;
+    flex: 1;
     flex-direction: column;
     gap: 2px;
+
+    min-width: 0;
   `,
   memberName: css`
     font-size: 14px;
     font-weight: 600;
-    color: ${cssVar.colorText};
     line-height: 1.4;
+    color: ${cssVar.colorText};
   `,
   memberEmail: css`
     font-size: 13px;
     font-weight: 400;
-    color: ${cssVar.colorTextDescription};
     line-height: 1.4;
+    color: ${cssVar.colorTextDescription};
   `,
   memberMeta: css`
     font-size: 12px;
@@ -251,34 +289,39 @@ export const styles = createStaticStyles(({ css }) => ({
   `,
   memberActions: css`
     display: flex;
-    align-items: center;
-    gap: 8px;
     flex-shrink: 0;
+    gap: 8px;
+    align-items: center;
   `,
 
   // Role Tags
   roleTag: css`
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 10px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 500;
     cursor: default;
     user-select: none;
+
+    display: inline-flex;
+    align-items: center;
+
+    padding-block: 2px;
+    padding-inline: 10px;
+    border-radius: 6px;
+
+    font-size: 12px;
+    font-weight: 500;
+
     transition: opacity 0.15s ease;
   `,
   roleTagOwner: css`
-    background: #fef3c7;
     color: #92400e;
+    background: #fef3c7;
   `,
   roleTagAdmin: css`
-    background: #dbeafe;
     color: #1e40af;
+    background: #dbeafe;
   `,
   roleTagMember: css`
-    background: ${cssVar.colorFillQuaternary};
     color: ${cssVar.colorTextSecondary};
+    background: ${cssVar.colorFillQuaternary};
   `,
   roleTagEditable: css`
     cursor: pointer;
@@ -291,13 +334,14 @@ export const styles = createStaticStyles(({ css }) => ({
   // Invite
   inviteSegmented: css`
     width: 100%;
-    margin-bottom: 20px;
+    margin-block-end: 20px;
 
     .ant-segmented-item-label {
       display: inline-flex;
+      gap: 8px;
       align-items: center;
       justify-content: center;
-      gap: 8px;
+
       min-height: 40px;
     }
   `,
@@ -305,18 +349,22 @@ export const styles = createStaticStyles(({ css }) => ({
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 10px;
-    margin-bottom: 20px;
+    margin-block-end: 20px;
   `,
   inviteChannelCard: css`
+    cursor: pointer;
+
     display: flex;
     flex-direction: column;
-    align-items: center;
     gap: 8px;
+    align-items: center;
+
     padding: 14px;
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 12px;
+
     background: ${cssVar.colorBgContainer};
-    cursor: pointer;
+
     transition: all 0.2s ease;
 
     &:hover {
@@ -328,14 +376,16 @@ export const styles = createStaticStyles(({ css }) => ({
     background: ${cssVar.colorPrimaryBg};
   `,
   inviteResultBox: css`
-    margin-top: 16px;
-    padding: 16px;
-    border: 1px solid ${cssVar.colorBorderSecondary};
-    border-radius: 12px;
-    background: ${cssVar.colorFillQuaternary};
     display: flex;
     flex-direction: column;
     gap: 12px;
+
+    margin-block-start: 16px;
+    padding: 16px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 12px;
+
+    background: ${cssVar.colorFillQuaternary};
   `,
   inviteResultTitle: css`
     font-size: 14px;
@@ -343,9 +393,9 @@ export const styles = createStaticStyles(({ css }) => ({
     color: ${cssVar.colorText};
   `,
   inviteResultMeta: css`
-    overflow-wrap: anywhere;
     font-size: 13px;
     color: ${cssVar.colorTextSecondary};
+    overflow-wrap: anywhere;
   `,
   inviteQrResult: css`
     align-items: center;
@@ -371,13 +421,16 @@ export const styles = createStaticStyles(({ css }) => ({
   `,
   treeRootActionRow: css`
     display: flex;
+    gap: 12px;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 10px;
-    padding: 10px 12px;
+
+    margin-block-end: 10px;
+    padding-block: 10px;
+    padding-inline: 12px;
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 12px;
+
     background: ${cssVar.colorBgContainer};
   `,
   treeRootActionText: css`
@@ -396,10 +449,11 @@ export const styles = createStaticStyles(({ css }) => ({
     color: ${cssVar.colorTextSecondary};
   `,
   treeRootAddButton: css`
-    min-width: 28px;
     width: 28px;
+    min-width: 28px;
     height: 28px;
     border-radius: 8px;
+
     color: ${cssVar.colorTextSecondary};
 
     &:hover,
@@ -413,10 +467,12 @@ export const styles = createStaticStyles(({ css }) => ({
     grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) auto auto;
     gap: 8px;
     align-items: center;
-    margin-bottom: 12px;
+
+    margin-block-end: 12px;
     padding: 10px;
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 12px;
+
     background: ${cssVar.colorFillQuaternary};
 
     @media (width <= 700px) {
@@ -428,10 +484,13 @@ export const styles = createStaticStyles(({ css }) => ({
   `,
   treeNodeRow: css`
     display: flex;
-    align-items: center;
     gap: 8px;
-    padding: 8px 10px;
+    align-items: center;
+
+    padding-block: 8px;
+    padding-inline: 10px;
     border-radius: 10px;
+
     transition: background 0.15s ease;
 
     &:hover {
@@ -443,22 +502,26 @@ export const styles = createStaticStyles(({ css }) => ({
     }
   `,
   treeNodeRowSelected: css`
-    background: ${cssVar.colorPrimaryBg};
     color: ${cssVar.colorPrimary};
+    background: ${cssVar.colorPrimaryBg};
   `,
   treeNodeActions: css`
-    opacity: 0;
-    transition: opacity 0.15s ease;
     display: flex;
-    align-items: center;
     gap: 4px;
-    margin-left: auto;
+    align-items: center;
+
+    margin-inline-start: auto;
+
+    opacity: 0;
+
+    transition: opacity 0.15s ease;
   `,
   treeAddButton: css`
-    min-width: 24px;
     width: 24px;
+    min-width: 24px;
     height: 24px;
     border-radius: 6px;
+
     color: ${cssVar.colorTextSecondary};
 
     &:hover {
@@ -468,40 +531,51 @@ export const styles = createStaticStyles(({ css }) => ({
   `,
   treeNodeChildren: css`
     position: relative;
-    margin-left: 18px;
-    padding-left: 14px;
+
     display: flex;
     flex-direction: column;
     gap: 2px;
 
+    margin-inline-start: 18px;
+    padding-inline-start: 14px;
+
     &::before {
       content: '';
+
       position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 0;
+      inset-block: 0;
+      inset-inline-start: 0;
+
       width: 1px;
+
       background: ${cssVar.colorBorderSecondary};
     }
   `,
   treeInlineForm: css`
     display: flex;
-    align-items: center;
     gap: 8px;
-    padding: 6px 0 6px 32px;
+    align-items: center;
+
+    padding-block: 6px;
+    padding-inline: 32px 0;
   `,
   treeBadge: css`
     display: inline-flex;
     align-items: center;
-    padding: 1px 8px;
+
+    padding-block: 1px;
+    padding-inline: 8px;
     border-radius: 999px;
+
     font-size: 11px;
     font-weight: 500;
-    background: ${cssVar.colorPrimaryBg};
     color: ${cssVar.colorPrimary};
+
+    background: ${cssVar.colorPrimaryBg};
   `,
   treeEmpty: css`
-    padding: 32px 0;
+    padding-block: 32px;
+    padding-inline: 0;
     text-align: center;
   `,
   orgRolePanel: css`
@@ -509,14 +583,16 @@ export const styles = createStaticStyles(({ css }) => ({
     padding: 14px;
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 12px;
+
     background: ${cssVar.colorFillQuaternary};
   `,
   rolePanelHeader: css`
     display: flex;
-    justify-content: space-between;
     gap: 10px;
     align-items: flex-start;
-    margin-bottom: 12px;
+    justify-content: space-between;
+
+    margin-block-end: 12px;
   `,
   rolePanelTitle: css`
     font-size: 15px;
@@ -524,7 +600,7 @@ export const styles = createStaticStyles(({ css }) => ({
     color: ${cssVar.colorText};
   `,
   rolePanelMeta: css`
-    margin-top: 2px;
+    margin-block-start: 2px;
     font-size: 12px;
     color: ${cssVar.colorTextSecondary};
   `,
@@ -532,37 +608,43 @@ export const styles = createStaticStyles(({ css }) => ({
     display: flex;
     flex-direction: column;
     gap: 8px;
-    margin-bottom: 14px;
+    margin-block-end: 14px;
   `,
   roleAssignmentItem: css`
     display: flex;
+    gap: 8px;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    padding: 8px 0;
-    border-bottom: 1px solid ${cssVar.colorBorderSecondary};
+
+    padding-block: 8px;
+    padding-inline: 0;
+    border-block-end: 1px solid ${cssVar.colorBorderSecondary};
+
     font-size: 13px;
 
     &:last-child {
-      border-bottom: 0;
+      border-block-end: 0;
     }
   `,
   roleAssignForm: css`
-    padding-top: 12px;
-    border-top: 1px solid ${cssVar.colorBorderSecondary};
+    padding-block-start: 12px;
+    border-block-start: 1px solid ${cssVar.colorBorderSecondary};
   `,
   rolePanelEmpty: css`
-    padding: 12px 0;
+    padding-block: 12px;
+    padding-inline: 0;
     font-size: 13px;
     color: ${cssVar.colorTextSecondary};
   `,
   rolePanelEmptyState: css`
-    min-height: 220px;
     display: flex;
     flex-direction: column;
+    gap: 8px;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+
+    min-height: 220px;
+
     color: ${cssVar.colorTextSecondary};
     text-align: center;
   `,
@@ -573,13 +655,17 @@ export const styles = createStaticStyles(({ css }) => ({
     transition: max-height 0.3s ease, opacity 0.3s ease;
   `,
   settingsHeader: css`
+    cursor: pointer;
+    user-select: none;
+
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 20px;
-    cursor: pointer;
-    user-select: none;
+
+    padding-block: 14px;
+    padding-inline: 20px;
     border-radius: 16px;
+
     transition: background 0.15s ease;
 
     &:hover {
@@ -587,17 +673,20 @@ export const styles = createStaticStyles(({ css }) => ({
     }
   `,
   settingsBody: css`
-    padding: 0 20px 20px;
+    padding-block: 0 20px;
+padding-inline: 20px;
   `,
   settingsRow: css`
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 0;
-    border-bottom: 1px solid ${cssVar.colorFillQuaternary};
+
+    padding-block: 10px;
+    padding-inline: 0;
+    border-block-end: 1px solid ${cssVar.colorFillQuaternary};
 
     &:last-child {
-      border-bottom: 0;
+      border-block-end: 0;
     }
   `,
   settingsLabel: css`
@@ -605,10 +694,10 @@ export const styles = createStaticStyles(({ css }) => ({
     color: ${cssVar.colorTextSecondary};
   `,
   settingsValue: css`
+    font-family: monospace;
     font-size: 13px;
     font-weight: 500;
     color: ${cssVar.colorText};
-    font-family: monospace;
   `,
 
   // Search
@@ -636,8 +725,9 @@ export const styles = createStaticStyles(({ css }) => ({
     align-items: center;
     justify-content: space-between;
 
-    margin-bottom: 12px;
-    padding: 10px 12px;
+    margin-block-end: 12px;
+    padding-block: 10px;
+    padding-inline: 12px;
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 10px;
 
@@ -653,18 +743,20 @@ export const styles = createStaticStyles(({ css }) => ({
   `,
   rosterCard: css`
     break-inside: avoid;
-    margin-bottom: 12px;
+
+    margin-block-end: 12px;
     padding: 14px;
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 12px;
 
     background: ${cssVar.colorBgContainer};
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 3%);
+
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 
     &:hover {
       border-color: ${cssVar.colorPrimaryBorder};
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      box-shadow: 0 4px 12px rgb(0 0 0 / 5%);
     }
   `,
   rosterCardSelected: css`
@@ -681,36 +773,37 @@ export const styles = createStaticStyles(({ css }) => ({
     min-width: 0;
   `,
   rosterCardTitle: css`
-    overflow-wrap: anywhere;
     font-size: 14px;
     font-weight: 650;
     line-height: 1.5;
     color: ${cssVar.colorText};
+    overflow-wrap: anywhere;
   `,
   rosterCardMeta: css`
-    margin-top: 2px;
-    overflow-wrap: anywhere;
+    margin-block-start: 2px;
     font-size: 12px;
     color: ${cssVar.colorTextDescription};
+    overflow-wrap: anywhere;
   `,
   rosterCardFields: css`
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin-top: 12px;
+    margin-block-start: 12px;
   `,
   rosterFieldChip: css`
     display: inline-flex;
-    max-width: 100%;
     gap: 5px;
     align-items: center;
 
-    padding: 4px 8px;
+    max-width: 100%;
+    padding-block: 4px;
+    padding-inline: 8px;
     border-radius: 8px;
 
-    overflow-wrap: anywhere;
     font-size: 12px;
     line-height: 1.45;
+    overflow-wrap: anywhere;
 
     background: ${cssVar.colorFillQuaternary};
 
@@ -725,8 +818,9 @@ export const styles = createStaticStyles(({ css }) => ({
     }
   `,
   rosterLoadStatus: css`
-    margin-top: 12px;
-    padding: 10px 12px;
+    margin-block-start: 12px;
+    padding-block: 10px;
+    padding-inline: 12px;
     border: 1px dashed ${cssVar.colorBorderSecondary};
     border-radius: 10px;
 
@@ -742,21 +836,21 @@ export const styles = createStaticStyles(({ css }) => ({
 
   // Animations
   staggerItem: css`
-    opacity: 0;
     transform: translateY(20px);
-    animation: orgFadeUp 0.5s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+    opacity: 0;
+    animation: org-fade-up 0.5s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
 
-    @keyframes orgFadeUp {
+    @keyframes org-fade-up {
       to {
-        opacity: 1;
         transform: translateY(0);
+        opacity: 1;
       }
     }
   `,
   shake: css`
-    animation: orgShake 0.3s ease;
+    animation: org-shake 0.3s ease;
 
-    @keyframes orgShake {
+    @keyframes org-shake {
       0%, 100% { transform: translateX(0); }
       20% { transform: translateX(-4px); }
       40% { transform: translateX(4px); }
@@ -771,13 +865,14 @@ export const styles = createStaticStyles(({ css }) => ({
   `,
   flexBetween: css`
     display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
   `,
   emptyState: css`
-    padding: 48px 0;
+    padding-block: 48px;
+    padding-inline: 0;
     text-align: center;
   `,
   copyBtn: css`

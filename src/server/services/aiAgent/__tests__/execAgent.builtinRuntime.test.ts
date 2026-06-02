@@ -1,4 +1,6 @@
 import { PageAgentIdentifier } from '@lobechat/builtin-tool-page-agent';
+import { SELF_FEEDBACK_INTENT_IDENTIFIER } from '@lobechat/builtin-tool-self-iteration';
+import { RequestTrigger } from '@lobechat/types';
 import type * as ModelBankModule from 'model-bank';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -6,14 +8,32 @@ import { createServerAgentToolsEngine } from '@/server/modules/Mecha';
 
 import { AiAgentService } from '../index';
 
-const { mockCreateOperation, mockGetAgentConfig, mockMessageCreate, mockResolveTask } = vi.hoisted(
-  () => ({
-    mockCreateOperation: vi.fn(),
-    mockGetAgentConfig: vi.fn(),
-    mockMessageCreate: vi.fn(),
-    mockResolveTask: vi.fn(),
-  }),
-);
+const {
+  mockCreateOperation,
+  mockGetAgentConfig,
+  mockGetInfoForAIGeneration,
+  mockIsAgentSignalEnabledForUser,
+  mockMessageCreate,
+  mockMessageQuery,
+  mockResolveTask,
+  mockToolsEnv,
+} = vi.hoisted(() => ({
+  mockCreateOperation: vi.fn(),
+  mockGetAgentConfig: vi.fn(),
+  mockGetInfoForAIGeneration: vi.fn(),
+  mockIsAgentSignalEnabledForUser: vi.fn(),
+  mockMessageCreate: vi.fn(),
+  mockMessageQuery: vi.fn(),
+  mockResolveTask: vi.fn(),
+  mockToolsEnv: {
+    VISUAL_UNDERSTANDING_MODEL: undefined as string | undefined,
+    VISUAL_UNDERSTANDING_PROVIDER: undefined as string | undefined,
+  },
+}));
+
+vi.mock('@/envs/tools', () => ({
+  toolsEnv: mockToolsEnv,
+}));
 
 vi.mock('@/libs/trusted-client', () => ({
   generateTrustedClientToken: vi.fn().mockReturnValue(undefined),
@@ -24,7 +44,7 @@ vi.mock('@/libs/trusted-client', () => ({
 vi.mock('@/database/models/message', () => ({
   MessageModel: vi.fn().mockImplementation(() => ({
     create: mockMessageCreate,
-    query: vi.fn().mockResolvedValue([]),
+    query: mockMessageQuery,
     update: vi.fn().mockResolvedValue({}),
   })),
 }));
@@ -40,6 +60,24 @@ vi.mock('@/server/services/agent', () => ({
   AgentService: vi.fn().mockImplementation(() => ({
     getAgentConfig: mockGetAgentConfig,
   })),
+}));
+
+vi.mock('@/server/services/agentSignal/featureGate', () => ({
+  isAgentSignalEnabledForUser: mockIsAgentSignalEnabledForUser,
+  isLobeAiAgentSlug: (slug?: string | null) => slug === 'inbox',
+  resolveAgentSelfIterationCapability: ({
+    agentSelfIterationEnabled,
+    isAgentSelfIterationFeatureEnabled,
+    isLobeAiAgent,
+  }: {
+    agentSelfIterationEnabled?: boolean;
+    isAgentSelfIterationFeatureEnabled: boolean;
+    isLobeAiAgent: boolean;
+  }) => isAgentSelfIterationFeatureEnabled && (isLobeAiAgent || agentSelfIterationEnabled === true),
+}));
+
+vi.mock('@/server/services/agentSignal', () => ({
+  enqueueAgentSignalSourceEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/database/models/plugin', () => ({
@@ -60,6 +98,12 @@ vi.mock('@/database/models/thread', () => ({
     findById: vi.fn(),
     update: vi.fn(),
   })),
+}));
+
+vi.mock('@/database/models/user', () => ({
+  UserModel: {
+    getInfoForAIGeneration: mockGetInfoForAIGeneration,
+  },
 }));
 
 vi.mock('@/database/models/task', () => ({
@@ -88,13 +132,14 @@ vi.mock('@/server/services/klavis', () => ({
 
 vi.mock('@/server/services/file', () => ({
   FileService: vi.fn().mockImplementation(() => ({
+    getFullFileUrl: (path: string | null) => Promise.resolve(path || ''),
     uploadFromUrl: vi.fn(),
   })),
 }));
 
 vi.mock('@/server/modules/Mecha', () => ({
   createServerAgentToolsEngine: vi.fn().mockReturnValue({
-    generateToolsDetailed: vi.fn().mockReturnValue({ enabledToolIds: [], tools: [] }),
+    generateToolsDetailed: vi.fn().mockImplementation(() => ({ enabledToolIds: [], tools: [] })),
     getEnabledPluginManifests: vi.fn().mockReturnValue(new Map()),
   }),
   serverMessagesEngine: vi.fn().mockResolvedValue([{ content: 'test', role: 'user' }]),
@@ -117,6 +162,16 @@ vi.mock('model-bank', async (importOriginal) => {
         id: 'gpt-4',
         providerId: 'openai',
       },
+      {
+        abilities: { functionCall: true, video: false, vision: false },
+        id: 'text-only',
+        providerId: 'openai',
+      },
+      {
+        abilities: { functionCall: true, video: true, vision: true },
+        id: 'gemini-3.1-flash-lite-preview',
+        providerId: 'google',
+      },
     ],
   };
 });
@@ -129,7 +184,15 @@ describe('AiAgentService.execAgent - builtin agent runtime config', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockMessageCreate.mockResolvedValue({ id: 'msg-1' });
+    mockMessageQuery.mockResolvedValue([]);
+    mockIsAgentSignalEnabledForUser.mockResolvedValue(true);
     mockResolveTask.mockResolvedValue(null);
+    mockGetInfoForAIGeneration.mockResolvedValue({
+      responseLanguage: 'en-US',
+      userName: 'Test User',
+    });
+    mockToolsEnv.VISUAL_UNDERSTANDING_MODEL = 'vision-model';
+    mockToolsEnv.VISUAL_UNDERSTANDING_PROVIDER = 'test-provider';
     mockCreateOperation.mockResolvedValue({
       autoStarted: true,
       messageId: 'queue-msg-1',
@@ -161,6 +224,33 @@ describe('AiAgentService.execAgent - builtin agent runtime config', () => {
     const callArgs = mockCreateOperation.mock.calls[0][0];
     expect(callArgs.agentConfig.systemRole).toContain('You are AskCore');
     expect(callArgs.agentConfig.systemRole).toContain('{{model}}');
+  });
+
+  it('should pass user response language into web onboarding runtime systemRole', async () => {
+    mockGetInfoForAIGeneration.mockResolvedValue({
+      responseLanguage: 'zh-CN',
+      userName: 'Test User',
+    });
+    mockGetAgentConfig.mockResolvedValue({
+      chatConfig: {},
+      id: 'agent-web-onboarding',
+      model: 'gpt-4',
+      plugins: [],
+      provider: 'openai',
+      slug: 'web-onboarding',
+      systemRole: '',
+    });
+
+    await service.execAgent({
+      agentId: 'agent-web-onboarding',
+      prompt: '你好',
+    });
+
+    const callArgs = mockCreateOperation.mock.calls[0][0];
+    expect(callArgs.agentConfig.systemRole).toContain('Preferred reply language: zh-CN');
+    expect(callArgs.agentConfig.systemRole).toContain(
+      'Every visible reply, question, and visible choice label must be entirely in zh-CN',
+    );
   });
 
   it('should NOT override user-customized systemRole for inbox agent', async () => {
@@ -222,6 +312,98 @@ describe('AiAgentService.execAgent - builtin agent runtime config', () => {
 
     const callArgs = mockCreateOperation.mock.calls[0][0];
     expect(callArgs.agentConfig.systemRole).toBe('');
+  });
+
+  it('should persist request trigger metadata on the created user message', async () => {
+    mockGetAgentConfig.mockResolvedValue({
+      chatConfig: {},
+      id: 'agent-custom',
+      model: 'gpt-4',
+      plugins: [],
+      provider: 'openai',
+      systemRole: '',
+    });
+
+    await service.execAgent({
+      agentId: 'agent-custom',
+      appContext: { topicId: 'topic-1' },
+      prompt: 'Hello',
+      trigger: RequestTrigger.Onboarding,
+    });
+
+    expect(mockMessageCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'Hello',
+        metadata: { trigger: RequestTrigger.Onboarding },
+        role: 'user',
+      }),
+    );
+  });
+
+  it('should inject self-feedback intent tool for Lobe AI when user gate is enabled', async () => {
+    mockGetAgentConfig.mockResolvedValue({
+      chatConfig: {},
+      id: 'agent-inbox',
+      model: 'gpt-4',
+      plugins: [],
+      provider: 'openai',
+      slug: 'inbox',
+      systemRole: '',
+    });
+
+    await service.execAgent({
+      agentId: 'agent-inbox',
+      prompt: 'Hello',
+    });
+
+    const callArgs = mockCreateOperation.mock.calls[0][0];
+    expect(callArgs.toolSet.enabledToolIds).toContain(SELF_FEEDBACK_INTENT_IDENTIFIER);
+    expect(callArgs.toolSet.manifestMap[SELF_FEEDBACK_INTENT_IDENTIFIER]).toBeDefined();
+    expect(callArgs.toolSet.sourceMap[SELF_FEEDBACK_INTENT_IDENTIFIER]).toBe('builtin');
+  });
+
+  it('should not inject self-feedback intent tool for custom agents without agent self-iteration', async () => {
+    mockGetAgentConfig.mockResolvedValue({
+      chatConfig: {},
+      id: 'agent-custom',
+      model: 'gpt-4',
+      plugins: [],
+      provider: 'openai',
+      slug: 'custom-agent',
+      systemRole: '',
+    });
+
+    await service.execAgent({
+      agentId: 'agent-custom',
+      prompt: 'Hello',
+    });
+
+    const callArgs = mockCreateOperation.mock.calls[0][0];
+    expect(callArgs.toolSet.enabledToolIds).not.toContain(SELF_FEEDBACK_INTENT_IDENTIFIER);
+    expect(callArgs.toolSet.manifestMap[SELF_FEEDBACK_INTENT_IDENTIFIER]).toBeUndefined();
+    expect(callArgs.toolSet.sourceMap[SELF_FEEDBACK_INTENT_IDENTIFIER]).toBeUndefined();
+  });
+
+  it('should inject self-feedback intent tool for custom agents with agent self-iteration', async () => {
+    mockGetAgentConfig.mockResolvedValue({
+      chatConfig: { selfIteration: { enabled: true } },
+      id: 'agent-custom',
+      model: 'gpt-4',
+      plugins: [],
+      provider: 'openai',
+      slug: 'custom-agent',
+      systemRole: '',
+    });
+
+    await service.execAgent({
+      agentId: 'agent-custom',
+      prompt: 'Hello',
+    });
+
+    const callArgs = mockCreateOperation.mock.calls[0][0];
+    expect(callArgs.toolSet.enabledToolIds).toContain(SELF_FEEDBACK_INTENT_IDENTIFIER);
+    expect(callArgs.toolSet.manifestMap[SELF_FEEDBACK_INTENT_IDENTIFIER]).toBeDefined();
+    expect(callArgs.toolSet.sourceMap[SELF_FEEDBACK_INTENT_IDENTIFIER]).toBe('builtin');
   });
 
   it('should inject page-agent runtime for regular agents in page scope', async () => {
@@ -299,5 +481,65 @@ describe('AiAgentService.execAgent - builtin agent runtime config', () => {
     expect(callArgs.initialContext.initialContext.taskManager.contextPrompt).toContain(
       'Default Lobe AI agent id: agt_inbox',
     );
+  });
+
+  it('should inject lobe-agent when history has visual media and model lacks vision', async () => {
+    mockGetAgentConfig.mockResolvedValue({
+      chatConfig: {},
+      id: 'agent-custom',
+      model: 'text-only',
+      plugins: [],
+      provider: 'openai',
+      systemRole: '',
+    });
+    mockMessageQuery.mockResolvedValue([
+      {
+        id: 'history-image',
+        imageList: [{ alt: 'image.png', id: 'file-image', url: 'https://example.com/image.png' }],
+        role: 'user',
+      },
+    ]);
+
+    await service.execAgent({
+      agentId: 'agent-custom',
+      appContext: { topicId: 'topic-1' },
+      prompt: 'What is in the previous image?',
+    });
+
+    expect(createServerAgentToolsEngine).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        agentConfig: expect.objectContaining({
+          plugins: expect.arrayContaining(['lobe-agent']),
+        }),
+      }),
+    );
+  });
+
+  it('should not inject lobe-agent when the LobeHub routed model supports visual media natively', async () => {
+    mockGetAgentConfig.mockResolvedValue({
+      chatConfig: {},
+      id: 'agent-custom',
+      model: 'gemini-3.1-flash-lite-preview',
+      plugins: [],
+      provider: 'lobehub',
+      systemRole: '',
+    });
+    mockMessageQuery.mockResolvedValue([
+      {
+        id: 'history-video',
+        role: 'user',
+        videoList: [{ id: 'file-video', url: 'https://example.com/video.mp4' }],
+      },
+    ]);
+
+    await service.execAgent({
+      agentId: 'agent-custom',
+      appContext: { topicId: 'topic-1' },
+      prompt: 'What is in the previous video?',
+    });
+
+    const callArgs = vi.mocked(createServerAgentToolsEngine).mock.calls[0][1];
+    expect(callArgs.agentConfig.plugins).not.toContain('lobe-agent');
   });
 });

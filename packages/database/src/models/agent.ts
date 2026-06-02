@@ -1,6 +1,7 @@
 import { getAgentPersistConfig } from '@lobechat/builtin-agents';
 import { DEFAULT_INBOX_AVATAR, INBOX_SESSION_ID } from '@lobechat/const';
-import { and, desc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
+import type { AgentRankItem } from '@lobechat/types';
+import { and, count, desc, eq, gt, ilike, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import type { PartialDeep } from 'type-fest';
 
 import { merge } from '@/utils/merge';
@@ -15,6 +16,7 @@ import {
   files,
   knowledgeBases,
   sessions,
+  topics,
 } from '../schemas';
 import type { LobeChatDatabase } from '../type';
 
@@ -26,6 +28,34 @@ export class AgentModel {
     this.userId = userId;
     this.db = db;
   }
+
+  /**
+   * Rank the user's agents by topic count (agent usage ranking). Counts topics
+   * directly via `topics.agentId`, so it is agent-native — no sessionId. Mirrors
+   * the recents filter: real agents plus the inbox, excluding other virtual agents.
+   */
+  rank = async (limit: number = 10): Promise<AgentRankItem[]> => {
+    return this.db
+      .select({
+        avatar: agents.avatar,
+        backgroundColor: agents.backgroundColor,
+        count: count(topics.id).as('count'),
+        id: agents.id,
+        title: agents.title,
+      })
+      .from(agents)
+      .leftJoin(topics, eq(topics.agentId, agents.id))
+      .where(
+        and(
+          eq(agents.userId, this.userId),
+          or(eq(agents.slug, INBOX_SESSION_ID), ne(agents.virtual, true)),
+        ),
+      )
+      .groupBy(agents.id)
+      .having(({ count }) => gt(count, 0))
+      .orderBy(desc(sql`count`))
+      .limit(limit);
+  };
 
   getAgentConfigById = async (id: string) => {
     const agent = await this.db.query.agents.findFirst({
@@ -45,6 +75,29 @@ export class AgentModel {
       .limit(1);
 
     return rows.length > 0;
+  };
+
+  /**
+   * Lightweight lookup of an agent's currently-configured model + provider,
+   * used to snapshot the model into a task config so later changes to the
+   * agent's default model don't silently affect already-created tasks.
+   * Returns null when the agent has no model/provider set, or the agent
+   * cannot be found for this user.
+   */
+  getAgentModelConfig = async (
+    idOrSlug: string,
+  ): Promise<{ model: string; provider: string } | null> => {
+    const rows = await this.db
+      .select({ model: agents.model, provider: agents.provider })
+      .from(agents)
+      .where(
+        and(eq(agents.userId, this.userId), or(eq(agents.id, idOrSlug), eq(agents.slug, idOrSlug))),
+      )
+      .limit(1);
+
+    const row = rows[0];
+    if (!row || !row.model || !row.provider) return null;
+    return { model: row.model, provider: row.provider };
   };
 
   /**
@@ -593,7 +646,12 @@ export class AgentModel {
     const persistConfig = getAgentPersistConfig(slug);
     if (!persistConfig) return null;
 
-    // 4. Create the builtin agent with persist config
+    // 4. Create the builtin agent with persist config.
+    // Idempotent under concurrent callers: two parallel requests for the same
+    // (userId, slug) both see no existing row and race to insert. Without
+    // `onConflictDoNothing`, the loser hits the `agents_slug_user_id_unique`
+    // constraint; with it, the loser's `.returning()` is empty and we re-read
+    // the row that won.
     const result = await this.db
       .insert(agents)
       .values({
@@ -603,8 +661,15 @@ export class AgentModel {
         userId: this.userId,
         virtual: true,
       })
+      .onConflictDoNothing({ target: [agents.slug, agents.userId] })
       .returning();
 
-    return result[0];
+    if (result[0]) return result[0];
+
+    return (
+      (await this.db.query.agents.findFirst({
+        where: and(eq(agents.slug, slug), eq(agents.userId, this.userId)),
+      })) ?? null
+    );
   };
 }

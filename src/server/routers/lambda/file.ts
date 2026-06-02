@@ -9,7 +9,6 @@ import { ChunkModel } from '@/database/models/chunk';
 import { DocumentModel } from '@/database/models/document';
 import { FileModel } from '@/database/models/file';
 import { KnowledgeRepo } from '@/database/repositories/knowledge';
-import { appEnv } from '@/envs/app';
 import { authedProcedure, router } from '@/libs/trpc/lambda';
 import { serverDatabase } from '@/libs/trpc/lambda/middleware';
 import { DocumentService } from '@/server/services/document';
@@ -17,12 +16,6 @@ import { FileService } from '@/server/services/file';
 import { AsyncTaskStatus, AsyncTaskType, type IAsyncTaskError } from '@/types/asyncTask';
 import type { FileListItem, KnowledgeItemStatus } from '@/types/files';
 import { QueryFileListSchema, UploadFileSchema } from '@/types/files';
-
-/**
- * Generate file proxy URL
- * Returns a unified proxy URL format: ${APP_URL}/f/:id
- */
-const getFileProxyUrl = (fileId: string): string => `${appEnv.APP_URL}/f/${fileId}`;
 
 const filterKnowledgeItems = <
   T extends {
@@ -102,6 +95,19 @@ const getKnowledgeItemStatusMap = async (
   );
 };
 
+const isStoredObjectAvailable = async (fileService: FileService, url: string): Promise<boolean> => {
+  try {
+    // Hash records can outlive their backing object, for example when generated
+    // assets are cleaned up but the global hash row remains. Treat stale rows as
+    // missing so the client uploads a fresh copy instead of reusing a dead key.
+    await fileService.getFileMetadata(url);
+    return true;
+  } catch (error) {
+    console.error('Failed to verify existing file hash storage object:', error);
+    return false;
+  }
+};
+
 const fileProcedure = authedProcedure.use(serverDatabase).use(async (opts) => {
   const { ctx } = opts;
 
@@ -123,7 +129,13 @@ export const fileRouter = router({
     .use(checkFileStorageUsage)
     .input(z.object({ hash: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      return ctx.fileModel.checkHash(input.hash);
+      const existingFile = await ctx.fileModel.checkHash(input.hash);
+      const existingHashUrl = existingFile?.isExist ? existingFile.url : undefined;
+      if (!existingHashUrl) return existingFile;
+
+      const isStorageAvailable = await isStoredObjectAvailable(ctx.fileService, existingHashUrl);
+
+      return isStorageAvailable ? existingFile : { isExist: false };
     }),
 
   createFile: fileProcedure
@@ -135,7 +147,8 @@ export const fileRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { isExist } = await ctx.fileModel.checkHash(input.hash!);
+      const existingFile = await ctx.fileModel.checkHash(input.hash!);
+      const { isExist } = existingFile;
 
       // Resolve parentId if it's a slug
       let resolvedParentId = input.parentId;
@@ -156,34 +169,67 @@ export const fileRouter = router({
         // If metadata fetch fails, use original size from input
       }
 
-      await businessFileUploadCheck({
-        actualSize,
-        clientIp: ctx.clientIp ?? undefined,
-        inputSize: input.size,
-        url: input.url,
-        userId: ctx.userId,
-      });
-
       if (actualSize < 0) {
+        await businessFileUploadCheck({
+          actualSize,
+          clientIp: ctx.clientIp ?? undefined,
+          inputSize: input.size,
+          url: input.url,
+          userId: ctx.userId,
+        });
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'File size cannot be negative' });
       }
 
-      const { id } = await ctx.fileModel.create(
-        {
-          fileHash: input.hash,
-          fileType: input.fileType,
-          knowledgeBaseId: input.knowledgeBaseId,
-          metadata: input.metadata,
-          name: input.name,
-          parentId: resolvedParentId,
-          size: actualSize,
+      const { id } = await ctx.serverDB.transaction(async (trx) => {
+        await businessFileUploadCheck({
+          actualSize,
+          clientIp: ctx.clientIp ?? undefined,
+          inputSize: input.size,
+          transaction: trx,
           url: input.url,
-        },
-        // if the file is not exist in global file, create a new one
-        !isExist,
-      );
+          userId: ctx.userId,
+        });
 
-      return { id, url: getFileProxyUrl(id) };
+        let shouldRefreshGlobalFile = false;
+        if (isExist && existingFile.url && existingFile.url !== input.url) {
+          shouldRefreshGlobalFile = !(await isStoredObjectAvailable(
+            ctx.fileService,
+            existingFile.url,
+          ));
+        }
+
+        if (shouldRefreshGlobalFile) {
+          // A user may re-upload the same bytes after the old object key was
+          // removed. Keep the global hash pointer on the newly uploaded object so
+          // future dedup checks do not resolve back to the stale key.
+          await ctx.fileModel.updateGlobalFile(
+            input.hash!,
+            {
+              metadata: input.metadata,
+              url: input.url,
+            },
+            trx,
+          );
+        }
+
+        return ctx.fileModel.create(
+          {
+            fileHash: input.hash,
+            fileType: input.fileType,
+            knowledgeBaseId: input.knowledgeBaseId,
+            metadata: input.metadata,
+            name: input.name,
+            parentId: resolvedParentId,
+            size: actualSize,
+            url: input.url,
+          },
+          // if the file is not exist in global file, create a new one
+          !isExist,
+          trx,
+        );
+      });
+
+      return { id, url: await ctx.fileService.getFileAccessUrl({ id, url: input.url }) };
     }),
   findById: fileProcedure
     .input(
@@ -209,7 +255,7 @@ export const fileRouter = router({
         size: item.size,
         source: item.source,
         updatedAt: item.updatedAt,
-        url: getFileProxyUrl(item.id),
+        url: await ctx.fileService.getFileAccessUrl(item),
         userId: item.userId,
       };
     }),
@@ -243,7 +289,7 @@ export const fileRouter = router({
         size: item.size,
         sourceType: 'file' as const,
         updatedAt: item.updatedAt,
-        url: getFileProxyUrl(item.id),
+        url: await ctx.fileService.getFileAccessUrl(item),
       };
     }),
 
@@ -257,7 +303,7 @@ export const fileRouter = router({
       const fileItem = {
         ...item,
         sourceType: 'file' as const,
-        url: getFileProxyUrl(item.id),
+        url: await ctx.fileService.getFileAccessUrl(item),
         ...status,
       } as FileListItem;
       resultFiles.push(fileItem);
@@ -314,7 +360,7 @@ export const fileRouter = router({
         resultItems.push({
           ...item,
           editorData: null,
-          url: getFileProxyUrl(item.fileId || item.id),
+          url: await ctx.fileService.getFileAccessUrl(item),
           ...status,
         } as FileListItem);
       } else {
@@ -423,7 +469,7 @@ export const fileRouter = router({
     }),
 
   recentFiles: fileProcedure
-    .input(z.object({ limit: z.number().optional() }).optional())
+    .input(z.object({ limit: z.number().max(50).optional() }).optional())
     .query(async ({ ctx, input }) => {
       const limit = input?.limit ?? 12;
       // Query recent items and filter for files only (exclude documents/pages)
@@ -475,7 +521,7 @@ export const fileRouter = router({
           embeddingStatus: embeddingTask?.status as AsyncTaskStatus,
           finishEmbedding: embeddingTask?.status === AsyncTaskStatus.Success,
           sourceType: 'file' as const,
-          url: getFileProxyUrl(item.fileId || item.id),
+          url: await ctx.fileService.getFileAccessUrl(item),
         } as FileListItem);
       }
 
@@ -483,7 +529,7 @@ export const fileRouter = router({
     }),
 
   recentPages: fileProcedure
-    .input(z.object({ limit: z.number().optional() }).optional())
+    .input(z.object({ limit: z.number().max(50).optional() }).optional())
     .query(async ({ ctx, input }) => {
       const limit = input?.limit ?? 12;
       // Query recent items and filter for pages (documents) only, exclude folders

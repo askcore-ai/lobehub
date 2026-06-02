@@ -84,6 +84,12 @@ const mockContentSearchService = {
   checkToolAvailable: vi.fn(),
 };
 
+const mockLocalFileProtocolManager = {
+  approveIndexedProjectRoot: vi.fn(),
+  approveProjectRootFromScope: vi.fn(),
+  createPreviewUrl: vi.fn(),
+};
+
 // Mock makeSureDirExist
 vi.mock('@/utils/file-system', () => ({
   makeSureDirExist: vi.fn(),
@@ -98,6 +104,7 @@ const mockApp = {
     }
     return mockSearchService;
   }),
+  localFileProtocolManager: mockLocalFileProtocolManager,
   toolDetectorManager: {
     getBestTool: vi.fn(() => null), // No external tools available, use Node.js fallback
   },
@@ -106,7 +113,6 @@ const mockApp = {
 describe('LocalFileCtr', () => {
   let localFileCtr: LocalFileCtr;
   let mockShell: any;
-  let mockLoadFile: any;
   let mockFsPromises: any;
 
   beforeEach(async () => {
@@ -114,7 +120,6 @@ describe('LocalFileCtr', () => {
 
     // Import mocks
     mockShell = (await import('electron')).shell;
-    mockLoadFile = (await import('@lobechat/file-loaders')).loadFile;
     mockFsPromises = await import('node:fs/promises');
 
     localFileCtr = new LocalFileCtr(mockApp);
@@ -138,6 +143,17 @@ describe('LocalFileCtr', () => {
 
       expect(result).toEqual({ success: false, error: 'Failed to open' });
     });
+
+    it('should expand a leading ~ to the user home directory', async () => {
+      const os = await import('node:os');
+      const path = await import('node:path');
+      vi.mocked(mockShell.openPath).mockResolvedValue('');
+
+      const result = await localFileCtr.handleOpenLocalFile({ path: '~/git/work/file.txt' });
+
+      expect(result).toEqual({ success: true });
+      expect(mockShell.openPath).toHaveBeenCalledWith(path.join(os.homedir(), 'git/work/file.txt'));
+    });
   });
 
   describe('handleOpenLocalFolder', () => {
@@ -151,6 +167,20 @@ describe('LocalFileCtr', () => {
 
       expect(result).toEqual({ success: true });
       expect(mockShell.openPath).toHaveBeenCalledWith('/test/folder');
+    });
+
+    it('should expand a leading ~ when opening a directory', async () => {
+      const os = await import('node:os');
+      const path = await import('node:path');
+      vi.mocked(mockShell.openPath).mockResolvedValue('');
+
+      const result = await localFileCtr.handleOpenLocalFolder({
+        path: '~/git/work',
+        isDirectory: true,
+      });
+
+      expect(result).toEqual({ success: true });
+      expect(mockShell.openPath).toHaveBeenCalledWith(path.join(os.homedir(), 'git/work'));
     });
 
     it('should open parent directory when isDirectory is false', async () => {
@@ -178,89 +208,43 @@ describe('LocalFileCtr', () => {
     });
   });
 
-  describe('readFile', () => {
-    it('should read file successfully with default location', async () => {
-      const mockFileContent = 'line1\nline2\nline3\nline4\nline5';
-      vi.mocked(mockLoadFile).mockResolvedValue({
-        content: mockFileContent,
-        filename: 'test.txt',
-        fileType: 'txt',
-        createdTime: new Date('2024-01-01'),
-        modifiedTime: new Date('2024-01-02'),
+  // readFile / readFiles e2e tests live in LocalFileCtr.readFile.test.ts so
+  // they exercise real fs + file-loaders without fighting the heavy mocks
+  // this suite needs for execa-driven tools, electron, and the like.
+
+  describe('getLocalFilePreviewUrl', () => {
+    it('should return a main-issued preview URL for an approved workspace file', async () => {
+      mockLocalFileProtocolManager.createPreviewUrl.mockResolvedValue(
+        'localfile://file/workspace/app.ts?token=abc',
+      );
+
+      const result = await localFileCtr.getLocalFilePreviewUrl({
+        path: '/workspace/app.ts',
+        workingDirectory: '/workspace',
       });
 
-      const result = await localFileCtr.readFile({ path: '/test/file.txt' });
-
-      expect(result.filename).toBe('test.txt');
-      expect(result.fileType).toBe('txt');
-      expect(result.totalLineCount).toBe(5);
-      expect(result.content).toBe(mockFileContent);
+      expect(mockLocalFileProtocolManager.createPreviewUrl).toHaveBeenCalledWith({
+        filePath: '/workspace/app.ts',
+        workspaceRoot: '/workspace',
+      });
+      expect(result).toEqual({
+        success: true,
+        url: 'localfile://file/workspace/app.ts?token=abc',
+      });
     });
 
-    it('should read file with custom location range', async () => {
-      const mockFileContent = 'line1\nline2\nline3\nline4\nline5';
-      vi.mocked(mockLoadFile).mockResolvedValue({
-        content: mockFileContent,
-        filename: 'test.txt',
-        fileType: 'txt',
-        createdTime: new Date('2024-01-01'),
-        modifiedTime: new Date('2024-01-02'),
+    it('should reject preview URL creation outside an approved workspace', async () => {
+      mockLocalFileProtocolManager.createPreviewUrl.mockResolvedValue(null);
+
+      const result = await localFileCtr.getLocalFilePreviewUrl({
+        path: '/Users/alice/.ssh/id_rsa',
+        workingDirectory: '/workspace',
       });
 
-      const result = await localFileCtr.readFile({ path: '/test/file.txt', loc: [1, 3] });
-
-      expect(result.content).toBe('line2\nline3');
-      expect(result.lineCount).toBe(2);
-      expect(result.totalLineCount).toBe(5);
-    });
-
-    it('should read full file content when fullContent is true', async () => {
-      const mockFileContent = 'line1\nline2\nline3\nline4\nline5';
-      vi.mocked(mockLoadFile).mockResolvedValue({
-        content: mockFileContent,
-        filename: 'test.txt',
-        fileType: 'txt',
-        createdTime: new Date('2024-01-01'),
-        modifiedTime: new Date('2024-01-02'),
+      expect(result).toEqual({
+        error: 'File is outside the approved workspace',
+        success: false,
       });
-
-      const result = await localFileCtr.readFile({ path: '/test/file.txt', fullContent: true });
-
-      expect(result.content).toBe(mockFileContent);
-      expect(result.lineCount).toBe(5);
-      expect(result.charCount).toBe(mockFileContent.length);
-      expect(result.totalLineCount).toBe(5);
-      expect(result.totalCharCount).toBe(mockFileContent.length);
-      expect(result.loc).toEqual([0, 5]);
-    });
-
-    it('should handle file read error', async () => {
-      vi.mocked(mockLoadFile).mockRejectedValue(new Error('File not found'));
-
-      const result = await localFileCtr.readFile({ path: '/test/missing.txt' });
-
-      expect(result.content).toContain('Error accessing or processing file');
-      expect(result.lineCount).toBe(0);
-      expect(result.charCount).toBe(0);
-    });
-  });
-
-  describe('readFiles', () => {
-    it('should read multiple files successfully', async () => {
-      vi.mocked(mockLoadFile).mockResolvedValue({
-        content: 'file content',
-        filename: 'test.txt',
-        fileType: 'txt',
-        createdTime: new Date('2024-01-01'),
-        modifiedTime: new Date('2024-01-02'),
-      });
-
-      const result = await localFileCtr.readFiles({
-        paths: ['/test/file1.txt', '/test/file2.txt'],
-      });
-
-      expect(result).toHaveLength(2);
-      expect(mockLoadFile).toHaveBeenCalledTimes(2);
     });
   });
 

@@ -119,8 +119,9 @@ describe('toolSelectors', () => {
           identifier: 'plugin-1',
           meta: { title: 'Plugin 1', description: 'Plugin 1 description' },
           runtimeType: 'standalone',
+          source: 'market',
           title: 'Plugin 1',
-          type: 'plugin',
+          type: 'market',
         },
         {
           author: 'Another Author',
@@ -129,7 +130,8 @@ describe('toolSelectors', () => {
           identifier: 'plugin-2',
           meta: undefined,
           runtimeType: 'default',
-          type: 'plugin',
+          source: 'market',
+          type: 'market',
         },
         {
           author: undefined,
@@ -138,7 +140,8 @@ describe('toolSelectors', () => {
           identifier: 'plugin-3',
           meta: undefined,
           runtimeType: undefined,
-          type: 'customPlugin',
+          source: 'user',
+          type: 'user',
         },
       ]);
     });

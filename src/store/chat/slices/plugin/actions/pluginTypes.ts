@@ -2,6 +2,7 @@ import {
   type ChatToolPayload,
   type PluginRequestPayload,
   type RuntimeStepContext,
+  type SubAgentCallbacks,
 } from '@lobechat/types';
 import debug from 'debug';
 
@@ -10,6 +11,7 @@ import { truncateToolResult } from '@/server/utils/truncateToolResult';
 import { chatService } from '@/services/chat';
 import { mcpService } from '@/services/mcp';
 import { messageService } from '@/services/message';
+import { archiveToolResultViaServer } from '@/services/toolResultArchive';
 import { AI_RUNTIME_OPERATION_TYPES } from '@/store/chat/slices/operation';
 import { type ChatStore } from '@/store/chat/store';
 import { useToolStore } from '@/store/tool';
@@ -117,6 +119,29 @@ export class PluginTypesActionImpl {
       // Get group orchestration callbacks if available (for group management tools)
       const groupOrchestration = this.#get().getGroupOrchestrationCallbacks?.();
 
+      // Sub-agent runner injected for sub-agent-spawning tools (lobe-agent.callSubAgent).
+      // Runs the sub-agent in an isolated thread using the current client runtime
+      // and resolves with its output, so the tool returns a normal tool result.
+      const subAgentParentOperationId = rootRuntimeOperationId ?? operationId;
+      const subAgent: SubAgentCallbacks = {
+        run: (runParams) => {
+          if (!agentId || !topicId) {
+            return Promise.resolve({
+              error: 'No agent context available for sub-agent execution',
+              result: 'No agent context available for sub-agent execution',
+              success: false,
+              threadId: '',
+            });
+          }
+          return this.#get().runClientSubAgent({
+            ...runParams,
+            agentId,
+            parentOperationId: subAgentParentOperationId,
+            topicId,
+          });
+        },
+      };
+
       // Create registerAfterCompletion function that registers callback to root runtime operation
       const registerAfterCompletion = rootRuntimeOperationId
         ? (callback: Parameters<typeof registerAfterCompletionCallback>[1]) => {
@@ -162,8 +187,14 @@ export class PluginTypesActionImpl {
           registerAfterCompletion,
           scope,
           signal: operation?.abortController?.signal,
+          sourceMessageId:
+            operation?.context?.sourceMessageId ??
+            rootRuntimeOperationContext?.sourceMessageId ??
+            rootRuntimeOperationContext?.messageId,
           stepContext,
+          subAgent,
           taskId,
+          toolCallId: payload.id,
           topicId,
         });
 
@@ -177,7 +208,14 @@ export class PluginTypesActionImpl {
       });
 
       // When error exists but content is empty, backfill error message into content
-      const content = result.content || result.error?.message || '';
+      const rawContent = result.content || result.error?.message || '';
+      const content = await archiveToolResultViaServer({
+        agentId,
+        content: rawContent,
+        identifier: payload.identifier,
+        toolCallId: payload.id,
+        topicId,
+      });
 
       // Use optimisticUpdateToolMessage to batch update content, state, error, metadata
       await optimisticUpdateToolMessage(
@@ -296,8 +334,15 @@ export class PluginTypesActionImpl {
 
     if (!data) return;
 
-    // Truncate content to prevent context overflow
-    const truncatedContent = truncateToolResult(data.content || (data.error as any)?.message || '');
+    // Archive oversized content (or truncate if archive context unavailable)
+    const rawContent = data.content || (data.error as any)?.message || '';
+    const truncatedContent = await archiveToolResultViaServer({
+      agentId: message?.agentId,
+      content: rawContent,
+      identifier: payload.identifier,
+      toolCallId: payload.id,
+      topicId: message?.topicId,
+    });
 
     // operationId already declared above, reuse it
     const context = operationId ? { operationId } : undefined;
@@ -447,7 +492,14 @@ export class PluginTypesActionImpl {
     // If error occurred, exit
     if (!data) return;
 
-    const remoteContent = data.content || (data.error as any)?.message || '';
+    const rawContent = data.content || (data.error as any)?.message || '';
+    const remoteContent = await archiveToolResultViaServer({
+      agentId: message?.agentId,
+      content: rawContent,
+      identifier: payload.identifier,
+      toolCallId: payload.id,
+      topicId: message?.topicId,
+    });
     const context = operationId ? { operationId } : undefined;
 
     // Use optimisticUpdateToolMessage to update content and state/error in a single call

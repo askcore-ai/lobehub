@@ -26,13 +26,6 @@ vi.mock('antd-style', () => ({
     neonDot: 'neonDot',
     neonDotWrapper: 'neonDotWrapper',
   }),
-  createStyles: () => () => ({
-    cx: (...classNames: Array<false | string | undefined>) => classNames.filter(Boolean).join(' '),
-    styles: {
-      container: 'container',
-      dot: 'dot',
-    },
-  }),
   cssVar: {
     colorInfo: '#00f',
     colorTextDescription: '#999',
@@ -63,9 +56,6 @@ vi.mock('@/const/version', () => ({ isDesktop: false }));
 vi.mock('@/const/url', () => ({
   SESSION_CHAT_TOPIC_URL: (agentId: string, topicId: string) => `/agent/${agentId}/${topicId}`,
 }));
-vi.mock('@/features/Electron/titlebar/RecentlyViewed/plugins', () => ({
-  pluginRegistry: { parseUrl: vi.fn() },
-}));
 vi.mock('@/features/NavPanel/components/NavItem', () => ({
   default: ({ active, title }: { active?: boolean; title?: ReactNode }) => (
     <div data-active={String(active)} data-testid="nav-item">
@@ -77,8 +67,11 @@ vi.mock('@/routes/(main)/agent/channel/const', () => ({
   getPlatformIcon: () => null,
 }));
 vi.mock('@/store/agent', () => ({
-  useAgentStore: (selector: (state: { activeAgentId: string }) => unknown) =>
-    selector({ activeAgentId: 'agt_test' }),
+  // `agentMap` is read by `agentSelectors.isCurrentAgentHeterogeneous` →
+  // `currentAgentConfig`, which would otherwise throw on `undefined.agentMap`.
+  useAgentStore: (
+    selector: (state: { activeAgentId: string; agentMap: Record<string, unknown> }) => unknown,
+  ) => selector({ activeAgentId: 'agt_test', agentMap: {} }),
 }));
 vi.mock('@/store/chat', () => ({
   useChatStore: (

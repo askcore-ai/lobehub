@@ -9,7 +9,7 @@ import {
   formatTaskList,
   priorityLabel,
 } from '@lobechat/prompts';
-import type { TaskStatus } from '@lobechat/types';
+import type { TaskAutomationMode, TaskStatus } from '@lobechat/types';
 
 import { AgentModel } from '@/database/models/agent';
 import { TaskModel } from '@/database/models/task';
@@ -47,49 +47,129 @@ export const createTaskRuntime = ({
     } as const;
   };
 
-  return {
-    createTask: async (args: {
-      instruction: string;
-      assigneeAgentId?: string;
-      name: string;
-      parentIdentifier?: string;
-      priority?: number;
-      sortOrder?: number;
-    }) => {
-      let parentTaskId: string | undefined;
-      let parentLabel: string | undefined;
+  type CreateTaskArgs = {
+    instruction: string;
+    assigneeAgentId?: string;
+    name: string;
+    parentIdentifier?: string;
+    priority?: number;
+    sortOrder?: number;
+  };
 
-      if (args.parentIdentifier) {
-        const parent = await taskModel.resolve(args.parentIdentifier);
-        if (!parent)
-          return { content: `Parent task not found: ${args.parentIdentifier}`, success: false };
-        parentTaskId = parent.id;
-        parentLabel = parent.identifier;
+  const createTaskImpl = async (
+    args: CreateTaskArgs,
+  ): Promise<{ content: string; identifier?: string; success: boolean }> => {
+    let parentLabel: string | undefined;
+
+    // Pre-resolve parent identifier so we can surface a tool-friendly error
+    // and label, and pass the resolved id straight through to the service.
+    let parentTaskId: string | undefined;
+    if (args.parentIdentifier) {
+      const parent = await taskModel.resolve(args.parentIdentifier);
+      if (!parent)
+        return { content: `Parent task not found: ${args.parentIdentifier}`, success: false };
+      parentTaskId = parent.id;
+      parentLabel = parent.identifier;
+    }
+
+    const assigneeResult = await resolveAssigneeAgent(args.assigneeAgentId);
+    if (!assigneeResult.success) return { content: assigneeResult.content, success: false };
+
+    const task = await taskService.createTask({
+      assigneeAgentId: args.assigneeAgentId ?? (scope === 'task' ? undefined : agentId),
+      createdByAgentId: agentId,
+      instruction: args.instruction,
+      name: args.name,
+      parentTaskId,
+      priority: args.priority,
+      sortOrder: args.sortOrder,
+    });
+
+    return {
+      content: formatTaskCreated({
+        identifier: task.identifier,
+        instruction: args.instruction,
+        name: task.name,
+        parentLabel,
+        priority: task.priority,
+        status: task.status,
+      }),
+      identifier: task.identifier,
+      success: true,
+    };
+  };
+
+  return {
+    addTaskComment: async (args: { content: string; identifier?: string }) => {
+      const id = args.identifier?.trim() || taskId;
+      if (!id) {
+        return {
+          content: 'No task identifier provided and no current task context.',
+          success: false,
+        };
       }
 
-      const assigneeResult = await resolveAssigneeAgent(args.assigneeAgentId);
-      if (!assigneeResult.success) return assigneeResult;
+      try {
+        const result = await taskCaller.addComment({
+          authorAgentId: agentId,
+          content: args.content,
+          id,
+        });
 
-      const task = await taskModel.create({
-        assigneeAgentId: args.assigneeAgentId ?? (scope === 'task' ? undefined : agentId),
-        createdByAgentId: agentId,
-        instruction: args.instruction,
-        name: args.name,
-        parentTaskId,
-        priority: args.priority,
-        sortOrder: args.sortOrder,
-      });
+        return {
+          content: `Comment added to task ${id}.`,
+          success: true,
+          state: { commentId: result.data.id, identifier: id, success: true },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to add task comment';
+        return { content: `Failed to add task comment: ${message}`, success: false };
+      }
+    },
+
+    createTask: async (args: CreateTaskArgs) => {
+      const result = await createTaskImpl(args);
+      const { identifier: _identifier, ...rest } = result;
+      return rest;
+    },
+
+    createTasks: async (args: { tasks: CreateTaskArgs[] }) => {
+      const items = Array.isArray(args.tasks) ? args.tasks : [];
+      if (items.length === 0) {
+        return { content: 'No tasks provided.', success: false };
+      }
+
+      const lines: string[] = [];
+      let succeeded = 0;
+      let failed = 0;
+
+      for (const [index, item] of items.entries()) {
+        try {
+          const result = await createTaskImpl(item);
+          if (result.success) {
+            succeeded += 1;
+            lines.push(
+              `${index + 1}. ${result.identifier ?? '(unknown id)'} "${item.name}" — created`,
+            );
+          } else {
+            failed += 1;
+            lines.push(`${index + 1}. "${item.name}" — failed: ${result.content}`);
+          }
+        } catch (error) {
+          failed += 1;
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          lines.push(`${index + 1}. "${item.name}" — failed: ${message}`);
+        }
+      }
+
+      const header =
+        failed === 0
+          ? `Created ${succeeded} task${succeeded === 1 ? '' : 's'}:`
+          : `Created ${succeeded}/${items.length} tasks (${failed} failed):`;
 
       return {
-        content: formatTaskCreated({
-          identifier: task.identifier,
-          instruction: args.instruction,
-          name: task.name,
-          parentLabel,
-          priority: task.priority,
-          status: task.status,
-        }),
-        success: true,
+        content: [header, ...lines].join('\n'),
+        success: failed === 0,
       };
     },
 
@@ -105,6 +185,20 @@ export const createTaskRuntime = ({
       };
     },
 
+    deleteTaskComment: async (args: { commentId: string }) => {
+      try {
+        await taskCaller.deleteComment({ commentId: args.commentId });
+        return {
+          content: `Comment ${args.commentId} deleted.`,
+          success: true,
+          state: { commentId: args.commentId, success: true },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to delete task comment';
+        return { content: `Failed to delete task comment: ${message}`, success: false };
+      }
+    },
+
     editTask: async (args: {
       addDependencies?: string[];
       assigneeAgentId?: string | null;
@@ -112,13 +206,21 @@ export const createTaskRuntime = ({
       identifier: string;
       instruction?: string;
       name?: string;
+      parentIdentifier?: string | null;
       priority?: number;
       removeDependencies?: string[];
     }) => {
       const task = await taskModel.resolve(args.identifier);
       if (!task) return { content: `Task not found: ${args.identifier}`, success: false };
 
-      const updateData: Record<string, any> = {};
+      const updateData: {
+        assigneeAgentId?: string | null;
+        description?: string;
+        instruction?: string;
+        name?: string;
+        parentTaskId?: string | null;
+        priority?: number;
+      } = {};
       const changes: string[] = [];
       const ops: Promise<unknown>[] = [];
 
@@ -143,13 +245,18 @@ export const createTaskRuntime = ({
         updateData.description = args.description;
         changes.push('description updated');
       }
+      if (args.parentIdentifier !== undefined) {
+        const parentIdentifier = args.parentIdentifier?.trim() || null;
+        updateData.parentTaskId = parentIdentifier;
+        changes.push(parentIdentifier ? `parent → ${parentIdentifier}` : 'parent cleared');
+      }
       if (args.priority !== undefined) {
         updateData.priority = args.priority;
         changes.push(`priority → ${priorityLabel(args.priority)}`);
       }
 
       if (Object.keys(updateData).length > 0) {
-        ops.push(taskModel.update(task.id, updateData));
+        ops.push(taskCaller.update({ id: task.id, ...updateData }));
       }
 
       const applyDeps = async (
@@ -222,6 +329,168 @@ export const createTaskRuntime = ({
           content: `Failed to list tasks: ${message}`,
           success: false,
         };
+      }
+    },
+
+    setTaskSchedule: async (args: {
+      automationMode?: TaskAutomationMode | null;
+      heartbeatInterval?: number;
+      identifier: string;
+      maxExecutions?: number | null;
+      schedulePattern?: string | null;
+      scheduleTimezone?: string | null;
+    }) => {
+      const task = await taskModel.resolve(args.identifier);
+      if (!task) return { content: `Task not found: ${args.identifier}`, success: false };
+
+      const changes: string[] = [];
+      const ops: Promise<unknown>[] = [];
+
+      // Mirrors client executor: schedule columns go through taskCaller.update;
+      // maxExecutions lives in `tasks.config.schedule.maxExecutions` (JSONB) and
+      // routes through updateConfig so server-side merge preserves siblings.
+      const scheduleUpdate: {
+        automationMode?: TaskAutomationMode | null;
+        heartbeatInterval?: number;
+        schedulePattern?: string | null;
+        scheduleTimezone?: string | null;
+      } = {};
+      if (args.automationMode !== undefined) {
+        scheduleUpdate.automationMode = args.automationMode;
+        changes.push(
+          args.automationMode ? `automation mode → ${args.automationMode}` : 'automation disabled',
+        );
+      }
+      if (args.heartbeatInterval !== undefined) {
+        scheduleUpdate.heartbeatInterval = args.heartbeatInterval;
+        changes.push(
+          args.heartbeatInterval > 0
+            ? `heartbeat interval → ${args.heartbeatInterval}s`
+            : 'heartbeat interval cleared',
+        );
+      }
+      if (args.schedulePattern !== undefined) {
+        scheduleUpdate.schedulePattern = args.schedulePattern;
+        changes.push(
+          args.schedulePattern
+            ? `schedule pattern → "${args.schedulePattern}"`
+            : 'schedule pattern cleared',
+        );
+      }
+      if (args.scheduleTimezone !== undefined) {
+        scheduleUpdate.scheduleTimezone = args.scheduleTimezone;
+        changes.push(
+          args.scheduleTimezone
+            ? `schedule timezone → ${args.scheduleTimezone}`
+            : 'schedule timezone cleared',
+        );
+      }
+      if (Object.keys(scheduleUpdate).length > 0) {
+        ops.push(taskCaller.update({ id: task.id, ...scheduleUpdate }));
+      }
+
+      if (args.maxExecutions !== undefined) {
+        ops.push(
+          taskCaller.updateConfig({
+            config: { schedule: { maxExecutions: args.maxExecutions } },
+            id: task.id,
+          }),
+        );
+        changes.push(
+          args.maxExecutions === null
+            ? 'max executions cleared (unlimited)'
+            : `max executions → ${args.maxExecutions}`,
+        );
+      }
+
+      if (ops.length === 0) {
+        return { content: 'No schedule fields provided; nothing to update.', success: false };
+      }
+
+      await Promise.all(ops);
+
+      return { content: formatTaskEdited(task.identifier, changes), success: true };
+    },
+
+    runTask: async (args: { continueTopicId?: string; identifier?: string; prompt?: string }) => {
+      const id = args.identifier?.trim() || taskId;
+      if (!id) {
+        return {
+          content: 'No task identifier provided and no current task context.',
+          success: false,
+        };
+      }
+
+      try {
+        const result = await taskCaller.run({
+          continueTopicId: args.continueTopicId,
+          id,
+          prompt: args.prompt,
+        });
+
+        const topicId = (result as { topicId?: string } | undefined)?.topicId;
+        const operationId = (result as { operationId?: string } | undefined)?.operationId;
+        const lines = [`Task ${id} started.`];
+        if (topicId) lines.push(`  Topic: ${topicId}`);
+        if (operationId) lines.push(`  Operation: ${operationId}`);
+
+        return { content: lines.join('\n'), success: true };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to run task';
+        return { content: `Failed to run task ${id}: ${message}`, success: false };
+      }
+    },
+
+    runTasks: async (args: { identifiers: string[] }) => {
+      const identifiers = Array.isArray(args.identifiers)
+        ? args.identifiers.map((value) => value?.trim()).filter((value): value is string => !!value)
+        : [];
+
+      if (identifiers.length === 0) {
+        return { content: 'No task identifiers provided.', success: false };
+      }
+
+      const lines: string[] = [];
+      let succeeded = 0;
+      let failed = 0;
+
+      for (const [index, identifier] of identifiers.entries()) {
+        try {
+          const result = await taskCaller.run({ id: identifier });
+          const topicId = (result as { topicId?: string } | undefined)?.topicId;
+          succeeded += 1;
+          lines.push(
+            `${index + 1}. ${identifier} — started${topicId ? ` (topic ${topicId})` : ''}`,
+          );
+        } catch (error) {
+          failed += 1;
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          lines.push(`${index + 1}. ${identifier} — failed: ${message}`);
+        }
+      }
+
+      const header =
+        failed === 0
+          ? `Started ${succeeded} task${succeeded === 1 ? '' : 's'}:`
+          : `Started ${succeeded}/${identifiers.length} tasks (${failed} failed):`;
+
+      return {
+        content: [header, ...lines].join('\n'),
+        success: failed === 0,
+      };
+    },
+
+    updateTaskComment: async (args: { commentId: string; content: string }) => {
+      try {
+        await taskCaller.updateComment({ commentId: args.commentId, content: args.content });
+        return {
+          content: `Comment ${args.commentId} updated.`,
+          success: true,
+          state: { commentId: args.commentId, success: true },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to update task comment';
+        return { content: `Failed to update task comment: ${message}`, success: false };
       }
     },
 

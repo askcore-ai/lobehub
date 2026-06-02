@@ -41,20 +41,36 @@ vi.mock('./WorkflowCollapse', () => ({
   }: {
     blocks: Array<{
       content: string;
+      contentOverride?: string;
       disableMarkdownStreaming?: boolean;
       domId?: string;
+      error?: unknown;
+      hasToolsOverride?: boolean;
       tools?: unknown[];
     }>;
   }) => (
     <div
       data-testid="workflow-segment"
       data-blocks={JSON.stringify(
-        blocks.map(({ content, disableMarkdownStreaming, domId, tools }) => ({
-          content,
-          disableMarkdownStreaming: !!disableMarkdownStreaming,
-          domId,
-          toolCount: tools?.length ?? 0,
-        })),
+        blocks.map(
+          ({
+            content,
+            contentOverride,
+            disableMarkdownStreaming,
+            domId,
+            error,
+            hasToolsOverride,
+            tools,
+          }) => ({
+            content,
+            contentOverride,
+            disableMarkdownStreaming: !!disableMarkdownStreaming,
+            domId,
+            hasError: !!error,
+            hasToolsOverride,
+            toolCount: tools?.length ?? 0,
+          }),
+        ),
       )}
     />
   ),
@@ -63,15 +79,21 @@ vi.mock('./WorkflowCollapse', () => ({
 vi.mock('./GroupItem', () => ({
   default: ({
     content,
+    contentOverride,
     disableMarkdownStreaming,
     domId,
+    error,
+    hasToolsOverride,
     id,
     isFirstBlock,
     tools,
   }: {
     content: string;
+    contentOverride?: string;
     disableMarkdownStreaming?: boolean;
     domId?: string;
+    error?: unknown;
+    hasToolsOverride?: boolean;
     id: string;
     isFirstBlock?: boolean;
     tools?: unknown[];
@@ -80,8 +102,11 @@ vi.mock('./GroupItem', () => ({
       data-testid="answer-segment"
       data-block={JSON.stringify({
         content,
+        contentOverride,
         disableMarkdownStreaming: !!disableMarkdownStreaming,
         domId,
+        hasError: !!error,
+        hasToolsOverride,
         id,
         isFirstBlock: !!isFirstBlock,
         toolCount: tools?.length ?? 0,
@@ -137,16 +162,22 @@ describe('Group', () => {
     expect(parseAnswerSegments()).toEqual([
       {
         content: longContent,
-        disableMarkdownStreaming: true,
+        contentOverride: longContent,
+        disableMarkdownStreaming: false,
         domId: 'block-1__answer',
+        hasError: false,
+        hasToolsOverride: false,
         id: 'block-1',
         isFirstBlock: false,
         toolCount: 0,
       },
       {
         content: '',
-        disableMarkdownStreaming: true,
+        contentOverride: '',
+        disableMarkdownStreaming: false,
         domId: 'block-1__workflow',
+        hasError: false,
+        hasToolsOverride: true,
         id: 'block-1',
         isFirstBlock: false,
         toolCount: 1,
@@ -173,8 +204,9 @@ describe('Group', () => {
     expect(parseAnswerSegments()).toEqual([
       {
         content: '现在我来搜索资料。',
-        disableMarkdownStreaming: true,
+        disableMarkdownStreaming: false,
         domId: undefined,
+        hasError: false,
         id: 'block-1',
         isFirstBlock: false,
         toolCount: 1,
@@ -209,8 +241,11 @@ describe('Group', () => {
     expect(sequence).toEqual(['answer-segment', 'workflow-segment']);
     expect(parseAnswerSegment()).toEqual({
       content: '我先帮你查一下。',
+      contentOverride: '我先帮你查一下。',
       disableMarkdownStreaming: true,
       domId: 'block-1__answer',
+      hasError: false,
+      hasToolsOverride: false,
       id: 'block-1',
       isFirstBlock: false,
       toolCount: 0,
@@ -218,17 +253,73 @@ describe('Group', () => {
     expect(parseWorkflowSegment()).toEqual([
       {
         content: '接下来我会继续整理结果。',
+        contentOverride: '接下来我会继续整理结果。',
         disableMarkdownStreaming: true,
         domId: 'block-1__workflow',
+        hasError: false,
+        hasToolsOverride: true,
         toolCount: 1,
       },
       {
         content: '',
         disableMarkdownStreaming: false,
         domId: undefined,
+        hasError: false,
         toolCount: 1,
       },
     ]);
+  });
+
+  it('keeps assistant runtime errors outside the workflow collapse', () => {
+    const { container } = render(
+      <Group
+        id="assistant-1"
+        messageIndex={0}
+        blocks={[
+          blk({
+            content: '',
+            error: {
+              body: { code: 'rate_limit' },
+              message: 'rate limit',
+              type: 'ProviderBizError',
+            } as any,
+            id: 'block-1',
+            tools: [
+              { apiName: 'bash', id: 'tool-1' } as any,
+              { apiName: 'bash', id: 'tool-2' } as any,
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    const sequence = Array.from(container.querySelectorAll('[data-testid]')).map((node) =>
+      node.getAttribute('data-testid'),
+    );
+
+    expect(sequence).toEqual(['workflow-segment', 'answer-segment']);
+    expect(parseWorkflowSegment()).toEqual([
+      {
+        content: '',
+        contentOverride: '',
+        disableMarkdownStreaming: false,
+        domId: 'block-1__workflow',
+        hasError: false,
+        hasToolsOverride: true,
+        toolCount: 2,
+      },
+    ]);
+    expect(parseAnswerSegment()).toEqual({
+      content: '',
+      contentOverride: '',
+      disableMarkdownStreaming: false,
+      domId: 'block-1__answer',
+      hasError: true,
+      hasToolsOverride: false,
+      id: 'block-1',
+      isFirstBlock: false,
+      toolCount: 0,
+    });
   });
 
   it('renders a single tool call inline instead of folding it', () => {
@@ -250,12 +341,43 @@ describe('Group', () => {
     expect(parseAnswerSegments()).toEqual([
       {
         content: '',
-        disableMarkdownStreaming: true,
+        disableMarkdownStreaming: false,
         domId: undefined,
+        hasError: false,
         id: 'block-1',
         isFirstBlock: false,
         toolCount: 1,
       },
+    ]);
+  });
+
+  it('only animates the last block in a multi-block group', () => {
+    const { container } = render(
+      <Group
+        id="assistant-1"
+        messageIndex={0}
+        blocks={[
+          blk({ content: 'first paragraph', id: 'block-1' }),
+          blk({ content: 'middle paragraph', id: 'block-2' }),
+          blk({ content: 'last paragraph', id: 'block-3' }),
+        ]}
+      />,
+    );
+
+    const sequence = Array.from(container.querySelectorAll('[data-testid]')).map((node) =>
+      node.getAttribute('data-testid'),
+    );
+
+    expect(sequence).toEqual(['answer-segment', 'answer-segment', 'answer-segment']);
+    expect(
+      parseAnswerSegments().map((seg: { disableMarkdownStreaming: boolean; id: string }) => ({
+        disableMarkdownStreaming: seg.disableMarkdownStreaming,
+        id: seg.id,
+      })),
+    ).toEqual([
+      { disableMarkdownStreaming: true, id: 'block-1' },
+      { disableMarkdownStreaming: true, id: 'block-2' },
+      { disableMarkdownStreaming: false, id: 'block-3' },
     ]);
   });
 });

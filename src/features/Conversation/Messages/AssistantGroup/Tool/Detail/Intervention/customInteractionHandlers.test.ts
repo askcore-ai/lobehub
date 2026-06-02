@@ -1,13 +1,17 @@
-import { AgentMarketplaceIdentifier } from '@lobechat/builtin-tool-agent-marketplace';
+import {
+  WebOnboardingApiName,
+  WebOnboardingIdentifier,
+} from '@lobechat/builtin-tool-web-onboarding';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { installMarketplaceAgents } from '@/services/installMarketplaceAgents';
 
 import {
   prepareCustomInteractionSubmit,
   recordCustomInteractionResolution,
 } from './customInteractionHandlers';
-import { installMarketplaceAgents } from './installMarketplaceAgents';
 
-vi.mock('./installMarketplaceAgents', () => ({
+vi.mock('@/services/installMarketplaceAgents', () => ({
   installMarketplaceAgents: vi.fn(),
 }));
 
@@ -26,16 +30,28 @@ describe('customInteractionHandlers', () => {
     vi.mocked(installMarketplaceAgents).mockResolvedValue({
       installedAgentIds: ['agent-1'],
       skippedAgentIds: ['template-existing'],
+      summaries: [
+        {
+          category: 'engineering',
+          description: 'A pair programmer',
+          installedAgentId: 'agent-1',
+          skipped: false,
+          templateId: 'template-1',
+          title: 'Pair Programmer',
+        },
+        { skipped: true, templateId: 'template-existing' },
+      ],
     });
 
     const result = await prepareCustomInteractionSubmit(
-      AgentMarketplaceIdentifier,
+      WebOnboardingIdentifier,
       {
         categoryHints: ['engineering'],
         requestId: 'req-1',
         selectedTemplateIds: ['template-1', 'template-existing'],
       },
       {
+        apiName: WebOnboardingApiName.showAgentMarketplace,
         topicId: 'topic-1',
         updateTopicMetadata,
       },
@@ -64,10 +80,11 @@ describe('customInteractionHandlers', () => {
 
   it('persists skipped marketplace picks from the original tool arguments', async () => {
     await recordCustomInteractionResolution(
-      AgentMarketplaceIdentifier,
+      WebOnboardingIdentifier,
       'skipped',
       undefined,
       {
+        apiName: WebOnboardingApiName.showAgentMarketplace,
         requestArgs: {
           categoryHints: ['design-creative'],
           requestId: 'req-2',

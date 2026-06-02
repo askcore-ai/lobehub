@@ -276,7 +276,7 @@ export const agentRouter = router({
       z
         .object({
           keyword: z.string().optional(),
-          limit: z.number().optional(),
+          limit: z.number().max(100).optional(),
           offset: z.number().optional(),
         })
         .optional(),
@@ -284,6 +284,10 @@ export const agentRouter = router({
     .query(async ({ input, ctx }) => {
       return ctx.agentModel.queryAgents(input);
     }),
+
+  rankAgents: agentProcedure.input(z.number().max(50).optional()).query(async ({ ctx, input }) => {
+    return ctx.agentModel.rank(input);
+  }),
 
   /**
    * Remove an agent and its associated session

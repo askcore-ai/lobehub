@@ -8,7 +8,7 @@ import { serverConfigSelectors, useServerConfigStore } from '@/store/serverConfi
 import { useCommandMenuContext } from './CommandMenuContext';
 import { CommandItem } from './components';
 import { useCommandMenu } from './useCommandMenu';
-import { getContextCommands, getSettingsContextCommands } from './utils/contextCommands';
+import { buildContextCommands, getContextCommands } from './utils/contextCommands';
 
 const ContextCommands = memo(() => {
   const { t } = useTranslation('setting');
@@ -17,9 +17,7 @@ const ContextCommands = memo(() => {
   const { t: tCommon } = useTranslation('common');
   const { handleNavigate } = useCommandMenu();
   const { menuContext, pathname } = useCommandMenuContext();
-  const enableBusinessFeatures = useServerConfigStore(
-    serverConfigSelectors.enableBusinessFeatures,
-  );
+  const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
 
   // Extract subPath from pathname
   const subPath = useMemo(() => {
@@ -27,13 +25,13 @@ const ContextCommands = memo(() => {
     return pathParts && pathParts.length > 1 ? pathParts[1] : undefined;
   }, [pathname]);
 
-  const commands = getContextCommands(menuContext, subPath, enableBusinessFeatures);
+  const commands = getContextCommands(menuContext, subPath, { enableBusinessFeatures });
 
   // Get settings commands to show globally (when not in settings context)
   const globalSettingsCommands = useMemo(() => {
     if (menuContext === 'settings') return [];
-    return getSettingsContextCommands(enableBusinessFeatures);
-  }, [enableBusinessFeatures, menuContext]);
+    return buildContextCommands({ enableBusinessFeatures }).settings;
+  }, [menuContext, enableBusinessFeatures]);
 
   const hasCommands = commands.length > 0 || globalSettingsCommands.length > 0;
 

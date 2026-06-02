@@ -7,12 +7,27 @@ import { agentDocumentService } from '@/services/agentDocument';
 const runtime = new AgentDocumentsExecutionRuntime({
   copyDocument: ({ agentId, id, newTitle }) =>
     agentDocumentService.copyDocument({ agentId, id, newTitle }),
-  createDocument: ({ agentId, content, title }) =>
-    agentDocumentService.createDocument({ agentId, content, title }),
-  createTopicDocument: ({ agentId, content, title, topicId }) =>
-    agentDocumentService.createForTopic({ agentId, content, title, topicId }),
-  listDocuments: async ({ agentId }) => {
-    const docs = await agentDocumentService.listDocuments({ agentId });
+  createDocument: ({ agentId, content, hintIsSkill, title, toolContext, trigger }) =>
+    agentDocumentService.createDocument({
+      agentId,
+      content,
+      hintIsSkill,
+      title,
+      toolContext,
+      trigger,
+    }),
+  createTopicDocument: ({ agentId, content, hintIsSkill, title, toolContext, topicId, trigger }) =>
+    agentDocumentService.createForTopic({
+      agentId,
+      content,
+      hintIsSkill,
+      title,
+      toolContext,
+      topicId,
+      trigger,
+    }),
+  listDocuments: async ({ agentId, sourceType }) => {
+    const docs = await agentDocumentService.listDocuments({ agentId, sourceType });
     return docs.map((d) => ({
       documentId: d.documentId,
       filename: d.filename,
@@ -20,10 +35,11 @@ const runtime = new AgentDocumentsExecutionRuntime({
       title: d.title,
     }));
   },
-  listTopicDocuments: async ({ agentId, topicId }) => {
+  listTopicDocuments: async ({ agentId, sourceType, topicId }) => {
     const docs = await agentDocumentService.listDocuments({
       agentId,
-      target: 'currentTopic',
+      scope: 'currentTopic',
+      sourceType,
       topicId,
     });
     return docs.map((d) => ({

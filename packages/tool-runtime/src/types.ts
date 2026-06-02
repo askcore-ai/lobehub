@@ -36,11 +36,25 @@ export interface EditFileParams {
 }
 
 export interface SearchFilesParams {
+  contentContains?: string;
+  createdAfter?: string;
+  createdBefore?: string;
+  detailed?: boolean;
   directory: string;
+  exclude?: string[];
+  /** @deprecated Prefer `fileTypes` (plural). Retained for cloud sandbox back-compat. */
   fileType?: string;
+  fileTypes?: string[];
+  /** @deprecated Prefer `keywords` (plural). Retained for cloud sandbox back-compat. */
   keyword?: string;
+  keywords?: string;
+  limit?: number;
+  liveUpdate?: boolean;
   modifiedAfter?: string;
   modifiedBefore?: string;
+  scope?: string;
+  sortBy?: 'name' | 'date' | 'size';
+  sortDirection?: 'asc' | 'desc';
 }
 
 export interface MoveFilesParams {
@@ -174,8 +188,8 @@ export interface RunCommandState {
 
 export interface GetCommandOutputState {
   error?: string;
+  exitCode?: number;
   newOutput?: string;
-  running: boolean;
   success: boolean;
 }
 

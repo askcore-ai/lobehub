@@ -7,6 +7,11 @@ import { z } from 'zod';
 
 import { authedProcedure, router } from '@/libs/trpc/lambda';
 import { enqueueAgentSignalSourceEvent } from '@/server/services/agentSignal';
+import { listAgentSignalReceipts } from '@/server/services/agentSignal/services/receiptService';
+import {
+  AGENT_SIGNAL_TRIGGER_SOURCE_TYPES,
+  buildTriggerSourceEvent,
+} from '@/server/services/agentSignal/triggerSourceEvent';
 
 const log = debug('lobe-server:agent-signal:router');
 
@@ -40,6 +45,61 @@ export const agentSignalRouter = router({
 
       return enqueueAgentSignalSourceEvent(input as unknown as ClientSourceEventInput, {
         agentId: typeof input.payload.agentId === 'string' ? input.payload.agentId : undefined,
+        userId: ctx.userId,
+      });
+    }),
+  triggerSourceEvent: agentSignalProcedure
+    .input(
+      z.object({
+        agentId: z.string().optional(),
+        payloadOverride: z.record(z.string(), z.unknown()).optional(),
+        scopeKey: z.string().optional(),
+        sourceId: z.string().optional(),
+        sourceType: z.enum(AGENT_SIGNAL_TRIGGER_SOURCE_TYPES),
+        timestamp: z.number().optional(),
+        topicId: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const sourceEvent = buildTriggerSourceEvent({
+        agentId: input.agentId,
+        payloadOverride: input.payloadOverride,
+        scopeKey: input.scopeKey,
+        sourceId: input.sourceId,
+        sourceType: input.sourceType,
+        timestamp: input.timestamp,
+        topicId: input.topicId,
+        userId: ctx.userId,
+      });
+
+      log(
+        'Triggering source event sourceType=%s sourceId=%s',
+        sourceEvent.sourceType,
+        sourceEvent.sourceId,
+      );
+
+      return enqueueAgentSignalSourceEvent(sourceEvent, {
+        agentId: input.agentId,
+        userId: ctx.userId,
+      });
+    }),
+  listReceipts: agentSignalProcedure
+    .input(
+      z.object({
+        agentId: z.string().min(1),
+        cursor: z.number().int().min(0).optional(),
+        limit: z.number().int().min(1).max(50).default(20),
+        sinceCreatedAt: z.number().int().min(0).optional(),
+        topicId: z.string().min(1),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      return listAgentSignalReceipts({
+        agentId: input.agentId,
+        cursor: input.cursor,
+        limit: input.limit,
+        sinceCreatedAt: input.sinceCreatedAt,
+        topicId: input.topicId,
         userId: ctx.userId,
       });
     }),

@@ -169,7 +169,8 @@ describe('pluginSelectors', () => {
       const result = pluginSelectors.installedPluginMetaList(mockState);
       expect(result).toHaveLength(mockState.installedPlugins.length);
       expect(result[0].identifier).toBe('plugin-1');
-      expect(result[0].type).toBe('plugin');
+      expect(result[0].source).toBe('market');
+      expect(result[0].type).toBe('market');
     });
   });
 
@@ -177,7 +178,7 @@ describe('pluginSelectors', () => {
     it('should return a list of meta information for installed plugins', () => {
       const result = pluginSelectors.installedCustomPluginMetaList(mockState);
 
-      expect(result).toEqual([{ identifier: 'plugin-3', type: 'customPlugin' }]);
+      expect(result).toEqual([{ identifier: 'plugin-3', source: 'user', type: 'user' }]);
     });
   });
 });

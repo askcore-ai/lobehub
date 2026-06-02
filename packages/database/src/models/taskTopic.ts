@@ -1,5 +1,5 @@
-import type { TaskTopicHandoff } from '@lobechat/types';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import type { BriefDecision, TaskTopicHandoff } from '@lobechat/types';
+import { and, count, desc, eq, gte, sql } from 'drizzle-orm';
 
 import type { TaskTopicItem } from '../schemas/task';
 import { tasks, taskTopics } from '../schemas/task';
@@ -115,6 +115,31 @@ export class TaskTopicModel {
       );
   }
 
+  /**
+   * Patch the `briefDecision` field inside the handoff JSONB without
+   * disturbing other handoff keys (`title` / `summary` / `keyFindings` /
+   * `nextAction`). Uses `jsonb_set` so the operation is order-independent
+   * with respect to `updateHandoff` — either can run first.
+   */
+  async updateBriefDecision(
+    taskId: string,
+    topicId: string,
+    decision: BriefDecision,
+  ): Promise<void> {
+    await this.db
+      .update(taskTopics)
+      .set({
+        handoff: sql`jsonb_set(COALESCE(${taskTopics.handoff}, '{}'::jsonb), '{briefDecision}', ${JSON.stringify(decision)}::jsonb)`,
+      })
+      .where(
+        and(
+          eq(taskTopics.taskId, taskId),
+          eq(taskTopics.topicId, topicId),
+          eq(taskTopics.userId, this.userId),
+        ),
+      );
+  }
+
   async updateReview(
     taskId: string,
     topicId: string,
@@ -173,6 +198,17 @@ export class TaskTopicModel {
       .where(and(eq(taskTopics.topicId, topicId), eq(taskTopics.userId, this.userId)))
       .limit(1);
     return result[0] || null;
+  }
+
+  async countByTask(taskId: string, options?: { since?: Date }): Promise<number> {
+    const conditions = [eq(taskTopics.taskId, taskId), eq(taskTopics.userId, this.userId)];
+    if (options?.since) conditions.push(gte(taskTopics.createdAt, options.since));
+
+    const rows = await this.db
+      .select({ value: count() })
+      .from(taskTopics)
+      .where(and(...conditions));
+    return rows[0]?.value ?? 0;
   }
 
   async findByTaskId(taskId: string): Promise<TaskTopicItem[]> {

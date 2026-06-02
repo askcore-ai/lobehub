@@ -15,11 +15,29 @@ interface SourcePayloadCarrier {
 }
 
 /**
+ * Extracts the assistant message id embedded in a hydrated `clientRuntimeComplete` source id.
+ *
+ * Hydration produces source ids with the format:
+ *   `${assistantMessageId}:completion:${parentMessageId}`
+ *
+ * For all other source types the source id does not follow this pattern, so undefined is returned.
+ */
+const extractAssistantMessageIdFromSourceId = (
+  sourceId: string | undefined,
+): string | undefined => {
+  if (!sourceId) return undefined;
+  const completionMarker = ':completion:';
+  const idx = sourceId.indexOf(completionMarker);
+  if (idx === -1) return undefined;
+  const candidate = sourceId.slice(0, idx);
+  return candidate.length > 0 ? candidate : undefined;
+};
+
+/**
  * Skill-domain feedback signal that is eligible for direct skill-management action planning.
  */
-export type NonSatisfiedSkillFeedbackDomainSignal = SignalFeedbackDomainSkill & {
+export type DirectSkillFeedbackDomainSignal = SignalFeedbackDomainSkill & {
   payload: SignalFeedbackDomainSkill['payload'] & {
-    satisfactionResult: 'neutral' | 'not_satisfied';
     target: 'skill';
   };
 };
@@ -65,6 +83,10 @@ export const planUserMemory = (signal: SignalFeedbackDomainMemory): ActionUserMe
     },
     payload: {
       agentId: payload.agentId,
+      // Propagate the assistant message id so that the memory-agent thread
+      // can be anchored under the assistant message that completed the turn,
+      // rather than under the user message (messageId).
+      assistantMessageId: extractAssistantMessageIdFromSourceId(signal.source?.sourceId),
       conflictPolicy: payload.conflictPolicy,
       evidence: payload.evidence,
       feedbackHint: payload.satisfactionResult === 'satisfied' ? 'satisfied' : 'not_satisfied',
@@ -102,7 +124,7 @@ export const planUserMemory = (signal: SignalFeedbackDomainMemory): ActionUserMe
  * - A typed skill-management action node with stable chain, signal, source, and idempotency metadata
  */
 export const planSkillManagement = (
-  signal: NonSatisfiedSkillFeedbackDomainSignal,
+  signal: DirectSkillFeedbackDomainSignal,
 ): ActionSkillManagementHandle => {
   const { payload } = signal;
 
@@ -119,7 +141,7 @@ export const planSkillManagement = (
       agentId: payload.agentId,
       conflictPolicy: payload.conflictPolicy,
       evidence: payload.evidence,
-      feedbackHint: 'not_satisfied',
+      feedbackHint: payload.satisfactionResult === 'satisfied' ? 'satisfied' : 'not_satisfied',
       idempotencyKey: `${signal.chain.rootSourceId}:skill:${payload.messageId}`,
       message: payload.message,
       messageId: payload.messageId,

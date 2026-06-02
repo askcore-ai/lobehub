@@ -389,7 +389,7 @@ describe('MessagesEngine', () => {
       expect(result).toBeDefined();
     });
 
-    it('should default to enabled with includeFileUrl true', async () => {
+    it('should default to enabled without file URLs', async () => {
       const params = createBasicParams();
       const engine = new MessagesEngine(params);
 
@@ -591,7 +591,7 @@ Document content here.
       expect(userMessage?.content).toContain('<active_topic_document>');
       expect(userMessage?.content).toContain('document_id="docs_123"');
       expect(userMessage?.content).toContain('agent_document_id="agd_123"');
-      expect(userMessage?.content).toContain('target="currentTopic"');
+      expect(userMessage?.content).toContain('scope="currentTopic"');
       expect(userMessage?.content).toContain('Do not use PageAgent editor tools');
       expect(result.metadata.activeTopicDocumentContextInjected).toBe(true);
     });
@@ -695,6 +695,60 @@ Document content here.
             m.role === 'assistant' && JSON.stringify(m).includes('lobe-page-agent____modifyNodes'),
         ),
       ).toBe(false);
+      expect(result.metadata.disabledToolCallFilter).toEqual({
+        filteredAssistantMessages: 1,
+        filteredToolCalls: 1,
+      });
+    });
+
+    it('should remove disabled tool calls after provider-safe name hashing', async () => {
+      const messages: UIChatMessage[] = [
+        {
+          content: 'Open the page',
+          createdAt: Date.now(),
+          id: 'msg-1',
+          role: 'user',
+          updatedAt: Date.now(),
+        } as UIChatMessage,
+        {
+          content: '',
+          createdAt: Date.now(),
+          id: 'msg-2',
+          role: 'assistant',
+          tools: [
+            {
+              apiName: 'open_page',
+              arguments: '{}',
+              id: 'call_1',
+              identifier: '@browser/use',
+              type: 'mcp',
+            },
+          ],
+          updatedAt: Date.now(),
+        } as UIChatMessage,
+        {
+          content: 'Opened the page.',
+          createdAt: Date.now(),
+          id: 'msg-3',
+          role: 'tool',
+          tool_call_id: 'call_1',
+          updatedAt: Date.now(),
+        } as UIChatMessage,
+      ];
+
+      const params = createBasicParams({
+        messages,
+        toolsConfig: {
+          disabledToolIdentifiers: ['@browser/use'],
+          tools: [],
+        },
+      });
+      const engine = new MessagesEngine(params);
+
+      const result = await engine.process();
+
+      expect(result.messages.some((m) => m.role === 'tool')).toBe(false);
+      expect(result.messages.some((m) => JSON.stringify(m).includes('MD5HASH_'))).toBe(false);
       expect(result.metadata.disabledToolCallFilter).toEqual({
         filteredAssistantMessages: 1,
         filteredToolCalls: 1,

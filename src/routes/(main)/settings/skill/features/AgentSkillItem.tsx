@@ -11,8 +11,9 @@ import {
   stopPropagation,
   Tag,
 } from '@lobehub/ui';
+import { confirmModal } from '@lobehub/ui/base-ui';
 import { SkillsIcon } from '@lobehub/ui/icons';
-import { App, Space } from 'antd';
+import { Space } from 'antd';
 import { MoreHorizontalIcon, Plus, Trash2 } from 'lucide-react';
 import { lazy, memo, Suspense, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -37,7 +38,6 @@ interface AgentSkillItemProps {
 const AgentSkillItem = memo<AgentSkillItemProps>(({ skill }) => {
   const { t } = useTranslation('setting');
   const { t: tp } = useTranslation('plugin');
-  const { modal } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -60,8 +60,7 @@ const AgentSkillItem = memo<AgentSkillItemProps>(({ skill }) => {
   // ===== Handlers =====
 
   const handleUninstall = () => {
-    modal.confirm({
-      centered: true,
+    confirmModal({
       okButtonProps: { danger: true },
       onOk: async () => {
         if (isBuiltin) {
@@ -76,7 +75,6 @@ const AgentSkillItem = memo<AgentSkillItemProps>(({ skill }) => {
         }
       },
       title: tp('store.actions.confirmUninstall'),
-      type: 'error',
     });
   };
 

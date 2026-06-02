@@ -22,12 +22,12 @@ export const styles = createStaticStyles(({ css }) => ({
 
 const FileSidePanel = memo<PropsWithChildren>(({ children }) => {
   const { md = true } = useResponsive();
-  const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
   const [filePanelWidth, showFilePanel, updateSystemStatus] = useGlobalStore((s) => [
     systemStatusSelectors.filePanelWidth(s),
     systemStatusSelectors.showFilePanel(s),
     s.updateSystemStatus,
   ]);
+  const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
 
   const [tmpWidth, setWidth] = useState(filePanelWidth);
   if (tmpWidth !== filePanelWidth) setWidth(filePanelWidth);

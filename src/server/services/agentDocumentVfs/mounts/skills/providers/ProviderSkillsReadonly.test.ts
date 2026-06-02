@@ -8,6 +8,32 @@ import { ProviderSkillsBuiltin } from './ProviderSkillsBuiltin';
 import { ProviderSkillsInstalledActive } from './ProviderSkillsInstalledActive';
 import { ProviderSkillsInstalledAll } from './ProviderSkillsInstalledAll';
 
+const mockBuiltinSkills = vi.hoisted(() => [
+  {
+    content: '# Builtin Plain\n\nPlain content.',
+    description: 'Plain builtin skill',
+    identifier: 'builtin.plain',
+    name: 'Builtin Plain',
+  },
+  {
+    content: '# Builtin Resource\n\nResource content.',
+    description: 'Builtin skill with resources',
+    identifier: 'builtin.resource',
+    name: 'Builtin Resource',
+    resources: {
+      'docs/guide.md': {
+        content: '# Guide',
+        size: 7,
+      },
+    },
+  },
+]);
+
+vi.mock('@lobechat/builtin-skills', () => ({
+  AgentBrowserIdentifier: 'browser',
+  builtinSkills: mockBuiltinSkills,
+}));
+
 describe('readonly skill providers', () => {
   const builtinSkill = filterBuiltinSkills(builtinSkills)[0];
   const builtinSkillWithResources = filterBuiltinSkills(builtinSkills).find(

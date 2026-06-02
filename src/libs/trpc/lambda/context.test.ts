@@ -6,15 +6,19 @@ import { ApiKeyModel } from '@/database/models/apiKey';
 import { createContextInner, createLambdaContext } from './context';
 
 const {
+  mockAssertOIDCUserActive,
   mockExtractTraceContext,
   mockFindByKey,
   mockGetSession,
+  mockIsOIDCUserInactiveError,
   mockUpdateLastUsed,
   mockValidateOIDCJWT,
 } = vi.hoisted(() => ({
+  mockAssertOIDCUserActive: vi.fn(),
   mockExtractTraceContext: vi.fn(),
   mockFindByKey: vi.fn(),
   mockGetSession: vi.fn(),
+  mockIsOIDCUserInactiveError: vi.fn(),
   mockUpdateLastUsed: vi.fn(),
   mockValidateOIDCJWT: vi.fn(),
 }));
@@ -56,6 +60,11 @@ vi.mock('@/libs/observability/traceparent', () => ({
 
 vi.mock('@/libs/oidc-provider/jwt', () => ({
   validateOIDCJWT: mockValidateOIDCJWT,
+}));
+
+vi.mock('@/libs/oidc-provider/access-control', () => ({
+  assertOIDCUserActive: mockAssertOIDCUserActive,
+  isOIDCUserInactiveError: mockIsOIDCUserInactiveError,
 }));
 
 vi.mock('@/utils/apiKey', async (importOriginal) => {
@@ -162,6 +171,8 @@ describe('createLambdaContext', () => {
     mockGetSession.mockResolvedValue({
       user: { email: 'session@example.com', id: 'session-user' },
     });
+    mockAssertOIDCUserActive.mockResolvedValue(undefined);
+    mockIsOIDCUserInactiveError.mockReturnValue(false);
     mockValidateOIDCJWT.mockResolvedValue({
       tokenData: { email: 'oidc@example.com', sub: 'oidc-user' },
       userId: 'oidc-user',
@@ -226,16 +237,34 @@ describe('createLambdaContext', () => {
     expect(mockGetSession).toHaveBeenCalledOnce();
   });
 
-  it('should include OIDC email when present', async () => {
+  it('should authenticate with active OIDC auth and skip session fallback', async () => {
     const request = new NextRequest('https://example.com/trpc/lambda', {
-      headers: {
-        'Oidc-Auth': 'oidc-token',
-      },
+      headers: { 'Oidc-Auth': 'oidc-token' },
     });
 
     const context = await createLambdaContext(request);
 
     expect(context.userId).toBe('oidc-user');
     expect(context.userEmail).toBe('oidc@example.com');
+    expect(context.oidcAuth?.sub).toBe('oidc-user');
+    expect(mockAssertOIDCUserActive).toHaveBeenCalledWith(expect.any(Object), 'oidc-user');
+    expect(mockGetSession).not.toHaveBeenCalled();
+  });
+
+  it('should reject inactive OIDC auth without falling back to session', async () => {
+    const inactiveError = new Error('OIDC user is no longer active');
+    mockAssertOIDCUserActive.mockRejectedValueOnce(inactiveError);
+    mockIsOIDCUserInactiveError.mockReturnValueOnce(true);
+
+    const request = new NextRequest('https://example.com/trpc/lambda', {
+      headers: { 'Oidc-Auth': 'oidc-token' },
+    });
+
+    const context = await createLambdaContext(request);
+
+    expect(context.userId).toBeNull();
+    expect(context.oidcAuth).toBeUndefined();
+    expect(mockValidateOIDCJWT).toHaveBeenCalledWith('oidc-token');
+    expect(mockGetSession).not.toHaveBeenCalled();
   });
 });

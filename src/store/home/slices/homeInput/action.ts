@@ -6,8 +6,11 @@ import { getAgentStoreState } from '@/store/agent';
 import { agentSelectors, builtinAgentSelectors } from '@/store/agent/selectors';
 import { getChatGroupStoreState } from '@/store/agentGroup';
 import { useChatStore } from '@/store/chat';
+import { useGlobalStore } from '@/store/global';
+import { useGroupProfileStore } from '@/store/groupProfile';
 import { type HomeStore } from '@/store/home/store';
 import { type StoreSetter } from '@/store/types';
+import { markdownToTxt } from '@/utils/markdownToTxt';
 import { getStableNavigate } from '@/utils/stableNavigate';
 import { setNamespace } from '@/utils/storeDebug';
 
@@ -17,6 +20,7 @@ const n = setNamespace('homeInput');
 
 interface SendMessageWithEditorParams {
   editorData?: Record<string, any>;
+  groupId?: string;
   message: string;
 }
 
@@ -56,7 +60,11 @@ export class HomeInputActionImpl {
     this.#set({ inputActiveMode: null }, false, n('clearInputMode'));
   };
 
-  sendAsAgent = async ({ editorData, message }: SendMessageWithEditorParams): Promise<string> => {
+  sendAsAgent = async ({
+    editorData,
+    groupId,
+    message,
+  }: SendMessageWithEditorParams): Promise<string> => {
     this.#set({ homeInputLoading: true }, false, n('sendAsAgent/start'));
 
     try {
@@ -76,9 +84,14 @@ export class HomeInputActionImpl {
           model,
           provider,
           systemRole: message,
-          title: message?.slice(0, 50) || 'New Agent',
+          title: markdownToTxt(message ?? '').slice(0, 50) || 'New Agent',
         },
+        groupId,
       });
+
+      if (message.trim()) {
+        useGlobalStore.getState().toggleAgentBuilderPanel(true);
+      }
 
       // 3. Navigate to Agent profile page
       getStableNavigate()?.(`/agent/${result.agentId}/profile`);
@@ -117,7 +130,11 @@ export class HomeInputActionImpl {
     }
   };
 
-  sendAsGroup = async ({ editorData, message }: SendMessageWithEditorParams): Promise<string> => {
+  sendAsGroup = async ({
+    editorData,
+    groupId,
+    message,
+  }: SendMessageWithEditorParams): Promise<string> => {
     this.#set({ homeInputLoading: true }, false, n('sendAsGroup/start'));
 
     try {
@@ -136,7 +153,8 @@ export class HomeInputActionImpl {
         config: {
           systemPrompt: message,
         },
-        title: message?.slice(0, 50) || 'New Group',
+        groupId,
+        title: markdownToTxt(message ?? '').slice(0, 50) || 'New Group',
       });
 
       // 3. Load groups and refresh
@@ -145,6 +163,10 @@ export class HomeInputActionImpl {
 
       // 4. Refresh sidebar agent list
       this.#get().refreshAgentList();
+
+      if (message.trim()) {
+        useGroupProfileStore.getState().setChatPanelExpanded(true);
+      }
 
       // 5. Navigate to Group profile page
       getStableNavigate()?.(`/group/${group.id}/profile`);
@@ -204,7 +226,7 @@ export class HomeInputActionImpl {
       const newDoc = await documentService.createDocument({
         editorData: '{}',
         fileType: 'custom/document',
-        title: message?.slice(0, 50) || 'Untitled',
+        title: markdownToTxt(message ?? '').slice(0, 50) || 'Untitled',
       });
 
       // 3. Navigate to Page

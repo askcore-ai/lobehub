@@ -92,6 +92,117 @@ interface LoadEditorStateParams {
   fallbackContent?: string;
 }
 
+const LITEXML_ID_MAX = 1_679_616;
+const LITEXML_ID_START = 1_000_000;
+const LITEXML_ID_STEP = 7211;
+
+const toNumericId = (id: unknown): number | null => {
+  if (typeof id !== 'number' && typeof id !== 'string') return null;
+
+  const numericId = Number(id);
+
+  return Number.isInteger(numericId) && numericId >= 0 ? numericId : null;
+};
+
+const toLiteXMLId = (id: unknown): string | null => {
+  const numericId = toNumericId(id);
+
+  if (numericId === null) return null;
+
+  return ((numericId * LITEXML_ID_STEP + LITEXML_ID_START) % LITEXML_ID_MAX)
+    .toString(36)
+    .padStart(4, '0');
+};
+
+const collectSerializedNodeIds = (node: unknown, ids: unknown[] = []): unknown[] => {
+  if (!node || typeof node !== 'object') return ids;
+
+  const serializedNode = node as { children?: unknown; id?: unknown };
+
+  if (serializedNode.id !== undefined && serializedNode.id !== 'root') {
+    ids.push(serializedNode.id);
+  }
+
+  if (Array.isArray(serializedNode.children)) {
+    for (const child of serializedNode.children) {
+      collectSerializedNodeIds(child, ids);
+    }
+  }
+
+  return ids;
+};
+
+const buildLiteXMLIdRemap = (
+  previousEditorData: AgentDocumentEditorData,
+  currentEditorData: AgentDocumentEditorData,
+): Map<string, string> => {
+  const previousIds = collectSerializedNodeIds(previousEditorData.root);
+  const currentIds = collectSerializedNodeIds(currentEditorData.root);
+  const remap = new Map<string, string>();
+  const count = Math.min(previousIds.length, currentIds.length);
+
+  for (let index = 0; index < count; index += 1) {
+    const from = toLiteXMLId(previousIds[index]);
+    const to = toLiteXMLId(currentIds[index]);
+
+    if (from && to && from !== to) {
+      remap.set(from, to);
+    }
+  }
+
+  return remap;
+};
+
+const remapLiteXMLId = (id: string, remap: Map<string, string>): string => remap.get(id) ?? id;
+
+const remapLiteXMLIds = (litexml: string, remap: Map<string, string>): string =>
+  litexml.replaceAll(/\bid="([^"]+)"/g, (match, id: string) => {
+    const nextId = remapLiteXMLId(id, remap);
+
+    return nextId === id ? match : `id="${nextId}"`;
+  });
+
+const remapLiteXMLOperation = (
+  operation: AgentDocumentLiteXMLOperation,
+  remap: Map<string, string>,
+): AgentDocumentLiteXMLOperation => {
+  if (remap.size === 0) return operation;
+
+  switch (operation.action) {
+    case 'insert': {
+      if ('beforeId' in operation) {
+        return {
+          ...operation,
+          beforeId: remapLiteXMLId(operation.beforeId, remap),
+          litexml: remapLiteXMLIds(operation.litexml, remap),
+        };
+      }
+
+      return {
+        ...operation,
+        afterId: remapLiteXMLId(operation.afterId, remap),
+        litexml: remapLiteXMLIds(operation.litexml, remap),
+      };
+    }
+
+    case 'modify': {
+      return {
+        ...operation,
+        litexml: Array.isArray(operation.litexml)
+          ? operation.litexml.map((value) => remapLiteXMLIds(value, remap))
+          : remapLiteXMLIds(operation.litexml, remap),
+      };
+    }
+
+    case 'remove': {
+      return {
+        ...operation,
+        id: remapLiteXMLId(operation.id, remap),
+      };
+    }
+  }
+};
+
 const exportSnapshot = (
   editor: ReturnType<(typeof import('@lobehub/editor/headless'))['createHeadlessEditor']>,
   litexml = false,
@@ -128,9 +239,6 @@ const loadEditorState = (
   if (isValidEditorData(editorData)) {
     editor.hydrateEditorData(
       editorData as unknown as SerializedEditorState<SerializedLexicalNode>,
-      {
-        keepId: true,
-      },
     );
     return;
   }
@@ -178,7 +286,16 @@ export const applyLiteXMLOperations = async ({
 
   try {
     loadEditorState(editor, { editorData, fallbackContent });
-    await editor.applyLiteXML(orderLiteXMLOperations(operations).map(toHeadlessLiteXMLOperation));
+    const idRemap =
+      editorData && isValidEditorData(editorData)
+        ? buildLiteXMLIdRemap(editorData, exportSnapshot(editor).editorData)
+        : new Map<string, string>();
+
+    await editor.applyLiteXML(
+      orderLiteXMLOperations(operations)
+        .map((operation) => remapLiteXMLOperation(operation, idRemap))
+        .map(toHeadlessLiteXMLOperation),
+    );
     return exportSnapshot(editor, true);
   } finally {
     editor.destroy();

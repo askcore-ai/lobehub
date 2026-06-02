@@ -1,17 +1,9 @@
 import { DEFAULT_BOT_DEBOUNCE_MS, MAX_BOT_DEBOUNCE_MS } from '@lobechat/const';
 
-import { displayToolCallsField, makeUserIdField } from '../const';
+import { displayToolCallsField, makeUserIdField, watchKeywordsField } from '../const';
 import type { FieldSchema } from '../types';
 
 export const schema: FieldSchema[] = [
-  {
-    key: 'applicationId',
-    description: 'channel.line.destinationUserIdHint',
-    label: 'channel.line.destinationUserId',
-    placeholder: 'channel.line.destinationUserIdPlaceholder',
-    required: true,
-    type: 'string',
-  },
   {
     key: 'credentials',
     label: 'channel.credentials',
@@ -34,9 +26,18 @@ export const schema: FieldSchema[] = [
     type: 'object',
   },
   {
+    key: 'applicationId',
+    description: 'channel.line.destinationUserIdHint',
+    label: 'channel.line.destinationUserId',
+    placeholder: 'channel.line.destinationUserIdPlaceholder',
+    required: true,
+    type: 'string',
+  },
+  {
     key: 'settings',
     label: 'channel.settings',
     properties: [
+      makeUserIdField('line'),
       {
         key: 'charLimit',
         default: 5000,
@@ -52,6 +53,7 @@ export const schema: FieldSchema[] = [
         default: 'queue',
         description: 'channel.concurrencyHint',
         enum: ['queue', 'debounce'],
+        enumDescriptions: ['channel.concurrencyQueueHint', 'channel.concurrencyDebounceHint'],
         enumLabels: ['channel.concurrencyQueue', 'channel.concurrencyDebounce'],
         label: 'channel.concurrency',
         type: 'string',
@@ -74,7 +76,7 @@ export const schema: FieldSchema[] = [
         type: 'boolean',
       },
       displayToolCallsField,
-      makeUserIdField('line'),
+      watchKeywordsField,
     ],
     type: 'object',
   },

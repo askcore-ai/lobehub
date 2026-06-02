@@ -11,9 +11,11 @@ import { AskCoreOrganizationApiError, bootstrapAskCoreOrganization } from './api
 const styles = createStaticStyles(({ css }) => ({
   page: css`
     display: grid;
-    min-height: 100vh;
     place-items: center;
+
+    min-height: 100vh;
     padding: 24px;
+
     background: ${cssVar.colorBgLayout};
   `,
   panel: css`

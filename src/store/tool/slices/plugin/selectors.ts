@@ -64,7 +64,7 @@ const installedPluginMetaList = (s: ToolStoreState) =>
       };
     });
 const installedCustomPluginMetaList = (s: ToolStoreState) =>
-  installedPluginMetaList(s).filter((p) => p.type === 'customPlugin');
+  installedPluginMetaList(s).filter((p) => p.source === 'user' || p.type === 'customPlugin');
 
 const isPluginHasUI = (id: string) => (s: ToolStoreState) => {
   const plugin = getToolManifestById(id)(s);

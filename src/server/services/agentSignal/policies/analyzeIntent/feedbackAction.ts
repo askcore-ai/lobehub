@@ -2,6 +2,7 @@ import type {
   RuntimeDispatchProcessorResult,
   RuntimeProcessorResult,
 } from '@lobechat/agent-signal';
+import { AGENT_SIGNAL_SOURCE_TYPES } from '@lobechat/agent-signal/source';
 
 import type {
   AgentSignalProcedureMarker,
@@ -23,20 +24,21 @@ import {
 } from '../../processors/procedure';
 import type { RuntimeProcessorContext } from '../../runtime/context';
 import { defineSignalHandler } from '../../runtime/middleware';
-import type { AgentSignalActionServices } from '../../services/actionServices';
+import type {
+  AgentSignalActionServices,
+  NonSatisfiedSkillActionServiceSignal,
+} from '../../services/actionServices';
 import { createDefaultActionServices } from '../../services/actionServices';
 import type { ProcedureMarkerSuppressInput, ProcedureStateService } from '../../services/types';
-import type {
-  AgentSignalFeedbackSatisfactionResult,
-  SignalFeedbackDomainMemory,
-  SignalFeedbackDomainSkill,
-} from '../types';
+import type { SignalFeedbackDomainMemory } from '../types';
 import { AGENT_SIGNAL_POLICY_SIGNAL_TYPES } from '../types';
+import type { RecordedSkillIntent } from './skillIntentRecord';
 
 /**
  * Weak positive skill feedback needs repeated observations before the accumulator emits.
  */
 const SATISFIED_SKILL_CHEAP_SCORE_DELTA = 0.6;
+const hintedSkillDocumentIntentClass = 'hinted_skill_document';
 
 /**
  * Marker reader dependency used by both legacy and procedure-state planner options.
@@ -83,26 +85,121 @@ export interface FeedbackActionPlannerOptions {
   procedure?: FeedbackActionProcedureDeps;
 }
 
-const isSatisfiedSkillSignal = (
-  signal: FeedbackDomainSignal,
-): signal is SatisfiedSkillFeedbackDomainSignal => {
-  return signal.payload.target === 'skill' && signal.payload.satisfactionResult === 'satisfied';
-};
-
 const isMemorySignal = (signal: FeedbackDomainSignal): signal is SignalFeedbackDomainMemory => {
   return signal.payload.target === 'memory';
 };
 
-const isNonSatisfiedSkillSignal = (
-  signal: FeedbackDomainSignal,
-): signal is SignalFeedbackDomainSkill & {
-  payload: SignalFeedbackDomainSkill['payload'] & {
-    satisfactionResult: Exclude<AgentSignalFeedbackSatisfactionResult, 'satisfied'>;
-    target: 'skill';
-  };
-} => {
-  return signal.payload.target === 'skill' && signal.payload.satisfactionResult !== 'satisfied';
+const isPromptSignal = (signal: FeedbackDomainSignal) => {
+  return signal.payload.target === 'prompt';
 };
+
+const isDirectSkillDecisionSignal = (
+  signal: FeedbackDomainSignal,
+): signal is NonSatisfiedSkillActionServiceSignal => {
+  if (signal.payload.target !== 'skill') return false;
+  if (signal.payload.skillRoute === 'direct_decision') return true;
+
+  return (
+    signal.payload.satisfactionResult !== 'satisfied' && signal.payload.skillRoute !== 'non_skill'
+  );
+};
+
+const isAccumulatingSkillSignal = (
+  signal: FeedbackDomainSignal,
+): signal is SatisfiedSkillFeedbackDomainSignal => {
+  return (
+    signal.payload.target === 'skill' &&
+    signal.payload.satisfactionResult === 'satisfied' &&
+    signal.payload.skillRoute !== 'direct_decision' &&
+    signal.payload.skillRoute !== 'non_skill'
+  );
+};
+
+const detectClientStartNeedsSkillIntentRecord = (signal: FeedbackDomainSignal) => {
+  return signal.payload.trigger === AGENT_SIGNAL_SOURCE_TYPES.clientRuntimeStart;
+};
+
+const detectClientComplete = (signal: FeedbackDomainSignal) => {
+  return signal.payload.trigger === AGENT_SIGNAL_SOURCE_TYPES.clientRuntimeComplete;
+};
+
+const findCompletionHintedDocumentReceipts = async (
+  signal: FeedbackDomainSignal,
+  context: RuntimeProcessorContext,
+  procedureState?: ProcedureStateService,
+) => {
+  if (!detectClientComplete(signal)) return [];
+  if (!procedureState) return [];
+
+  const snapshot = await procedureState.inspect.scope(context.scopeKey);
+
+  return snapshot.receipts.filter((receipt) => {
+    if (receipt.domainKey !== 'document:agent-document') return false;
+    if (receipt.intentClass !== hintedSkillDocumentIntentClass) return false;
+    if (receipt.messageId !== signal.payload.messageId) return false;
+    if (receipt.status !== 'handled') return false;
+
+    return (receipt.relatedObjects ?? []).some(
+      (object) => object.objectType === 'agent-document' && object.relation === 'created',
+    );
+  });
+};
+
+const createHintedDocumentEvidence = (
+  receipts: Awaited<ReturnType<typeof findCompletionHintedDocumentReceipts>>,
+) =>
+  receipts.map((receipt) => ({
+    cue: 'same_turn_hinted_document_receipt',
+    excerpt: [
+      receipt.summary,
+      ...(receipt.relatedObjects ?? [])
+        .filter((object) => object.objectType === 'agent-document')
+        .map((object) => `agentDocumentId=${object.objectId}`),
+    ]
+      .filter(Boolean)
+      .join('; '),
+  }));
+
+const createHintedDocumentSkillSignal = (
+  signal: FeedbackDomainSignal,
+  receipts: Awaited<ReturnType<typeof findCompletionHintedDocumentReceipts>>,
+): NonSatisfiedSkillActionServiceSignal => ({
+  ...signal,
+  payload: {
+    ...signal.payload,
+    conflictPolicy: { forbiddenWith: ['none'], mode: 'fanout', priority: 80 },
+    evidence: [...(signal.payload.evidence ?? []), ...createHintedDocumentEvidence(receipts)],
+    reason: 'completion included a createDocument tool outcome with hintIsSkill=true',
+    satisfactionResult: 'not_satisfied',
+    skillActionIntent: 'create',
+    skillIntentConfidence: 0.9,
+    skillIntentExplicitness: 'implicit_strong_learning',
+    skillIntentReason: 'A same-turn agent document was created with hintIsSkill=true.',
+    skillRoute: 'direct_decision',
+    target: 'skill',
+  },
+  signalId: `${signal.signalId}:hinted-skill-document`,
+  signalType: AGENT_SIGNAL_POLICY_SIGNAL_TYPES.feedbackDomainSkill,
+});
+
+const createRecordedSkillIntent = (
+  signal: NonSatisfiedSkillActionServiceSignal,
+  context: RuntimeProcessorContext,
+): RecordedSkillIntent => ({
+  ...(signal.payload.skillActionIntent ? { actionIntent: signal.payload.skillActionIntent } : {}),
+  ...(typeof signal.payload.skillIntentConfidence === 'number'
+    ? { confidence: signal.payload.skillIntentConfidence }
+    : { confidence: signal.payload.confidence }),
+  createdAt: context.now(),
+  explicitness: signal.payload.skillIntentExplicitness ?? 'weak_positive',
+  feedbackMessageId: signal.payload.messageId,
+  ...(signal.payload.skillIntentReason || signal.payload.reason
+    ? { reason: signal.payload.skillIntentReason ?? signal.payload.reason }
+    : {}),
+  route: signal.payload.skillRoute ?? 'accumulate',
+  scopeKey: context.scopeKey,
+  sourceId: signal.source?.sourceId ?? signal.signalId,
+});
 
 const createPlannerProcedureState = (
   options: FeedbackActionPlannerOptions,
@@ -304,9 +401,25 @@ export const createFeedbackActionPlannerSignalHandler = (
         { procedureState },
         { onSuppress: () => transitionSuppressedProcedure(signal, procedureContext) },
       );
-
       if (suppression.type === 'transition' || suppression.type === 'stop') {
         return suppression.result;
+      }
+
+      const hintedDocumentReceipts = await findCompletionHintedDocumentReceipts(
+        signal,
+        procedureContext,
+        options.procedure?.procedureState,
+      );
+
+      if (hintedDocumentReceipts.length > 0) {
+        const plan = actionServices.skillActions.prepare(
+          createHintedDocumentSkillSignal(signal, hintedDocumentReceipts),
+        );
+
+        return {
+          actions: [plan.action],
+          status: 'dispatch',
+        };
       }
 
       if (isMemorySignal(signal)) {
@@ -318,7 +431,25 @@ export const createFeedbackActionPlannerSignalHandler = (
         };
       }
 
-      if (isNonSatisfiedSkillSignal(signal)) {
+      if (isPromptSignal(signal)) {
+        // TODO: Add a durable prompt/persona artifact path before this lane can mutate anything.
+        // The classifier can recognize prompt-shaped feedback today, but there is no proposal
+        // payload, apply/revert path, or UI projection that can prove a safe durable change yet.
+        return;
+      }
+
+      if (isDirectSkillDecisionSignal(signal)) {
+        if (detectClientStartNeedsSkillIntentRecord(signal)) {
+          await options.procedure?.procedureState?.skillIntentRecords?.write(
+            createRecordedSkillIntent(signal, procedureContext),
+          );
+
+          return {
+            concluded: { reason: 'skill intent recorded until client.runtime.complete' },
+            status: 'conclude',
+          };
+        }
+
         const plan = actionServices.skillActions.prepare(signal);
 
         return {
@@ -327,7 +458,7 @@ export const createFeedbackActionPlannerSignalHandler = (
         };
       }
 
-      if (isSatisfiedSkillSignal(signal)) {
+      if (isAccumulatingSkillSignal(signal)) {
         return handleSatisfiedSkillFeedback(signal, procedureContext, options, procedureState);
       }
     },

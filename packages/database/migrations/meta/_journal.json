@@ -714,6 +714,41 @@
       "when": 1777100000000,
       "tag": "0101_askcore_organization_invites",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1777552567945,
+      "tag": "0100_add_metadata_and_trigger_to_briefs",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1778164638645,
+      "tag": "0101_add_messenger_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1778602304603,
+      "tag": "0102_add_agent_operations_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1779464293586,
+      "tag": "0103_add_llm_tracing_and_eval_experiments",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1779966336116,
+      "tag": "0104_add_devices_connectors_push_tokens",
+      "breakpoints": true
     }
   ],
   "version": "6"

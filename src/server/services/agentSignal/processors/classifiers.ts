@@ -1,7 +1,6 @@
 import {
-  AGENT_SIGNAL_SOURCE_TYPES,
   type AgentSignalSourceVariants,
-  type SourceAgentUserMessage,
+  isAgentUserMessageSource,
 } from '@lobechat/agent-signal/source';
 
 import {
@@ -50,12 +49,6 @@ export type FeedbackDomainClassifierSignal =
   | SignalFeedbackDomainNone
   | SignalFeedbackDomainPrompt
   | SignalFeedbackDomainSkill;
-
-const isAgentUserMessageSource = (
-  source: AgentSignalSourceVariants,
-): source is SourceAgentUserMessage => {
-  return source.sourceType === AGENT_SIGNAL_SOURCE_TYPES.agentUserMessage;
-};
 
 const isRecordLike = (value: unknown): value is Record<PropertyKey, unknown> => {
   return typeof value === 'object' && value !== null;
@@ -160,6 +153,7 @@ const buildDomainSignal = (
           sourceHints: signal.payload.sourceHints,
           target: 'memory',
           topicId: signal.payload.topicId,
+          trigger: signal.payload.trigger,
         },
         signalId: `${signal.signalId}:domain:memory`,
         signalType: AGENT_SIGNAL_POLICY_SIGNAL_TYPES.feedbackDomainMemory,
@@ -186,6 +180,7 @@ const buildDomainSignal = (
           sourceHints: signal.payload.sourceHints,
           target: 'none',
           topicId: signal.payload.topicId,
+          trigger: signal.payload.trigger,
         },
         signalId: `${signal.signalId}:domain:none`,
         signalType: AGENT_SIGNAL_POLICY_SIGNAL_TYPES.feedbackDomainNone,
@@ -212,6 +207,7 @@ const buildDomainSignal = (
           sourceHints: signal.payload.sourceHints,
           target: 'prompt',
           topicId: signal.payload.topicId,
+          trigger: signal.payload.trigger,
         },
         signalId: `${signal.signalId}:domain:prompt`,
         signalType: AGENT_SIGNAL_POLICY_SIGNAL_TYPES.feedbackDomainPrompt,
@@ -235,9 +231,16 @@ const buildDomainSignal = (
           messageId: signal.payload.messageId,
           reason: target.reason,
           satisfactionResult: signal.payload.result,
+          skillActionIntent: target.skillActionIntent,
+          skillIntentError: target.skillIntentError,
+          skillIntentConfidence: target.skillIntentConfidence,
+          skillIntentExplicitness: target.skillIntentExplicitness,
+          skillIntentReason: target.skillIntentReason,
+          skillRoute: target.skillRoute,
           sourceHints: signal.payload.sourceHints,
           target: 'skill',
           topicId: signal.payload.topicId,
+          trigger: signal.payload.trigger,
         },
         signalId: `${signal.signalId}:domain:skill`,
         signalType: AGENT_SIGNAL_POLICY_SIGNAL_TYPES.feedbackDomainSkill,
@@ -331,6 +334,7 @@ export const classifySatisfaction = async (
         memoryPayload: source.payload.memoryPayload,
       },
       topicId: source.payload.topicId,
+      trigger: source.payload.trigger,
     },
     signalId: `${source.sourceId}:signal:feedback-satisfaction`,
     signalType: AGENT_SIGNAL_POLICY_SIGNAL_TYPES.feedbackSatisfaction,

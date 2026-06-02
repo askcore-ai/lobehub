@@ -7,12 +7,14 @@ import DevtoolsCtr from './DevtoolsCtr';
 import GatewayConnectionCtr from './GatewayConnectionCtr';
 import GitCtr from './GitCtr';
 import HeterogeneousAgentCtr from './HeterogeneousAgentCtr';
+import ImessageBridgeCtr from './ImessageBridgeCtr';
 import LocalFileCtr from './LocalFileCtr';
 import McpCtr from './McpCtr';
 import McpInstallCtr from './McpInstallCtr';
 import MenuController from './MenuCtr';
 import NetworkProxyCtr from './NetworkProxyCtr';
 import NotificationCtr from './NotificationCtr';
+import OpenInAppCtr from './OpenInAppCtr';
 import RemoteServerConfigCtr from './RemoteServerConfigCtr';
 import RemoteServerSyncCtr from './RemoteServerSyncCtr';
 import ScreenCaptureCtr from './ScreenCaptureCtr';
@@ -32,11 +34,13 @@ export const controllerIpcConstructors = [
   GatewayConnectionCtr,
   GitCtr,
   LocalFileCtr,
+  ImessageBridgeCtr,
   McpCtr,
   McpInstallCtr,
   MenuController,
   NetworkProxyCtr,
   NotificationCtr,
+  OpenInAppCtr,
   RemoteServerConfigCtr,
   RemoteServerSyncCtr,
   ScreenCaptureCtr,

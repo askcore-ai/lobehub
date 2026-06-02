@@ -19,8 +19,8 @@ import { useMenu } from './useMenu';
 
 const PanelContent: FC<{ closePopover: () => void }> = ({ closePopover }) => {
   const isLoginWithAuth = useUserStore(authSelectors.isLoginWithAuth);
-  const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
   const [openSignIn, signOut] = useUserStore((s) => [s.openLogin, s.logout]);
+  const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
   const { mainItems, logoutItems } = useMenu();
 
   const handleSignIn = () => {

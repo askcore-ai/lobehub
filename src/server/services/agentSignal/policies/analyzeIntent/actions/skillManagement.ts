@@ -24,9 +24,12 @@ import type {
 import { consumeStreamUntilDone } from '@lobechat/model-runtime';
 import {
   AGENT_SKILL_CONSOLIDATE_SYSTEM_ROLE,
+  AGENT_SKILL_CREATE_SYSTEM_ROLE,
   AGENT_SKILL_MANAGER_DECISION_SYSTEM_ROLE,
   AGENT_SKILL_REFINE_SYSTEM_ROLE,
+  createAgentSignalSkillLanguageInstruction,
   createAgentSkillConsolidatePrompt,
+  createAgentSkillCreatePrompt,
   createAgentSkillManagerDecisionPrompt,
   createAgentSkillRefinePrompt,
 } from '@lobechat/prompts';
@@ -39,24 +42,27 @@ import { AgentDocumentModel } from '@/database/models/agentDocuments';
 import type { LobeChatDatabase } from '@/database/type';
 import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
 import { AgentDocumentsService } from '@/server/services/agentDocuments';
-import { createMarkdownEditorSnapshot } from '@/server/services/agentDocuments/headlessEditor';
-import { AgentDocumentVfsService } from '@/server/services/agentDocumentVfs';
-import {
-  createSkillTree,
-  getSkillFolder,
-} from '@/server/services/agentDocumentVfs/mounts/skills/providers/providerSkillsAgentDocumentUtils';
+import { getSkillBundle } from '@/server/services/agentDocumentVfs/mounts/skills/providers/providerSkillsAgentDocumentUtils';
 import { AgentSignalProcedureInspector } from '@/server/services/agentSignal/procedure';
 import { redisPolicyStateStore } from '@/server/services/agentSignal/store/adapters/redis/policyStateStore';
-import { SkillMaintainerService } from '@/server/services/skillMaintainer/SkillMaintainerService';
-import { SkillReferenceResolver } from '@/server/services/skillMaintainer/SkillReferenceResolver';
-import { VfsSkillPackageAdapter } from '@/server/services/skillMaintainer/VfsSkillPackageAdapter';
+import { SkillManagementDocumentService } from '@/server/services/skillManagement';
+import type {
+  CreateSkillInput,
+  RenameSkillInput,
+  ReplaceSkillIndexInput,
+  SkillDetail,
+  SkillSummary,
+} from '@/server/services/skillManagement/types';
 
 import type { RuntimeProcessorContext } from '../../../runtime/context';
 import { defineActionHandler } from '../../../runtime/middleware';
+import { createSkillManagementService } from '../../../services/selfIteration/tools/shared';
+import type { ProcedureStateService } from '../../../services/types';
 import { hasAppliedActionIdempotency, markAppliedActionIdempotency } from '../../actionIdempotency';
 import type { ActionSkillManagementHandle, AgentSignalFeedbackEvidence } from '../../types';
 import { AGENT_SIGNAL_POLICY_ACTION_TYPES } from '../../types';
 import { createFeedbackActionPlannerSignalHandler } from '../feedbackAction';
+import type { RecordedSkillIntent } from '../skillIntentRecord';
 
 export interface SkillManagementCandidateSkill {
   id: string;
@@ -72,7 +78,7 @@ export interface SkillManagementSignalPayload {
   agentId: string;
   /** Optional candidate skills already identified by routing. */
   candidateSkillRefs?: string[];
-  /** Existing skills the decision agent may target by package id. */
+  /** Existing skills the decision agent may target by agent document id. */
   candidateSkills?: SkillManagementCandidateSkill[];
   /** Evidence extracted from the feedback message. */
   evidence?: Array<{ cue: string; excerpt: string }>;
@@ -102,16 +108,26 @@ export interface SkillManagementDecision {
   documentRefs?: string[];
   /** Optional short explanation for observability. */
   reason?: string;
-  /** Optional file paths that should be read before refinement or consolidation. */
+  /** Optional read hints that should be inspected before refinement or consolidation. */
   requiredReads?: string[];
-  /** Optional target skill identifiers selected by the decision model. */
-  targetSkillIds?: string[];
+  /** Optional target managed skill bundle agent document ids selected by the decision model. */
+  targetSkillRefs?: string[];
 }
 
 export interface SkillManagementActionResult {
   decision: SkillManagementDecision;
   detail?: string;
   status: 'applied' | 'failed' | 'skipped';
+  target?: SkillManagementActionTarget;
+}
+
+export interface SkillManagementActionTarget {
+  agentDocumentId?: string;
+  documentId?: string;
+  id: string;
+  summary?: string;
+  title: string;
+  type: 'skill';
 }
 
 export interface SkillManagementActionInput {
@@ -128,35 +144,45 @@ export interface SkillManagementActionInput {
 
 export interface SkillManagementActionHandlerOptions {
   db: LobeChatDatabase;
+  /** Optional procedure state used to read user-stage skill intent records. */
+  procedureState?: Pick<ProcedureStateService, 'skillIntentRecords'>;
+  /** User-visible response language used as the default for newly-authored skill artifacts. */
+  responseLanguage?: string;
   selfIterationEnabled: boolean;
   skillCandidateSkillsFactory?: (input: {
     agentId: string;
   }) => Promise<SkillManagementCandidateSkill[]>;
+  skillCreateRunner?: (input: SkillCreateAuthoringInput) => Promise<unknown>;
   skillDecisionModel?: SkillManagementAgentModelConfig;
   skillDecisionRunner?: (input: SkillManagementSignalPayload) => Promise<unknown>;
+  /** Optional factory used to inspect same-turn document outcomes before decision. */
+  skillDecisionToolsetFactory?: (input: { agentId: string }) => SkillDecisionToolset;
   skillMaintainerRunner?: (input: SkillMaintainerWorkflowInput) => Promise<unknown>;
-  skillMaintainerServiceFactory?: (input: {
-    agentId: string;
-  }) => SkillMaintainerFileOperationService;
+  skillManagementServiceFactory?: (input: { agentId: string }) => SkillManagementOperationService;
   userId: string;
 }
 
 export interface SkillDecisionDocumentOutcome {
-  documentId: string;
+  agentDocumentId: string;
+  hintIsSkill?: boolean;
   relation?: string;
   summary?: string;
 }
 
 export interface SkillDecisionCandidateDocument {
+  agentDocumentId: string;
   documentId: string;
   filename?: string;
   title?: string;
 }
 
 export interface SkillDecisionDocumentSnapshot {
+  agentDocumentId: string;
   content?: string;
-  documentId: string;
+  description?: string | null;
+  documentId?: string;
   filename?: string;
+  metadata?: Record<string, unknown>;
   title?: string;
 }
 
@@ -171,42 +197,150 @@ export interface SkillDecisionToolset {
     scopeKey?: string;
     topicId?: string;
   }) => Promise<SkillDecisionDocumentOutcome[]>;
-  readDocument: (input: { documentId: string }) => Promise<SkillDecisionDocumentSnapshot>;
+  readDocument: (input: { agentDocumentId: string }) => Promise<SkillDecisionDocumentSnapshot>;
 }
+
+/**
+ * Checks whether a procedure related object references an agent document binding.
+ *
+ * Use when:
+ * - Agent Signal consumes same-turn document tool receipts.
+ * - Producers emit `agent-document` receipts whose ids are stable agent document bindings.
+ *
+ * Expects:
+ * - `agent-document` object ids are `agent_documents.id`.
+ *
+ * Returns:
+ * - Whether the object can be read through the Agent Documents service by id.
+ */
+export const isAgentDocumentRelatedObject = (object: { objectType: string }) =>
+  object.objectType === 'agent-document';
+
+/**
+ * Reads the agent-signal skill hint from an agent-document snapshot.
+ *
+ * Use when:
+ * - Same-turn document evidence may include document creation intent.
+ * - Decision agents need a high-context hint without treating malformed metadata as evidence.
+ *
+ * Expects:
+ * - Metadata may be absent, malformed, or intentionally set to false.
+ *
+ * Returns:
+ * - `true` or `false` only when the metadata explicitly stores a boolean hint.
+ * - `undefined` when the hint is absent or malformed.
+ */
+export const readAgentSignalHintIsSkill = (metadata: unknown): boolean | undefined => {
+  if (!metadata || typeof metadata !== 'object') return undefined;
+
+  const agentSignal = (metadata as Record<string, unknown>).agentSignal;
+  if (!agentSignal || typeof agentSignal !== 'object') return undefined;
+
+  const hintIsSkill = (agentSignal as Record<string, unknown>).hintIsSkill;
+  return typeof hintIsSkill === 'boolean' ? hintIsSkill : undefined;
+};
+
+const createRecordedSkillIntentEvidence = (
+  record: RecordedSkillIntent | undefined,
+): AgentSignalFeedbackEvidence[] => {
+  if (!record) return [];
+
+  return [
+    {
+      cue: 'recorded_skill_intent',
+      excerpt: `${record.explicitness}/${record.route}/${record.actionIntent ?? 'none'}: ${
+        record.reason ?? 'recorded skill intent'
+      }`,
+    },
+  ];
+};
+
+const readRecordedSkillIntentForExecution = async (
+  options: SkillManagementActionHandlerOptions,
+  action: ActionSkillManagementHandle,
+  context: RuntimeProcessorContext,
+) => {
+  const reader = options.procedureState?.skillIntentRecords?.read;
+  if (!reader) return undefined;
+
+  const messageId = action.payload.messageId;
+  if (messageId) {
+    const record = await reader({
+      scopeKey: context.scopeKey,
+      sourceId: messageId,
+    });
+    if (record) return record;
+  }
+
+  const sourceId = action.source?.sourceId;
+  if (!sourceId || sourceId === messageId) return undefined;
+
+  return reader({
+    scopeKey: context.scopeKey,
+    sourceId,
+  });
+};
 
 export interface SkillManagementAgentModelConfig {
   model: string;
   provider: string;
 }
 
-export interface SkillMaintainerOperation {
-  arguments: Record<string, unknown>;
-  name: 'removeSkillFile' | 'updateSkill' | 'writeSkillFile';
-}
-
 export interface SkillMaintainerWorkflowInput {
   decision: SkillManagementDecision;
+  /** Language instruction block for persisted skill artifact text. */
+  languageInstruction?: string;
   signal: SkillManagementActionInput;
   targetSkills: Array<{
     content: string;
     id: string;
     metadata: Record<string, unknown>;
+    name: string;
   }>;
   type: 'consolidate' | 'refine';
 }
 
 export interface SkillMaintainerWorkflowResult {
+  bodyMarkdown: string;
   confidence?: number;
-  operations: SkillMaintainerOperation[];
-  proposedLifecycleActions?: Array<Record<string, unknown>>;
+  description?: string;
   reason?: string;
+  rename?: {
+    newName?: string;
+    newTitle?: string;
+  };
 }
 
-export interface SkillMaintainerFileOperationService {
-  readSkillFile: (input: { path: string; skillRef: string }) => Promise<string>;
-  removeSkillFile: (input: { path: string; skillRef: string }) => Promise<void>;
-  updateSkill: (input: { content: string; path: string; skillRef: string }) => Promise<void>;
-  writeSkillFile: (input: { content: string; path: string; skillRef: string }) => Promise<void>;
+export interface SkillCreateAuthoringInput {
+  candidateSkills?: SkillManagementCandidateSkill[];
+  decision: SkillManagementDecision;
+  /** Language instruction block for persisted skill artifact text. */
+  languageInstruction?: string;
+  signal: SkillManagementActionInput;
+  sourceAgentDocumentId?: string;
+  sourceDocumentContent?: string;
+}
+
+export interface SkillCreateAuthoringResult {
+  bodyMarkdown: string;
+  confidence?: number;
+  description: string;
+  name: string;
+  reason?: string;
+  title?: string;
+}
+
+export interface SkillManagementOperationService {
+  createSkill: (input: CreateSkillInput) => Promise<SkillDetail>;
+  getSkill: (input: {
+    agentDocumentId?: string;
+    agentId: string;
+    includeContent?: boolean;
+    name?: string;
+  }) => Promise<SkillDetail | undefined>;
+  listSkills: (input: { agentId: string }) => Promise<SkillSummary[]>;
+  renameSkill: (input: RenameSkillInput) => Promise<SkillDetail | undefined>;
+  replaceSkillIndex: (input: ReplaceSkillIndexInput) => Promise<SkillDetail | undefined>;
 }
 
 const SkillManagementDecisionSchema = z.object({
@@ -215,19 +349,30 @@ const SkillManagementDecisionSchema = z.object({
   documentRefs: z.array(z.string()).default([]),
   reason: z.string().nullable(),
   requiredReads: z.array(z.string()),
-  targetSkillIds: z.array(z.string()),
-});
-
-const SkillMaintainerOperationSchema = z.object({
-  arguments: z.record(z.string(), z.unknown()),
-  name: z.enum(['updateSkill', 'writeSkillFile', 'removeSkillFile']),
+  targetSkillRefs: z.array(z.string()),
 });
 
 const SkillMaintainerWorkflowResultSchema = z.object({
+  bodyMarkdown: z.string(),
   confidence: z.number().min(0).max(1).nullable().default(null),
-  operations: z.array(SkillMaintainerOperationSchema),
-  proposedLifecycleActions: z.array(z.record(z.string(), z.unknown())).default([]),
+  description: z.string().nullable().default(null),
   reason: z.string().nullable().default(null),
+  rename: z
+    .object({
+      newName: z.string().nullable().default(null),
+      newTitle: z.string().nullable().default(null),
+    })
+    .nullable()
+    .default(null),
+});
+
+const SkillCreateAuthoringResultSchema = z.object({
+  bodyMarkdown: z.string(),
+  confidence: z.number().min(0).max(1).nullable().default(null),
+  description: z.string(),
+  name: z.string(),
+  reason: z.string().nullable().default(null),
+  title: z.string().nullable().default(null),
 });
 
 const SkillManagementDecisionGenerateObjectSchema = {
@@ -242,9 +387,16 @@ const SkillManagementDecisionGenerateObjectSchema = {
       documentRefs: { items: { type: 'string' }, type: 'array' },
       reason: { type: ['string', 'null'] },
       requiredReads: { items: { type: 'string' }, type: 'array' },
-      targetSkillIds: { items: { type: 'string' }, type: 'array' },
+      targetSkillRefs: { items: { type: 'string' }, type: 'array' },
     },
-    required: ['action', 'confidence', 'documentRefs', 'reason', 'requiredReads', 'targetSkillIds'],
+    required: [
+      'action',
+      'confidence',
+      'documentRefs',
+      'reason',
+      'requiredReads',
+      'targetSkillRefs',
+    ],
     type: 'object',
   },
   strict: true,
@@ -254,52 +406,52 @@ const SkillMaintainerWorkflowResultBaseGenerateObjectSchema = {
   schema: {
     additionalProperties: false,
     properties: {
+      bodyMarkdown: { type: 'string' },
       confidence: {
         anyOf: [{ maximum: 1, minimum: 0, type: 'number' }, { type: 'null' }],
       },
-      operations: {
-        items: {
-          additionalProperties: false,
-          properties: {
-            arguments: {
-              additionalProperties: false,
-              properties: {
-                content: { type: ['string', 'null'] },
-                path: { type: 'string' },
-                skillRef: { type: 'string' },
-              },
-              required: ['skillRef', 'path', 'content'],
-              type: 'object',
-            },
-            name: {
-              enum: ['updateSkill', 'writeSkillFile', 'removeSkillFile'],
-              type: 'string',
-            },
-          },
-          required: ['arguments', 'name'],
-          type: 'object',
-        },
-        type: 'array',
-      },
-      proposedLifecycleActions: {
-        items: {
-          additionalProperties: false,
-          properties: {
-            reason: { type: ['string', 'null'] },
-            type: { type: 'string' },
-          },
-          required: ['type', 'reason'],
-          type: 'object',
-        },
-        type: 'array',
-      },
+      description: { type: ['string', 'null'] },
       reason: { type: ['string', 'null'] },
+      rename: {
+        anyOf: [
+          {
+            additionalProperties: false,
+            properties: {
+              newName: { type: ['string', 'null'] },
+              newTitle: { type: ['string', 'null'] },
+            },
+            required: ['newName', 'newTitle'],
+            type: 'object',
+          },
+          { type: 'null' },
+        ],
+      },
     },
-    required: ['confidence', 'operations', 'proposedLifecycleActions', 'reason'],
+    required: ['bodyMarkdown', 'confidence', 'description', 'reason', 'rename'],
     type: 'object',
   },
   strict: true,
 } satisfies Omit<GenerateObjectSchema, 'name'>;
+
+const SkillCreateAuthoringResultGenerateObjectSchema = {
+  name: 'agent_signal_skill_create',
+  schema: {
+    additionalProperties: false,
+    properties: {
+      bodyMarkdown: { type: 'string' },
+      confidence: {
+        anyOf: [{ maximum: 1, minimum: 0, type: 'number' }, { type: 'null' }],
+      },
+      description: { type: 'string' },
+      name: { type: 'string' },
+      reason: { type: ['string', 'null'] },
+      title: { type: ['string', 'null'] },
+    },
+    required: ['name', 'title', 'description', 'bodyMarkdown', 'reason', 'confidence'],
+    type: 'object',
+  },
+  strict: true,
+} satisfies GenerateObjectSchema;
 
 const isSkillManagementDecisionAction = (value: unknown): value is SkillManagementDecisionAction =>
   value === 'create' ||
@@ -327,7 +479,7 @@ const normalizeSkillManagementDecision = (decision: unknown): SkillManagementDec
   const documentRefs = getStringArray(record.documentRefs);
   const reason = typeof record.reason === 'string' ? record.reason : undefined;
   const requiredReads = getStringArray(record.requiredReads);
-  const targetSkillIds = getStringArray(record.targetSkillIds);
+  const targetSkillRefs = getStringArray(record.targetSkillRefs);
 
   return {
     action,
@@ -335,7 +487,7 @@ const normalizeSkillManagementDecision = (decision: unknown): SkillManagementDec
     ...(documentRefs === undefined ? {} : { documentRefs }),
     ...(reason === undefined ? {} : { reason }),
     ...(requiredReads === undefined ? {} : { requiredReads }),
-    ...(targetSkillIds === undefined ? {} : { targetSkillIds }),
+    ...(targetSkillRefs === undefined ? {} : { targetSkillRefs }),
   };
 };
 
@@ -372,14 +524,15 @@ const skillDecisionManifest = {
       },
     },
     {
-      description: 'Read one agent document by document id for attribution before deciding.',
+      description: 'Read one agent document by agent document id for attribution before deciding.',
       name: 'readDocument',
       parameters: {
         additionalProperties: false,
         properties: {
+          agentDocumentId: { type: 'string' },
           documentId: { type: 'string' },
         },
-        required: ['documentId'],
+        required: ['agentDocumentId'],
         type: 'object',
       },
     },
@@ -444,10 +597,10 @@ const executeSkillDecisionRuntimeTool = async (
   }
 
   if (toolCall.apiName === 'readDocument') {
-    const documentId = toNullableString(args.documentId);
-    if (!documentId) return { error: 'documentId is required' };
+    const agentDocumentId = toNullableString(args.agentDocumentId);
+    if (!agentDocumentId) return { error: 'agentDocumentId is required' };
 
-    return input.tools.readDocument({ documentId });
+    return input.tools.readDocument({ agentDocumentId });
   }
 
   return { error: `Unsupported skill decision tool: ${toolCall.apiName}` };
@@ -535,7 +688,7 @@ export const runSkillDecisionAgentRuntime = async (input: SkillDecisionAgentRunt
                   rawToolCalls = toolsCalling;
                 },
               },
-              metadata: { trigger: RequestTrigger.Memory },
+              metadata: { trigger: RequestTrigger.AgentSignal },
             },
           );
           await consumeStreamUntilDone(response);
@@ -653,7 +806,7 @@ export const runSkillDecisionAgentRuntime = async (input: SkillDecisionAgentRunt
       agentId: input.payload.agentId,
       sourceMessageId: input.payload.messageId,
       topicId: input.payload.topicId,
-      trigger: RequestTrigger.Memory,
+      trigger: RequestTrigger.AgentSignal,
     },
     modelRuntimeConfig: {
       model: input.model,
@@ -723,7 +876,7 @@ export const runSkillDecisionAgentRuntime = async (input: SkillDecisionAgentRunt
 };
 
 /**
- * Handles one skill-domain Agent Signal payload.
+ * Executes the skill-management decision step for one skill-domain action payload.
  *
  * Use when:
  * - Feedback has already been routed into the skill domain
@@ -735,7 +888,7 @@ export const runSkillDecisionAgentRuntime = async (input: SkillDecisionAgentRunt
  * Returns:
  * - A skipped status when disabled, otherwise the decision result
  */
-export const handleSkillManagementSignal = async (input: {
+export const executeSkillManagementDecision = async (input: {
   decide: (payload: SkillManagementSignalPayload) => Promise<unknown>;
   payload: SkillManagementSignalPayload;
   selfIterationEnabled: boolean;
@@ -769,7 +922,7 @@ const toSkillManagementDecision = (
   ...(value.documentRefs.length === 0 ? {} : { documentRefs: value.documentRefs }),
   ...(value.reason === null ? {} : { reason: value.reason }),
   ...(value.requiredReads.length === 0 ? {} : { requiredReads: value.requiredReads }),
-  ...(value.targetSkillIds.length === 0 ? {} : { targetSkillIds: value.targetSkillIds }),
+  ...(value.targetSkillRefs.length === 0 ? {} : { targetSkillRefs: value.targetSkillRefs }),
 });
 
 /**
@@ -784,7 +937,7 @@ const toSkillManagementDecision = (
  * - Managed skill folders use their directory filename as the package id
  *
  * Returns:
- * - Agent-scoped candidate ids that are package names for `targetSkillIds`
+ * - Agent-scoped candidate ids that are managed skill bundle agent document ids
  */
 export const collectAgentSkillDecisionCandidates = (
   documents: AgentDocument[],
@@ -792,14 +945,14 @@ export const collectAgentSkillDecisionCandidates = (
   const candidates: SkillManagementCandidateSkill[] = [];
 
   for (const document of documents) {
-    const folder = getSkillFolder(documents, 'agent', document.filename);
+    const folder = getSkillBundle(documents, 'agent', document.filename);
 
     if (!folder || folder.id !== document.id) {
       continue;
     }
 
     candidates.push({
-      id: document.filename,
+      id: document.id,
       name: document.title ?? document.filename,
       scope: 'agent',
     });
@@ -823,6 +976,7 @@ const createDefaultSkillDecisionToolset = (
         : await agentDocumentModel.findByAgent(agentId);
 
       return documents.map((document) => ({
+        agentDocumentId: document.id,
         documentId: document.documentId,
         filename: document.filename,
         title: document.title,
@@ -832,43 +986,175 @@ const createDefaultSkillDecisionToolset = (
       if (!scopeKey) return [];
 
       const snapshot = await inspector.inspectScope(scopeKey);
-
-      return snapshot.receipts
+      const outcomes = snapshot.receipts
         .filter((receipt) => receipt.domainKey.startsWith('document:'))
         .filter((receipt) => !messageId || receipt.messageId === messageId)
         .flatMap((receipt) =>
-          (receipt.relatedObjects ?? [])
-            .filter((object) => object.objectType === 'document')
-            .map((object) => ({
-              documentId: object.objectId,
-              relation: object.relation,
-              summary: receipt.summary,
-            })),
+          (receipt.relatedObjects ?? []).filter(isAgentDocumentRelatedObject).map((object) => ({
+            agentDocumentId: object.objectId,
+            relation: object.relation,
+            summary: receipt.summary,
+          })),
         );
+
+      return Promise.all(
+        outcomes.map(async (outcome) => {
+          const document = await agentDocumentsService.getDocumentSnapshotById(
+            outcome.agentDocumentId,
+          );
+          const hintIsSkill = readAgentSignalHintIsSkill(document?.metadata);
+
+          return {
+            ...outcome,
+            ...(hintIsSkill === undefined ? {} : { hintIsSkill }),
+          };
+        }),
+      );
     },
-    readDocument: async ({ documentId }) => {
-      const snapshot = await agentDocumentsService.getDocumentSnapshotById(documentId);
-      if (!snapshot) return { documentId };
+    readDocument: async ({ agentDocumentId }) => {
+      // NOTICE:
+      // This is the Agent Signal decision-only inspection tool, not the chat-visible
+      // lobe-agent-documents.readDocument tool and not a skill runtime document tool.
+      // The decision agent needs a read-only snapshot to evaluate hinted same-turn documents
+      // without invoking user-facing tool permissions or mutating agent document state.
+      // Keep this boundary until Agent Signal decision tools are unified with a scoped
+      // read-only tool registry.
+      const snapshot = await agentDocumentsService.getDocumentSnapshotById(agentDocumentId);
+      if (!snapshot) return { agentDocumentId };
 
       return {
+        agentDocumentId,
         content: snapshot.content,
-        documentId,
+        documentId: snapshot.documentId,
         filename: snapshot.filename,
+        metadata: snapshot.metadata ?? undefined,
         title: snapshot.title,
       };
     },
   };
 };
 
+const hintedDocumentEvidenceContentLength = 200;
+
+/**
+ * Normalizes document evidence for compact decision prompts.
+ *
+ * Before:
+ * - "# Title\n\nLong body..."
+ *
+ * After:
+ * - "# Title Long body..."
+ */
+const toCompactDocumentEvidenceExcerpt = (content: string) => {
+  const normalized = content.replaceAll(/\s+/g, ' ').trim();
+
+  if (normalized.length <= hintedDocumentEvidenceContentLength) return normalized;
+
+  return `${normalized.slice(0, hintedDocumentEvidenceContentLength)}...`;
+};
+
+const getDocumentDescription = (document: SkillDecisionDocumentSnapshot) => {
+  const description = document.description?.trim();
+
+  if (description) return description;
+
+  const metadataDescription = document.metadata?.description;
+  return typeof metadataDescription === 'string' && metadataDescription.trim()
+    ? metadataDescription.trim()
+    : undefined;
+};
+
+const getSkillDecisionToolset = (options: SkillManagementActionHandlerOptions, agentId: string) =>
+  options.skillDecisionToolsetFactory?.({ agentId }) ??
+  createDefaultSkillDecisionToolset(options.db, options.userId);
+
+const collectHintedSameTurnDocumentEvidence = async (
+  input: {
+    agentId: string;
+    messageId?: string;
+    scopeKey: string;
+    topicId?: string;
+  },
+  options: SkillManagementActionHandlerOptions,
+): Promise<AgentSignalFeedbackEvidence[]> => {
+  if (!input.messageId) return [];
+
+  const tools = getSkillDecisionToolset(options, input.agentId);
+  const outcomes = await tools.listSameTurnDocumentOutcomes({
+    agentId: input.agentId,
+    messageId: input.messageId,
+    scopeKey: input.scopeKey,
+    topicId: input.topicId,
+  });
+  const hintedOutcomes = outcomes.filter((outcome) => outcome.hintIsSkill === true);
+
+  if (hintedOutcomes.length === 0) return [];
+
+  const evidence: AgentSignalFeedbackEvidence[] = [];
+
+  for (const outcome of hintedOutcomes) {
+    evidence.push({
+      cue: 'same_turn_hinted_document',
+      excerpt: [
+        `agentDocumentId=${outcome.agentDocumentId}`,
+        `hintIsSkill=true`,
+        outcome.relation ? `relation=${outcome.relation}` : undefined,
+        outcome.summary ? `summary=${outcome.summary}` : undefined,
+      ]
+        .filter(Boolean)
+        .join('; '),
+    });
+
+    const document = await tools.readDocument({ agentDocumentId: outcome.agentDocumentId });
+    const description = getDocumentDescription(document);
+
+    evidence.push({
+      cue: description
+        ? 'same_turn_hinted_document_description'
+        : 'same_turn_hinted_document_content',
+      excerpt: [
+        `agentDocumentId=${outcome.agentDocumentId}`,
+        document.title ? `title=${document.title}` : undefined,
+        description
+          ? `description=${description}`
+          : document.content
+            ? `content=${toCompactDocumentEvidenceExcerpt(document.content)}`
+            : undefined,
+      ]
+        .filter(Boolean)
+        .join('; '),
+    });
+  }
+
+  return evidence;
+};
+
 const toSkillMaintainerWorkflowResult = (
   value: z.infer<typeof SkillMaintainerWorkflowResultSchema>,
 ): SkillMaintainerWorkflowResult => ({
-  operations: value.operations,
+  bodyMarkdown: value.bodyMarkdown,
   ...(value.confidence === null ? {} : { confidence: value.confidence }),
-  ...(value.proposedLifecycleActions.length === 0
-    ? {}
-    : { proposedLifecycleActions: value.proposedLifecycleActions }),
+  ...(value.description === null ? {} : { description: value.description }),
   ...(value.reason === null ? {} : { reason: value.reason }),
+  ...(value.rename === null
+    ? {}
+    : {
+        rename: {
+          ...(value.rename.newName === null ? {} : { newName: value.rename.newName }),
+          ...(value.rename.newTitle === null ? {} : { newTitle: value.rename.newTitle }),
+        },
+      }),
+});
+
+const toSkillCreateAuthoringResult = (
+  value: z.infer<typeof SkillCreateAuthoringResultSchema>,
+): SkillCreateAuthoringResult => ({
+  bodyMarkdown: value.bodyMarkdown,
+  description: value.description,
+  name: value.name,
+  ...(value.confidence === null ? {} : { confidence: value.confidence }),
+  ...(value.reason === null ? {} : { reason: value.reason }),
+  ...(value.title === null ? {} : { title: value.title }),
 });
 
 class SkillManagementDecisionAgentService {
@@ -878,6 +1164,7 @@ class SkillManagementDecisionAgentService {
     private db: LobeChatDatabase,
     private userId: string,
     modelConfig: Partial<SkillManagementAgentModelConfig> = {},
+    private toolsetFactory?: SkillManagementActionHandlerOptions['skillDecisionToolsetFactory'],
   ) {
     this.modelConfig = {
       model: modelConfig.model ?? DEFAULT_MINI_SYSTEM_AGENT_ITEM.model,
@@ -904,7 +1191,9 @@ class SkillManagementDecisionAgentService {
         ...input,
         ...(candidateSkills.length > 0 ? { candidateSkills } : {}),
       },
-      tools: createDefaultSkillDecisionToolset(this.db, this.userId),
+      tools:
+        this.toolsetFactory?.({ agentId: input.agentId }) ??
+        createDefaultSkillDecisionToolset(this.db, this.userId),
     });
 
     return toSkillManagementDecision(
@@ -913,7 +1202,7 @@ class SkillManagementDecisionAgentService {
         documentRefs: result.documentRefs ?? [],
         reason: result.reason ?? null,
         requiredReads: result.requiredReads ?? [],
-        targetSkillIds: result.targetSkillIds ?? [],
+        targetSkillRefs: result.targetSkillRefs ?? [],
         action: result.action,
       }),
     );
@@ -943,6 +1232,7 @@ class SkillMaintainerWorkflowAgentService {
     const isRefine = input.type === 'refine';
     const content = isRefine
       ? createAgentSkillRefinePrompt({
+          languageInstruction: input.languageInstruction,
           reason: input.decision.reason ?? input.signal.reason ?? 'Refine selected skill.',
           signalContext: {
             evidence: input.signal.evidence,
@@ -954,6 +1244,7 @@ class SkillMaintainerWorkflowAgentService {
           skillMetadata: input.targetSkills[0]?.metadata ?? {},
         })
       : createAgentSkillConsolidatePrompt({
+          languageInstruction: input.languageInstruction,
           reason: input.decision.reason ?? input.signal.reason ?? 'Consolidate selected skills.',
           sourceSkills: input.targetSkills,
         });
@@ -975,10 +1266,62 @@ class SkillMaintainerWorkflowAgentService {
           name: `agent_signal_skill_${input.type}`,
         },
       },
-      { metadata: { trigger: RequestTrigger.Memory } },
+      { metadata: { trigger: RequestTrigger.AgentSignal } },
     );
 
     return toSkillMaintainerWorkflowResult(SkillMaintainerWorkflowResultSchema.parse(result));
+  }
+}
+
+class SkillCreateAuthoringAgentService {
+  private readonly modelConfig: SkillManagementAgentModelConfig;
+
+  constructor(
+    private db: LobeChatDatabase,
+    private userId: string,
+    modelConfig: Partial<SkillManagementAgentModelConfig> = {},
+  ) {
+    this.modelConfig = {
+      model: modelConfig.model ?? DEFAULT_MINI_SYSTEM_AGENT_ITEM.model,
+      provider: modelConfig.provider ?? DEFAULT_MINI_SYSTEM_AGENT_ITEM.provider,
+    };
+  }
+
+  async run(input: SkillCreateAuthoringInput): Promise<SkillCreateAuthoringResult> {
+    const modelRuntime = await initModelRuntimeFromDB(
+      this.db,
+      this.userId,
+      this.modelConfig.provider,
+    );
+
+    const result = await modelRuntime.generateObject(
+      {
+        messages: [
+          {
+            content: AGENT_SKILL_CREATE_SYSTEM_ROLE,
+            role: 'system',
+          },
+          {
+            content: createAgentSkillCreatePrompt({
+              agentId: input.signal.agentId ?? '',
+              ...(input.candidateSkills?.length ? { candidateSkills: input.candidateSkills } : {}),
+              evidence: input.signal.evidence ?? [],
+              feedbackMessage: input.signal.message,
+              languageInstruction: input.languageInstruction,
+              sourceAgentDocumentId: input.sourceAgentDocumentId,
+              sourceDocumentContent: input.sourceDocumentContent,
+              turnContext: input.signal.serializedContext,
+            }),
+            role: 'user',
+          },
+        ] as never[],
+        model: this.modelConfig.model,
+        schema: SkillCreateAuthoringResultGenerateObjectSchema,
+      },
+      { metadata: { trigger: RequestTrigger.AgentSignal } },
+    );
+
+    return toSkillCreateAuthoringResult(SkillCreateAuthoringResultSchema.parse(result));
   }
 }
 
@@ -1032,32 +1375,12 @@ const isSkillManagementAction = (action: BaseAction): action is ActionSkillManag
   return action.actionType === AGENT_SIGNAL_POLICY_ACTION_TYPES.skillManagementHandle;
 };
 
-/**
- * Normalizes feedback text into a skill package name.
- *
- * Before:
- * - "This review workflow should become a reusable checklist."
- *
- * After:
- * - "review-workflow-reusable-checklist"
- */
-export const normalizeSkillPackageName = (message: string) => {
-  const words = message
-    .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/g, ' ')
-    .trim()
-    .split(/\s+/)
-    .filter((word) => word.length > 2 && !['should', 'this', 'that', 'become'].includes(word))
-    .slice(0, 5);
-
-  return words.length > 0 ? words.join('-') : 'agent-signal-skill';
-};
-
 export const createSkillDecisionRunner = (options: SkillManagementActionHandlerOptions) => {
   const agent = new SkillManagementDecisionAgentService(
     options.db,
     options.userId,
     options.skillDecisionModel,
+    options.skillDecisionToolsetFactory,
   );
 
   return (input: SkillManagementSignalPayload) => agent.decide(input);
@@ -1080,155 +1403,67 @@ const resolveSkillDecisionCandidates = async (
   );
 };
 
-const toSkillTitle = (skillName: string) =>
-  skillName
-    .split('-')
-    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
-    .join(' ');
-
-const toSkillContent = (input: SkillManagementActionInput, skillName: string) => {
-  const evidence = input.evidence?.map((item) => `- ${item.cue}: ${item.excerpt}`).join('\n');
-  const context = input.serializedContext ? `\n\n## Context\n${input.serializedContext}` : '';
-  const evidenceBlock = evidence ? `\n\n## Evidence\n${evidence}` : '';
-  const reason = input.reason ? `\n\n## Reason\n${input.reason}` : '';
-
-  return `# ${toSkillTitle(skillName)}
-
-## Trigger
-Use when similar feedback or work requires this reusable procedure.
-
-## Procedure
-- Apply the workflow requested in the feedback.
-- Preserve concrete checks, ordering, and verification criteria from the source turn.
-- Re-check the result before responding.
-
-## Source Feedback
-${input.message}${reason}${evidenceBlock}${context}
-`;
-};
-
-const createDefaultSkillMaintainerService = (
+const createDefaultSkillManagementService = (
   options: SkillManagementActionHandlerOptions,
-  agentId: string,
-): SkillMaintainerFileOperationService => {
-  const vfs = new AgentDocumentVfsService(options.db, options.userId);
-  const agentDocumentModel = new AgentDocumentModel(options.db, options.userId);
-  const ctx = { agentId };
+): SkillManagementOperationService =>
+  new SkillManagementDocumentService(options.db, options.userId);
 
-  return new SkillMaintainerService({
-    adapter: new VfsSkillPackageAdapter({
-      delete: async (path) => {
-        await vfs.delete(path, ctx);
-      },
-      list: (path) => vfs.list(path, ctx),
-      read: async (path) => {
-        return (await vfs.read(path, ctx)).content;
-      },
-      write: async (path, content) => {
-        await vfs.write(path, content, ctx, { createMode: 'if-missing' });
-      },
-    }),
-    resolver: new SkillReferenceResolver({
-      findAgentSkillById: async (id) => {
-        const skillFolder = getSkillFolder(
-          await agentDocumentModel.findByAgent(agentId),
-          'agent',
-          id,
-        );
-
-        return skillFolder ? { id } : undefined;
-      },
-    }),
-  });
-};
-
-const getSkillTargets = (decision: SkillManagementDecision) => decision.targetSkillIds ?? [];
+const getSkillTargets = (decision: SkillManagementDecision) => decision.targetSkillRefs ?? [];
 
 const isMaintainerDecision = (
   decision: SkillManagementDecision,
 ): decision is SkillManagementDecision & { action: 'consolidate' | 'refine' } =>
   decision.action === 'refine' || decision.action === 'consolidate';
 
-// TODO(@nekomeowww): Split the maintainer workflow orchestration out of this action file.
-// This module currently owns decision schemas, LLM runners, VFS-backed service construction,
-// file-operation application, and create/refine/consolidate action orchestration. Keeping all
-// of that here makes the action handler harder to scan and will make future maintainer rules
-// risky to add because model contracts and file mutation behavior change in the same module.
-// Expected shape: keep this file focused on action input/output, idempotency, and top-level
-// dispatch; move refine/consolidate runner setup, target reads, policy checks, and operation
-// application into a small `skillMaintainerWorkflow` module with focused tests.
+/**
+ * Checks whether a model-selected source document ref can be queried as agent_documents.id.
+ */
+const isAgentDocumentDatabaseId = (value: string) => z.string().uuid().safeParse(value).success;
+
+const toSkillActionTarget = (
+  skill: Pick<SkillSummary, 'bundle' | 'description' | 'index' | 'title'>,
+): SkillManagementActionTarget => ({
+  agentDocumentId: skill.index.agentDocumentId,
+  documentId: skill.index.documentId,
+  id: skill.bundle.documentId,
+  summary: skill.description,
+  title: skill.title,
+  type: 'skill',
+});
+
 const readTargetSkills = async (
-  service: SkillMaintainerFileOperationService,
+  service: SkillManagementOperationService,
+  agentId: string,
   skillRefs: string[],
 ) => {
-  return Promise.all(
-    skillRefs.map(async (skillRef) => ({
-      content: await service.readSkillFile({ path: 'SKILL.md', skillRef }),
-      id: skillRef,
-      metadata: {},
-    })),
+  const results = await Promise.all(
+    skillRefs.map((agentDocumentId) =>
+      service.getSkill({ agentDocumentId, agentId, includeContent: true }),
+    ),
   );
+
+  return results.filter((skill): skill is SkillDetail => Boolean(skill));
 };
 
-const getOperationStringArgument = (
-  operation: SkillMaintainerOperation,
-  key: 'content' | 'path' | 'skillRef',
-  fallback?: string,
-) => {
-  const value = operation.arguments[key];
+const readSkillPrimaryLanguage = (skill?: SkillDetail) => {
+  const frontmatter = skill?.frontmatter;
+  if (!frontmatter || typeof frontmatter !== 'object') return undefined;
 
-  return typeof value === 'string' && value.trim().length > 0 ? value : fallback;
+  const language = (frontmatter as unknown as Record<string, unknown>).language;
+
+  return typeof language === 'string' && language.trim().length > 0 ? language.trim() : undefined;
 };
 
-const applyMaintainerOperations = async (
-  service: SkillMaintainerFileOperationService,
-  operations: SkillMaintainerOperation[],
-  targetSkillIds: string[],
-) => {
-  const allowedSkillRefs = new Set(targetSkillIds);
-  const defaultSkillRef = targetSkillIds[0];
-
-  if (!defaultSkillRef) {
-    throw new Error('Invalid maintainer workflow: missing target skill refs');
-  }
-
-  const normalizedOperations = operations.map((operation) => {
-    const skillRef = getOperationStringArgument(operation, 'skillRef', defaultSkillRef);
-    const path = getOperationStringArgument(operation, 'path');
-
-    if (!skillRef || !path) {
-      throw new Error(`Invalid ${operation.name} operation: missing skillRef or path`);
-    }
-
-    if (!allowedSkillRefs.has(skillRef)) {
-      throw new Error(
-        `Invalid ${operation.name} operation: skillRef is not a decision target: ${skillRef}`,
-      );
-    }
-
-    return { operation, path, skillRef };
+const createSkillArtifactLanguageInstruction = (input: {
+  existingSkillLanguage?: string;
+  mode: 'consolidate' | 'create' | 'refine';
+  responseLanguage?: string;
+}) =>
+  createAgentSignalSkillLanguageInstruction({
+    existingSkillLanguage: input.existingSkillLanguage,
+    mode: input.mode,
+    responseLanguage: input.responseLanguage ?? 'en-US',
   });
-
-  for (const { operation, path, skillRef } of normalizedOperations) {
-    if (operation.name === 'removeSkillFile') {
-      await service.removeSkillFile({ path, skillRef });
-      continue;
-    }
-
-    const content = getOperationStringArgument(operation, 'content');
-
-    if (!content) {
-      throw new Error(`Invalid ${operation.name} operation: missing content`);
-    }
-
-    if (operation.name === 'updateSkill') {
-      await service.updateSkill({ content, path, skillRef });
-      continue;
-    }
-
-    await service.writeSkillFile({ content, path, skillRef });
-  }
-};
 
 const runMaintainerWorkflow = async (
   input: SkillManagementActionInput,
@@ -1243,20 +1478,21 @@ const runMaintainerWorkflow = async (
     };
   }
 
-  const targetSkillIds = getSkillTargets(decision);
+  const agentId = input.agentId;
+  const targetSkillRefs = getSkillTargets(decision);
   const minimumTargets = decision.action === 'consolidate' ? 2 : 1;
 
-  if (targetSkillIds.length < minimumTargets) {
+  if (targetSkillRefs.length < minimumTargets) {
     return {
       decision,
-      detail: `Skill-management ${decision.action} requires targetSkillIds from the decision agent.`,
+      detail: `Skill-management ${decision.action} requires targetSkillRefs from the decision agent.`,
       status: 'skipped',
     };
   }
 
   const service =
-    options.skillMaintainerServiceFactory?.({ agentId: input.agentId }) ??
-    createDefaultSkillMaintainerService(options, input.agentId);
+    options.skillManagementServiceFactory?.({ agentId }) ??
+    createDefaultSkillManagementService(options);
   const workflowRunner =
     options.skillMaintainerRunner ??
     ((workflowInput: SkillMaintainerWorkflowInput) =>
@@ -1265,20 +1501,126 @@ const runMaintainerWorkflow = async (
         options.userId,
         options.skillDecisionModel,
       ).run(workflowInput));
-  const targetSkills = await readTargetSkills(service, targetSkillIds);
+  const targetSkills = await readTargetSkills(service, agentId, targetSkillRefs);
+
+  if (targetSkills.length < minimumTargets) {
+    return {
+      decision,
+      detail: `Skill-management ${decision.action} could not resolve targetSkillRefs.`,
+      status: 'skipped',
+    };
+  }
+
   const workflowResult = toSkillMaintainerWorkflowResult(
     SkillMaintainerWorkflowResultSchema.parse(
       await workflowRunner({
         decision,
+        languageInstruction: createSkillArtifactLanguageInstruction({
+          existingSkillLanguage: readSkillPrimaryLanguage(targetSkills[0]),
+          mode: decision.action,
+          responseLanguage: options.responseLanguage,
+        }),
         signal: input,
-        targetSkills,
+        targetSkills: targetSkills.map((skill) => ({
+          content: skill.content ?? '',
+          id: skill.bundle.agentDocumentId,
+          metadata: { frontmatter: skill.frontmatter },
+          name: skill.name,
+        })),
         type: decision.action,
       }),
     ),
   );
+  const canonical = targetSkills[0];
+
+  if (!canonical) {
+    return {
+      decision,
+      detail: `Skill-management ${decision.action} could not resolve targetSkillRefs.`,
+      status: 'skipped',
+    };
+  }
+
+  let updatedSkill: SkillDetail | SkillSummary = canonical;
 
   try {
-    await applyMaintainerOperations(service, workflowResult.operations, targetSkillIds);
+    const selfIterationSkillService = createSkillManagementService({
+      consolidateSkill: async () => {
+        if (workflowResult.rename?.newName || workflowResult.rename?.newTitle) {
+          updatedSkill =
+            (await service.renameSkill({
+              agentDocumentId: canonical.bundle.agentDocumentId,
+              agentId,
+              newName: workflowResult.rename.newName,
+              newTitle: workflowResult.rename.newTitle,
+              updateReason: workflowResult.reason,
+            })) ?? updatedSkill;
+        }
+
+        updatedSkill =
+          (await service.replaceSkillIndex({
+            agentDocumentId: canonical.bundle.agentDocumentId,
+            agentId,
+            bodyMarkdown: workflowResult.bodyMarkdown,
+            description: workflowResult.description,
+            updateReason: workflowResult.reason,
+          })) ?? updatedSkill;
+
+        return {
+          skillDocumentId: canonical.bundle.agentDocumentId,
+          summary: workflowResult.reason,
+        };
+      },
+      refineSkill: async () => {
+        if (workflowResult.rename?.newName || workflowResult.rename?.newTitle) {
+          updatedSkill =
+            (await service.renameSkill({
+              agentDocumentId: canonical.bundle.agentDocumentId,
+              agentId,
+              newName: workflowResult.rename.newName,
+              newTitle: workflowResult.rename.newTitle,
+              updateReason: workflowResult.reason,
+            })) ?? updatedSkill;
+        }
+
+        updatedSkill =
+          (await service.replaceSkillIndex({
+            agentDocumentId: canonical.bundle.agentDocumentId,
+            agentId,
+            bodyMarkdown: workflowResult.bodyMarkdown,
+            description: workflowResult.description,
+            updateReason: workflowResult.reason,
+          })) ?? updatedSkill;
+
+        return {
+          skillDocumentId: canonical.bundle.agentDocumentId,
+          summary: workflowResult.reason,
+        };
+      },
+    });
+
+    if (decision.action === 'consolidate') {
+      await selfIterationSkillService.consolidateSkill({
+        evidenceRefs: [],
+        idempotencyKey: `same-turn-skill:${canonical.bundle.agentDocumentId}`,
+        input: {
+          approval: { source: 'same_turn_feedback' },
+          canonicalSkillDocumentId: canonical.bundle.agentDocumentId,
+          sourceSkillIds: targetSkillRefs,
+          userId: options.userId,
+        },
+      });
+    } else {
+      await selfIterationSkillService.refineSkill({
+        evidenceRefs: [],
+        idempotencyKey: `same-turn-skill:${canonical.bundle.agentDocumentId}`,
+        input: {
+          bodyMarkdown: workflowResult.bodyMarkdown,
+          skillDocumentId: canonical.bundle.agentDocumentId,
+          userId: options.userId,
+        },
+      });
+    }
   } catch (error) {
     return {
       decision,
@@ -1291,7 +1633,123 @@ const runMaintainerWorkflow = async (
     decision,
     detail: workflowResult.reason ?? `Applied ${decision.action} maintainer workflow.`,
     status: 'applied',
+    target: toSkillActionTarget(updatedSkill),
   };
+};
+
+const readCreateSourceDocument = async (
+  input: SkillManagementActionInput,
+  options: SkillManagementActionHandlerOptions,
+  decision: SkillManagementDecision,
+) => {
+  const sourceAgentDocumentId = decision.documentRefs?.[0];
+
+  if (!input.agentId || !sourceAgentDocumentId) {
+    return {};
+  }
+
+  if (!isAgentDocumentDatabaseId(sourceAgentDocumentId)) {
+    return {};
+  }
+
+  const snapshot = await new AgentDocumentsService(
+    options.db,
+    options.userId,
+  ).getDocumentSnapshotById(sourceAgentDocumentId);
+
+  return {
+    sourceAgentDocumentId,
+    sourceDocumentContent: snapshot?.content,
+  };
+};
+
+const runCreateWorkflow = async (
+  input: SkillManagementActionInput,
+  options: SkillManagementActionHandlerOptions,
+  decision: SkillManagementDecision,
+): Promise<SkillManagementActionResult> => {
+  if (!input.agentId) {
+    return {
+      decision,
+      detail: 'Missing agentId for skill-management create workflow.',
+      status: 'skipped',
+    };
+  }
+
+  const agentId = input.agentId;
+  const source = await readCreateSourceDocument(input, options, decision);
+  const createRunner =
+    options.skillCreateRunner ??
+    ((authoringInput: SkillCreateAuthoringInput) =>
+      new SkillCreateAuthoringAgentService(
+        options.db,
+        options.userId,
+        options.skillDecisionModel,
+      ).run(authoringInput));
+  const authored = toSkillCreateAuthoringResult(
+    SkillCreateAuthoringResultSchema.parse(
+      await createRunner({
+        candidateSkills: input.candidateSkills,
+        decision,
+        languageInstruction: createSkillArtifactLanguageInstruction({
+          mode: 'create',
+          responseLanguage: options.responseLanguage,
+        }),
+        signal: input,
+        sourceAgentDocumentId: source?.sourceAgentDocumentId,
+        sourceDocumentContent: source?.sourceDocumentContent,
+      }),
+    ),
+  );
+  const service =
+    options.skillManagementServiceFactory?.({ agentId }) ??
+    createDefaultSkillManagementService(options);
+
+  try {
+    let createdSkill: SkillDetail | undefined;
+    const selfIterationSkillService = createSkillManagementService({
+      createSkill: async () => {
+        const skill = await service.createSkill({
+          agentId,
+          bodyMarkdown: authored.bodyMarkdown,
+          description: authored.description,
+          name: authored.name,
+          sourceAgentDocumentId: source.sourceAgentDocumentId,
+          title: authored.title ?? authored.name,
+        });
+        createdSkill = skill;
+
+        return {
+          skillDocumentId: skill.bundle.agentDocumentId,
+          summary: authored.reason,
+        };
+      },
+    });
+    await selfIterationSkillService.createSkill({
+      evidenceRefs: [],
+      idempotencyKey: `same-turn-skill:create:${authored.name}`,
+      input: {
+        bodyMarkdown: authored.bodyMarkdown,
+        description: authored.description,
+        name: authored.name,
+        title: authored.title ?? authored.name,
+        userId: options.userId,
+      },
+    });
+
+    return {
+      decision,
+      detail: authored.reason ?? `Created skill ${authored.name}.`,
+      status: 'applied',
+      target: createdSkill ? toSkillActionTarget(createdSkill) : undefined,
+    };
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('already exists')) {
+      return { decision, detail: error.message, status: 'skipped' };
+    }
+
+    throw error;
+  }
 };
 
 export const runSkillManagementAction = async (
@@ -1335,30 +1793,28 @@ export const runSkillManagementAction = async (
     return runMaintainerWorkflow(input, options, decision);
   }
 
-  const skillName = normalizeSkillPackageName(input.message);
-  const snapshot = await createMarkdownEditorSnapshot(toSkillContent(input, skillName));
-
-  try {
-    await createSkillTree({
-      agentDocumentModel: new AgentDocumentModel(options.db, options.userId),
-      agentId: input.agentId,
-      content: snapshot.content,
-      editorData: snapshot.editorData,
-      namespace: 'agent',
-      skillName,
-    });
-
-    return { decision, detail: `Created skill ${skillName}.`, status: 'applied' };
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('already exists')) {
-      return { decision, detail: error.message, status: 'skipped' };
-    }
-
-    throw error;
-  }
+  return runCreateWorkflow(input, options, decision);
 };
 
-export const handleSkillManagementAction = async (
+/**
+ * Executes one skill-management action by collecting evidence, deciding, and applying mutations.
+ *
+ * Triggering workflow:
+ *
+ * {@link defineSkillManagementActionHandler}
+ *   -> `action.skill-management.handle`
+ *     -> {@link executeSkillManagementAction}
+ *       -> {@link executeSkillManagementDecision}
+ *
+ * Upstream:
+ * - {@link defineSkillManagementActionHandler}
+ *
+ * Downstream:
+ * - {@link executeSkillManagementDecision}
+ * - {@link runMaintainerWorkflow}
+ * - {@link runCreateWorkflow}
+ */
+export const executeSkillManagementAction = async (
   action: BaseAction,
   options: SkillManagementActionHandlerOptions,
   context: RuntimeProcessorContext,
@@ -1412,10 +1868,25 @@ export const handleSkillManagementAction = async (
     }
 
     const candidateSkills = await resolveSkillDecisionCandidates(options, action.payload.agentId);
+    const recordedIntent = await readRecordedSkillIntentForExecution(options, action, context);
+    const sameTurnDocumentEvidence = await collectHintedSameTurnDocumentEvidence(
+      {
+        agentId: action.payload.agentId,
+        messageId: action.payload.messageId,
+        scopeKey: context.scopeKey,
+        topicId: action.payload.topicId,
+      },
+      options,
+    );
+    const evidence = [
+      ...(action.payload.evidence ?? []),
+      ...sameTurnDocumentEvidence,
+      ...createRecordedSkillIntentEvidence(recordedIntent),
+    ];
     const runnerInput = {
       agentId: action.payload.agentId,
       ...(candidateSkills.length > 0 ? { candidateSkills } : {}),
-      evidence: action.payload.evidence,
+      ...(evidence.length > 0 ? { evidence } : {}),
       feedbackHint: action.payload.feedbackHint,
       message,
       messageId: action.payload.messageId,
@@ -1423,12 +1894,12 @@ export const handleSkillManagementAction = async (
       serializedContext: action.payload.serializedContext,
       topicId: action.payload.topicId,
     };
-    const decisionResult = await handleSkillManagementSignal({
+    const decisionResult = await executeSkillManagementDecision({
       decide: options.skillDecisionRunner ?? createSkillDecisionRunner(options),
       payload: {
         agentId: action.payload.agentId,
         ...(candidateSkills.length > 0 ? { candidateSkills } : {}),
-        evidence: action.payload.evidence,
+        ...(evidence.length > 0 ? { evidence } : {}),
         feedbackMessage: message,
         messageId: action.payload.messageId,
         scopeKey: context.scopeKey,
@@ -1456,7 +1927,7 @@ export const handleSkillManagementAction = async (
         actionId: action.actionId,
         attempt: finalizeAttempt(startedAt, 'succeeded'),
         detail: result.detail,
-        output: { decision: result.decision },
+        output: { decision: result.decision, ...(result.target ? { target: result.target } : {}) },
         status: 'applied',
       };
     }
@@ -1494,8 +1965,8 @@ export const handleSkillManagementAction = async (
  * - {@link createFeedbackActionPlannerSignalHandler}
  *
  * Downstream:
- * - {@link runSkillManagementAction}
- * - {@link createSkillTree}
+ * - {@link executeSkillManagementAction}
+ * - {@link SkillManagementDocumentService}
  */
 export const defineSkillManagementActionHandler = (
   options: SkillManagementActionHandlerOptions,
@@ -1504,7 +1975,7 @@ export const defineSkillManagementActionHandler = (
     AGENT_SIGNAL_POLICY_ACTION_TYPES.skillManagementHandle,
     'handler.skill-management.handle',
     async (action, context: RuntimeProcessorContext) => {
-      return handleSkillManagementAction(action, options, context);
+      return executeSkillManagementAction(action, options, context);
     },
   );
 };

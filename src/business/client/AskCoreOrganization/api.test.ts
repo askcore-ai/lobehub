@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   assignAskCoreEducationRole,
   bootstrapAskCoreOrganization,
-  createAskCoreEducationOrgUnit,
-  createAskCoreCohortUnit,
   createAskCoreClassUnit,
+  createAskCoreCohortUnit,
+  createAskCoreEducationOrgUnit,
   createAskCoreOrganization,
   createAskCoreOrganizationInvite,
   createAskCoreSchoolUnit,

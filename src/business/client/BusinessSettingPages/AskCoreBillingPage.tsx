@@ -49,6 +49,7 @@ export const ASKCORE_BILLING_OPEN_URL_MESSAGE = 'askcore-billing:open-url';
 export const ASKCORE_BILLING_PAGE_KEYS = [
   'billing',
   'credits',
+  'notification',
   'plans',
   'referral',
   'usage',
@@ -424,6 +425,7 @@ const enCopy = {
     titles: {
       billing: 'Billing',
       credits: 'Credits',
+      notification: 'Notifications',
       plans: 'Plans',
       referral: 'Referral Rewards',
       usage: 'Usage',
@@ -624,6 +626,7 @@ const zhCopy: typeof enCopy = {
     titles: {
       billing: '账单',
       credits: '积分',
+      notification: '通知',
       plans: '套餐',
       referral: '推荐奖励',
       usage: '用量',
@@ -902,9 +905,9 @@ const styles = createStaticStyles(({ css }) => ({
     min-width: 140px;
   `,
   header: css`
+    gap: 16px;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
   `,
   metricGrid: css`
     display: grid;
@@ -913,14 +916,17 @@ const styles = createStaticStyles(({ css }) => ({
   `,
   page: css`
     overflow: auto;
+
     width: 100%;
     min-height: 100%;
     padding: 24px;
+
     background: ${cssVar.colorBgLayout};
   `,
   pageInner: css`
     width: min(1180px, 100%);
-    margin: 0 auto;
+    margin-block: 0;
+    margin-inline: auto;
   `,
   planCard: css`
     height: 100%;
@@ -941,8 +947,8 @@ const styles = createStaticStyles(({ css }) => ({
     height: 40px;
   `,
   planActionSlot: css`
-    margin-top: auto;
-    padding-top: 12px;
+    margin-block-start: auto;
+    padding-block-start: 12px;
   `,
   currentPlanActions: css`
     display: flex;
@@ -959,8 +965,8 @@ const styles = createStaticStyles(({ css }) => ({
   planFeatures: css`
     margin: 0;
     padding-inline-start: 18px;
-    color: ${cssVar.colorTextSecondary};
     line-height: 1.75;
+    color: ${cssVar.colorTextSecondary};
   `,
   price: css`
     font-size: 30px;
