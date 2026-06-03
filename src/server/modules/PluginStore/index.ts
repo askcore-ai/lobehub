@@ -1,3 +1,4 @@
+import { PLUGINS_INDEX_URL as DEFAULT_PLUGINS_INDEX_URL } from '@lobechat/const';
 import urlJoin from 'url-join';
 
 import { DEFAULT_LANG, isLocaleNotSupport } from '@/const/locale';
@@ -5,11 +6,28 @@ import { appEnv } from '@/envs/app';
 import { type Locales } from '@/locales/resources';
 import { normalizeLocale } from '@/locales/resources';
 
+const COMPOSE_ONLY_HOSTS = new Set(['api']);
+
+const isProductionBuild = () => process.env.NEXT_PHASE === 'phase-production-build';
+
+const shouldUseBuildSafePluginIndex = (baseUrl: string) => {
+  if (!isProductionBuild()) return false;
+
+  try {
+    return COMPOSE_ONLY_HOSTS.has(new URL(baseUrl).hostname);
+  } catch {
+    return false;
+  }
+};
+
 export class PluginStore {
   private readonly baseUrl: string;
 
   constructor(baseUrl?: string) {
-    this.baseUrl = baseUrl || appEnv.PLUGINS_INDEX_URL;
+    const configuredBaseUrl = baseUrl || appEnv.PLUGINS_INDEX_URL;
+    this.baseUrl = shouldUseBuildSafePluginIndex(configuredBaseUrl)
+      ? DEFAULT_PLUGINS_INDEX_URL
+      : configuredBaseUrl;
   }
 
   getPluginIndexUrl = (lang?: Locales) => {

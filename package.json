@@ -105,7 +105,7 @@
     "test:e2e": "pnpm --filter @lobechat/e2e-tests test",
     "test:e2e:smoke": "pnpm --filter @lobechat/e2e-tests test:smoke",
     "test:update": "vitest -u",
-    "test-app": "vitest run",
+    "test-app": "vitest run --maxWorkers=8",
     "test-app:coverage": "vitest --coverage --silent='passed-only'",
     "tunnel:cloudflare": "cloudflared tunnel --url http://localhost:3010 --protocol http2",
     "tunnel:ngrok": "ngrok http http://localhost:3010",
@@ -573,9 +573,6 @@
       "stylelint-config-clean-order": "7.0.0",
       "typescript": "6.0.3",
       "vitest": "3.2.4"
-    },
-    "patchedDependencies": {
-      "@upstash/qstash": "patches/@upstash__qstash.patch"
     }
   }
 }

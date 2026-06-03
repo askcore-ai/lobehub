@@ -1,11 +1,16 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest';
+import { PLUGINS_INDEX_URL } from '@lobechat/const';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { appEnv } from '@/envs/app';
 
 import { PluginStore } from './index';
 
 describe('PluginStore', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('should return the default index URL when no language is provided', () => {
     const pluginStore = new PluginStore();
     const url = pluginStore.getPluginIndexUrl();
@@ -28,5 +33,13 @@ describe('PluginStore', () => {
     const pluginStore = new PluginStore('https://example.com/plugins');
     const url = pluginStore.getPluginIndexUrl('zh-CN');
     expect(url).toBe('https://example.com/plugins/index.zh-CN.json');
+  });
+
+  it('should avoid compose-only plugin index hosts during production builds', () => {
+    vi.stubEnv('NEXT_PHASE', 'phase-production-build');
+    const pluginStore = new PluginStore('http://api:8000/api/lobe/plugins/v1/market/index.json');
+    const url = pluginStore.getPluginIndexUrl('zh-CN');
+
+    expect(url).toBe(PLUGINS_INDEX_URL.replace('/index.json', '/index.zh-CN.json'));
   });
 });
