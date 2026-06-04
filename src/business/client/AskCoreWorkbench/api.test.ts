@@ -18,7 +18,7 @@ describe('AskCoreWorkbench API', () => {
 
   it('routes first-party workbench requests through the LobeHub proxy', () => {
     expect(askCoreWorkbenchDashboardUrl()).toBe('/api/askcore/workbench/dashboard');
-    expect(askCoreWorkbenchOrganizationUrl()).toBe('/api/askcore/workbench/organization');
+    expect(askCoreWorkbenchOrganizationUrl()).toBe('/api/askcore/organizations');
     expect(askCoreWorkbenchResourceUrl('schools', 2, 20)).toBe(
       '/api/askcore/workbench/schools?include_total=true&page=2&page_size=20',
     );
@@ -28,9 +28,35 @@ describe('AskCoreWorkbench API', () => {
   });
 
   it('does not fetch plugin-auth tokens or send browser bearer tokens', async () => {
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const headers = new Headers(init?.headers);
       expect(headers.get('Authorization')).toBeNull();
+      if (String(input) === '/api/askcore/organizations') {
+        return new Response(
+          JSON.stringify({
+            current: {
+              id: 'org-1',
+              isActive: true,
+              name: 'AskCore School',
+              role: 'owner',
+              slug: 'askcore-school',
+            },
+            organizations: [
+              {
+                id: 'org-1',
+                isActive: true,
+                name: 'AskCore School',
+                role: 'owner',
+                slug: 'askcore-school',
+              },
+            ],
+          }),
+          {
+            headers: { 'content-type': 'application/json' },
+            status: 200,
+          },
+        );
+      }
       return new Response(JSON.stringify({ ok: true }), {
         headers: { 'content-type': 'application/json' },
         status: 200,
@@ -42,7 +68,16 @@ describe('AskCoreWorkbench API', () => {
       ok: true,
     });
     const client = new AskCoreWorkbenchApiClient();
-    await expect(client.getOrganizationState()).resolves.toEqual({ ok: true });
+    await expect(client.getOrganizationState()).resolves.toMatchObject({
+      organization: {
+        is_active: true,
+        name: 'AskCore School',
+        organization_id: 'org-1',
+        role: 'owner',
+      },
+      organization_role: 'owner',
+      organizations: [{ organization_id: 'org-1' }],
+    });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const [input, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
@@ -52,7 +87,7 @@ describe('AskCoreWorkbench API', () => {
       RequestInfo | URL,
       RequestInit | undefined,
     ];
-    expect(String(organizationInput)).toBe('/api/askcore/workbench/organization');
+    expect(String(organizationInput)).toBe('/api/askcore/organizations');
     expect(organizationInit?.credentials).toBe('include');
   });
 

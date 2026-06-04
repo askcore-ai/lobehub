@@ -22,7 +22,23 @@ import {
 } from './types';
 
 const WORKBENCH_API_BASE = '/api/askcore/workbench';
+const ORGANIZATION_API_BASE = '/api/askcore/organizations';
 const DEFAULT_PAGE_SIZE = 20;
+
+type AskCoreOrganizationPayloadSummary = {
+  createdAt?: string;
+  id: string;
+  isActive: boolean;
+  logo?: string | null;
+  name: string;
+  role?: string | null;
+  slug?: string;
+};
+
+type AskCoreOrganizationPayload = {
+  current: AskCoreOrganizationPayloadSummary | null;
+  organizations: AskCoreOrganizationPayloadSummary[];
+};
 
 export class AskCoreWorkbenchApiError extends Error {
   status: number;
@@ -135,7 +151,29 @@ export const askCoreWorkbenchItemUrl = (resource: string, entityId: string | num
 
 export const askCoreWorkbenchDashboardUrl = () => `${WORKBENCH_API_BASE}/dashboard`;
 
-export const askCoreWorkbenchOrganizationUrl = () => `${WORKBENCH_API_BASE}/organization`;
+export const askCoreWorkbenchOrganizationUrl = () => ORGANIZATION_API_BASE;
+
+const normalizeOrganizationSummary = (
+  organization: AskCoreOrganizationPayloadSummary,
+): AskCoreOrganizationState['organizations'][number] => ({
+  created_at: organization.createdAt,
+  is_active: organization.isActive,
+  logo_url: organization.logo,
+  name: organization.name,
+  organization_id: organization.id,
+  role: organization.role,
+  slug: organization.slug,
+  source: 'membership',
+});
+
+const normalizeOrganizationState = (
+  payload: AskCoreOrganizationPayload,
+): AskCoreOrganizationState => ({
+  is_super_admin: false,
+  organization: payload.current ? normalizeOrganizationSummary(payload.current) : null,
+  organization_role: payload.current?.role,
+  organizations: payload.organizations.map(normalizeOrganizationSummary),
+});
 
 export const emptyAskCoreWorkbenchList = (
   resource: string,
@@ -378,7 +416,9 @@ export class AskCoreWorkbenchApiClient {
   }
 
   getOrganizationState() {
-    return this.requestJson<AskCoreOrganizationState>('/organization');
+    return fetchAskCoreWorkbenchJson<AskCoreOrganizationPayload>(
+      askCoreWorkbenchOrganizationUrl(),
+    ).then(normalizeOrganizationState);
   }
 
   getAssignmentDetail(assignmentId: number) {

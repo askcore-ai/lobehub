@@ -76,30 +76,30 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
       );
     }
 
-    if (url === '/api/askcore/workbench/organization') {
+    if (url === '/api/askcore/organizations') {
       return new Response(
         JSON.stringify({
-          is_super_admin: false,
-          organization: {
-            is_active: true,
+          current: {
+            id: 'org_askcore_school_2026',
+            isActive: true,
             name: 'AskCore School',
-            organization_id: 'org_askcore_school_2026',
-            permissions: ['project:read', 'project:write'],
             role: 'owner',
-            source: 'membership',
+            slug: 'askcore-school',
           },
-          organization_role: 'owner',
           organizations: [
             {
-              is_active: true,
+              id: 'org_askcore_school_2026',
+              isActive: true,
               name: 'AskCore School',
-              organization_id: 'org_askcore_school_2026',
-              permissions: ['project:read', 'project:write'],
               role: 'owner',
-              source: 'membership',
+              slug: 'askcore-school',
             },
           ],
-          permissions: ['project:read', 'project:write'],
+          permissions: {
+            canInvite: true,
+            canManageMembers: true,
+            canUpdateMeta: true,
+          },
         }),
         { headers: { 'content-type': 'application/json' }, status: 200 },
       );
@@ -235,7 +235,7 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
           { headers: { 'content-type': 'application/json' }, status: 200 },
         );
       }
-      if (url === '/api/askcore/workbench/organization') {
+      if (url === '/api/askcore/organizations') {
         return new Response(JSON.stringify({ detail: 'organization unavailable' }), {
           headers: { 'content-type': 'application/json' },
           status: 503,
