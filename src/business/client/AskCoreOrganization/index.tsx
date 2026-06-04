@@ -906,6 +906,38 @@ export const AskCoreOrganizationRoute = memo(() => {
 	              )}
 	            </div>
           </>
+        ) : org.organizations.length > 0 ? (
+          <div className={styles.emptyState}>
+            <div className={styles.sectionCard} style={{ maxWidth: 560, width: '100%' }}>
+              <div className={styles.sectionHeader}>
+                <div className={styles.sectionHeaderLeft}>
+                  <span className={styles.sectionTitle}>请选择激活组织</span>
+                  <span className={styles.sectionSubtitle}>{org.organizations.length} 个组织</span>
+                </div>
+                <Button
+                  className={styles.pillButton}
+                  icon={<Plus size={14} />}
+                  onClick={() => org.setCreateOpen(true)}
+                >
+                  新建组织
+                </Button>
+              </div>
+              <div className={styles.sectionBody}>
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  {org.organizations.map((item) => (
+                    <Button
+                      block
+                      className={styles.pillButton}
+                      key={item.id}
+                      onClick={() => void org.handleActiveChange(item.id)}
+                    >
+                      {item.name}
+                    </Button>
+                  ))}
+                </Space>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className={styles.emptyState}>
             <Empty description="还没有组织" image={Empty.PRESENTED_IMAGE_SIMPLE}>

@@ -287,8 +287,11 @@ export class AskCoreOrganizationService {
       (await this.persistedActiveOrganizationId(session)) ??
       activeOrganizationIdFromSessionRecord(session);
     const activeIsValid = activeId && organizations.some((item) => item.id === activeId);
-    const organizationId = activeIsValid ? activeId : organizations[0].id;
-    if (!activeIsValid) await this.setActiveOrganizationForSession(user, organizationId);
+    const organizationId = activeIsValid
+      ? activeId
+      : organizations.length === 1
+        ? organizations[0].id
+        : undefined;
     return this.payloadForUser(user, organizationId);
   }
 
@@ -538,12 +541,13 @@ export class AskCoreOrganizationService {
     const organizations = await this.listOrganizationsForUser(user.id, {
       includeAll: this.isSuperAdmin(user),
     });
-    const selectedOrganizationId = persistedActiveId ?? organizations[0]?.id;
+    const selectedOrganizationId =
+      persistedActiveId ?? (organizations.length === 1 ? organizations[0]?.id : undefined);
     const withActive = organizations.map((item) => ({
       ...item,
       isActive: item.id === selectedOrganizationId,
     }));
-    const current = withActive.find((item) => item.isActive) ?? withActive[0] ?? null;
+    const current = withActive.find((item) => item.isActive) ?? null;
     const role = current?.role;
     const canManage = this.isSuperAdmin(user) || role === 'owner' || role === 'admin';
     const members = current ? await this.membersForOrganization(current.id) : [];

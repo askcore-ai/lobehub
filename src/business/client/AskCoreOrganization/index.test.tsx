@@ -18,6 +18,49 @@ describe('AskCoreOrganizationRoute', () => {
     vi.unstubAllGlobals();
   });
 
+  it('asks multi-organization sessions without an active organization to choose one', async () => {
+    const payload = {
+      current: null,
+      members: [],
+      organizations: [
+        {
+          id: 'org-1',
+          isActive: false,
+          name: 'First School',
+          role: 'owner',
+          slug: 'first',
+        },
+        {
+          id: 'org-2',
+          isActive: false,
+          name: 'Second School',
+          role: 'admin',
+          slug: 'second',
+        },
+      ],
+      permissions: {
+        canInvite: false,
+        canManageMembers: false,
+        canUpdateMeta: false,
+      },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 })),
+    );
+
+    render(
+      <MemoryRouter>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText('请选择激活组织')).toBeInTheDocument());
+    expect(screen.queryByText('还没有组织')).not.toBeInTheDocument();
+    expect(screen.getByText('First School')).toBeInTheDocument();
+    expect(screen.getByText('Second School')).toBeInTheDocument();
+  });
+
   it('does not render the invite card for regular members', async () => {
     const payload = {
       current: {
