@@ -6,9 +6,9 @@ import type { HomeNewModelItem } from '@/business/client/hooks/useHomeNewModels'
 export const NEW_MINIMAX_MODEL = 'MiniMax-M3';
 export const NEW_MINIMAX_PROVIDER = ENABLE_BUSINESS_FEATURES ? 'lobehub' : 'minimax';
 export const NEW_MINIMAX_MODEL_NAME = 'MiniMax M3';
-export const NEW_CHAT_MODEL = 'claude-opus-4-8';
-export const NEW_CHAT_PROVIDER = ENABLE_BUSINESS_FEATURES ? 'lobehub' : 'anthropic';
-export const NEW_CHAT_MODEL_NAME = 'Claude Opus 4.8';
+export const NEW_CHAT_MODEL = 'gpt-5.5';
+export const NEW_CHAT_PROVIDER = ENABLE_BUSINESS_FEATURES ? 'lobehub' : 'openai';
+export const NEW_CHAT_MODEL_NAME = 'GPT-5.5';
 
 // Image
 export const NEW_IMAGE_MODEL = 'gpt-image-2';

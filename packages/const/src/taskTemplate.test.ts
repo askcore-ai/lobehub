@@ -13,7 +13,7 @@ const VALID_INTEREST_KEYS = new Set(INTEREST_AREA_KEYS);
 
 describe('taskTemplates', () => {
   it('has the expected number of templates', () => {
-    expect(taskTemplates).toHaveLength(84);
+    expect(taskTemplates).toHaveLength(8);
   });
 
   it('has unique ids', () => {

@@ -48,7 +48,7 @@ export default {
     'Detected the {{name}} CLI on this device — add {{name}} agent to chat with it from LobeHub.',
   'recommendations.heteroAgent.tag': 'Coding Agent',
   'recommendations.heteroAgent.title': 'Add {{name}} agent',
-  'recommendations.subtitle': 'Some recommendations for your setup',
+  'recommendations.subtitle': 'Recommended AskCore teaching tasks',
   'starter.createAgent': 'Create Agent',
   'starter.createGroup': 'Create Group',
   'starter.deepResearch': 'Deep Research',

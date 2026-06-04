@@ -180,12 +180,12 @@ describe('TaskTemplateService.listDailyRecommend', () => {
   });
 
   it('changes the first item across refreshSeeds when matched candidates are fewer than the default recommendation count', async () => {
-    // Repro for: `health` interest matches only one template (`diet-log-companion`),
+    // Repro for: `coding` interest matches only one AskCore template (`askcore-model-route-smoke`),
     // so the legacy "matched-first" logic locked it to position 0 regardless of seed.
     const service = new TaskTemplateService('user-1');
     const firstItems = new Set<string>();
     for (const seed of ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8']) {
-      const picked = await service.listDailyRecommend(['health'], {
+      const picked = await service.listDailyRecommend(['coding'], {
         now: UTC_DAY_1,
         refreshSeed: seed,
       });

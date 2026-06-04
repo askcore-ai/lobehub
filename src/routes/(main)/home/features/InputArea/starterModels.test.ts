@@ -9,18 +9,18 @@ import {
 } from './starterModels';
 
 describe('starter models', () => {
-  it('uses the Anthropic provider in OSS and the LobeHub provider in business builds', () => {
-    expect(NEW_CHAT_MODEL).toBe('claude-opus-4-8');
-    expect(NEW_CHAT_PROVIDER).toBe(ENABLE_BUSINESS_FEATURES ? 'lobehub' : 'anthropic');
+  it('uses the OpenAI provider in OSS and the LobeHub provider in business builds', () => {
+    expect(NEW_CHAT_MODEL).toBe('gpt-5.5');
+    expect(NEW_CHAT_PROVIDER).toBe(ENABLE_BUSINESS_FEATURES ? 'lobehub' : 'openai');
     expect(NEW_MINIMAX_PROVIDER).toBe(ENABLE_BUSINESS_FEATURES ? 'lobehub' : 'minimax');
   });
 
   it('keeps the fallback home new model entries in the current product order', () => {
     const sharedItems = [
       {
-        model: 'claude-opus-4-8',
+        model: 'gpt-5.5',
         provider: NEW_CHAT_PROVIDER,
-        title: 'Claude Opus 4.8',
+        title: 'GPT-5.5',
         type: 'chat',
       },
       {

@@ -57,15 +57,67 @@ export type TaskTemplateCategory =
   | 'hobbies'
   | 'personal-life';
 
-/** Generic categories used to fill the pool when interest-matched picks are insufficient. */
+/** AskCore categories used to fill the pool when interest-matched picks are insufficient. */
 export const TASK_TEMPLATE_FALLBACK_CATEGORIES: TaskTemplateCategory[] = [
-  'personal-life',
+  'operations',
   'learning-research',
 ];
 
 export const TASK_TEMPLATE_RECOMMEND_COUNT = 3;
+const ASKCORE_TASK_TEMPLATE_ID_PREFIX = 'askcore-';
 
 export const taskTemplates: TaskTemplate[] = [
+  // AskCore teaching workbench
+  {
+    id: 'askcore-grading-progress-daily',
+    category: 'operations',
+    cronPattern: '0 8 * * *',
+    interests: ['education', 'operations'],
+  },
+  {
+    id: 'askcore-submission-ocr-review',
+    category: 'operations',
+    cronPattern: '30 8 * * *',
+    interests: ['education', 'operations'],
+  },
+  {
+    id: 'askcore-low-confidence-review',
+    category: 'learning-research',
+    cronPattern: '0 9 * * *',
+    interests: ['education'],
+  },
+  {
+    id: 'askcore-unbound-submission-triage',
+    category: 'operations',
+    cronPattern: '30 9 * * *',
+    interests: ['education', 'operations'],
+  },
+  {
+    id: 'askcore-assignment-draft-check',
+    category: 'product',
+    cronPattern: '0 17 * * 5',
+    interests: ['education', 'product'],
+  },
+  {
+    id: 'askcore-report-print-queue',
+    category: 'operations',
+    cronPattern: '0 16 * * *',
+    interests: ['education', 'operations'],
+  },
+  {
+    id: 'askcore-roster-permission-weekly',
+    category: 'operations',
+    cronPattern: '0 9 * * 1',
+    interests: ['education', 'operations'],
+  },
+  {
+    id: 'askcore-model-route-smoke',
+    category: 'engineering',
+    cronPattern: '0 10 * * 1',
+    interests: ['coding'],
+  },
+
+  // Upstream catalog is kept below for sync readability; AskCore exposes only askcore-* templates.
   // content-creation
   {
     id: 'daily-topic-pick',
@@ -642,6 +694,6 @@ export const taskTemplates: TaskTemplate[] = [
     interests: ['personal'],
     optionalSkills: [{ provider: 'notion', source: 'lobehub' }],
   },
-];
+].filter((template) => template.id.startsWith(ASKCORE_TASK_TEMPLATE_ID_PREFIX));
 
 export const KNOWN_TASK_TEMPLATE_IDS: ReadonlySet<string> = new Set(taskTemplates.map((t) => t.id));

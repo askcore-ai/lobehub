@@ -19,7 +19,55 @@ export default {
 
   'card.templateTag': 'Template',
 
-  'section.title': 'Try these scheduled tasks',
+  'section.title': 'AskCore teaching task templates',
+
+  'askcore-grading-progress-daily.title': 'Daily grading progress',
+  'askcore-grading-progress-daily.description':
+    'Each morning, summarize assignments with ungraded submissions, OCR failures, and missing reports.',
+  'askcore-grading-progress-daily.instruction':
+    'Every morning at 08:00, review the AskCore teaching workbench and summarize active assignments with ungraded submissions, OCR failures, missing PDF reports, and the next action for each class.',
+
+  'askcore-submission-ocr-review.title': 'Submission OCR review',
+  'askcore-submission-ocr-review.description':
+    'Check new scan/OCR jobs, failed pages, and submissions that need a rerun before grading.',
+  'askcore-submission-ocr-review.instruction':
+    'Every morning at 08:30, inspect new AskCore submission OCR jobs. List failed pages, low-quality scans, submissions ready for grading, and submissions that should use the rerun OCR and grading action.',
+
+  'askcore-low-confidence-review.title': 'Low-confidence review queue',
+  'askcore-low-confidence-review.description':
+    'Surface OCR and grading items below the confidence threshold with image context and priority.',
+  'askcore-low-confidence-review.instruction':
+    'Every morning at 09:00, collect AskCore OCR and grading results marked low-confidence. Include assignment, class, student match if available, original image context, confidence markers, and a suggested correction priority.',
+
+  'askcore-unbound-submission-triage.title': 'Unbound submission triage',
+  'askcore-unbound-submission-triage.description':
+    'Find submissions that need student binding and propose class/student candidates.',
+  'askcore-unbound-submission-triage.instruction':
+    'Every morning at 09:30, list AskCore submissions that are not bound to an assignment student. For each one, propose likely class and student candidates from OCR names, roster data, and assignment context, then mark what needs manual confirmation.',
+
+  'askcore-assignment-draft-check.title': 'Assignment draft readiness',
+  'askcore-assignment-draft-check.description':
+    'Weekly check of draft assignments for missing grade, subject, questions, or publish blockers.',
+  'askcore-assignment-draft-check.instruction':
+    'Every Friday at 17:00, review AskCore draft assignments. Flag missing grade, subject, class scope, question coverage, total score, answer keys, or publish blockers, and produce a publish-readiness checklist.',
+
+  'askcore-report-print-queue.title': 'Report print queue',
+  'askcore-report-print-queue.description':
+    'Verify generated PDF reports and print jobs before teachers distribute feedback.',
+  'askcore-report-print-queue.instruction':
+    'Every day at 16:00, review AskCore submission report generation and print status. Summarize missing PDFs, failed report renders, pending print jobs, and classes ready for teacher distribution.',
+
+  'askcore-roster-permission-weekly.title': 'Roster and role audit',
+  'askcore-roster-permission-weekly.description':
+    'Weekly audit of school/cohort/class roster bindings and education role permissions.',
+  'askcore-roster-permission-weekly.instruction':
+    'Every Monday at 09:00, audit AskCore organization data: school, cohort, class, teacher, homeroom teacher, and student records. Flag unbound users, duplicate roster rows, unexpected roles, and OpenFGA permission anomalies.',
+
+  'askcore-model-route-smoke.title': 'Model route smoke check',
+  'askcore-model-route-smoke.description':
+    'Confirm AskCore model visibility and LiteLLM/CLIProxyAPI routes for GPT-5.5 and GPT Image 2.',
+  'askcore-model-route-smoke.instruction':
+    'Every Monday at 10:00, check AskCore model visibility and backend provider routing. Confirm GPT-5.5 appears in OpenAI chat models, GPT Image 2 appears in image generation, and the LiteLLM/CLIProxyAPI routes remain healthy.',
 
   // ===== content-creation =====
   'daily-topic-pick.title': 'Daily topic radar',
