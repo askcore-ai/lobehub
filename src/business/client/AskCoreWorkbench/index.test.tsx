@@ -76,6 +76,35 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
       );
     }
 
+    if (url === '/api/askcore/workbench/organization') {
+      return new Response(
+        JSON.stringify({
+          is_super_admin: false,
+          organization: {
+            is_active: true,
+            name: 'AskCore School',
+            organization_id: 'org_askcore_school_2026',
+            permissions: ['project:read', 'project:write'],
+            role: 'owner',
+            source: 'membership',
+          },
+          organization_role: 'owner',
+          organizations: [
+            {
+              is_active: true,
+              name: 'AskCore School',
+              organization_id: 'org_askcore_school_2026',
+              permissions: ['project:read', 'project:write'],
+              role: 'owner',
+              source: 'membership',
+            },
+          ],
+          permissions: ['project:read', 'project:write'],
+        }),
+        { headers: { 'content-type': 'application/json' }, status: 200 },
+      );
+    }
+
     if (url === '/api/askcore/workbench/invocations/inv-submission-ocr-1') {
       return new Response(JSON.stringify(invocation), {
         headers: { 'content-type': 'application/json' },
@@ -149,6 +178,10 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
       expect(screen.getAllByText('批量导入学生提交').length).toBeGreaterThan(0),
     );
 
+    expect(screen.getByText('当前组织')).toBeInTheDocument();
+    expect(screen.getByText('AskCore School')).toBeInTheDocument();
+    expect(screen.getByText('组织所有者')).toBeInTheDocument();
+    expect(screen.queryByText('org_askcore_school_2026')).not.toBeInTheDocument();
     expect(screen.queryByText('submission.create_from_ocr')).not.toBeInTheDocument();
     expect(screen.queryByText('finalizing_batch')).not.toBeInTheDocument();
     expect(screen.getByText('提交处理进度 6/24')).toBeInTheDocument();
@@ -187,6 +220,50 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
     expect(screen.getAllByText('学生提交批量处理结果').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: '返回总览' })).toBeInTheDocument();
   }, 15_000);
+
+  it('keeps the dashboard usable when the active organization state is unavailable', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/askcore/workbench/dashboard') {
+        return new Response(
+          JSON.stringify({
+            active_invocations: [],
+            counts: { assignments: 1, questions: 342, submissions: 0 },
+            drafts: [],
+            recent_invocations: [runningInvocation],
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 200 },
+        );
+      }
+      if (url === '/api/askcore/workbench/organization') {
+        return new Response(JSON.stringify({ detail: 'organization unavailable' }), {
+          headers: { 'content-type': 'application/json' },
+          status: 503,
+        });
+      }
+      return new Response(JSON.stringify(emptyListResponse), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=overview']}>
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText('未获取到当前激活组织')).toBeInTheDocument());
+
+    expect(screen.getAllByText('提交').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('题目').length).toBeGreaterThan(0);
+    expect(screen.getByText('批量导入学生提交')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '打开组织管理' })).toHaveAttribute(
+      'href',
+      '/organization',
+    );
+  });
 });
 
 describe('AskCoreWorkbenchRoute assignment detail', () => {

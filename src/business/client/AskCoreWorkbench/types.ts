@@ -64,6 +64,26 @@ export interface AskCoreWorkbenchDashboardPayload {
   recent_invocations?: AskCoreWorkbenchRecord[];
 }
 
+export type AskCoreOrganizationSummary = {
+  created_at?: string | null;
+  is_active: boolean;
+  logo_url?: string | null;
+  name: string;
+  organization_id: string;
+  permissions?: string[];
+  role?: string | null;
+  slug?: string | null;
+  source?: string | null;
+};
+
+export type AskCoreOrganizationState = {
+  is_super_admin?: boolean;
+  organization: AskCoreOrganizationSummary | null;
+  organization_role?: string | null;
+  organizations: AskCoreOrganizationSummary[];
+  permissions?: string[];
+};
+
 export type FileDescriptor = {
   download_url?: string | null;
   media_type?: string | null;

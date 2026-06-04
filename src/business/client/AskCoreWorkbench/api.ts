@@ -2,6 +2,7 @@
 
 import {
   type AnyResourceKey,
+  type AskCoreOrganizationState,
   type AskCoreWorkbenchDashboardPayload,
   type AskCoreWorkbenchListPayload,
   type AssignmentDetailResponse,
@@ -133,6 +134,8 @@ export const askCoreWorkbenchItemUrl = (resource: string, entityId: string | num
   `${WORKBENCH_API_BASE}/${resource}/${entityId}`;
 
 export const askCoreWorkbenchDashboardUrl = () => `${WORKBENCH_API_BASE}/dashboard`;
+
+export const askCoreWorkbenchOrganizationUrl = () => `${WORKBENCH_API_BASE}/organization`;
 
 export const emptyAskCoreWorkbenchList = (
   resource: string,
@@ -372,6 +375,10 @@ export class AskCoreWorkbenchApiClient {
 
   getDashboard() {
     return this.requestJson<AskCoreWorkbenchDashboardPayload>('/dashboard');
+  }
+
+  getOrganizationState() {
+    return this.requestJson<AskCoreOrganizationState>('/organization');
   }
 
   getAssignmentDetail(assignmentId: number) {

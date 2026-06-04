@@ -25,7 +25,9 @@ import { type ColumnsType } from 'antd/es/table';
 import { createStaticStyles, cssVar, cx } from 'antd-style';
 import {
   ArrowLeft,
+  Building2,
   Download,
+  ExternalLink,
   Eye,
   FileImage,
   FileScan,
@@ -52,7 +54,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import type { AskCoreWorkbenchApiClient, BlobDownloadProgress } from './api';
 import {
@@ -97,6 +99,7 @@ import {
   toFormState,
 } from './resourceMeta';
 import {
+  type AskCoreOrganizationState,
   type AskCoreWorkbenchColumn,
   type AskCoreWorkbenchDashboardPayload,
   type AskCoreWorkbenchListPayload,
@@ -261,6 +264,74 @@ const styles = createStaticStyles(({ css }) => ({
     font-size: 13px;
     line-height: 1.4;
     color: ${cssVar.colorTextDescription};
+  `,
+  organizationAction: css`
+    display: flex;
+    flex-shrink: 0;
+    gap: 8px;
+    align-items: center;
+  `,
+  organizationBanner: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    align-items: center;
+    justify-content: space-between;
+
+    padding-block: 20px;
+    padding-inline: 22px;
+    border: 1px solid ${cssVar.colorPrimaryBorder};
+    border-radius: 8px;
+
+    background:
+      linear-gradient(135deg, ${cssVar.colorBgContainer} 0%, ${cssVar.colorPrimaryBg} 100%);
+    box-shadow: 0 10px 28px rgb(0 0 0 / 4%);
+  `,
+  organizationContent: css`
+    display: flex;
+    min-width: 0;
+    gap: 14px;
+    align-items: center;
+  `,
+  organizationIcon: css`
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+
+    width: 44px;
+    height: 44px;
+    border: 1px solid ${cssVar.colorPrimaryBorder};
+    border-radius: 8px;
+
+    color: ${cssVar.colorPrimary};
+    background: ${cssVar.colorBgContainer};
+  `,
+  organizationKicker: css`
+    margin-block-end: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: ${cssVar.colorTextSecondary};
+  `,
+  organizationMeta: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+
+    margin-block-start: 8px;
+
+    font-size: 13px;
+    color: ${cssVar.colorTextSecondary};
+  `,
+  organizationName: css`
+    margin: 0;
+
+    font-size: clamp(24px, 3vw, 34px);
+    font-weight: 720;
+    line-height: 1.1;
+    color: ${cssVar.colorText};
+    overflow-wrap: anywhere;
   `,
   page: css`
     overflow: auto;
@@ -716,6 +787,24 @@ const completedInvocationStageLabelMap: Record<string, string> = {
   preparing_batch: '已完成提交切分',
   recognizing_questions: '已识别题目',
   running_submission_ocr: '已完成提交处理',
+};
+
+const organizationRoleLabelMap: Record<string, string> = {
+  admin: '组织管理员',
+  member: '组织成员',
+  owner: '组织所有者',
+};
+
+const formatOrganizationRoleLabel = (value: unknown) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return '组织身份未确认';
+  return organizationRoleLabelMap[normalized] || normalized;
+};
+
+const shortOrganizationId = (value: unknown) => {
+  const id = String(value || '').trim();
+  if (!id) return '';
+  return id.length > 10 ? id.slice(-8) : id;
 };
 
 const statusColor = (value: string) => {
@@ -5858,9 +5947,13 @@ const AskCoreWorkbenchPage = memo(() => {
   const [dashboard, setDashboard] = useState<AskCoreWorkbenchDashboardPayload>(
     emptyAskCoreWorkbenchDashboard,
   );
+  const [organizationState, setOrganizationState] = useState<AskCoreOrganizationState | null>(
+    null,
+  );
   const [list, setList] = useState<AskCoreWorkbenchListPayload | null>(null);
   const [lookups, setLookups] = useState<LookupCollections>(EMPTY_LOOKUPS);
   const [loading, setLoading] = useState(true);
+  const [organizationLoading, setOrganizationLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detail, setDetail] = useState<DetailState | null>(null);
@@ -5950,6 +6043,17 @@ const AskCoreWorkbenchPage = memo(() => {
       classes,
       schools,
     } as LookupCollections);
+  }, []);
+
+  const loadOrganizationState = useCallback(async () => {
+    setOrganizationLoading(true);
+    try {
+      setOrganizationState(await askCoreWorkbenchClient.getOrganizationState());
+    } catch {
+      setOrganizationState(null);
+    } finally {
+      setOrganizationLoading(false);
+    }
   }, []);
 
   const reloadListOrDashboard = useCallback(async () => {
@@ -6116,6 +6220,10 @@ const AskCoreWorkbenchPage = memo(() => {
   }, [loadLookups]);
 
   useEffect(() => {
+    void loadOrganizationState();
+  }, [loadOrganizationState]);
+
+  useEffect(() => {
     setSearchQuery('');
     setSelectedRowKeysByResource({});
   }, [activeTab]);
@@ -6169,6 +6277,69 @@ const AskCoreWorkbenchPage = memo(() => {
     return items.filter((item) => JSON.stringify(item).toLowerCase().includes(keyword));
   }, [list?.items, searchQuery]);
 
+  const renderOrganizationBanner = () => {
+    const organization = organizationState?.organization || null;
+    const roleLabel = formatOrganizationRoleLabel(
+      organization?.role || organizationState?.organization_role,
+    );
+    const visibleOrganizationCount = organizationState?.organizations?.length || 0;
+    const organizationIdTail = shortOrganizationId(organization?.organization_id);
+
+    if (organizationLoading && !organization) {
+      return (
+        <div className={styles.organizationBanner}>
+          <div className={styles.organizationContent}>
+            <span className={styles.organizationIcon}>
+              <Building2 size={22} />
+            </span>
+            <div>
+              <div className={styles.organizationKicker}>当前组织</div>
+              <Skeleton.Button active block style={{ height: 32, width: 260 }} />
+            </div>
+          </div>
+          <Skeleton.Button active style={{ height: 34, width: 112 }} />
+        </div>
+      );
+    }
+
+    return (
+      <div className={styles.organizationBanner}>
+        <div className={styles.organizationContent}>
+          <span className={styles.organizationIcon}>
+            <Building2 size={22} />
+          </span>
+          <div>
+            <div className={styles.organizationKicker}>当前组织</div>
+            <h2 className={styles.organizationName}>
+              {organization?.name || '未获取到当前激活组织'}
+            </h2>
+            <div className={styles.organizationMeta}>
+              {organization ? (
+                <>
+                  <Tag color="blue" style={{ borderRadius: 999, margin: 0 }}>
+                    {roleLabel}
+                  </Tag>
+                  {organizationIdTail ? <span>ID 尾号 {organizationIdTail}</span> : null}
+                  <span>{visibleOrganizationCount || 1} 个可用组织</span>
+                  {organizationState?.is_super_admin ? <span>系统管理员视图</span> : null}
+                </>
+              ) : (
+                <span>工作台数据已继续加载，请打开组织管理确认当前组织。</span>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className={styles.organizationAction}>
+          <Link aria-label="打开组织管理" to="/organization">
+            <Button className={styles.primary} icon={<ExternalLink size={14} />} size="small">
+              打开组织管理
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  };
+
   const renderDashboard = () => {
     const recent = dashboard.recent_invocations || [];
     const counts = dashboard.counts || {};
@@ -6185,6 +6356,7 @@ const AskCoreWorkbenchPage = memo(() => {
 
     return (
       <div className={styles.view}>
+        {renderOrganizationBanner()}
         <div className={styles.statGrid}>
           {stats.map((item) => (
             <div className={styles.statItem} key={item.key}>
@@ -6445,11 +6617,11 @@ const AskCoreWorkbenchPage = memo(() => {
           content: (
             <Select
               defaultValue={selectedPrinterId}
+              style={{ width: '100%' }}
               options={printers.map((printer) => ({
                 label: printer.display_name || printer.printer_id,
                 value: printer.printer_id,
               }))}
-              style={{ width: '100%' }}
               onChange={(value) => {
                 selectedPrinterId = value;
               }}
@@ -6678,9 +6850,9 @@ const AskCoreWorkbenchPage = memo(() => {
             {resource === 'submissions' ? (
               <>
                 <Popconfirm
+                  description="会使用各提交已有图片覆盖 OCR、批改和学生归属结果；没有图片的提交会记录为失败。"
                   disabled={!selectedIds.length || submissionBatchBusy}
                   title={`重新 OCR 并批改 ${selectedIds.length} 份提交？`}
-                  description="会使用各提交已有图片覆盖 OCR、批改和学生归属结果；没有图片的提交会记录为失败。"
                   onConfirm={() => void runSubmissionOcrBatch()}
                 >
                   <Button
@@ -7037,8 +7209,8 @@ const AskCoreWorkbenchPage = memo(() => {
       <div className={styles.view}>
         <DetailHeader
           backLabel="返回总览"
-          title="任务内容"
           subtitle={formatInvocationActionLabel(invocation)}
+          title="任务内容"
           actions={
             <Button
               className={styles.secondary}

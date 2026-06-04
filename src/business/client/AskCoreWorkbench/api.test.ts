@@ -5,6 +5,7 @@ import {
   AskCoreWorkbenchApiError,
   askCoreWorkbenchDashboardUrl,
   askCoreWorkbenchItemUrl,
+  askCoreWorkbenchOrganizationUrl,
   askCoreWorkbenchResourceUrl,
   fetchAskCoreWorkbenchJson,
   isAskCoreWorkbenchDeleteNotFound,
@@ -17,6 +18,7 @@ describe('AskCoreWorkbench API', () => {
 
   it('routes first-party workbench requests through the LobeHub proxy', () => {
     expect(askCoreWorkbenchDashboardUrl()).toBe('/api/askcore/workbench/dashboard');
+    expect(askCoreWorkbenchOrganizationUrl()).toBe('/api/askcore/workbench/organization');
     expect(askCoreWorkbenchResourceUrl('schools', 2, 20)).toBe(
       '/api/askcore/workbench/schools?include_total=true&page=2&page_size=20',
     );
@@ -39,11 +41,19 @@ describe('AskCoreWorkbench API', () => {
     await expect(fetchAskCoreWorkbenchJson('/api/askcore/workbench/dashboard')).resolves.toEqual({
       ok: true,
     });
+    const client = new AskCoreWorkbenchApiClient();
+    await expect(client.getOrganizationState()).resolves.toEqual({ ok: true });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     const [input, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
     expect(String(input)).toBe('/api/askcore/workbench/dashboard');
     expect(init?.credentials).toBe('include');
+    const [organizationInput, organizationInit] = fetchMock.mock.calls[1] as [
+      RequestInfo | URL,
+      RequestInit | undefined,
+    ];
+    expect(String(organizationInput)).toBe('/api/askcore/workbench/organization');
+    expect(organizationInit?.credentials).toBe('include');
   });
 
   it('builds cursor pagination requests for infinite resource lists', async () => {
