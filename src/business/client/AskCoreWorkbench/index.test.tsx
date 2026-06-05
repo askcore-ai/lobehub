@@ -8,6 +8,7 @@ import {
   buildAssignmentOcrRunSummary,
   buildSubmissionOcrAssignmentSelectOption,
   buildSubmissionOcrRunSummary,
+  SUBMISSION_OCR_LAYOUT_BREAKPOINTS,
 } from './index';
 
 describe('AskCoreWorkbenchRoute dashboard overview', () => {
@@ -1035,6 +1036,15 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
       searchText: '高三数学 2026-06-04 选择填空专项 B 卷 科目 数学 · 教学年级 高三 · ID 502',
       title: '高三数学 2026-06-04 选择填空专项 B 卷 · 科目 数学 · 教学年级 高三 · ID 502',
       value: 502,
+    });
+  });
+
+  it('keeps submission OCR layout stacked before narrow windows overlap controls', () => {
+    expect(SUBMISSION_OCR_LAYOUT_BREAKPOINTS).toEqual({
+      compactPageMaxWidth: 900,
+      controlSingleColumnMaxWidth: 980,
+      minimumUsableWidth: 420,
+      splitWorkspaceStackMaxWidth: 1440,
     });
   });
 

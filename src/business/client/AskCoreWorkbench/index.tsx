@@ -139,6 +139,13 @@ const DEFAULT_CLASS_LABEL = '未命名班级';
 const DEFAULT_STUDENT_LABEL = '未命名学生';
 const TERMINAL_INVOCATION_STATES = new Set(['cancelled', 'failed', 'succeeded']);
 
+export const SUBMISSION_OCR_LAYOUT_BREAKPOINTS = {
+  compactPageMaxWidth: 900,
+  controlSingleColumnMaxWidth: 980,
+  minimumUsableWidth: 420,
+  splitWorkspaceStackMaxWidth: 1440,
+} as const;
+
 const lookupResources: Array<keyof LookupCollections> = [
   'teachers',
   'students',
@@ -155,8 +162,14 @@ const styles = createStaticStyles(({ css }) => ({
     justify-content: space-between;
   `,
   body: css`
+    min-width: 0;
     padding-block: 16px 32px;
-    padding-inline: 32px;
+    padding-inline: clamp(14px, 2vw, 32px);
+
+    @media (width <= ${SUBMISSION_OCR_LAYOUT_BREAKPOINTS.compactPageMaxWidth}px) {
+      padding-block: 12px 24px;
+      padding-inline: 12px;
+    }
   `,
   detailHeader: css`
     display: flex;
@@ -248,10 +261,15 @@ const styles = createStaticStyles(({ css }) => ({
     background: ${cssVar.colorBgContainer};
   `,
   formPanel: css`
+    min-width: 0;
     padding: 18px;
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 8px;
     background: ${cssVar.colorBgContainer};
+
+    @media (width <= ${SUBMISSION_OCR_LAYOUT_BREAKPOINTS.compactPageMaxWidth}px) {
+      padding: 14px;
+    }
   `,
   imageCard: css`
     overflow: hidden;
@@ -355,11 +373,12 @@ const styles = createStaticStyles(({ css }) => ({
   `,
   page: css`
     overflow: auto;
-    min-width: 760px;
+    min-width: ${SUBMISSION_OCR_LAYOUT_BREAKPOINTS.minimumUsableWidth}px;
     height: 100%;
     background: ${cssVar.colorBgLayout};
   `,
   panel: css`
+    min-width: 0;
     padding: 16px;
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 8px;
@@ -415,24 +434,79 @@ const styles = createStaticStyles(({ css }) => ({
   `,
   submissionOcrFieldGrid: css`
     display: grid;
-    grid-template-columns: minmax(320px, 1.55fr) minmax(180px, 0.8fr) minmax(160px, 0.7fr);
-    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    gap: 18px 10px;
+    align-items: start;
 
-    @media (width <= 1100px) {
-      grid-template-columns: repeat(2, minmax(180px, 1fr));
+    > .ant-form-item {
+      min-width: 0;
     }
 
-    @media (width <= 760px) {
+    @container (width <= ${SUBMISSION_OCR_LAYOUT_BREAKPOINTS.controlSingleColumnMaxWidth}px) {
       grid-template-columns: 1fr;
+    }
+  `,
+  submissionOcrFormPanel: css`
+    .ant-form-item {
+      min-width: 0;
+    }
+
+    .ant-form-item-row {
+      min-width: 0;
+    }
+
+    .ant-form-item-label {
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    .ant-form-item-label > label {
+      height: auto;
+      min-height: 24px;
+      white-space: normal;
+    }
+
+    .ant-form-item-control {
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    .ant-form-item-extra {
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+
+    .ant-segmented {
+      max-width: 100%;
+    }
+
+    @container (width <= ${SUBMISSION_OCR_LAYOUT_BREAKPOINTS.splitWorkspaceStackMaxWidth}px) {
+      .ant-form-item {
+        margin-block-end: 60px;
+      }
+
+      .ant-form-item-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .ant-form-item-label {
+        padding-block-end: 6px;
+        text-align: start;
+      }
     }
   `,
   splitWorkspace: css`
     display: grid;
-    grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.85fr);
+    grid-template-columns: minmax(0, 1.35fr) minmax(min(100%, 340px), 0.85fr);
     gap: 16px;
     align-items: start;
 
     @media (width <= 1100px) {
+      grid-template-columns: 1fr;
+    }
+
+    @container (width <= ${SUBMISSION_OCR_LAYOUT_BREAKPOINTS.splitWorkspaceStackMaxWidth}px) {
       grid-template-columns: 1fr;
     }
   `,
@@ -443,11 +517,15 @@ const styles = createStaticStyles(({ css }) => ({
   `,
   statGrid: css`
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
     gap: 12px;
 
     @media (width <= 1080px) {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    @container (width <= 560px) {
+      grid-template-columns: 1fr;
     }
   `,
   statItem: css`
@@ -656,6 +734,7 @@ const styles = createStaticStyles(({ css }) => ({
     }
   `,
   tabs: css`
+    overflow-x: auto;
     width: 100%;
     max-width: 880px;
     padding-block: 4px;
@@ -674,6 +753,10 @@ const styles = createStaticStyles(({ css }) => ({
       font-size: 13px;
       line-height: 34px;
       color: ${cssVar.colorTextSecondary};
+    }
+
+    .ant-segmented-group {
+      min-width: max-content;
     }
   `,
   toolbar: css`
@@ -723,7 +806,9 @@ const styles = createStaticStyles(({ css }) => ({
     white-space: pre-wrap;
   `,
   view: css`
+    container-type: inline-size;
     display: flex;
+    min-width: 0;
     flex-direction: column;
     gap: 16px;
   `,
@@ -5741,7 +5826,7 @@ const SubmissionOcrCreateView = ({
         onBack={onBack}
       />
       <div className={styles.splitWorkspace}>
-        <div className={styles.formPanel}>
+        <div className={cx(styles.formPanel, styles.submissionOcrFormPanel)}>
           <div className={styles.stack}>
             <div className={styles.submissionOcrFieldGrid}>
               <Form.Item
