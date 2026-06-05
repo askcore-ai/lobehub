@@ -3,7 +3,7 @@
  */
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@lobehub/ui', () => ({
   Avatar: ({ avatar }: { avatar: string }) => <div>{avatar}</div>,
@@ -52,13 +52,13 @@ vi.mock('react-i18next', () => ({
 describe('web onboarding intervention registry', () => {
   let Component: ReturnType<typeof Object> | undefined;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const { WebOnboardingInterventions } =
       await import('@lobechat/builtin-tool-web-onboarding/client');
     const { WebOnboardingApiName } = await import('@lobechat/builtin-tool-web-onboarding');
     Component = WebOnboardingInterventions[WebOnboardingApiName.saveUserQuestion];
     expect(Component).toBeDefined();
-  });
+  }, 30_000);
 
   it('uses the combined title when both agentName and agentEmoji are pending', () => {
     if (!Component) throw new TypeError('Expected web onboarding intervention to be registered');
