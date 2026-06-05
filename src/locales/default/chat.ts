@@ -186,6 +186,7 @@ export default {
   'heteroAgent.executionTarget.online': 'Online',
   'heteroAgent.executionTarget.sandbox': 'Cloud sandbox',
   'heteroAgent.executionTarget.sandboxDesc': 'Run in an ephemeral cloud sandbox',
+  'heteroAgent.executionTarget.downloadDesktop': 'Get Desktop App',
   'heteroAgent.executionTarget.title': 'Execution Device',
   'heteroAgent.executionTarget.unknownDevice': 'Unknown device',
   'hideForYou':
@@ -468,6 +469,7 @@ export default {
   'plus.search.modelSearchDesc': 'May cause unexpected behavior when enabled, not recommended.',
   'plus.search.off': 'Off',
   'plus.search.offDesc': '',
+  'plus.addAttachments': 'Attachments',
   'plus.addSkills': 'Add Skills...',
   'plus.title': 'Add',
   'plus.tooltip': 'Add files, skills, and more context...',

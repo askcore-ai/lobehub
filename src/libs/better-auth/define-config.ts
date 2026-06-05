@@ -19,11 +19,9 @@ import {
 } from 'better-auth/plugins/organization/access';
 import { type BetterAuthPlugin } from 'better-auth/types';
 import { emailHarmony } from 'better-auth-harmony';
-import { validateEmail } from 'better-auth-harmony/email';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
 
-import { businessEmailValidator } from '@/business/server/better-auth';
-import { isBusinessFeatureEnabledForUser } from '@/business/server/user';
+import { businessEmailHarmonyOptions } from '@/business/server/better-auth';
 import { appEnv } from '@/envs/app';
 import { authEnv } from '@/envs/auth';
 import {
@@ -148,12 +146,6 @@ const askCoreSuperAdminRole = askCorePlatformAc.newRole({
   member: ['invite', 'update-role', 'remove'],
   project: ['read', 'write'],
 });
-
-async function customEmailValidator(email: string): Promise<boolean> {
-  return isBusinessFeatureEnabledForUser({ userEmail: email })
-    ? businessEmailValidator(email)
-    : validateEmail(email);
-}
 
 interface CustomBetterAuthOptions {
   plugins: BetterAuthPlugin[];
@@ -336,7 +328,7 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
       ...customOptions.plugins,
       emailWhitelist(),
       expo(),
-      emailHarmony({ allowNormalizedSignin: false, validator: customEmailValidator }),
+      emailHarmony(businessEmailHarmonyOptions),
       admin({
         ac: askCorePlatformAc,
         adminRoles: ['admin', 'super_admin'],

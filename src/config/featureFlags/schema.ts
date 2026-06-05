@@ -36,13 +36,13 @@ export const FeatureFlagsSchema = z.object({
   // Cloud feature flag. Keep here until cloud owns a separate runtime flag domain.
   auth_captcha: FeatureFlagValue.optional(),
   cloud_promotion: FeatureFlagValue.optional(),
+  storage_overage: FeatureFlagValue.optional(),
 
   // the flags below can only be used with commercial license
   // if you want to use it in the commercial usage
   // please contact us for more information: hello@lobehub.com
   commercial_hide_github: FeatureFlagValue.optional(),
   commercial_hide_docs: FeatureFlagValue.optional(),
-
 });
 
 export type IFeatureFlags = z.infer<typeof FeatureFlagsSchema>;
@@ -97,6 +97,7 @@ export const DEFAULT_FEATURE_FLAGS: IFeatureFlags = {
   agent_task: isDev,
   auth_captcha: true,
   cloud_promotion: false,
+  storage_overage: true,
 
   market: true,
   speech_to_text: true,
@@ -107,7 +108,6 @@ export const DEFAULT_FEATURE_FLAGS: IFeatureFlags = {
   // please contact us for more information: hello@lobehub.com
   commercial_hide_github: false,
   commercial_hide_docs: false,
-
 };
 
 export const mapFeatureFlagsEnvToState = (
@@ -136,6 +136,7 @@ export const mapFeatureFlagsEnvToState = (
     enableAgentOnboarding: evaluateFeatureFlag(config.agent_onboarding, userId, userEmail),
     enableAgentTask: evaluateFeatureFlag(config.agent_task, userId, userEmail),
     enableAuthCaptcha: evaluateFeatureFlag(config.auth_captcha, userId, userEmail),
+    enableStorageOverage: evaluateFeatureFlag(config.storage_overage, userId, userEmail),
 
     showCloudPromotion: evaluateFeatureFlag(config.cloud_promotion, userId, userEmail),
 
@@ -144,7 +145,6 @@ export const mapFeatureFlagsEnvToState = (
 
     hideGitHub: evaluateFeatureFlag(config.commercial_hide_github, userId, userEmail),
     hideDocs: evaluateFeatureFlag(config.commercial_hide_docs, userId, userEmail),
-
   };
 };
 

@@ -113,6 +113,12 @@ describe('mapFeatureFlagsEnvToState', () => {
     expect(mappedState.enableAuthCaptcha).toBe(true);
   });
 
+  it('should enable storage overage by default', () => {
+    const mappedState = mapFeatureFlagsEnvToState(DEFAULT_FEATURE_FLAGS);
+
+    expect(mappedState.enableStorageOverage).toBe(true);
+  });
+
   it('should correctly map boolean feature flags to state', () => {
     const config = {
       provider_settings: true,
@@ -132,6 +138,7 @@ describe('mapFeatureFlagsEnvToState', () => {
       changelog: false,
       api_key_manage: false,
       cloud_promotion: true,
+      storage_overage: false,
       commercial_hide_github: false,
       commercial_hide_docs: true,
     };
@@ -153,6 +160,7 @@ describe('mapFeatureFlagsEnvToState', () => {
       enableAgentSelfIteration: true,
       enableAgentOnboarding: true,
       enableAuthCaptcha: true,
+      enableStorageOverage: false,
       showMarket: true,
       enableSTT: true,
       showCloudPromotion: true,
@@ -168,6 +176,7 @@ describe('mapFeatureFlagsEnvToState', () => {
       agent_self_iteration: ['user-123'],
       agent_onboarding: ['user-123'],
       auth_captcha: ['user-123'],
+      storage_overage: ['user-123'],
       create_session: ['user-789'],
       dalle: true,
       knowledge_base: ['user-123'],
@@ -180,6 +189,7 @@ describe('mapFeatureFlagsEnvToState', () => {
     expect(mappedState.enableAgentSelfIteration).toBe(true); // user-123 is in allowlist
     expect(mappedState.enableAgentOnboarding).toBe(true); // user-123 is in allowlist
     expect(mappedState.enableAuthCaptcha).toBe(true); // user-123 is in allowlist
+    expect(mappedState.enableStorageOverage).toBe(true); // user-123 is in allowlist
     expect(mappedState.enableKnowledgeBase).toBe(true); // user-123 is in allowlist
   });
 
