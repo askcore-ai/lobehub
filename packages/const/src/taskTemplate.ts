@@ -66,7 +66,7 @@ export const TASK_TEMPLATE_FALLBACK_CATEGORIES: TaskTemplateCategory[] = [
 export const TASK_TEMPLATE_RECOMMEND_COUNT = 3;
 const ASKCORE_TASK_TEMPLATE_ID_PREFIX = 'askcore-';
 
-export const taskTemplates: TaskTemplate[] = [
+const allTaskTemplates = [
   // AskCore teaching workbench
   {
     id: 'askcore-grading-progress-daily',
@@ -694,6 +694,10 @@ export const taskTemplates: TaskTemplate[] = [
     interests: ['personal'],
     optionalSkills: [{ provider: 'notion', source: 'lobehub' }],
   },
-].filter((template) => template.id.startsWith(ASKCORE_TASK_TEMPLATE_ID_PREFIX));
+] satisfies TaskTemplate[];
+
+export const taskTemplates: TaskTemplate[] = allTaskTemplates.filter((template) =>
+  template.id.startsWith(ASKCORE_TASK_TEMPLATE_ID_PREFIX),
+);
 
 export const KNOWN_TASK_TEMPLATE_IDS: ReadonlySet<string> = new Set(taskTemplates.map((t) => t.id));

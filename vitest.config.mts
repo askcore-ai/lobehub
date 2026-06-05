@@ -1,7 +1,10 @@
 import { dirname, join, resolve } from 'node:path';
+import { createRequire } from 'node:module';
 
 import tsconfigPaths from 'vite-tsconfig-paths';
 import { coverageConfigDefaults, defineConfig } from 'vitest/config';
+
+const require = createRequire(import.meta.url);
 
 if (process.env.NODE_ENV === 'production') {
   Reflect.set(process.env, 'NODE_ENV', 'test');
@@ -38,6 +41,9 @@ const alias = {
   '@/utils/sanitizeFileName': resolve(__dirname, './src/utils/sanitizeFileName'),
   '~test-utils': resolve(__dirname, './tests/utils.tsx'),
   'lru_map': resolve(__dirname, './tests/mocks/lru_map'),
+  openai: require.resolve('openai', {
+    paths: [resolve(__dirname, './packages/model-runtime')],
+  }),
 };
 
 export default defineConfig({

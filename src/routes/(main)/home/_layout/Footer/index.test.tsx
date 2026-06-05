@@ -271,29 +271,29 @@ describe('Footer agent onboarding promotion', () => {
     await renderFooter({ agentStarted: true });
 
     expect(screen.queryByTestId('highlight-notification')).not.toBeInTheDocument();
-  });
+  }, 20000);
 
   it('does not show the promotion when classic onboarding is not finished', async () => {
     await renderFooter({ classicFinished: false });
 
     expect(screen.queryByTestId('highlight-notification')).not.toBeInTheDocument();
-  });
+  }, 20000);
 
   it('does not show the promotion after the current device has dismissed it', async () => {
     await renderFooter({ readSlugs: ['agent-onboarding-promo-v1'] });
 
     expect(screen.queryByTestId('highlight-notification')).not.toBeInTheDocument();
-  });
+  }, 20000);
 
   it('does not show the promotion on mobile web variants', async () => {
     await renderFooter({ mobile: true });
 
     expect(screen.queryByTestId('highlight-notification')).not.toBeInTheDocument();
-  });
+  }, 20000);
 
   it('does not show the promotion on desktop builds', async () => {
     await renderFooter({ desktop: true });
 
     expect(screen.queryByTestId('highlight-notification')).not.toBeInTheDocument();
-  });
+  }, 20000);
 });

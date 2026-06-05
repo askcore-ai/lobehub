@@ -30,6 +30,14 @@ const readStream = async (stream: Readable) => {
   return Buffer.concat(chunks).toString();
 };
 
+interface UrlencodedBodyContext {
+  charset: string;
+  is: (contentType: string) => boolean;
+  oidc: { body?: Record<string, unknown> };
+  req: Readable;
+  request: { length: number };
+}
+
 describe('OIDC HTTP adapter', () => {
   describe('createNodeRequest', () => {
     it('passes POST bodies through as a readable Node stream without pre-parsing', async () => {
@@ -75,15 +83,16 @@ describe('OIDC HTTP adapter', () => {
       }) as unknown as NextRequest;
 
       const { createNodeRequest } = await import('./http-adapter');
+      // @ts-expect-error oidc-provider does not publish types for this private parser helper.
       const { urlencoded } = (await import('oidc-provider/lib/shared/selective_body.js')) as {
-        urlencoded: (ctx: any, next: () => Promise<void>) => Promise<void>;
+        urlencoded: (ctx: UrlencodedBodyContext, next: () => Promise<void>) => Promise<void>;
       };
       const nodeRequest = await createNodeRequest(request);
-      const ctx = {
+      const ctx: UrlencodedBodyContext = {
         charset: 'utf-8',
         is: (contentType: string) => contentType === 'application/x-www-form-urlencoded',
         oidc: {},
-        req: nodeRequest,
+        req: nodeRequest as unknown as Readable,
         request: { length: Buffer.byteLength(body) },
       };
 

@@ -103,38 +103,48 @@ vi.mock('@lobehub/ui', () => ({
   TooltipGroup: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
 
-vi.mock('antd', () => ({
-  App: {
-    useApp: () => ({
-      message: { error: vi.fn(), success: vi.fn() },
-      modal: { confirm: vi.fn() },
-    }),
-  },
-  Progress: () => <div data-testid="workspace-progress-bar" />,
-  Segmented: ({
-    options,
-    value,
-    onChange,
-  }: {
-    onChange?: (value: string) => void;
-    options?: Array<{ label?: ReactNode; value: string }>;
-    value?: string;
-  }) => (
-    <div data-testid="working-sidebar-tabs">
-      {options?.map((opt) => (
-        <button
-          data-active={String(opt.value === value)}
-          key={opt.value}
-          type="button"
-          onClick={() => onChange?.(opt.value)}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  ),
-  Spin: () => <div data-testid="spin" />,
-}));
+vi.mock('antd', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  const Upload = Object.assign(({ children }: { children?: ReactNode }) => <div>{children}</div>, {
+    Dragger: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+  });
+
+  return {
+    ...actual,
+    App: {
+      useApp: () => ({
+        message: { error: vi.fn(), success: vi.fn() },
+        modal: { confirm: vi.fn() },
+      }),
+    },
+    Progress: () => <div data-testid="workspace-progress-bar" />,
+    Segmented: ({
+      options,
+      value,
+      onChange,
+    }: {
+      onChange?: (value: string) => void;
+      options?: Array<{ label?: ReactNode; value: string }>;
+      value?: string;
+    }) => (
+      <div data-testid="working-sidebar-tabs">
+        {options?.map((opt) => (
+          <button
+            data-active={String(opt.value === value)}
+            key={opt.value}
+            type="button"
+            onClick={() => onChange?.(opt.value)}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    ),
+    Spin: () => <div data-testid="spin" />,
+    Upload,
+    message: { error: vi.fn() },
+  };
+});
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({

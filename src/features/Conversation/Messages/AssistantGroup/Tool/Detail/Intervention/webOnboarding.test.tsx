@@ -20,6 +20,18 @@ vi.mock('@lobehub/ui', () => ({
   ),
 }));
 
+vi.mock('@emoji-mart/react', () => ({
+  default: ({ onEmojiSelect }: { onEmojiSelect?: (emoji: { native: string }) => void }) => (
+    <button
+      data-testid="emoji-option"
+      type="button"
+      onClick={() => onEmojiSelect?.({ native: '🪶' })}
+    >
+      🪶
+    </button>
+  ),
+}));
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     i18n: { language: 'en-US' },
@@ -55,7 +67,7 @@ describe('web onboarding intervention registry', () => {
 
     expect(screen.getByText("I'll update my name and avatar")).toBeInTheDocument();
     expect(screen.getByDisplayValue('Atlas')).toBeInTheDocument();
-    expect(screen.getByText('🛰️')).toBeInTheDocument();
+    expect(screen.getByAltText('🛰️')).toBeInTheDocument();
   });
 
   it('uses the name-only title when only agentName is pending', () => {
@@ -110,7 +122,8 @@ describe('web onboarding intervention registry', () => {
     fireEvent.change(screen.getByPlaceholderText('Agent name'), {
       target: { value: 'Aurora' },
     });
-    fireEvent.click(screen.getByTestId('emoji-picker'));
+    fireEvent.click(screen.getByRole('button', { name: '🛰️' }));
+    fireEvent.click(screen.getByTestId('emoji-option'));
 
     expect(beforeApproveCallback).toBeTypeOf('function');
     await beforeApproveCallback!();

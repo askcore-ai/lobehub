@@ -166,7 +166,7 @@ const styles = createStaticStyles(({ css }) => ({
     padding-block: 16px 32px;
     padding-inline: clamp(14px, 2vw, 32px);
 
-    @media (width <= ${SUBMISSION_OCR_LAYOUT_BREAKPOINTS.compactPageMaxWidth}px) {
+    @media (width <= 900px) {
       padding-block: 12px 24px;
       padding-inline: 12px;
     }
@@ -224,9 +224,10 @@ const styles = createStaticStyles(({ css }) => ({
   `,
   assignmentSelectOption: css`
     display: flex;
-    min-width: 0;
     flex-direction: column;
     gap: 3px;
+
+    min-width: 0;
     padding-block: 3px;
   `,
   assignmentSelectOptionMeta: css`
@@ -265,9 +266,10 @@ const styles = createStaticStyles(({ css }) => ({
     padding: 18px;
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 8px;
+
     background: ${cssVar.colorBgContainer};
 
-    @media (width <= ${SUBMISSION_OCR_LAYOUT_BREAKPOINTS.compactPageMaxWidth}px) {
+    @media (width <= 900px) {
       padding: 14px;
     }
   `,
@@ -321,15 +323,18 @@ const styles = createStaticStyles(({ css }) => ({
     border: 1px solid ${cssVar.colorPrimaryBorder};
     border-radius: 8px;
 
-    background:
-      linear-gradient(135deg, ${cssVar.colorBgContainer} 0%, ${cssVar.colorPrimaryBg} 100%);
+    background: linear-gradient(
+      135deg,
+      ${cssVar.colorBgContainer} 0%,
+      ${cssVar.colorPrimaryBg} 100%
+    );
     box-shadow: 0 10px 28px rgb(0 0 0 / 4%);
   `,
   organizationContent: css`
     display: flex;
-    min-width: 0;
     gap: 14px;
     align-items: center;
+    min-width: 0;
   `,
   organizationIcon: css`
     display: inline-flex;
@@ -343,6 +348,7 @@ const styles = createStaticStyles(({ css }) => ({
     border-radius: 8px;
 
     color: ${cssVar.colorPrimary};
+
     background: ${cssVar.colorBgContainer};
   `,
   organizationKicker: css`
@@ -382,6 +388,7 @@ const styles = createStaticStyles(({ css }) => ({
     padding: 16px;
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 8px;
+
     background: ${cssVar.colorBgContainer};
   `,
   progressFill: css`
@@ -735,6 +742,7 @@ const styles = createStaticStyles(({ css }) => ({
   `,
   tabs: css`
     overflow-x: auto;
+
     width: 100%;
     max-width: 880px;
     padding-block: 4px;
@@ -808,9 +816,10 @@ const styles = createStaticStyles(({ css }) => ({
   view: css`
     container-type: inline-size;
     display: flex;
-    min-width: 0;
     flex-direction: column;
     gap: 16px;
+
+    min-width: 0;
   `,
 }));
 
@@ -914,7 +923,9 @@ const organizationRoleLabelMap: Record<string, string> = {
 };
 
 const formatOrganizationRoleLabel = (value: unknown) => {
-  const normalized = String(value || '').trim().toLowerCase();
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase();
   if (!normalized) return '组织身份未确认';
   return organizationRoleLabelMap[normalized] || normalized;
 };
@@ -974,8 +985,12 @@ const formatInvocationActionLabel = (record?: InvocationDisplayRecord | null) =>
 };
 
 const formatInvocationStageLabel = (value: unknown, stateValue?: unknown) => {
-  const stage = String(value || '').trim().toLowerCase();
-  const state = String(stateValue || '').trim().toLowerCase();
+  const stage = String(value || '')
+    .trim()
+    .toLowerCase();
+  const state = String(stateValue || '')
+    .trim()
+    .toLowerCase();
   if (state === 'succeeded' || state === 'completed') {
     if (!stage) return '已完成';
     return completedInvocationStageLabelMap[stage] || '已完成';
@@ -6107,9 +6122,7 @@ const AskCoreWorkbenchPage = memo(() => {
   const [dashboard, setDashboard] = useState<AskCoreWorkbenchDashboardPayload>(
     emptyAskCoreWorkbenchDashboard,
   );
-  const [organizationState, setOrganizationState] = useState<AskCoreOrganizationState | null>(
-    null,
-  );
+  const [organizationState, setOrganizationState] = useState<AskCoreOrganizationState | null>(null);
   const [list, setList] = useState<AskCoreWorkbenchListPayload | null>(null);
   const [lookups, setLookups] = useState<LookupCollections>(EMPTY_LOOKUPS);
   const [loading, setLoading] = useState(true);
@@ -6118,9 +6131,7 @@ const AskCoreWorkbenchPage = memo(() => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detail, setDetail] = useState<DetailState | null>(null);
   const [invocationDetailLoading, setInvocationDetailLoading] = useState(false);
-  const [invocationDetailRun, setInvocationDetailRun] = useState<RunState>(() =>
-    emptyRunState(),
-  );
+  const [invocationDetailRun, setInvocationDetailRun] = useState<RunState>(() => emptyRunState());
   const [error, setError] = useState<string>();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterForm, setFilterForm] = useState<Record<string, string>>({});
@@ -6559,9 +6570,7 @@ const AskCoreWorkbenchPage = memo(() => {
       visibleIds.size > 0 && [...visibleIds].every((id) => selectedKeySet.has(id));
     const submissionBatchBusy = Boolean(submissionListBatchStatus?.busy);
     const updateSubmissionBatchProgress = (
-      updater: (
-        current: SubmissionListBatchStatus,
-      ) => SubmissionListBatchStatus,
+      updater: (current: SubmissionListBatchStatus) => SubmissionListBatchStatus,
     ) => {
       setSubmissionListBatchStatus((current) => (current ? updater(current) : current));
     };
@@ -6719,9 +6728,7 @@ const AskCoreWorkbenchPage = memo(() => {
                         ? '下载完成'
                         : formatDownloadProgressLabel(progress),
                     percent:
-                      progress.phase === 'completed'
-                        ? 100
-                        : progress.percent ?? current.percent,
+                      progress.phase === 'completed' ? 100 : (progress.percent ?? current.percent),
                   }
                 : current,
             );
@@ -6769,8 +6776,8 @@ const AskCoreWorkbenchPage = memo(() => {
         return null;
       }
       let selectedPrinterId =
-        printers.find((printer) => printer.printer_id === payload.default_printer_id)
-          ?.printer_id || printers[0].printer_id;
+        printers.find((printer) => printer.printer_id === payload.default_printer_id)?.printer_id ||
+        printers[0].printer_id;
       return new Promise((resolve) => {
         Modal.confirm({
           cancelText: '取消',

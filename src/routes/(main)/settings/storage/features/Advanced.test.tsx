@@ -56,23 +56,39 @@ vi.mock('@lobehub/ui', () => ({
   ShikiLobeTheme: {},
 }));
 
-vi.mock('antd', () => ({
-  App: {
-    useApp: () => ({
-      message: { success: vi.fn() },
-      modal: { confirm: vi.fn() },
-    }),
-  },
-  Switch: ({ checked, onChange }: { checked?: boolean; onChange?: (checked: boolean) => void }) => (
-    <button
-      aria-checked={checked}
-      role="switch"
-      onClick={() => {
-        onChange?.(!checked);
-      }}
-    />
-  ),
-}));
+vi.mock('antd', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  const Upload = Object.assign(({ children }: { children?: ReactNode }) => <div>{children}</div>, {
+    Dragger: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+  });
+
+  return {
+    ...actual,
+    App: {
+      useApp: () => ({
+        message: { success: vi.fn() },
+        modal: { confirm: vi.fn() },
+      }),
+    },
+    Switch: ({
+      checked,
+      onChange,
+    }: {
+      checked?: boolean;
+      onChange?: (checked: boolean) => void;
+    }) => (
+      <button
+        aria-checked={checked}
+        role="switch"
+        onClick={() => {
+          onChange?.(!checked);
+        }}
+      />
+    ),
+    Upload,
+    message: { error: vi.fn() },
+  };
+});
 
 vi.mock('@/business/client/features/AccountDeletion', () => ({
   default: () => <div />,

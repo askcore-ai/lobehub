@@ -176,9 +176,7 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() =>
-      expect(screen.getAllByText('批量导入学生提交').length).toBeGreaterThan(0),
-    );
+    await waitFor(() => expect(screen.getAllByText('批量导入学生提交').length).toBeGreaterThan(0));
 
     expect(screen.getByText('当前组织')).toBeInTheDocument();
     expect(screen.getByText('AskCore School')).toBeInTheDocument();
@@ -373,7 +371,12 @@ describe('AskCoreWorkbenchRoute submission detail binding', () => {
   const submissionDetail = (
     status: string,
     assignmentStudentId: number | null = null,
-    files: Array<{ media_type?: string; name: string; object_key: string; preview_url?: string }> = [],
+    files: Array<{
+      media_type?: string;
+      name: string;
+      object_key: string;
+      preview_url?: string;
+    }> = [],
   ) => ({
     assignment: {
       assignment_id: 501,
@@ -432,9 +435,14 @@ describe('AskCoreWorkbenchRoute submission detail binding', () => {
   const renderSubmissionDetail = (
     status: string,
     assignmentStudentId: number | null = null,
-    files: Array<{ media_type?: string; name: string; object_key: string; preview_url?: string }> = [],
+    files: Array<{
+      media_type?: string;
+      name: string;
+      object_key: string;
+      preview_url?: string;
+    }> = [],
   ) => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
 
       if (url === '/api/askcore/workbench/submissions/1109/detail') {
@@ -511,7 +519,9 @@ describe('AskCoreWorkbenchRoute submission detail binding', () => {
     await waitFor(() => expect(screen.getByText('学生归属')).toBeInTheDocument());
 
     fireEvent.mouseDown(screen.getByText('选择已发布学生'));
-    const option = await screen.findByText('李常奕 · 学号 1014233712 · 班级 高三 2 班 · 作业学生 #847');
+    const option = await screen.findByText(
+      '李常奕 · 学号 1014233712 · 班级 高三 2 班 · 作业学生 #847',
+    );
     expect(option).toBeInTheDocument();
     expect(screen.queryByText(/不应显示/)).not.toBeInTheDocument();
 
@@ -919,9 +929,7 @@ describe('AskCoreWorkbenchRoute submission list batch actions', () => {
     fireEvent.click(screen.getByRole('button', { name: '重新 OCR 并批改' }));
     fireEvent.click(await screen.findByRole('button', { name: /OK|确定/ }));
 
-    await waitFor(() =>
-      expect(actionCalls(fetchMock, 'submission.ocr.rerun')).toHaveLength(1),
-    );
+    await waitFor(() => expect(actionCalls(fetchMock, 'submission.ocr.rerun')).toHaveLength(1));
     const body = JSON.parse(
       String((actionCalls(fetchMock, 'submission.ocr.rerun')[0][1] as RequestInit).body || '{}'),
     );
@@ -1092,9 +1100,7 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     expect(screen.getByText('正在加载…')).toBeInTheDocument();
 
     assignmentResponse.resolve(
-      jsonResponse(
-        listResponse('assignments', [{ assignment_id: 501, title: '期中练习' }]),
-      ),
+      jsonResponse(listResponse('assignments', [{ assignment_id: 501, title: '期中练习' }])),
     );
 
     expect(await screen.findAllByText('期中练习')).toHaveLength(2);
@@ -1109,9 +1115,7 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
 
       if (url.startsWith('/api/askcore/workbench/assignments?')) {
         assignmentCalls += 1;
-        return jsonResponse(
-          listResponse('assignments', [{ assignment_id: 501, title: '旧作业' }]),
-        );
+        return jsonResponse(listResponse('assignments', [{ assignment_id: 501, title: '旧作业' }]));
       }
 
       if (url.startsWith('/api/askcore/workbench/questions?')) {
@@ -1191,9 +1195,7 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     expect(screen.getByText('正在加载…')).toBeInTheDocument();
 
     refreshResponse.resolve(
-      jsonResponse(
-        listResponse('assignments', [{ assignment_id: 502, title: '新作业' }]),
-      ),
+      jsonResponse(listResponse('assignments', [{ assignment_id: 502, title: '新作业' }])),
     );
 
     expect(await screen.findAllByText('新作业')).toHaveLength(2);

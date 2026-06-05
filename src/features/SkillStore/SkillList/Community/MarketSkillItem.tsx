@@ -37,6 +37,7 @@ const styles = createStaticStyles(({ css }) => ({
 
 const MarketSkillItem = memo<DiscoverSkillItem>(({ name, icon, description, identifier }) => {
   const { t } = useTranslation('plugin');
+  const { t: tc } = useTranslation('common');
   const [detailOpen, setDetailOpen] = useState(false);
   const [installing, setInstalling] = useState(false);
 

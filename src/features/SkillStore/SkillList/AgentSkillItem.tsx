@@ -41,6 +41,7 @@ interface AgentSkillItemProps {
 
 const AgentSkillItem = memo<AgentSkillItemProps>(({ skill }) => {
   const { t } = useTranslation('plugin');
+  const { t: tc } = useTranslation('common');
   const [detailOpen, setDetailOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const deleteAgentSkill = useToolStore((s) => s.deleteAgentSkill);
