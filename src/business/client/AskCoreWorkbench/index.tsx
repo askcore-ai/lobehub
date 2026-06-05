@@ -209,6 +209,26 @@ const styles = createStaticStyles(({ css }) => ({
       grid-template-columns: repeat(2, minmax(180px, 1fr));
     }
   `,
+  assignmentSelectOption: css`
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+    padding-block: 3px;
+  `,
+  assignmentSelectOptionMeta: css`
+    font-size: 12px;
+    line-height: 1.4;
+    color: ${cssVar.colorTextDescription};
+    overflow-wrap: anywhere;
+  `,
+  assignmentSelectOptionTitle: css`
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.45;
+    color: ${cssVar.colorText};
+    overflow-wrap: anywhere;
+  `,
   footer: css`
     display: flex;
     flex-wrap: wrap;
@@ -392,6 +412,19 @@ const styles = createStaticStyles(({ css }) => ({
     border-radius: 8px;
     color: ${cssVar.colorText};
     background: ${cssVar.colorBgContainer};
+  `,
+  submissionOcrFieldGrid: css`
+    display: grid;
+    grid-template-columns: minmax(320px, 1.55fr) minmax(180px, 0.8fr) minmax(160px, 0.7fr);
+    gap: 10px;
+
+    @media (width <= 1100px) {
+      grid-template-columns: repeat(2, minmax(180px, 1fr));
+    }
+
+    @media (width <= 760px) {
+      grid-template-columns: 1fr;
+    }
   `,
   splitWorkspace: css`
     display: grid;
@@ -1068,6 +1101,42 @@ const sortScopeLabels = (values: string[]) =>
 const scopeText = (value: unknown, fallback: string) => {
   const normalized = String(value || '').trim();
   return normalized || fallback;
+};
+
+export type SubmissionOcrAssignmentSelectOption = {
+  assignmentMeta: string;
+  assignmentTitle: string;
+  label: string;
+  searchText: string;
+  title: string;
+  value: number;
+};
+
+export const buildSubmissionOcrAssignmentSelectOption = (
+  item: JsonRecord,
+): SubmissionOcrAssignmentSelectOption => {
+  const value = positiveId(item.assignment_id || item.id);
+  const assignmentTitle = scopeText(item.title || value, '未命名作业');
+  const metaParts = [
+    item.subject_name || item.subject_id
+      ? `科目 ${scopeText(item.subject_name || item.subject_id, '--')}`
+      : null,
+    item.grade_name || item.grade_id
+      ? `教学年级 ${scopeText(item.grade_name || item.grade_id, '--')}`
+      : null,
+    value ? `ID ${value}` : null,
+  ].filter(Boolean) as string[];
+  const assignmentMeta = metaParts.join(' · ');
+  const label = [assignmentTitle, assignmentMeta].filter(Boolean).join(' · ');
+
+  return {
+    assignmentMeta,
+    assignmentTitle,
+    label,
+    searchText: [assignmentTitle, assignmentMeta].filter(Boolean).join(' '),
+    title: label,
+    value,
+  };
 };
 
 const normalizePersonalizedQuestionCount = (value: unknown) => {
@@ -4706,9 +4775,9 @@ const SubmissionDetailView = ({
               编辑提交
             </Button>
             <Popconfirm
+              description="会使用当前上传图片覆盖题目结果，并按本次 OCR 重新识别学生归属。"
               disabled={busy || !submissionId || !hasSubmissionImages}
               title="重新 OCR 并批改该提交？"
-              description="会使用当前上传图片覆盖题目结果，并按本次 OCR 重新识别学生归属。"
               onConfirm={rerunSubmissionOcr}
             >
               <Button
@@ -5659,6 +5728,10 @@ const SubmissionOcrCreateView = ({
   };
 
   const selectedAssignment = assignmentDetail?.assignment || {};
+  const assignmentOptions = useMemo(
+    () => assignments.map(buildSubmissionOcrAssignmentSelectOption),
+    [assignments],
+  );
 
   return (
     <div className={styles.view}>
@@ -5670,7 +5743,7 @@ const SubmissionOcrCreateView = ({
       <div className={styles.splitWorkspace}>
         <div className={styles.formPanel}>
           <div className={styles.stack}>
-            <div className={styles.fieldGrid}>
+            <div className={styles.submissionOcrFieldGrid}>
               <Form.Item
                 required
                 label="选择作业"
@@ -5683,24 +5756,26 @@ const SubmissionOcrCreateView = ({
                 <Select
                   showSearch
                   loading={assignmentsLoading}
-                  optionFilterProp="label"
+                  optionFilterProp="searchText"
+                  options={assignmentOptions}
                   placeholder="选择作业"
+                  popupMatchSelectWidth={560}
                   value={assignmentId || undefined}
-                  options={assignments.map((item) => {
-                    const optionId = positiveId(item.assignment_id || item.id);
-                    const label = [
-                      scopeText(item.title || optionId, '未命名作业'),
-                      item.subject_name || item.subject_id
-                        ? `科目 ${scopeText(item.subject_name || item.subject_id, '--')}`
-                        : null,
-                      item.grade_name || item.grade_id
-                        ? `教学年级 ${scopeText(item.grade_name || item.grade_id, '--')}`
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ');
-                    return { label, value: optionId };
-                  })}
+                  optionRender={(option) => {
+                    const data = option.data as SubmissionOcrAssignmentSelectOption;
+                    return (
+                      <div className={styles.assignmentSelectOption}>
+                        <div className={styles.assignmentSelectOptionTitle}>
+                          {data.assignmentTitle}
+                        </div>
+                        {data.assignmentMeta ? (
+                          <div className={styles.assignmentSelectOptionMeta}>
+                            {data.assignmentMeta}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  }}
                   onChange={(value) => setAssignmentId(Number(value))}
                 />
               </Form.Item>

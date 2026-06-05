@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AskCoreWorkbenchRoute,
   buildAssignmentOcrRunSummary,
+  buildSubmissionOcrAssignmentSelectOption,
   buildSubmissionOcrRunSummary,
 } from './index';
 
@@ -432,7 +433,7 @@ describe('AskCoreWorkbenchRoute submission detail binding', () => {
     assignmentStudentId: number | null = null,
     files: Array<{ media_type?: string; name: string; object_key: string; preview_url?: string }> = [],
   ) => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
 
       if (url === '/api/askcore/workbench/submissions/1109/detail') {
@@ -735,7 +736,7 @@ describe('AskCoreWorkbenchRoute submission list batch actions', () => {
 
   const makeFetch = () => {
     const actions = new Map<string, string>();
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
 
       if (url.startsWith('/api/askcore/workbench/submissions?')) {
@@ -1018,6 +1019,24 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     }
     return jsonResponse(emptyListResponse());
   };
+
+  it('builds distinguishable assignment options for submission OCR selection', () => {
+    const option = buildSubmissionOcrAssignmentSelectOption({
+      assignment_id: 502,
+      grade_name: '高三',
+      subject_name: '数学',
+      title: '高三数学 2026-06-04 选择填空专项 B 卷',
+    });
+
+    expect(option).toEqual({
+      assignmentMeta: '科目 数学 · 教学年级 高三 · ID 502',
+      assignmentTitle: '高三数学 2026-06-04 选择填空专项 B 卷',
+      label: '高三数学 2026-06-04 选择填空专项 B 卷 · 科目 数学 · 教学年级 高三 · ID 502',
+      searchText: '高三数学 2026-06-04 选择填空专项 B 卷 科目 数学 · 教学年级 高三 · ID 502',
+      title: '高三数学 2026-06-04 选择填空专项 B 卷 · 科目 数学 · 教学年级 高三 · ID 502',
+      value: 502,
+    });
+  });
 
   it('hides submission rows while an assignment tab request is still loading', async () => {
     const assignmentResponse = deferredResponse();
