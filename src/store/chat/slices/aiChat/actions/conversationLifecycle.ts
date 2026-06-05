@@ -210,6 +210,7 @@ export class ConversationLifecycleActionImpl {
     message,
     editorData: inputEditorData,
     files,
+    forceRuntime,
     metadata,
     onlyAddUserMessage,
     context,
@@ -250,6 +251,10 @@ export class ConversationLifecycleActionImpl {
       executionTarget: agentConfig?.agencyConfig?.executionTarget,
       heterogeneousProvider,
       isGatewayMode: this.#get().isGatewayModeEnabled(),
+      // Callers that need to pin the runtime (e.g. task topics that were
+      // started server-side via runTask) pass `forceRuntime` to override
+      // the agent's local/cloud preference.
+      parentRuntime: forceRuntime,
     });
 
     // ── Command Bus: extract and process built-in commands from editorData ──
@@ -390,6 +395,7 @@ export class ConversationLifecycleActionImpl {
           editorData: editorData ?? undefined,
           files: fileIdList,
           filesPreview: filesPreview.length > 0 ? filesPreview : undefined,
+          ...(forceRuntime ? { forceRuntime } : {}),
           interruptMode: 'soft',
           metadata: userMessageMetadata,
           createdAt: Date.now(),

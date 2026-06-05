@@ -4,6 +4,7 @@
 import type { Readable } from 'node:stream';
 
 import type { NextRequest } from 'next/server';
+import type { SelectiveBodyContext } from 'oidc-provider/lib/shared/selective_body.js';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('debug', () => ({
@@ -29,14 +30,6 @@ const readStream = async (stream: Readable) => {
 
   return Buffer.concat(chunks).toString();
 };
-
-interface UrlencodedBodyContext {
-  charset: string;
-  is: (contentType: string) => boolean;
-  oidc: { body?: Record<string, unknown> };
-  req: Readable;
-  request: { length: number };
-}
 
 describe('OIDC HTTP adapter', () => {
   describe('createNodeRequest', () => {
@@ -83,16 +76,13 @@ describe('OIDC HTTP adapter', () => {
       }) as unknown as NextRequest;
 
       const { createNodeRequest } = await import('./http-adapter');
-      // @ts-expect-error oidc-provider does not publish types for this private parser helper.
-      const { urlencoded } = (await import('oidc-provider/lib/shared/selective_body.js')) as {
-        urlencoded: (ctx: UrlencodedBodyContext, next: () => Promise<void>) => Promise<void>;
-      };
+      const { urlencoded } = await import('oidc-provider/lib/shared/selective_body.js');
       const nodeRequest = await createNodeRequest(request);
-      const ctx: UrlencodedBodyContext = {
+      const ctx: SelectiveBodyContext = {
         charset: 'utf-8',
         is: (contentType: string) => contentType === 'application/x-www-form-urlencoded',
         oidc: {},
-        req: nodeRequest as unknown as Readable,
+        req: nodeRequest,
         request: { length: Buffer.byteLength(body) },
       };
 
