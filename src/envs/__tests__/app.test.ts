@@ -81,6 +81,37 @@ describe('getServerConfig', () => {
       expect(config.INTERNAL_APP_URL).toBe('http://127.0.0.1:3210');
     });
   });
+
+  describe('AskCore compliance registration env', () => {
+    it('should read optional ICP and public-security registration values', async () => {
+      process.env.ASKCORE_ICP_RECORD_TEXT = '京ICP备00000000号-1';
+      process.env.ASKCORE_PUBLIC_SECURITY_RECORD_TEXT = '京公网安备00000000000000号';
+      process.env.ASKCORE_PUBLIC_SECURITY_RECORD_URL =
+        'https://www.beian.gov.cn/portal/registerSystemInfo';
+
+      const { getAppConfig } = await import('../app');
+      const config = getAppConfig();
+
+      expect(config.ASKCORE_ICP_RECORD_TEXT).toBe('京ICP备00000000号-1');
+      expect(config.ASKCORE_PUBLIC_SECURITY_RECORD_TEXT).toBe('京公网安备00000000000000号');
+      expect(config.ASKCORE_PUBLIC_SECURITY_RECORD_URL).toBe(
+        'https://www.beian.gov.cn/portal/registerSystemInfo',
+      );
+    });
+
+    it('should leave compliance registration values undefined when unset', async () => {
+      delete process.env.ASKCORE_ICP_RECORD_TEXT;
+      delete process.env.ASKCORE_PUBLIC_SECURITY_RECORD_TEXT;
+      delete process.env.ASKCORE_PUBLIC_SECURITY_RECORD_URL;
+
+      const { getAppConfig } = await import('../app');
+      const config = getAppConfig();
+
+      expect(config.ASKCORE_ICP_RECORD_TEXT).toBeUndefined();
+      expect(config.ASKCORE_PUBLIC_SECURITY_RECORD_TEXT).toBeUndefined();
+      expect(config.ASKCORE_PUBLIC_SECURITY_RECORD_URL).toBeUndefined();
+    });
+  });
 });
 
 describe('APP_URL fallback', () => {

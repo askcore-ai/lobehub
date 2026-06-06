@@ -8,7 +8,8 @@ import { createStaticStyles } from 'antd-style';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { BLOG, mailTo,OFFICIAL_SITE, PRIVACY_URL, TERMS_URL } from '@/const/url';
+import { BLOG, mailTo, OFFICIAL_SITE, PRIVACY_URL, TERMS_URL } from '@/const/url';
+import { useServerConfigStore } from '@/store/serverConfig';
 
 import AboutList from './AboutList';
 import ItemCard from './ItemCard';
@@ -23,8 +24,42 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
   `,
 }));
 
+const ICP_RECORD_URL = 'https://beian.miit.gov.cn/';
+
 const About = memo<{ mobile?: boolean }>(({ mobile }) => {
   const { t } = useTranslation('common');
+  const compliance = useServerConfigStore((s) => s.serverConfig.compliance);
+
+  const legalItems = [
+    {
+      href: TERMS_URL,
+      label: t('terms'),
+      value: 'terms',
+    },
+    {
+      href: PRIVACY_URL,
+      label: t('privacy'),
+      value: 'privacy',
+    },
+    ...(compliance?.icpRecordText
+      ? [
+          {
+            href: compliance.icpRecordUrl || ICP_RECORD_URL,
+            label: compliance.icpRecordText,
+            value: 'icpRecord',
+          },
+        ]
+      : []),
+    ...(compliance?.publicSecurityRecordText
+      ? [
+          {
+            href: compliance.publicSecurityRecordUrl,
+            label: compliance.publicSecurityRecordText,
+            value: 'publicSecurityRecord',
+          },
+        ]
+      : []),
+  ];
 
   return (
     <Form.Group
@@ -100,21 +135,7 @@ const About = memo<{ mobile?: boolean }>(({ mobile }) => {
         />
         <Divider style={{ marginBlock: 0 }} />
         <div className={styles.title}>{t('legal')}</div>
-        <AboutList
-          ItemRender={ItemLink}
-          items={[
-            {
-              href: TERMS_URL,
-              label: t('terms'),
-              value: 'terms',
-            },
-            {
-              href: PRIVACY_URL,
-              label: t('privacy'),
-              value: 'privacy',
-            },
-          ]}
-        />
+        <AboutList ItemRender={ItemLink} items={legalItems} />
       </Flexbox>
     </Form.Group>
   );

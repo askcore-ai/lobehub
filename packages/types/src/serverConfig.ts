@@ -34,6 +34,13 @@ export interface GlobalMemoryConfig {
   userMemory?: GlobalMemoryExtractionConfig;
 }
 
+export interface GlobalComplianceConfig {
+  icpRecordText?: string;
+  icpRecordUrl?: string;
+  publicSecurityRecordText?: string;
+  publicSecurityRecordUrl?: string;
+}
+
 export interface VisualUnderstandingConfig {
   model: string;
   provider: string;
@@ -59,6 +66,7 @@ export interface GlobalServerConfig {
    */
   agentGatewayUrl?: string;
   aiProvider: ServerLanguageModel;
+  compliance?: GlobalComplianceConfig;
   defaultAgent?: PartialDeep<UserDefaultAgent>;
   disableEmailPassword?: boolean;
   enableBusinessFeatures?: boolean;

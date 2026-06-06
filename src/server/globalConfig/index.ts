@@ -15,6 +15,7 @@ import { parseSystemAgent } from '@/server/globalConfig/parseSystemAgent';
 import { type GlobalServerConfig } from '@/types/serverConfig';
 import { cleanObject } from '@/utils/object';
 
+import { getServerComplianceConfig } from './compliance';
 import {
   genServerAiProvidersConfig,
   type ProviderSpecificConfig,
@@ -103,6 +104,7 @@ export const getServerGlobalConfig = async (user?: ServerGlobalConfigUser) => {
 
   const config: GlobalServerConfig = {
     aiProvider,
+    compliance: getServerComplianceConfig(),
     defaultAgent: {
       config: parseAgentConfig(DEFAULT_AGENT_CONFIG),
     },

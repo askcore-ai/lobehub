@@ -8,14 +8,17 @@ import Link from 'next/link';
 import { type FC, type PropsWithChildren } from 'react';
 
 import { ProductLogo } from '@/components/Branding';
+import ComplianceLinks from '@/components/ComplianceLinks';
 import { useIsDark } from '@/hooks/useIsDark';
 
 import AuthLangButton from './AuthLangButton';
+import { useAuthServerConfigStore } from './AuthServerConfigProvider';
 import AuthThemeButton from './AuthThemeButton';
 import { styles } from './style';
 
 const AuthContainer: FC<PropsWithChildren> = ({ children }) => {
   const isDarkMode = useIsDark();
+  const compliance = useAuthServerConfigStore((s) => s.serverConfig.compliance);
   return (
     <Flexbox className={styles.outerContainer} height={'100%'} padding={8} width={'100%'}>
       <Flexbox
@@ -43,10 +46,13 @@ const AuthContainer: FC<PropsWithChildren> = ({ children }) => {
         <Center height={'100%'} padding={16} width={'100%'}>
           {children}
         </Center>
-        <Center padding={24}>
-          <Text align={'center'} type={'secondary'}>
-            {COPYRIGHT_FULL}
-          </Text>
+        <Center padding={24} width={'100%'}>
+          <Flexbox align={'center'} gap={6} width={'100%'}>
+            <Text align={'center'} type={'secondary'}>
+              {COPYRIGHT_FULL}
+            </Text>
+            <ComplianceLinks compliance={compliance} />
+          </Flexbox>
         </Center>
       </Flexbox>
     </Flexbox>

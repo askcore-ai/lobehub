@@ -10,6 +10,10 @@ interface CapturedProviderConfig {
 }
 
 const mocks = vi.hoisted(() => ({
+  getServerComplianceConfig: vi.fn(() => ({
+    icpRecordText: '京ICP备00000000号-1',
+    icpRecordUrl: 'https://beian.miit.gov.cn/',
+  })),
   genServerAiProvidersConfig: vi.fn(
     async (_specificConfig: Record<string, CapturedProviderConfig>) => ({}),
   ),
@@ -87,6 +91,10 @@ const mockGlobalConfigDependencies = (enableBusinessFeatures: boolean) => {
     genServerAiProvidersConfig: mocks.genServerAiProvidersConfig,
   }));
 
+  vi.doMock('./compliance', () => ({
+    getServerComplianceConfig: mocks.getServerComplianceConfig,
+  }));
+
   vi.doMock('./parseDefaultAgent', () => ({
     parseAgentConfig: vi.fn(() => ({})),
   }));
@@ -103,6 +111,7 @@ const mockGlobalConfigDependencies = (enableBusinessFeatures: boolean) => {
 const loadCapturedProviderConfig = async (enableBusinessFeatures: boolean) => {
   vi.resetModules();
   mocks.genServerAiProvidersConfig.mockClear();
+  mocks.getServerComplianceConfig.mockClear();
   mockGlobalConfigDependencies(enableBusinessFeatures);
 
   const { getServerGlobalConfig } = await import('./index');
@@ -133,5 +142,20 @@ describe('getServerGlobalConfig', () => {
     expect(providerConfig[ModelProvider.LobeHub]).toBeUndefined();
     expect(providerConfig[ModelProvider.OpenAI]).toBeUndefined();
     expect(providerConfig[ModelProvider.DeepSeek].enabled).toBe(true);
+  });
+
+  it('should include AskCore compliance config', async () => {
+    vi.resetModules();
+    mocks.getServerComplianceConfig.mockClear();
+    mockGlobalConfigDependencies(false);
+
+    const { getServerGlobalConfig } = await import('./index');
+    const config = await getServerGlobalConfig();
+
+    expect(config.compliance).toEqual({
+      icpRecordText: '京ICP备00000000号-1',
+      icpRecordUrl: 'https://beian.miit.gov.cn/',
+    });
+    expect(mocks.getServerComplianceConfig).toHaveBeenCalledTimes(1);
   });
 });
