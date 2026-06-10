@@ -52,6 +52,7 @@ import {
 } from './components';
 import { useOrganization } from './hooks/useOrganization';
 import { styles } from './styles';
+import { type AskCoreEducationOrgUnit } from './types';
 
 type OrganizationRosterResource = Extract<
   ResourceKey,
@@ -78,6 +79,15 @@ const ROSTER_IMPORT_ACTIONS: Record<OrganizationRosterResource, string> = {
   students: 'ops.import.students',
   teachers: 'ops.import.teachers',
 };
+
+const classUnitLookupItems = (units: AskCoreEducationOrgUnit[]): JsonRecord[] =>
+  units
+    .filter((unit) => unit.unit_type === 'class')
+    .map((unit) => ({
+      ...unit,
+      class_id: unit.id,
+      org_unit_id: unit.id,
+    }));
 
 const normalizeTab = (value?: string | null): TabKey =>
   tabs.some((tab) => tab.key === value) ? (value as TabKey) : 'overview';
@@ -184,8 +194,9 @@ const RosterField = ({
 
 const OrganizationRosterSection = memo<{
   canManage: boolean;
+  classUnits: AskCoreEducationOrgUnit[];
   resource: OrganizationRosterResource;
-}>(({ canManage, resource }) => {
+}>(({ canManage, classUnits, resource }) => {
   const [form] = Form.useForm<Record<string, unknown>>();
   const [items, setItems] = useState<JsonRecord[]>([]);
   const [lookups, setLookups] = useState<LookupCollections>(EMPTY_LOOKUPS);
@@ -217,6 +228,7 @@ const OrganizationRosterSection = memo<{
   const selectedIds = [...visibleIds].filter((id) => selectedKeySet.has(id));
   const allVisibleSelected =
     visibleIds.size > 0 && [...visibleIds].every((id) => selectedKeySet.has(id));
+  const classLookups = useMemo(() => classUnitLookupItems(classUnits), [classUnits]);
 
   const loadLookups = useCallback(async () => {
     const entries = await Promise.all(
@@ -228,8 +240,12 @@ const OrganizationRosterSection = memo<{
         }
       }),
     );
-    setLookups({ ...EMPTY_LOOKUPS, ...Object.fromEntries(entries) } as LookupCollections);
-  }, []);
+    setLookups({
+      ...EMPTY_LOOKUPS,
+      classes: classLookups,
+      ...Object.fromEntries(entries),
+    } as LookupCollections);
+  }, [classLookups]);
 
   const loadItems = useCallback(async () => {
     const requestVersion = listVersionRef.current + 1;
@@ -680,6 +696,10 @@ export const AskCoreOrganizationRoute = memo(() => {
     { label: '届别', value: org.educationUnits.filter((u) => u.unit_type === 'cohort').length },
     { label: '班级', value: org.educationUnits.filter((u) => u.unit_type === 'class').length },
   ];
+  const educationClassUnits = useMemo(
+    () => org.educationUnits.filter((unit) => unit.unit_type === 'class'),
+    [org.educationUnits],
+  );
 
   return (
     <div className={styles.page}>
@@ -901,6 +921,7 @@ export const AskCoreOrganizationRoute = memo(() => {
 	              {rosterResources.includes(activeTab as OrganizationRosterResource) && (
 	                <OrganizationRosterSection
 	                  canManage={org.canManage}
+	                  classUnits={educationClassUnits}
 	                  resource={activeTab as OrganizationRosterResource}
 	                />
 	              )}

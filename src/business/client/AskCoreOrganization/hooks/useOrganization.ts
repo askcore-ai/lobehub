@@ -1,7 +1,7 @@
 'use client';
 
 import { Form } from 'antd';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { message } from '@/components/AntdStaticMethods';
 
@@ -70,7 +70,7 @@ export const useOrganization = () => {
   const canManage = current?.role === 'owner' || current?.role === 'admin';
   const canInvite = payload?.permissions.canInvite ?? false;
   const canUpdateMeta = payload?.permissions.canUpdateMeta ?? false;
-  const educationUnits = educationPayload?.units || [];
+  const educationUnits = useMemo(() => educationPayload?.units ?? [], [educationPayload?.units]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -309,19 +309,21 @@ export const useOrganization = () => {
       });
       orgRoleForm.resetFields(['subject_value']);
       await reloadEducationRoleAssignments();
+      await reloadEducationRoleSubjects();
       message.success('教育身份已分配');
     } finally {
       setAssigningRole(false);
     }
-  }, [orgRoleForm, reloadEducationRoleAssignments]);
+  }, [orgRoleForm, reloadEducationRoleAssignments, reloadEducationRoleSubjects]);
 
   const handleDeleteEducationRole = useCallback(
     async (assignmentId: number) => {
       await deleteAskCoreEducationRoleAssignment(assignmentId);
       await reloadEducationRoleAssignments();
+      await reloadEducationRoleSubjects();
       message.success('教育身份已移除');
     },
-    [reloadEducationRoleAssignments],
+    [reloadEducationRoleAssignments, reloadEducationRoleSubjects],
   );
 
   const handleRoleChange = useCallback(

@@ -102,6 +102,7 @@ export const hydrateLookupLabels = (item: JsonRecord, lookups: LookupCollections
   };
 
   assignResolvedLabel('school_id', 'school_name', 'schools');
+  assignResolvedLabel('org_unit_id', 'class_name', 'classes');
   assignResolvedLabel('class_id', 'class_name', 'classes');
   assignResolvedLabel('grade_id', 'grade_name', 'grades');
   assignResolvedLabel('subject_id', 'subject_name', 'subjects');
@@ -210,7 +211,9 @@ export const RESOURCE_FILTER_FIELDS: Record<ResourceKey, FieldDefinition[]> = {
     { key: 'province', kind: 'text', label: '省份', placeholder: '输入省份' },
     { key: 'city', kind: 'text', label: '城市', placeholder: '输入城市' },
   ],
-  students: [],
+  students: [
+    { key: 'org_unit_id', kind: 'select', label: '班级', numeric: true, optionsFrom: 'classes' },
+  ],
   subjects: [{ key: 'subject_category', kind: 'text', label: '科目分类', placeholder: 'core / elective' }],
   'submission-questions': [
     { key: 'submission_id', kind: 'number', label: '提交 ID' },
@@ -310,6 +313,7 @@ export const RESOURCE_FORM_FIELDS: Record<EditableResourceKey, FieldDefinition[]
   students: [
     { key: 'student_number', kind: 'text', label: '学号', required: true },
     { key: 'name', kind: 'text', label: '姓名', required: true },
+    { key: 'org_unit_id', kind: 'select', label: '班级', numeric: true, optionsFrom: 'classes' },
     { key: 'pinyin_name', kind: 'text', label: '拼音名' },
     {
       key: 'gender',
@@ -440,6 +444,7 @@ export const fieldOptions = (field: FieldDefinition, lookups: LookupCollections)
     ),
     value: String(
       item.id ||
+        item.org_unit_id ||
         item.class_id ||
         item.school_id ||
         item.student_id ||

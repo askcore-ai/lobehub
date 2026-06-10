@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   EMPTY_LOOKUPS,
+  RESOURCE_FILTER_FIELDS,
+  RESOURCE_FORM_FIELDS,
+  fieldOptions,
   filtersFromFormState,
   fromFormState,
   hydrateLookupLabels,
@@ -51,6 +54,35 @@ describe('AskCore workbench resource metadata', () => {
     expect(filtersFromFormState('assignments', { grade_id: '3', query: '期中' })).toEqual({
       grade_id: 3,
       query: '期中',
+    });
+  });
+
+  it('uses org_unit_id as the student class membership field', () => {
+    expect(RESOURCE_FILTER_FIELDS.students).toEqual([
+      { key: 'org_unit_id', kind: 'select', label: '班级', numeric: true, optionsFrom: 'classes' },
+    ]);
+    expect(RESOURCE_FORM_FIELDS.students).toEqual(
+      expect.arrayContaining([
+        { key: 'org_unit_id', kind: 'select', label: '班级', numeric: true, optionsFrom: 'classes' },
+      ]),
+    );
+
+    const lookups = {
+      ...EMPTY_LOOKUPS,
+      classes: [{ id: 10003, name: '高一 1 班', org_unit_id: 10003, unit_type: 'class' }],
+    };
+    const classField = RESOURCE_FORM_FIELDS.students.find((field) => field.key === 'org_unit_id');
+    expect(classField).toBeTruthy();
+    expect(fieldOptions(classField!, lookups)).toEqual([{ label: '高一 1 班', value: '10003' }]);
+    expect(fromFormState('students', { name: '杨博宇', org_unit_id: '10003', student_number: '60' })).toEqual({
+      name: '杨博宇',
+      org_unit_id: 10003,
+      student_number: '60',
+    });
+    expect(
+      hydrateLookupLabels({ name: '杨博宇', org_unit_id: 10003, student_number: '60' }, lookups),
+    ).toMatchObject({
+      class_name: '高一 1 班',
     });
   });
 
