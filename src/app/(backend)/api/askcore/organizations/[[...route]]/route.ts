@@ -4,6 +4,10 @@ import type {
   AskCoreOrganizationRole,
   AskCoreSessionRecord,
 } from '@/server/services/askcoreOrganization';
+import {
+  askCoreInvitePublicOrigin,
+  isAllowedAskCoreSameOriginWrite,
+} from '@/server/services/askcoreAssertion';
 
 type RouteContext = {
   params: Promise<{
@@ -57,77 +61,8 @@ type AskCoreOrganizationRouteTestGlobal = typeof globalThis & {
 };
 
 const ALLOWED_METHODS = ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'];
-const FALLBACK_PUBLIC_ORIGIN = 'https://askcore.cn';
-const LOCAL_BIND_HOSTS = new Set([
-  '0.0.0.0',
-  '::',
-  '[::]',
-  '127.0.0.1',
-  'localhost',
-  '::1',
-  '[::1]',
-]);
 
 const jsonError = (status: number, detail: string) => NextResponse.json({ detail }, { status });
-
-const firstHeaderValue = (value: string | null | undefined) => value?.split(',')[0]?.trim();
-
-const isLocalBindHostname = (hostname: string) => {
-  const normalized = hostname.toLowerCase();
-  return LOCAL_BIND_HOSTS.has(normalized) || normalized.startsWith('127.');
-};
-
-const normalizePublicOrigin = (value: string | null | undefined) => {
-  const candidate = firstHeaderValue(value);
-  if (!candidate) return undefined;
-
-  try {
-    const url = new URL(candidate);
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
-    if (isLocalBindHostname(url.hostname)) return undefined;
-    return url.origin;
-  } catch {
-    return undefined;
-  }
-};
-
-const originFromForwardedHost = (
-  host: string | null | undefined,
-  proto: string | null | undefined,
-) => {
-  const forwardedHost = firstHeaderValue(host);
-  if (!forwardedHost) return undefined;
-  const protocol = firstHeaderValue(proto) || 'https';
-  return normalizePublicOrigin(`${protocol}://${forwardedHost}`);
-};
-
-const publicRequestOrigin = (request: NextRequest) =>
-  normalizePublicOrigin(process.env.APP_URL) ??
-  originFromForwardedHost(
-    request.headers.get('x-forwarded-host'),
-    request.headers.get('x-forwarded-proto'),
-  ) ??
-  originFromForwardedHost(request.headers.get('host'), request.headers.get('x-forwarded-proto')) ??
-  normalizePublicOrigin(request.nextUrl.origin);
-
-const invitePublicOrigin = (request: NextRequest) =>
-  publicRequestOrigin(request) ??
-  normalizePublicOrigin(request.headers.get('origin')) ??
-  FALLBACK_PUBLIC_ORIGIN;
-
-const isAllowedSameOriginWrite = (request: NextRequest) => {
-  if (request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS') {
-    return true;
-  }
-
-  const origin = request.headers.get('origin');
-  if (!origin) return true;
-
-  const requestOrigin = request.nextUrl.origin;
-  const appOrigin = process.env.APP_URL ? new URL(process.env.APP_URL).origin : requestOrigin;
-  const publicOrigin = publicRequestOrigin(request) ?? FALLBACK_PUBLIC_ORIGIN;
-  return origin === requestOrigin || origin === appOrigin || origin === publicOrigin;
-};
 
 const readJsonBody = async (request: NextRequest): Promise<Record<string, unknown>> => {
   try {
@@ -182,7 +117,7 @@ const handleOrganizationRequest = async (request: NextRequest, context: RouteCon
       status: 204,
     });
   }
-  if (!isAllowedSameOriginWrite(request)) {
+  if (!isAllowedAskCoreSameOriginWrite(request)) {
     return jsonError(403, 'Cross-origin organization writes are not allowed');
   }
 
@@ -190,7 +125,7 @@ const handleOrganizationRequest = async (request: NextRequest, context: RouteCon
   if (!session) return jsonError(401, 'LobeHub session is required');
 
   const { route = [] } = await context.params;
-  const service = await getOrganizationService(invitePublicOrigin(request));
+  const service = await getOrganizationService(askCoreInvitePublicOrigin(request));
 
   try {
     if (route.length === 0) {

@@ -2,13 +2,13 @@ import { randomUUID } from 'node:crypto';
 
 import { SignJWT } from 'jose';
 
-type SessionRecord = Record<string, unknown>;
+export type AskCoreAssertionSessionRecord = Record<string, unknown>;
 type GetFullOrganization = (input: {
   headers: Headers;
   query?: { membersLimit?: number; organizationId?: string };
 }) => Promise<unknown>;
 type ListOrganizations = (input: { headers: Headers }) => Promise<unknown>;
-type GetSession = (input: { headers: Headers }) => Promise<SessionRecord | null>;
+type GetSession = (input: { headers: Headers }) => Promise<AskCoreAssertionSessionRecord | null>;
 type AskCoreAssertionAuthApi = {
   getFullOrganization?: GetFullOrganization;
   getSession: GetSession;
@@ -19,7 +19,7 @@ type AskCoreAssertionTestGlobal = typeof globalThis & {
     api: AskCoreAssertionAuthApi;
   };
   __ASKCORE_WORKBENCH_ROUTE_PERSISTED_ACTIVE_ORG_ID__?: (
-    session: SessionRecord,
+    session: AskCoreAssertionSessionRecord,
   ) => Promise<string | undefined>;
 };
 
@@ -27,19 +27,29 @@ const DEFAULT_ASSERTION_ISSUER = 'askcore-lobehub';
 const DEFAULT_ASSERTION_AUDIENCE = 'aitutor-billing';
 const DEFAULT_ASSERTION_HEADER = 'X-AskCore-Billing-Assertion';
 const DEFAULT_ASSERTION_TTL_SECONDS = 120;
+const FALLBACK_PUBLIC_ORIGIN = 'https://askcore.cn';
+const LOCAL_BIND_HOSTS = new Set([
+  '0.0.0.0',
+  '::',
+  '[::]',
+  '127.0.0.1',
+  'localhost',
+  '::1',
+  '[::1]',
+]);
 
 const stringValue = (value: unknown): string | undefined =>
   typeof value === 'string' && value ? value : undefined;
 
-const recordValue = (value: unknown): SessionRecord | undefined =>
-  value && typeof value === 'object' ? (value as SessionRecord) : undefined;
+const recordValue = (value: unknown): AskCoreAssertionSessionRecord | undefined =>
+  value && typeof value === 'object' ? (value as AskCoreAssertionSessionRecord) : undefined;
 
 const arrayValue = (value: unknown): string[] | undefined =>
   Array.isArray(value)
     ? value.filter((item): item is string => typeof item === 'string' && !!item)
     : undefined;
 
-const getAuthApi = async (): Promise<AskCoreAssertionAuthApi> => {
+export const getAskCoreAssertionAuthApi = async (): Promise<AskCoreAssertionAuthApi> => {
   const testAuth = (globalThis as AskCoreAssertionTestGlobal).__ASKCORE_WORKBENCH_ROUTE_AUTH__;
   if (testAuth) return testAuth.api;
 
@@ -47,7 +57,7 @@ const getAuthApi = async (): Promise<AskCoreAssertionAuthApi> => {
   return auth.api as typeof auth.api & AskCoreAssertionAuthApi;
 };
 
-const getPersistedActiveOrganizationId = async (session: SessionRecord) => {
+const getPersistedActiveOrganizationId = async (session: AskCoreAssertionSessionRecord) => {
   const testResolver = (globalThis as AskCoreAssertionTestGlobal)
     .__ASKCORE_WORKBENCH_ROUTE_PERSISTED_ACTIVE_ORG_ID__;
   if (testResolver) return testResolver(session);
@@ -67,7 +77,78 @@ const compactClaims = (claims: Record<string, unknown>) =>
     }),
   );
 
-const activeOrganizationIdFromSession = (session: SessionRecord) => {
+export const askCoreAssertionHeaderName = () =>
+  process.env.ASKCORE_BILLING_ASSERTION_HEADER || DEFAULT_ASSERTION_HEADER;
+
+const firstHeaderValue = (value: string | null | undefined) => value?.split(',')[0]?.trim();
+
+const isLocalBindHostname = (hostname: string) => {
+  const normalized = hostname.toLowerCase();
+  return LOCAL_BIND_HOSTS.has(normalized) || normalized.startsWith('127.');
+};
+
+export const normalizeAskCorePublicOrigin = (value: string | null | undefined) => {
+  const candidate = firstHeaderValue(value);
+  if (!candidate) return undefined;
+
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
+    if (isLocalBindHostname(url.hostname)) return undefined;
+    return url.origin;
+  } catch {
+    return undefined;
+  }
+};
+
+const originFromForwardedHost = (
+  host: string | null | undefined,
+  proto: string | null | undefined,
+) => {
+  const forwardedHost = firstHeaderValue(host);
+  if (!forwardedHost) return undefined;
+  const protocol = firstHeaderValue(proto) || 'https';
+  return normalizeAskCorePublicOrigin(`${protocol}://${forwardedHost}`);
+};
+
+type SameOriginRequest = {
+  headers: Headers;
+  method: string;
+  nextUrl: {
+    origin: string;
+  };
+};
+
+export const askCorePublicRequestOrigin = (request: SameOriginRequest) =>
+  normalizeAskCorePublicOrigin(process.env.APP_URL) ??
+  originFromForwardedHost(
+    request.headers.get('x-forwarded-host'),
+    request.headers.get('x-forwarded-proto'),
+  ) ??
+  originFromForwardedHost(request.headers.get('host'), request.headers.get('x-forwarded-proto')) ??
+  normalizeAskCorePublicOrigin(request.nextUrl.origin);
+
+export const askCoreInvitePublicOrigin = (request: SameOriginRequest) =>
+  askCorePublicRequestOrigin(request) ??
+  normalizeAskCorePublicOrigin(request.headers.get('origin')) ??
+  FALLBACK_PUBLIC_ORIGIN;
+
+export const isAllowedAskCoreSameOriginWrite = (request: SameOriginRequest) => {
+  if (request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS') {
+    return true;
+  }
+
+  const origin = request.headers.get('origin');
+  const fetchSite = request.headers.get('sec-fetch-site');
+  if (!origin) return fetchSite !== 'cross-site';
+
+  const requestOrigin = request.nextUrl.origin;
+  const appOrigin = normalizeAskCorePublicOrigin(process.env.APP_URL) ?? requestOrigin;
+  const publicOrigin = askCorePublicRequestOrigin(request) ?? FALLBACK_PUBLIC_ORIGIN;
+  return origin === requestOrigin || origin === appOrigin || origin === publicOrigin;
+};
+
+const activeOrganizationIdFromSession = (session: AskCoreAssertionSessionRecord) => {
   const sessionData = recordValue(session.session);
   const organization = recordValue(session.organization) ?? recordValue(session.activeOrganization);
 
@@ -81,7 +162,7 @@ const activeOrganizationIdFromSession = (session: SessionRecord) => {
 };
 
 const findFullOrganizationMember = (
-  fullOrganization: SessionRecord | undefined,
+  fullOrganization: AskCoreAssertionSessionRecord | undefined,
   userId: string,
 ) => {
   const members = Array.isArray(fullOrganization?.members) ? fullOrganization.members : [];
@@ -91,10 +172,10 @@ const findFullOrganizationMember = (
 const getFullOrganization = async (
   headers: Headers,
   organizationId: string | undefined,
-): Promise<SessionRecord | undefined> => {
+): Promise<AskCoreAssertionSessionRecord | undefined> => {
   if (!organizationId) return undefined;
 
-  const api = await getAuthApi();
+  const api = await getAskCoreAssertionAuthApi();
   if (!api.getFullOrganization) return undefined;
 
   try {
@@ -109,8 +190,10 @@ const getFullOrganization = async (
   }
 };
 
-const getSingleOrganization = async (headers: Headers): Promise<SessionRecord | undefined> => {
-  const api = await getAuthApi();
+const getSingleOrganization = async (
+  headers: Headers,
+): Promise<AskCoreAssertionSessionRecord | undefined> => {
+  const api = await getAskCoreAssertionAuthApi();
   if (!api.listOrganizations) return undefined;
 
   try {
@@ -122,11 +205,15 @@ const getSingleOrganization = async (headers: Headers): Promise<SessionRecord | 
   }
 };
 
-const resolveFullOrganization = async (
+export const resolveFullOrganizationForHeaders = async (
   headers: Headers,
-  session: SessionRecord,
-): Promise<SessionRecord | undefined> => {
-  const persistedActiveOrganizationId = await getPersistedActiveOrganizationId(session);
+  session: AskCoreAssertionSessionRecord,
+  options: { usePersistedActiveOrganization?: boolean } = {},
+): Promise<AskCoreAssertionSessionRecord | undefined> => {
+  const persistedActiveOrganizationId =
+    options.usePersistedActiveOrganization === false
+      ? undefined
+      : await getPersistedActiveOrganizationId(session);
   const activeOrganizationId = persistedActiveOrganizationId ?? activeOrganizationIdFromSession(session);
   if (activeOrganizationId) {
     const fullOrganization = await getFullOrganization(headers, activeOrganizationId);
@@ -140,9 +227,10 @@ const resolveFullOrganization = async (
   return (await getFullOrganization(headers, singleOrganizationId)) ?? singleOrganization;
 };
 
-export const resolveWorkbenchPrincipalClaims = (
-  session: SessionRecord,
-  fullOrganization?: SessionRecord,
+export const resolveAskCorePrincipalClaims = (
+  session: AskCoreAssertionSessionRecord,
+  fullOrganization?: AskCoreAssertionSessionRecord,
+  options: { scopes?: string[] } = {},
 ) => {
   const user = recordValue(session.user);
 
@@ -170,12 +258,20 @@ export const resolveWorkbenchPrincipalClaims = (
       stringValue(session.organization_role),
     permissions: arrayValue(session.permissions) ?? arrayValue(member?.permissions),
     roles: arrayValue(session.roles) ?? [stringValue(user?.role) || 'workbench_user'],
-    scopes: ['plugin.invoke', 'plugin.read'],
+    scopes: options.scopes,
     sub: userId,
   });
 };
 
-export const buildWorkbenchAssertion = async (claims: Record<string, unknown>) => {
+export const resolveWorkbenchPrincipalClaims = (
+  session: AskCoreAssertionSessionRecord,
+  fullOrganization?: AskCoreAssertionSessionRecord,
+) =>
+  resolveAskCorePrincipalClaims(session, fullOrganization, {
+    scopes: ['plugin.invoke', 'plugin.read'],
+  });
+
+export const buildAskCoreAssertion = async (claims: Record<string, unknown>) => {
   const secret = process.env.BILLING_LOBEHUB_ASSERTION_SECRET?.trim();
   if (!secret) throw new Error('BILLING_LOBEHUB_ASSERTION_SECRET is not configured');
 
@@ -196,16 +292,28 @@ export const buildWorkbenchAssertion = async (claims: Record<string, unknown>) =
     .sign(new TextEncoder().encode(secret));
 };
 
-export const buildWorkbenchAssertionForHeaders = async (headers: Headers) => {
-  const authApi = await getAuthApi();
+export const buildWorkbenchAssertion = buildAskCoreAssertion;
+
+export const buildAskCoreAssertionForHeaders = async (
+  headers: Headers,
+  options: { scopes?: string[]; usePersistedActiveOrganization?: boolean } = {},
+) => {
+  const authApi = await getAskCoreAssertionAuthApi();
   const session = await authApi.getSession({ headers });
-  const fullOrganization = session ? await resolveFullOrganization(headers, session) : undefined;
-  const claims = session ? resolveWorkbenchPrincipalClaims(session, fullOrganization) : null;
+  const fullOrganization = session
+    ? await resolveFullOrganizationForHeaders(headers, session, {
+        usePersistedActiveOrganization: options.usePersistedActiveOrganization,
+      })
+    : undefined;
+  const claims = session ? resolveAskCorePrincipalClaims(session, fullOrganization, options) : null;
   if (!claims) return null;
 
   return {
-    assertion: await buildWorkbenchAssertion(claims),
+    assertion: await buildAskCoreAssertion(claims),
     claims,
-    headerName: process.env.ASKCORE_BILLING_ASSERTION_HEADER || DEFAULT_ASSERTION_HEADER,
+    headerName: askCoreAssertionHeaderName(),
   };
 };
+
+export const buildWorkbenchAssertionForHeaders = (headers: Headers) =>
+  buildAskCoreAssertionForHeaders(headers, { scopes: ['plugin.invoke', 'plugin.read'] });

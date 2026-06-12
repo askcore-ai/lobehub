@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { auth } from '@/auth';
 
-import { GET } from './route';
+import { GET, POST } from './route';
 
 vi.mock('@/auth', () => ({
   auth: {
@@ -46,6 +46,40 @@ describe('AskCore billing proxy route', () => {
     await expect(response.json()).resolves.toEqual({
       detail: 'LobeHub session is required for billing',
     });
+  });
+
+  it('rejects cross-origin billing writes before session lookup', async () => {
+    const response = await POST(
+      new NextRequest('https://askcore.cn/api/askcore/billing/checkout/subscription', {
+        body: JSON.stringify({ plan_id: 'pro' }),
+        headers: { origin: 'https://evil.example' },
+        method: 'POST',
+      }),
+      routeContext(['checkout', 'subscription']),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      detail: 'Cross-origin billing writes are not allowed',
+    });
+    expect(authApi.getSession).not.toHaveBeenCalled();
+  });
+
+  it('rejects browser cross-site billing writes when Origin is omitted', async () => {
+    const response = await POST(
+      new NextRequest('https://askcore.cn/api/askcore/billing/checkout/subscription', {
+        body: JSON.stringify({ plan_id: 'pro' }),
+        headers: { 'sec-fetch-site': 'cross-site' },
+        method: 'POST',
+      }),
+      routeContext(['checkout', 'subscription']),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      detail: 'Cross-origin billing writes are not allowed',
+    });
+    expect(authApi.getSession).not.toHaveBeenCalled();
   });
 
   it('signs a server assertion and forwards valid sessions to FastAPI', async () => {
@@ -103,6 +137,41 @@ describe('AskCore billing proxy route', () => {
     expect(payload.active_org_id).toBe('org-1');
     expect(payload.active_org_name).toBe('Seednov');
     expect(payload.organization_role).toBe('owner');
+  });
+
+  it('allows the public AskCore origin when the internal billing origin is a bind address', async () => {
+    vi.stubEnv('APP_URL', 'http://0.0.0.0:3210');
+    vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'test-lobehub-billing');
+    vi.stubEnv('AITUTOR_API_BASE_URL', 'http://api:8000');
+    authApi.getSession.mockResolvedValue({
+      session: { activeOrganizationId: 'org-1' },
+      user: { email: 'seednov@outlook.com', id: 'user-1' },
+    } as any);
+    authApi.getFullOrganization.mockResolvedValue({
+      id: 'org-1',
+      members: [{ role: 'owner', userId: 'user-1' }],
+      name: 'Seednov',
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await POST(
+      new NextRequest('http://0.0.0.0:3210/api/askcore/billing/checkout/subscription', {
+        body: JSON.stringify({ plan_id: 'pro' }),
+        headers: { origin: 'https://askcore.cn' },
+        method: 'POST',
+      }),
+      routeContext(['checkout', 'subscription']),
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('falls back to the only organization when the session has no active organization', async () => {

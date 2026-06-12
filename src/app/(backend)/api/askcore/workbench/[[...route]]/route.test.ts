@@ -70,6 +70,44 @@ describe('AskCore workbench proxy route', () => {
     });
   });
 
+  it('rejects cross-origin workbench writes before session lookup', async () => {
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      new NextRequest('https://askcore.cn/api/askcore/workbench/actions/submission.report.generate', {
+        body: JSON.stringify({ params: {} }),
+        headers: { origin: 'https://evil.example' },
+        method: 'POST',
+      }),
+      routeContext(['actions', 'submission.report.generate']),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      detail: 'Cross-origin workbench writes are not allowed',
+    });
+    expect(authApi.getSession).not.toHaveBeenCalled();
+  });
+
+  it('rejects browser cross-site writes even when Origin is omitted', async () => {
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      new NextRequest('https://askcore.cn/api/askcore/workbench/actions/submission.report.generate', {
+        body: JSON.stringify({ params: {} }),
+        headers: { 'sec-fetch-site': 'cross-site' },
+        method: 'POST',
+      }),
+      routeContext(['actions', 'submission.report.generate']),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      detail: 'Cross-origin workbench writes are not allowed',
+    });
+    expect(authApi.getSession).not.toHaveBeenCalled();
+  });
+
   it('signs a server assertion and forwards valid sessions to FastAPI', async () => {
     vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'test-lobehub-workbench');
     vi.stubEnv('AITUTOR_API_BASE_URL', 'http://api:8000');
@@ -137,6 +175,42 @@ describe('AskCore workbench proxy route', () => {
     expect(payload.active_org_name).toBe('AskCore School');
     expect(payload.organization_role).toBe('owner');
     expect(payload.scopes).toEqual(['plugin.invoke', 'plugin.read']);
+  });
+
+  it('allows the public AskCore origin when the internal workbench origin is a bind address', async () => {
+    vi.stubEnv('APP_URL', 'http://0.0.0.0:3210');
+    vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'test-lobehub-workbench');
+    vi.stubEnv('AITUTOR_API_BASE_URL', 'http://api:8000');
+    authApi.getSession.mockResolvedValue({
+      session: { activeOrganizationId: 'org-1' },
+      user: { email: 'teacher@askcore.cn', id: 'user-1' },
+    } as any);
+    authApi.getFullOrganization.mockResolvedValue({
+      id: 'org-1',
+      members: [{ role: 'owner', userId: 'user-1' }],
+      name: 'AskCore School',
+    });
+    const { POST } = await loadRoute();
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await POST(
+      new NextRequest('http://0.0.0.0:3210/api/askcore/workbench/actions/submission.report.generate', {
+        body: JSON.stringify({ params: { submission_id: 12 } }),
+        headers: { origin: 'https://askcore.cn' },
+        method: 'POST',
+      }),
+      routeContext(['actions', 'submission.report.generate']),
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('maps first-party action, invocation, and artifact routes to plugin authority paths', async () => {

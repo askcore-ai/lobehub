@@ -73,6 +73,25 @@ describe('AskCore organization route', () => {
     expect(response.status).toBe(401);
   });
 
+  it('rejects browser cross-site organization writes when Origin is omitted', async () => {
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      new NextRequest('https://askcore.cn/api/askcore/organizations/bootstrap', {
+        body: JSON.stringify({}),
+        headers: { 'sec-fetch-site': 'cross-site' },
+        method: 'POST',
+      }),
+      routeContext(['bootstrap']),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      detail: 'Cross-origin organization writes are not allowed',
+    });
+    expect(authApi.getSession).not.toHaveBeenCalled();
+  });
+
   it('bootstraps with an invite token', async () => {
     authApi.getSession.mockResolvedValue({ session: { id: 'session-1' }, user: { id: 'user-1' } });
     serviceMock.bootstrap.mockResolvedValue({ current: { id: 'org-1' } });
