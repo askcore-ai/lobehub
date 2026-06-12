@@ -65,6 +65,27 @@ describe('AskCore billing proxy route', () => {
     expect(authApi.getSession).not.toHaveBeenCalled();
   });
 
+  it('rejects billing writes with spoofed forwarded host origin', async () => {
+    const response = await POST(
+      new NextRequest('https://askcore.cn/api/askcore/billing/checkout/subscription', {
+        body: JSON.stringify({ plan_id: 'pro' }),
+        headers: {
+          origin: 'https://evil.example',
+          'x-forwarded-host': 'evil.example',
+          'x-forwarded-proto': 'https',
+        },
+        method: 'POST',
+      }),
+      routeContext(['checkout', 'subscription']),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      detail: 'Cross-origin billing writes are not allowed',
+    });
+    expect(authApi.getSession).not.toHaveBeenCalled();
+  });
+
   it('rejects browser cross-site billing writes when Origin is omitted', async () => {
     const response = await POST(
       new NextRequest('https://askcore.cn/api/askcore/billing/checkout/subscription', {

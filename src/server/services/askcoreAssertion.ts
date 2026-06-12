@@ -133,6 +133,17 @@ export const askCoreInvitePublicOrigin = (request: SameOriginRequest) =>
   normalizeAskCorePublicOrigin(request.headers.get('origin')) ??
   FALLBACK_PUBLIC_ORIGIN;
 
+const trustedAskCoreWriteOrigins = (request: SameOriginRequest) => {
+  const origins = new Set<string>();
+  origins.add(request.nextUrl.origin);
+
+  const appOrigin = normalizeAskCorePublicOrigin(process.env.APP_URL);
+  if (appOrigin) origins.add(appOrigin);
+  else origins.add(FALLBACK_PUBLIC_ORIGIN);
+
+  return origins;
+};
+
 export const isAllowedAskCoreSameOriginWrite = (request: SameOriginRequest) => {
   if (request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS') {
     return true;
@@ -144,8 +155,11 @@ export const isAllowedAskCoreSameOriginWrite = (request: SameOriginRequest) => {
 
   const requestOrigin = request.nextUrl.origin;
   const appOrigin = normalizeAskCorePublicOrigin(process.env.APP_URL) ?? requestOrigin;
-  const publicOrigin = askCorePublicRequestOrigin(request) ?? FALLBACK_PUBLIC_ORIGIN;
-  return origin === requestOrigin || origin === appOrigin || origin === publicOrigin;
+  return (
+    origin === requestOrigin ||
+    origin === appOrigin ||
+    trustedAskCoreWriteOrigins(request).has(origin)
+  );
 };
 
 const activeOrganizationIdFromSession = (session: AskCoreAssertionSessionRecord) => {

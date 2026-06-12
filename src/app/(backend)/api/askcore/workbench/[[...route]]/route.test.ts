@@ -89,6 +89,29 @@ describe('AskCore workbench proxy route', () => {
     expect(authApi.getSession).not.toHaveBeenCalled();
   });
 
+  it('rejects workbench writes with spoofed forwarded host origin', async () => {
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      new NextRequest('https://askcore.cn/api/askcore/workbench/actions/submission.report.generate', {
+        body: JSON.stringify({ params: {} }),
+        headers: {
+          origin: 'https://evil.example',
+          'x-forwarded-host': 'evil.example',
+          'x-forwarded-proto': 'https',
+        },
+        method: 'POST',
+      }),
+      routeContext(['actions', 'submission.report.generate']),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      detail: 'Cross-origin workbench writes are not allowed',
+    });
+    expect(authApi.getSession).not.toHaveBeenCalled();
+  });
+
   it('rejects browser cross-site writes even when Origin is omitted', async () => {
     const { POST } = await loadRoute();
 
