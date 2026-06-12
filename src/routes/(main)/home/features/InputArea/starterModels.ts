@@ -1,13 +1,14 @@
-import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
+import { ENABLE_BUSINESS_FEATURES, ENABLE_LOBEHUB_CLOUD_PROVIDER } from '@lobechat/business-const';
 
 import type { HomeNewModelItem } from '@/business/client/hooks/useHomeNewModels';
 
 // Chat
 export const NEW_MINIMAX_MODEL = 'MiniMax-M3';
-export const NEW_MINIMAX_PROVIDER = ENABLE_BUSINESS_FEATURES ? 'lobehub' : 'minimax';
+// AskCore business features do not imply LobeHub Cloud provider routing.
+export const NEW_MINIMAX_PROVIDER = ENABLE_LOBEHUB_CLOUD_PROVIDER ? 'lobehub' : 'minimax';
 export const NEW_MINIMAX_MODEL_NAME = 'MiniMax M3';
 export const NEW_CHAT_MODEL = 'gpt-5.5';
-export const NEW_CHAT_PROVIDER = ENABLE_BUSINESS_FEATURES ? 'lobehub' : 'openai';
+export const NEW_CHAT_PROVIDER = ENABLE_LOBEHUB_CLOUD_PROVIDER ? 'lobehub' : 'openai';
 export const NEW_CHAT_MODEL_NAME = 'GPT-5.5';
 
 // Image
