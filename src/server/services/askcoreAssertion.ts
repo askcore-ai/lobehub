@@ -28,6 +28,7 @@ const DEFAULT_ASSERTION_AUDIENCE = 'aitutor-billing';
 const DEFAULT_ASSERTION_HEADER = 'X-AskCore-Billing-Assertion';
 const DEFAULT_ASSERTION_TTL_SECONDS = 120;
 const FALLBACK_PUBLIC_ORIGIN = 'https://askcore.cn';
+const ASKCORE_ROUTE_SEGMENT_PATTERN = /^[A-Z0-9][\w.:-]*$/i;
 const LOCAL_BIND_HOSTS = new Set([
   '0.0.0.0',
   '::',
@@ -62,9 +63,8 @@ const getPersistedActiveOrganizationId = async (session: AskCoreAssertionSession
     .__ASKCORE_WORKBENCH_ROUTE_PERSISTED_ACTIVE_ORG_ID__;
   if (testResolver) return testResolver(session);
 
-  const { persistedActiveOrganizationIdFromSession } = await import(
-    '@/server/services/askcoreOrganization'
-  );
+  const { persistedActiveOrganizationIdFromSession } =
+    await import('@/server/services/askcoreOrganization');
   return persistedActiveOrganizationIdFromSession(session).catch(() => undefined);
 };
 
@@ -81,6 +81,23 @@ export const askCoreAssertionHeaderName = () =>
   process.env.ASKCORE_BILLING_ASSERTION_HEADER || DEFAULT_ASSERTION_HEADER;
 
 const firstHeaderValue = (value: string | null | undefined) => value?.split(',')[0]?.trim();
+
+const hasControlCharacter = (value: string) =>
+  [...value].some((char) => {
+    const code = char.charCodeAt(0);
+    return code < 32 || code === 127;
+  });
+
+const isValidAskCoreRouteSegment = (segment: string) => {
+  if (!segment || segment.length > 128) return false;
+  if (segment === '.' || segment === '..') return false;
+  if (segment.includes('/') || segment.includes('\\')) return false;
+  if (hasControlCharacter(segment)) return false;
+  return ASKCORE_ROUTE_SEGMENT_PATTERN.test(segment);
+};
+
+export const validateAskCoreRouteSegments = (route: string[]) =>
+  route.every((segment) => typeof segment === 'string' && isValidAskCoreRouteSegment(segment));
 
 const isLocalBindHostname = (hostname: string) => {
   const normalized = hostname.toLowerCase();
@@ -112,11 +129,16 @@ const originFromForwardedHost = (
 };
 
 type SameOriginRequest = {
+  body?: ReadableStream<Uint8Array> | null;
   headers: Headers;
   method: string;
   nextUrl: {
     origin: string;
   };
+};
+
+type AskCoreProxyBodyInit = RequestInit & {
+  duplex?: 'half';
 };
 
 export const askCorePublicRequestOrigin = (request: SameOriginRequest) =>
@@ -134,8 +156,7 @@ export const askCoreInvitePublicOrigin = (request: SameOriginRequest) =>
   FALLBACK_PUBLIC_ORIGIN;
 
 const trustedAskCoreWriteOrigins = (request: SameOriginRequest) => {
-  const origins = new Set<string>();
-  origins.add(request.nextUrl.origin);
+  const origins = new Set<string>([request.nextUrl.origin]);
 
   const appOrigin = normalizeAskCorePublicOrigin(process.env.APP_URL);
   if (appOrigin) origins.add(appOrigin);
@@ -160,6 +181,14 @@ export const isAllowedAskCoreSameOriginWrite = (request: SameOriginRequest) => {
     origin === appOrigin ||
     trustedAskCoreWriteOrigins(request).has(origin)
   );
+};
+
+export const askCoreProxyBodyInit = (request: SameOriginRequest): AskCoreProxyBodyInit => {
+  if (request.method === 'GET' || request.method === 'HEAD' || !request.body) return {};
+  return {
+    body: request.body,
+    duplex: 'half',
+  };
 };
 
 const activeOrganizationIdFromSession = (session: AskCoreAssertionSessionRecord) => {
@@ -228,7 +257,8 @@ export const resolveFullOrganizationForHeaders = async (
     options.usePersistedActiveOrganization === false
       ? undefined
       : await getPersistedActiveOrganizationId(session);
-  const activeOrganizationId = persistedActiveOrganizationId ?? activeOrganizationIdFromSession(session);
+  const activeOrganizationId =
+    persistedActiveOrganizationId ?? activeOrganizationIdFromSession(session);
   if (activeOrganizationId) {
     const fullOrganization = await getFullOrganization(headers, activeOrganizationId);
     if (fullOrganization) return fullOrganization;
@@ -253,7 +283,9 @@ export const resolveAskCorePrincipalClaims = (
   if (!userId || !email) return null;
 
   const organization =
-    fullOrganization ?? recordValue(session.organization) ?? recordValue(session.activeOrganization);
+    fullOrganization ??
+    recordValue(session.organization) ??
+    recordValue(session.activeOrganization);
   const member =
     recordValue(session.member) ??
     recordValue(session.activeMember) ??

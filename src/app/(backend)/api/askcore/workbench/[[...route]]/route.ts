@@ -1,13 +1,15 @@
 import { type NextRequest, NextResponse } from 'next/server';
 
 import {
-  type AskCoreAssertionSessionRecord,
   askCoreAssertionHeaderName,
+  type AskCoreAssertionSessionRecord,
+  askCoreProxyBodyInit,
   buildWorkbenchAssertion,
   getAskCoreAssertionAuthApi,
   isAllowedAskCoreSameOriginWrite,
   resolveFullOrganizationForHeaders,
   resolveWorkbenchPrincipalClaims,
+  validateAskCoreRouteSegments,
 } from '@/server/services/askcoreAssertion';
 
 type RouteContext = {
@@ -93,13 +95,16 @@ const forwardWorkbenchRequest = async (request: NextRequest, context: RouteConte
       status: 204,
     });
   }
+  const { route = [] } = await context.params;
+  if (!validateAskCoreRouteSegments(route)) {
+    return jsonError(400, 'Invalid AskCore route segment');
+  }
   if (!isAllowedAskCoreSameOriginWrite(request)) {
     return jsonError(403, 'Cross-origin workbench writes are not allowed');
   }
 
   const authApi = await getAskCoreAssertionAuthApi();
   const session = await authApi.getSession({ headers: request.headers });
-  const { route = [] } = await context.params;
   let fullOrganization = session
     ? await resolveFullOrganizationForHeaders(request.headers, session)
     : undefined;
@@ -137,13 +142,12 @@ const forwardWorkbenchRequest = async (request: NextRequest, context: RouteConte
   if (accept) headers.set('accept', accept);
   if (acceptLanguage) headers.set('accept-language', acceptLanguage);
 
-  const body =
-    request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.arrayBuffer();
+  const bodyInit = askCoreProxyBodyInit(request);
 
   let upstream: Response;
   try {
     upstream = await fetch(target, {
-      body,
+      ...bodyInit,
       cache: 'no-store',
       headers,
       method: request.method,

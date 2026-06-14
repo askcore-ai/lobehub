@@ -49,8 +49,10 @@ describe('AskCore workbench proxy route', () => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     delete (globalThis as Record<string, unknown>).__ASKCORE_WORKBENCH_ROUTE_AUTH__;
-    delete (globalThis as Record<string, unknown>).__ASKCORE_WORKBENCH_ROUTE_BOOTSTRAP_ORGANIZATION__;
-    delete (globalThis as Record<string, unknown>).__ASKCORE_WORKBENCH_ROUTE_PERSISTED_ACTIVE_ORG_ID__;
+    delete (globalThis as Record<string, unknown>)
+      .__ASKCORE_WORKBENCH_ROUTE_BOOTSTRAP_ORGANIZATION__;
+    delete (globalThis as Record<string, unknown>)
+      .__ASKCORE_WORKBENCH_ROUTE_PERSISTED_ACTIVE_ORG_ID__;
     askCoreOrganizationMock.bootstrapOrganizationForSession.mockResolvedValue(undefined);
     askCoreOrganizationMock.persistedActiveOrganizationIdFromSession.mockResolvedValue(undefined);
   });
@@ -74,11 +76,14 @@ describe('AskCore workbench proxy route', () => {
     const { POST } = await loadRoute();
 
     const response = await POST(
-      new NextRequest('https://askcore.cn/api/askcore/workbench/actions/submission.report.generate', {
-        body: JSON.stringify({ params: {} }),
-        headers: { origin: 'https://evil.example' },
-        method: 'POST',
-      }),
+      new NextRequest(
+        'https://askcore.cn/api/askcore/workbench/actions/submission.report.generate',
+        {
+          body: JSON.stringify({ params: {} }),
+          headers: { origin: 'https://evil.example' },
+          method: 'POST',
+        },
+      ),
       routeContext(['actions', 'submission.report.generate']),
     );
 
@@ -93,15 +98,18 @@ describe('AskCore workbench proxy route', () => {
     const { POST } = await loadRoute();
 
     const response = await POST(
-      new NextRequest('https://askcore.cn/api/askcore/workbench/actions/submission.report.generate', {
-        body: JSON.stringify({ params: {} }),
-        headers: {
-          origin: 'https://evil.example',
-          'x-forwarded-host': 'evil.example',
-          'x-forwarded-proto': 'https',
+      new NextRequest(
+        'https://askcore.cn/api/askcore/workbench/actions/submission.report.generate',
+        {
+          body: JSON.stringify({ params: {} }),
+          headers: {
+            'origin': 'https://evil.example',
+            'x-forwarded-host': 'evil.example',
+            'x-forwarded-proto': 'https',
+          },
+          method: 'POST',
         },
-        method: 'POST',
-      }),
+      ),
       routeContext(['actions', 'submission.report.generate']),
     );
 
@@ -116,17 +124,37 @@ describe('AskCore workbench proxy route', () => {
     const { POST } = await loadRoute();
 
     const response = await POST(
-      new NextRequest('https://askcore.cn/api/askcore/workbench/actions/submission.report.generate', {
-        body: JSON.stringify({ params: {} }),
-        headers: { 'sec-fetch-site': 'cross-site' },
-        method: 'POST',
-      }),
+      new NextRequest(
+        'https://askcore.cn/api/askcore/workbench/actions/submission.report.generate',
+        {
+          body: JSON.stringify({ params: {} }),
+          headers: { 'sec-fetch-site': 'cross-site' },
+          method: 'POST',
+        },
+      ),
       routeContext(['actions', 'submission.report.generate']),
     );
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       detail: 'Cross-origin workbench writes are not allowed',
+    });
+    expect(authApi.getSession).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid workbench route segments before session lookup', async () => {
+    const { GET } = await loadRoute();
+
+    const response = await GET(
+      new NextRequest(
+        'https://askcore.cn/api/askcore/workbench/actions/submission.report.generate',
+      ),
+      routeContext(['actions', 'submission.report.generate\n']),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      detail: 'Invalid AskCore route segment',
     });
     expect(authApi.getSession).not.toHaveBeenCalled();
   });
@@ -223,28 +251,36 @@ describe('AskCore workbench proxy route', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const response = await POST(
-      new NextRequest('http://0.0.0.0:3210/api/askcore/workbench/actions/submission.report.generate', {
+    const request = new NextRequest(
+      'http://0.0.0.0:3210/api/askcore/workbench/actions/submission.report.generate',
+      {
         body: JSON.stringify({ params: { submission_id: 12 } }),
-        headers: { origin: 'https://askcore.cn' },
+        headers: { 'content-type': 'application/json', 'origin': 'https://askcore.cn' },
         method: 'POST',
-      }),
-      routeContext(['actions', 'submission.report.generate']),
+      },
     );
+    const arrayBufferSpy = vi.spyOn(request, 'arrayBuffer');
+
+    const response = await POST(request, routeContext(['actions', 'submission.report.generate']));
 
     expect(response.status).toBe(200);
+    expect(arrayBufferSpy).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit & { duplex?: string }];
+    expect(init.body).toBe(request.body);
+    expect(init.duplex).toBe('half');
+    expect((init.headers as Headers).get('content-type')).toBe('application/json');
   });
 
   it('maps first-party action, invocation, and artifact routes to plugin authority paths', async () => {
     const { buildWorkbenchAuthorityUrl } = await loadRoute();
-    const request = new NextRequest('https://askcore.cn/api/askcore/workbench/actions/submission.report.generate');
+    const request = new NextRequest(
+      'https://askcore.cn/api/askcore/workbench/actions/submission.report.generate',
+    );
 
     expect(
       buildWorkbenchAuthorityUrl(request, ['actions', 'submission.report.generate']).toString(),
-    ).toBe(
-      'http://api:8000/api/lobe/plugins/v1/aitutor-suite/actions/submission.report.generate',
-    );
+    ).toBe('http://api:8000/api/lobe/plugins/v1/aitutor-suite/actions/submission.report.generate');
     expect(
       buildWorkbenchAuthorityUrl(request, ['invocations', 'inv-1', 'artifacts']).toString(),
     ).toBe('http://api:8000/api/lobe/plugins/v1/invocations/inv-1/artifacts');
@@ -253,9 +289,7 @@ describe('AskCore workbench proxy route', () => {
     );
     expect(
       buildWorkbenchAuthorityUrl(request, ['submissions', 'reports', 'download']).toString(),
-    ).toBe(
-      'http://api:8000/api/lobe/plugins/v1/aitutor-suite/ui/submissions/reports/download',
-    );
+    ).toBe('http://api:8000/api/lobe/plugins/v1/aitutor-suite/ui/submissions/reports/download');
   });
 
   it('falls back to the only organization when the session has no active organization', async () => {

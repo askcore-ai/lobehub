@@ -1,13 +1,14 @@
 import { type NextRequest, NextResponse } from 'next/server';
 
+import {
+  askCoreInvitePublicOrigin,
+  isAllowedAskCoreSameOriginWrite,
+  validateAskCoreRouteSegments,
+} from '@/server/services/askcoreAssertion';
 import type {
   AskCoreOrganizationRole,
   AskCoreSessionRecord,
 } from '@/server/services/askcoreOrganization';
-import {
-  askCoreInvitePublicOrigin,
-  isAllowedAskCoreSameOriginWrite,
-} from '@/server/services/askcoreAssertion';
 
 type RouteContext = {
   params: Promise<{
@@ -57,18 +58,65 @@ type AskCoreOrganizationRouteTestGlobal = typeof globalThis & {
   __ASKCORE_ORGANIZATION_ROUTE_AUTH__?: AskCoreOrganizationRouteAuth;
   __ASKCORE_ORGANIZATION_ROUTE_SERVICE__?:
     | AskCoreOrganizationRouteService
-    | ((origin: string) => AskCoreOrganizationRouteService | Promise<AskCoreOrganizationRouteService>);
+    | ((
+        origin: string,
+      ) => AskCoreOrganizationRouteService | Promise<AskCoreOrganizationRouteService>);
 };
 
 const ALLOWED_METHODS = ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'];
+const MAX_ORGANIZATION_JSON_BODY_BYTES = 64 * 1024;
 
 const jsonError = (status: number, detail: string) => NextResponse.json({ detail }, { status });
 
+class AskCoreOrganizationBodyError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'AskCoreOrganizationBodyError';
+    this.status = status;
+  }
+}
+
+const oversizedBodyError = () =>
+  new AskCoreOrganizationBodyError(
+    413,
+    `Organization request body exceeds ${MAX_ORGANIZATION_JSON_BODY_BYTES} bytes`,
+  );
+
+const readRequestText = async (request: NextRequest) => {
+  const contentLength = Number(request.headers.get('content-length') || '');
+  if (Number.isFinite(contentLength) && contentLength > MAX_ORGANIZATION_JSON_BODY_BYTES) {
+    throw oversizedBodyError();
+  }
+  if (!request.body) return '';
+
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  let text = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > MAX_ORGANIZATION_JSON_BODY_BYTES) {
+      throw oversizedBodyError();
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+
+  return text + decoder.decode();
+};
+
 const readJsonBody = async (request: NextRequest): Promise<Record<string, unknown>> => {
   try {
-    const payload = await request.json();
+    const rawBody = await readRequestText(request);
+    if (!rawBody.trim()) return {};
+    const payload = JSON.parse(rawBody);
     return payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
-  } catch {
+  } catch (error) {
+    if (error instanceof AskCoreOrganizationBodyError) throw error;
     return {};
   }
 };
@@ -97,7 +145,11 @@ const getOrganizationService = async (origin: string) => {
 const organizationError = (error: unknown): { message: string; status: number } | undefined => {
   if (!error || typeof error !== 'object') return undefined;
   const maybe = error as { message?: unknown; name?: unknown; status?: unknown };
-  if (maybe.name !== 'AskCoreOrganizationError' || typeof maybe.status !== 'number') return undefined;
+  if (
+    !['AskCoreOrganizationBodyError', 'AskCoreOrganizationError'].includes(String(maybe.name)) ||
+    typeof maybe.status !== 'number'
+  )
+    return undefined;
   return {
     message: typeof maybe.message === 'string' ? maybe.message : 'Organization service failed',
     status: maybe.status,
@@ -117,6 +169,10 @@ const handleOrganizationRequest = async (request: NextRequest, context: RouteCon
       status: 204,
     });
   }
+  const { route = [] } = await context.params;
+  if (!validateAskCoreRouteSegments(route)) {
+    return jsonError(400, 'Invalid AskCore route segment');
+  }
   if (!isAllowedAskCoreSameOriginWrite(request)) {
     return jsonError(403, 'Cross-origin organization writes are not allowed');
   }
@@ -124,14 +180,15 @@ const handleOrganizationRequest = async (request: NextRequest, context: RouteCon
   const session = await getSession(request);
   if (!session) return jsonError(401, 'LobeHub session is required');
 
-  const { route = [] } = await context.params;
   const service = await getOrganizationService(askCoreInvitePublicOrigin(request));
 
   try {
     if (route.length === 0) {
       if (request.method === 'GET') return NextResponse.json(await service.list(session));
       if (request.method === 'POST') {
-        return NextResponse.json(await service.createOrganization(session, await readJsonBody(request)));
+        return NextResponse.json(
+          await service.createOrganization(session, await readJsonBody(request)),
+        );
       }
     }
 
@@ -152,7 +209,9 @@ const handleOrganizationRequest = async (request: NextRequest, context: RouteCon
     if (!segment) return jsonError(404, 'Organization route not found');
 
     if (route.length === 1 && request.method === 'PATCH') {
-      return NextResponse.json(await service.updateOrganization(session, segment, await readJsonBody(request)));
+      return NextResponse.json(
+        await service.updateOrganization(session, segment, await readJsonBody(request)),
+      );
     }
 
     if (route.length === 2 && subresource === 'members' && request.method === 'GET') {
@@ -160,7 +219,9 @@ const handleOrganizationRequest = async (request: NextRequest, context: RouteCon
     }
 
     if (route.length === 2 && subresource === 'invites' && request.method === 'POST') {
-      return NextResponse.json(await service.createInvite(session, segment, await readJsonBody(request)));
+      return NextResponse.json(
+        await service.createInvite(session, segment, await readJsonBody(request)),
+      );
     }
 
     if (segment && subresource === 'members' && entityId) {

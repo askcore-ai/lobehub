@@ -2,8 +2,10 @@ import { type NextRequest, NextResponse } from 'next/server';
 
 import {
   askCoreAssertionHeaderName,
+  askCoreProxyBodyInit,
   buildAskCoreAssertionForHeaders,
   isAllowedAskCoreSameOriginWrite,
+  validateAskCoreRouteSegments,
 } from '@/server/services/askcoreAssertion';
 
 type RouteContext = {
@@ -41,6 +43,10 @@ const forwardBillingRequest = async (request: NextRequest, context: RouteContext
       status: 204,
     });
   }
+  const { route = [] } = await context.params;
+  if (!validateAskCoreRouteSegments(route)) {
+    return jsonError(400, 'Invalid AskCore route segment');
+  }
   if (!isAllowedAskCoreSameOriginWrite(request)) {
     return jsonError(403, 'Cross-origin billing writes are not allowed');
   }
@@ -58,7 +64,6 @@ const forwardBillingRequest = async (request: NextRequest, context: RouteContext
   }
   if (!assertionResult) return jsonError(401, 'LobeHub session is required for billing');
 
-  const { route = [] } = await context.params;
   const target = buildBillingAuthorityUrl(request, route);
   const headers = new Headers();
   headers.set(askCoreAssertionHeaderName(), assertionResult.assertion);
@@ -70,13 +75,12 @@ const forwardBillingRequest = async (request: NextRequest, context: RouteContext
   if (accept) headers.set('accept', accept);
   if (acceptLanguage) headers.set('accept-language', acceptLanguage);
 
-  const body =
-    request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.arrayBuffer();
+  const bodyInit = askCoreProxyBodyInit(request);
 
   let upstream: Response;
   try {
     upstream = await fetch(target, {
-      body,
+      ...bodyInit,
       cache: 'no-store',
       headers,
       method: request.method,

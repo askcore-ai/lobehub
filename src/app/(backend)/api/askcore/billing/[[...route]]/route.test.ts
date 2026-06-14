@@ -70,7 +70,7 @@ describe('AskCore billing proxy route', () => {
       new NextRequest('https://askcore.cn/api/askcore/billing/checkout/subscription', {
         body: JSON.stringify({ plan_id: 'pro' }),
         headers: {
-          origin: 'https://evil.example',
+          'origin': 'https://evil.example',
           'x-forwarded-host': 'evil.example',
           'x-forwarded-proto': 'https',
         },
@@ -99,6 +99,19 @@ describe('AskCore billing proxy route', () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       detail: 'Cross-origin billing writes are not allowed',
+    });
+    expect(authApi.getSession).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid billing route segments before session lookup', async () => {
+    const response = await GET(
+      new NextRequest('https://askcore.cn/api/askcore/billing/payments/pay%0Ament'),
+      routeContext(['payments', 'pay\nment']),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      detail: 'Invalid AskCore route segment',
     });
     expect(authApi.getSession).not.toHaveBeenCalled();
   });
@@ -182,17 +195,25 @@ describe('AskCore billing proxy route', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const response = await POST(
-      new NextRequest('http://0.0.0.0:3210/api/askcore/billing/checkout/subscription', {
+    const request = new NextRequest(
+      'http://0.0.0.0:3210/api/askcore/billing/checkout/subscription',
+      {
         body: JSON.stringify({ plan_id: 'pro' }),
-        headers: { origin: 'https://askcore.cn' },
+        headers: { 'content-type': 'application/json', 'origin': 'https://askcore.cn' },
         method: 'POST',
-      }),
-      routeContext(['checkout', 'subscription']),
+      },
     );
+    const arrayBufferSpy = vi.spyOn(request, 'arrayBuffer');
+
+    const response = await POST(request, routeContext(['checkout', 'subscription']));
 
     expect(response.status).toBe(200);
+    expect(arrayBufferSpy).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit & { duplex?: string }];
+    expect(init.body).toBe(request.body);
+    expect(init.duplex).toBe('half');
+    expect((init.headers as Headers).get('content-type')).toBe('application/json');
   });
 
   it('falls back to the only organization when the session has no active organization', async () => {

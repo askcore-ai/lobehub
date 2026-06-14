@@ -92,6 +92,21 @@ describe('AskCore organization route', () => {
     expect(authApi.getSession).not.toHaveBeenCalled();
   });
 
+  it('rejects invalid organization route segments before session lookup', async () => {
+    const { GET } = await loadRoute();
+
+    const response = await GET(
+      new NextRequest('https://askcore.cn/api/askcore/organizations/org%0A1'),
+      routeContext(['org\n1']),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      detail: 'Invalid AskCore route segment',
+    });
+    expect(authApi.getSession).not.toHaveBeenCalled();
+  });
+
   it('bootstraps with an invite token', async () => {
     authApi.getSession.mockResolvedValue({ session: { id: 'session-1' }, user: { id: 'user-1' } });
     serviceMock.bootstrap.mockResolvedValue({ current: { id: 'org-1' } });
@@ -155,13 +170,32 @@ describe('AskCore organization route', () => {
     );
   });
 
+  it('rejects oversized organization write bodies before dispatching to the service', async () => {
+    authApi.getSession.mockResolvedValue({ session: { id: 'session-1' }, user: { id: 'user-1' } });
+    serviceMock.setActive.mockResolvedValue({ current: { id: 'org-1' } });
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      new NextRequest('https://askcore.cn/api/askcore/organizations/active', {
+        body: JSON.stringify({ organization_id: 'org-1', padding: 'x'.repeat(70 * 1024) }),
+        method: 'POST',
+      }),
+      routeContext(['active']),
+    );
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({
+      detail: 'Organization request body exceeds 65536 bytes',
+    });
+    expect(serviceMock.setActive).not.toHaveBeenCalled();
+  });
+
   it('uses the public proxy origin for invite link generation', async () => {
     authApi.getSession.mockResolvedValue({ session: { id: 'session-1' }, user: { id: 'user-1' } });
     serviceMock.createInvite.mockResolvedValue({ link: 'https://askcore.cn/join/organization/t' });
     vi.stubEnv('APP_URL', 'http://0.0.0.0:3210');
     const serviceFactory = vi.fn(() => serviceMock);
-    (globalThis as Record<string, unknown>).__ASKCORE_ORGANIZATION_ROUTE_SERVICE__ =
-      serviceFactory;
+    (globalThis as Record<string, unknown>).__ASKCORE_ORGANIZATION_ROUTE_SERVICE__ = serviceFactory;
     const { POST } = await loadRoute();
 
     const response = await POST(
@@ -185,8 +219,7 @@ describe('AskCore organization route', () => {
     serviceMock.createInvite.mockResolvedValue({ link: 'https://askcore.cn/join/organization/t' });
     vi.stubEnv('APP_URL', 'http://0.0.0.0:3210');
     const serviceFactory = vi.fn(() => serviceMock);
-    (globalThis as Record<string, unknown>).__ASKCORE_ORGANIZATION_ROUTE_SERVICE__ =
-      serviceFactory;
+    (globalThis as Record<string, unknown>).__ASKCORE_ORGANIZATION_ROUTE_SERVICE__ = serviceFactory;
     const { POST } = await loadRoute();
 
     const response = await POST(
