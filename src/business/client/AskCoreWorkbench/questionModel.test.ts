@@ -32,11 +32,39 @@ describe('AskCoreWorkbench questionModel', () => {
 
     const model = deserializeQuestionPayload(payload);
 
-    expect(model.questionType).toBe('single_choice');
+    expect(model.questionType).toBe('选择题');
+    expect(model.schemaRef).toBe('choice_question');
     expect(model.stem).toBe('已知函数 $f(x)=x^2+1$。');
     expect(model.options).toHaveLength(2);
     expect(model.answerText).toBe('A');
     expect(model.thinking).toBe('顶点在 $x=0$。');
+  });
+
+  it('deserializes P41 Gaokao payloads from content_markdown fields', () => {
+    const model = deserializeQuestionPayload({
+      answer: {
+        raw_markdown: 'A',
+        version: 'question.answer@gaokao.v1',
+      },
+      content: {
+        assets: [],
+        content_markdown: '已知函数 $f(x)=x^2+1$，则 $f(1)=$( )',
+        options: [
+          { content_markdown: '$1$', label: 'A' },
+          { content_markdown: '$2$', label: 'B' },
+        ],
+        schema_ref: 'choice_question',
+        subquestions: [],
+        version: 'question.content@gaokao.v1',
+      },
+      question_type: '选择题',
+    });
+
+    expect(model.questionType).toBe('选择题');
+    expect(model.schemaRef).toBe('choice_question');
+    expect(model.stem).toBe('已知函数 $f(x)=x^2+1$，则 $f(1)=$( )');
+    expect(model.options[0]).toMatchObject({ content: '$1$', label: 'A' });
+    expect(model.answerText).toBe('A');
   });
 
   it('serializes sub-question edits without losing answers or thinking', () => {
@@ -48,7 +76,8 @@ describe('AskCoreWorkbench questionModel', () => {
       knowledgePoints: ['函数'],
       options: [],
       points: '',
-      questionType: 'problem_solving',
+      questionType: '解答题',
+      schemaRef: 'constructed_response_question',
       stem: '阅读材料并回答问题。',
       subjectId: '1',
       subQuestions: [
@@ -64,12 +93,14 @@ describe('AskCoreWorkbench questionModel', () => {
     });
 
     expect(payload.content).toMatchObject({
-      sub_questions: [{ id: 'sq1', points: 3 }],
-      version: 'question.content@v1',
+      schema_ref: 'constructed_response_question',
+      subquestions: [{ id: 'sq1', score: 3 }],
+      version: 'question.content@gaokao.v1',
     });
     expect(payload.answer).toMatchObject({
-      sub_answers: [{ sub_question_id: 'sq1', value: { text: '$1$' } }],
-      version: 'question.answer@v1',
+      raw_markdown: '$1$',
+      subanswers: [{ answer_markdown: '$1$', subquestion_id: 'sq1' }],
+      version: 'question.answer@gaokao.v1',
     });
     expect(payload.thinking).toMatchObject({
       sub_thinking: [{ sub_question_id: 'sq1', text: '代入即可。' }],

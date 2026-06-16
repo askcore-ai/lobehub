@@ -1,9 +1,11 @@
 'use client';
 
 import {
-  type JsonRecord,
-  type ResourceKey,
-} from './types';
+  createEmptyQuestionForm,
+  deserializeQuestionPayload,
+  serializeQuestionForm,
+} from './questionModel';
+import { type JsonRecord, type ResourceKey } from './types';
 
 export type FieldKind =
   | 'boolean'
@@ -120,9 +122,7 @@ export const mergeResourceItems = (
   const idKey = getResourceIdKey(resource);
   const merged = [...current];
   const seen = new Set(
-    current
-      .map((item) => Number(item[idKey] || item.id || 0) || 0)
-      .filter((value) => value > 0),
+    current.map((item) => Number(item[idKey] || item.id || 0) || 0).filter((value) => value > 0),
   );
 
   incoming.forEach((item) => {
@@ -139,37 +139,37 @@ export const RESOURCE_LABELS: Record<
   ResourceKey,
   { description: string; label: string; singular: string }
 > = {
-  assignments: {
+  'assignments': {
     description: '作业列表承接草稿入口、详情、发布对象与后续维护。',
     label: '作业',
     singular: '作业',
   },
-  classes: {
+  'classes': {
     description: '班级列表支持学校和教学年级筛选，并展示推导出的教学年级标签。',
     label: '班级',
     singular: '班级',
   },
-  grades: {
+  'grades': {
     description: '教学年级页支持学段筛选、导入和批量删除。',
     label: '教学年级',
     singular: '教学年级',
   },
-  questions: {
+  'questions': {
     description: '题目页提供结构化题干、答案和解析编辑。',
     label: '题目',
     singular: '题目',
   },
-  schools: {
+  'schools': {
     description: '学校信息支持直接 CRUD、导入和批量清理。',
     label: '学校',
     singular: '学校',
   },
-  students: {
+  'students': {
     description: '学生页保留列表、详情、编辑、导入和批量删除。',
     label: '学生',
     singular: '学生',
   },
-  subjects: {
+  'subjects': {
     description: '科目页支持分类筛选、导入和批量删除。',
     label: '科目',
     singular: '科目',
@@ -179,12 +179,12 @@ export const RESOURCE_LABELS: Record<
     label: '提交题目',
     singular: '提交题目',
   },
-  submissions: {
+  'submissions': {
     description: '提交记录提供详情聚合、原图预览和题目结果。',
     label: '提交',
     singular: '提交',
   },
-  teachers: {
+  'teachers': {
     description: '教师页支持完整 CRUD 与导入。',
     label: '教师',
     singular: '教师',
@@ -192,51 +192,74 @@ export const RESOURCE_LABELS: Record<
 };
 
 export const RESOURCE_FILTER_FIELDS: Record<ResourceKey, FieldDefinition[]> = {
-  assignments: [
+  'assignments': [
     { key: 'query', kind: 'text', label: '标题搜索', placeholder: '输入作业标题关键字' },
     { key: 'subject_id', kind: 'select', label: '科目', numeric: true, optionsFrom: 'subjects' },
     { key: 'grade_id', kind: 'select', label: '教学年级', numeric: true, optionsFrom: 'grades' },
   ],
-  classes: [
+  'classes': [
     { key: 'school_id', kind: 'select', label: '学校', numeric: true, optionsFrom: 'schools' },
     { key: 'grade', kind: 'text', label: '教学年级筛选', placeholder: '如 高一 / 七年级' },
   ],
-  grades: [{ key: 'education_level', kind: 'text', label: '学段', placeholder: '小学 / 初中 / 高中' }],
-  questions: [
+  'grades': [
+    { key: 'education_level', kind: 'text', label: '学段', placeholder: '小学 / 初中 / 高中' },
+  ],
+  'questions': [
     { key: 'subject_id', kind: 'select', label: '科目', numeric: true, optionsFrom: 'subjects' },
     { key: 'grade_id', kind: 'select', label: '教学年级', numeric: true, optionsFrom: 'grades' },
-    { key: 'question_type', kind: 'text', label: '题型', placeholder: 'single_choice / problem_solving' },
+    { key: 'question_type', kind: 'text', label: '题型', placeholder: '选择题 / 填空题 / 解答题' },
   ],
-  schools: [
+  'schools': [
     { key: 'province', kind: 'text', label: '省份', placeholder: '输入省份' },
     { key: 'city', kind: 'text', label: '城市', placeholder: '输入城市' },
   ],
-  students: [
+  'students': [
     { key: 'org_unit_id', kind: 'select', label: '班级', numeric: true, optionsFrom: 'classes' },
   ],
-  subjects: [{ key: 'subject_category', kind: 'text', label: '科目分类', placeholder: 'core / elective' }],
+  'subjects': [
+    { key: 'subject_category', kind: 'text', label: '科目分类', placeholder: 'core / elective' },
+  ],
   'submission-questions': [
     { key: 'submission_id', kind: 'number', label: '提交 ID' },
     { key: 'question_id', kind: 'number', label: '题目 ID' },
   ],
-  submissions: [
+  'submissions': [
     { key: 'assignment_id', kind: 'number', label: '作业 ID' },
     { key: 'org_unit_id', kind: 'select', label: '班级', numeric: true, optionsFrom: 'classes' },
     { key: 'student_id', kind: 'select', label: '学生', numeric: true, optionsFrom: 'students' },
     { key: 'grade_id', kind: 'select', label: '教学年级', numeric: true, optionsFrom: 'grades' },
     { key: 'subject_id', kind: 'select', label: '科目', numeric: true, optionsFrom: 'subjects' },
-    { key: 'status', kind: 'text', label: '状态', placeholder: 'submitted / graded / needs_binding' },
+    {
+      key: 'status',
+      kind: 'text',
+      label: '状态',
+      placeholder: 'submitted / graded / needs_binding',
+    },
   ],
-  teachers: [
+  'teachers': [
     { key: 'role', kind: 'text', label: '角色', placeholder: 'TEACHER / ADMIN / PRINCIPAL' },
   ],
 };
 
 export const RESOURCE_FORM_FIELDS: Record<EditableResourceKey, FieldDefinition[]> = {
-  assignments: [
+  'assignments': [
     { key: 'title', kind: 'text', label: '标题', required: true },
-    { key: 'subject_id', kind: 'select', label: '科目', numeric: true, optionsFrom: 'subjects', required: true },
-    { key: 'grade_id', kind: 'select', label: '教学年级', numeric: true, optionsFrom: 'grades', required: true },
+    {
+      key: 'subject_id',
+      kind: 'select',
+      label: '科目',
+      numeric: true,
+      optionsFrom: 'subjects',
+      required: true,
+    },
+    {
+      key: 'grade_id',
+      kind: 'select',
+      label: '教学年级',
+      numeric: true,
+      optionsFrom: 'grades',
+      required: true,
+    },
     {
       key: 'creation_type',
       kind: 'select',
@@ -250,7 +273,7 @@ export const RESOURCE_FORM_FIELDS: Record<EditableResourceKey, FieldDefinition[]
     { key: 'due_date', kind: 'datetime', label: '截止时间' },
     { key: 'file_keys', kind: 'tags', label: '文件键', placeholder: 'uploads/org-id/scan/...' },
   ],
-  classes: [
+  'classes': [
     { key: 'name', kind: 'text', label: '班级名称', required: true },
     { key: 'school_id', kind: 'select', label: '学校', numeric: true, optionsFrom: 'schools' },
     { key: 'admission_year', kind: 'number', label: '入学年份', required: true },
@@ -266,7 +289,7 @@ export const RESOURCE_FORM_FIELDS: Record<EditableResourceKey, FieldDefinition[]
       ],
     },
   ],
-  grades: [
+  'grades': [
     { key: 'name', kind: 'text', label: '教学年级名称', required: true },
     {
       key: 'education_level',
@@ -291,7 +314,7 @@ export const RESOURCE_FORM_FIELDS: Record<EditableResourceKey, FieldDefinition[]
       required: true,
     },
   ],
-  questions: [
+  'questions': [
     { key: 'content', kind: 'textarea', label: '题干', required: true, rows: 5 },
     { key: 'question_type', kind: 'text', label: '题型', required: true },
     { key: 'subject_id', kind: 'select', label: '科目', numeric: true, optionsFrom: 'subjects' },
@@ -301,7 +324,7 @@ export const RESOURCE_FORM_FIELDS: Record<EditableResourceKey, FieldDefinition[]
     { key: 'explanation', kind: 'textarea', label: '解析', rows: 4 },
     { key: 'knowledge_points', kind: 'tags', label: '知识点' },
   ],
-  schools: [
+  'schools': [
     { key: 'name', kind: 'text', label: '学校名称', required: true },
     { key: 'province', kind: 'text', label: '省份', required: true },
     { key: 'city', kind: 'text', label: '城市', required: true },
@@ -310,7 +333,7 @@ export const RESOURCE_FORM_FIELDS: Record<EditableResourceKey, FieldDefinition[]
     { key: 'contact_email', kind: 'text', label: '联系邮箱' },
     { key: 'tags', kind: 'tags', label: '标签' },
   ],
-  students: [
+  'students': [
     { key: 'student_number', kind: 'text', label: '学号', required: true },
     { key: 'name', kind: 'text', label: '姓名', required: true },
     { key: 'org_unit_id', kind: 'select', label: '班级', numeric: true, optionsFrom: 'classes' },
@@ -325,7 +348,7 @@ export const RESOURCE_FORM_FIELDS: Record<EditableResourceKey, FieldDefinition[]
       ],
     },
   ],
-  subjects: [
+  'subjects': [
     { key: 'name', kind: 'text', label: '科目名称', required: true },
     {
       key: 'is_core_subject',
@@ -358,7 +381,7 @@ export const RESOURCE_FORM_FIELDS: Record<EditableResourceKey, FieldDefinition[]
     },
     { key: 'feedback', kind: 'textarea', label: '反馈', rows: 4 },
   ],
-  submissions: [
+  'submissions': [
     { key: 'assignment_id', kind: 'number', label: '作业 ID' },
     { key: 'assignment_student_id', kind: 'number', label: '作业学生 ID' },
     { key: 'status', kind: 'text', label: '状态', required: true },
@@ -371,7 +394,7 @@ export const RESOURCE_FORM_FIELDS: Record<EditableResourceKey, FieldDefinition[]
     { key: 'graded_at', kind: 'datetime', label: '批改时间' },
     { key: 'graded_by', kind: 'text', label: '批改人', required: true },
   ],
-  teachers: [
+  'teachers': [
     { key: 'username', kind: 'text', label: '用户名', required: true },
     { key: 'real_name', kind: 'text', label: '姓名', required: true },
     { key: 'new_password', kind: 'text', label: '新密码', help: '更新时留空表示不修改密码。' },
@@ -493,6 +516,20 @@ export const toFormState = (
   source: JsonRecord | null,
   draft: JsonRecord = {},
 ) => {
+  if (resource === 'questions') {
+    const model = deserializeQuestionPayload(source ? { ...source, ...draft } : draft);
+    return {
+      answer: model.answerText,
+      content: model.stem,
+      difficulty: model.difficulty,
+      explanation: model.thinking,
+      grade_id: model.gradeId,
+      knowledge_points: model.knowledgePoints.join(', '),
+      question_type: model.questionType,
+      subject_id: model.subjectId,
+    };
+  }
+
   const merged = { ...resourceDefaultPayload(resource), ...source, ...draft };
   const state: Record<string, string> = {};
 
@@ -523,6 +560,21 @@ export const toFormState = (
 };
 
 export const fromFormState = (resource: EditableResourceKey, form: Record<string, string>) => {
+  if (resource === 'questions') {
+    return serializeQuestionForm(
+      createEmptyQuestionForm({
+        answerText: String(form.answer || ''),
+        difficulty: String(form.difficulty || ''),
+        gradeId: String(form.grade_id || ''),
+        knowledgePoints: splitTags(String(form.knowledge_points || '')),
+        questionType: String(form.question_type || ''),
+        stem: String(form.content || ''),
+        subjectId: String(form.subject_id || ''),
+        thinking: String(form.explanation || ''),
+      }),
+    );
+  }
+
   const payload: JsonRecord = {};
   RESOURCE_FORM_FIELDS[resource].forEach((field) => {
     const raw = form[field.key] ?? '';
@@ -596,6 +648,7 @@ export const buildResourceSelection = (resource: ResourceKey, item: JsonRecord) 
       RESOURCE_LABELS[resource].singular,
   );
   const entityId = Number(item[idKey] || item.id || 0);
-  const path = entityId > 0 ? buildResourceEntityPath(resource, entityId) : buildResourceBasePath(resource);
+  const path =
+    entityId > 0 ? buildResourceEntityPath(resource, entityId) : buildResourceBasePath(resource);
   return { entityId, path, title };
 };

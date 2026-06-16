@@ -1170,6 +1170,52 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     expect(screen.queryByRole('button', { name: '开始 OCR 创建并发布' })).not.toBeInTheDocument();
   });
 
+  it('renders P41 Gaokao question content in question list cards', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.startsWith('/api/askcore/workbench/questions?')) {
+        return jsonResponse(
+          listResponse('questions', [
+            {
+              answer: { raw_markdown: 'A', version: 'question.answer@gaokao.v1' },
+              content: {
+                assets: [],
+                content_markdown: '已知函数 $f(x)=x^2+1$，求 $f(1)$。',
+                options: [
+                  { content_markdown: '$1$', label: 'A' },
+                  { content_markdown: '$2$', label: 'B' },
+                ],
+                schema_ref: 'choice_question',
+                subquestions: [],
+                version: 'question.content@gaokao.v1',
+              },
+              grade_id: 3,
+              grade_name: '高三',
+              question_id: 481,
+              question_type: '选择题',
+              subject_id: 1002,
+              subject_name: '数学',
+            },
+          ]),
+        );
+      }
+
+      return emptyLookupFetch(url);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=questions']}>
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(document.body.textContent || '').toContain('已知函数'));
+    expect(document.body.textContent || '').toContain('求');
+    expect(document.body.textContent || '').not.toContain('[object Object]');
+  });
+
   it('hides submission rows while an assignment tab request is still loading', async () => {
     const assignmentResponse = deferredResponse();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {

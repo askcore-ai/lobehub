@@ -68,11 +68,15 @@ import {
   buildQuestionPreviewDataFromModel,
   buildQuestionPreviewDataFromPayload,
   createEmptyQuestionForm,
+  defaultQuestionTypeForSubjectName,
   deserializeQuestionPayload,
   getNextSubQuestionId,
+  isChoiceQuestionSchemaRef,
   isJsonRecord,
   type QuestionFormModel,
   type QuestionPreviewData,
+  questionTypeOptionsForSubjectName,
+  schemaRefForQuestionType,
   serializeQuestionForm,
 } from './questionModel';
 import {
@@ -2470,12 +2474,25 @@ const PublishScopeSelector = ({
   );
 };
 
-const QUESTION_TYPE_OPTIONS = [
-  { label: '单选题', value: 'single_choice' },
-  { label: '多选题', value: 'multiple_choice' },
-  { label: '填空题', value: 'fill_in_blank' },
-  { label: '解答题', value: 'problem_solving' },
-];
+const buildQuestionTypeSelectOptions = (subjectName: string, currentValue: string) => {
+  const values = subjectName
+    ? questionTypeOptionsForSubjectName(subjectName)
+    : ['选择题', '填空题', '解答题', '实验题', '计算题', '阅读理解', '写作'];
+  const merged =
+    currentValue && !values.includes(currentValue) ? [currentValue, ...values] : values;
+  return merged.map((value) => ({ label: value, value }));
+};
+
+const DEFAULT_QUESTION_TYPE_FOR_DRAFT = '解答题';
+
+const lookupSubjectName = (lookups: LookupCollections, subjectId: string) => {
+  const normalizedId = Number(subjectId || 0) || 0;
+  if (!normalizedId) return '';
+  const subject = lookups.subjects.find(
+    (item) => Number(item.subject_id || item.id || 0) === normalizedId,
+  );
+  return String(subject?.name || '').trim();
+};
 
 const OPTION_CODE_BASE = 'A'.charCodeAt(0);
 
@@ -2506,8 +2523,14 @@ const QuestionEditor = ({
   showRelationFields?: boolean;
 }) => {
   const hasSubQuestions = model.subQuestions.length > 0;
-  const isChoice =
-    model.questionType === 'single_choice' || model.questionType === 'multiple_choice';
+  const subjectName = lookupSubjectName(lookups, model.subjectId);
+  const questionTypeOptions = useMemo(
+    () => buildQuestionTypeSelectOptions(subjectName, model.questionType),
+    [model.questionType, subjectName],
+  );
+  const isChoice = isChoiceQuestionSchemaRef(
+    model.schemaRef || schemaRefForQuestionType(model.questionType),
+  );
   const setModel = (next: Partial<QuestionFormModel>) => onChange({ ...model, ...next });
   const setOption = (index: number, updates: Partial<QuestionFormModel['options'][number]>) => {
     setModel({
@@ -2552,22 +2575,25 @@ const QuestionEditor = ({
           <label>
             <div className={styles.muted}>题型</div>
             <Select
-              options={QUESTION_TYPE_OPTIONS}
+              showSearch
+              options={questionTypeOptions}
               style={{ width: '100%' }}
               value={model.questionType}
-              onChange={(value) =>
+              onChange={(value) => {
+                const schemaRef = schemaRefForQuestionType(value);
                 setModel({
-                  options:
-                    value === 'single_choice' || value === 'multiple_choice'
-                      ? model.options.length
-                        ? model.options
-                        : createEmptyQuestionForm({
-                            questionType: value as QuestionFormModel['questionType'],
-                          }).options
-                      : model.options,
+                  options: isChoiceQuestionSchemaRef(schemaRef)
+                    ? model.options.length
+                      ? model.options
+                      : createEmptyQuestionForm({
+                          questionType: value as QuestionFormModel['questionType'],
+                          schemaRef,
+                        }).options
+                    : model.options,
                   questionType: value as QuestionFormModel['questionType'],
-                })
-              }
+                  schemaRef,
+                });
+              }}
             />
           </label>
           {showRelationFields ? (
@@ -2582,7 +2608,28 @@ const QuestionEditor = ({
                     { key: 'subject_id', kind: 'select', label: '科目', optionsFrom: 'subjects' },
                     lookups,
                   )}
-                  onChange={(value) => setModel({ subjectId: value || '' })}
+                  onChange={(value) => {
+                    const nextSubjectId = value || '';
+                    const nextSubjectName = lookupSubjectName(lookups, String(nextSubjectId));
+                    const allowedTypes = questionTypeOptionsForSubjectName(nextSubjectName);
+                    const nextQuestionType =
+                      allowedTypes.length && !allowedTypes.includes(model.questionType)
+                        ? defaultQuestionTypeForSubjectName(nextSubjectName)
+                        : model.questionType;
+                    const nextSchemaRef = schemaRefForQuestionType(nextQuestionType);
+                    setModel({
+                      options:
+                        isChoiceQuestionSchemaRef(nextSchemaRef) && !model.options.length
+                          ? createEmptyQuestionForm({
+                              questionType: nextQuestionType,
+                              schemaRef: nextSchemaRef,
+                            }).options
+                          : model.options,
+                      questionType: nextQuestionType,
+                      schemaRef: nextSchemaRef,
+                      subjectId: String(nextSubjectId),
+                    });
+                  }}
                 />
               </label>
               <label>
@@ -3508,14 +3555,21 @@ const buildAssignmentQuestionItem = ({
 
 const buildAssignmentQuestionDraft = ({
   gradeId,
+  questionType = DEFAULT_QUESTION_TYPE_FOR_DRAFT,
   subjectId,
 }: {
   gradeId: string;
+  questionType?: string;
   subjectId: string;
 }): AssignmentDetailQuestionItem => ({
   assignmentQuestionId: null,
   clientKey: createAssignmentQuestionDraftKey(),
-  draftModel: createEmptyQuestionForm({ gradeId, subjectId }),
+  draftModel: createEmptyQuestionForm({
+    gradeId,
+    questionType,
+    schemaRef: schemaRefForQuestionType(questionType),
+    subjectId,
+  }),
   extraData: {},
   isDirty: true,
   isDraft: true,
@@ -3559,6 +3613,8 @@ const AssignmentDetailView = ({
   const assignmentId = Number(assignment.assignment_id || assignment.id || 0) || 0;
   const gradeId = String(detail.grade?.grade_id || assignment.grade_id || '');
   const subjectId = String(detail.subject?.subject_id || assignment.subject_id || '');
+  const assignmentSubjectName = String(detail.subject?.name || '').trim();
+  const draftQuestionType = defaultQuestionTypeForSubjectName(assignmentSubjectName);
   const [questionItems, setQuestionItems] = useState<AssignmentDetailQuestionItem[]>(() =>
     detail.questions.map((row, index) =>
       buildAssignmentQuestionItem({ gradeId, index, row, subjectId }),
@@ -3855,7 +3911,11 @@ const AssignmentDetailView = ({
             className={styles.secondary}
             icon={<Plus size={14} />}
             onClick={() => {
-              const draft = buildAssignmentQuestionDraft({ gradeId, subjectId });
+              const draft = buildAssignmentQuestionDraft({
+                gradeId,
+                questionType: draftQuestionType,
+                subjectId,
+              });
               setQuestionItems((items) => [...items, draft]);
               setActiveQuestionKey(draft.clientKey);
             }}
@@ -4041,7 +4101,11 @@ const AssignmentDetailView = ({
           icon={<Plus size={14} />}
           size="small"
           onClick={() => {
-            const draft = buildAssignmentQuestionDraft({ gradeId, subjectId });
+            const draft = buildAssignmentQuestionDraft({
+              gradeId,
+              questionType: draftQuestionType,
+              subjectId,
+            });
             setQuestionItems((items) => [...items, draft]);
             setActiveQuestionKey(draft.clientKey);
           }}
