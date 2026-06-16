@@ -147,10 +147,12 @@ export const SUBMISSION_OCR_LAYOUT_BREAKPOINTS = {
 } as const;
 
 export const RESOURCE_LIST_LAYOUT = {
-  cardFlexBasis: 'clamp(280px, 32vw, 420px)',
-  flow: 'horizontal',
-  mobileCardFlexBasis: 'min(86vw, 360px)',
-  overflowAxis: 'x',
+  columns: 3,
+  flow: 'row-major',
+  minimumCardWidth: '260px',
+  mobileColumns: 1,
+  scrollAxis: 'y',
+  tabletColumns: 2,
 } as const;
 
 const lookupResources: Array<keyof LookupCollections> = [
@@ -594,22 +596,27 @@ const styles = createStaticStyles(({ css }) => ({
     }
   `,
   resourceMasonry: css`
-    scrollbar-gutter: stable;
-    scroll-snap-type: ${RESOURCE_LIST_LAYOUT.overflowAxis} proximity;
-
-    overflow: auto hidden;
-    overscroll-behavior-x: contain;
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(
+      ${RESOURCE_LIST_LAYOUT.columns},
+      minmax(${RESOURCE_LIST_LAYOUT.minimumCardWidth}, 1fr)
+    );
     gap: 14px;
     align-items: flex-start;
 
-    padding-block-end: 8px;
+    @media (width <= 900px) {
+      grid-template-columns: repeat(
+        ${RESOURCE_LIST_LAYOUT.tabletColumns},
+        minmax(${RESOURCE_LIST_LAYOUT.minimumCardWidth}, 1fr)
+      );
+    }
+
+    @media (width <= 640px) {
+      grid-template-columns: repeat(${RESOURCE_LIST_LAYOUT.mobileColumns}, minmax(0, 1fr));
+    }
   `,
   resourceCard: css`
     cursor: pointer;
-    scroll-snap-align: start;
-
-    flex: 0 0 ${RESOURCE_LIST_LAYOUT.cardFlexBasis};
 
     min-width: 0;
     padding: 14px;
@@ -628,10 +635,6 @@ const styles = createStaticStyles(({ css }) => ({
       transform: translateY(-1px);
       border-color: ${cssVar.colorPrimaryBorder};
       box-shadow: 0 6px 18px rgb(0 0 0 / 5%);
-    }
-
-    @media (width <= 640px) {
-      flex-basis: ${RESOURCE_LIST_LAYOUT.mobileCardFlexBasis};
     }
   `,
   resourceCardSelected: css`

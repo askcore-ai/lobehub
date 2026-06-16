@@ -1125,12 +1125,14 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     });
   });
 
-  it('keeps resource list cards in horizontal flow', () => {
+  it('keeps resource list cards in row-major three-column flow', () => {
     expect(RESOURCE_LIST_LAYOUT).toEqual({
-      cardFlexBasis: 'clamp(280px, 32vw, 420px)',
-      flow: 'horizontal',
-      mobileCardFlexBasis: 'min(86vw, 360px)',
-      overflowAxis: 'x',
+      columns: 3,
+      flow: 'row-major',
+      minimumCardWidth: '260px',
+      mobileColumns: 1,
+      scrollAxis: 'y',
+      tabletColumns: 2,
     });
   });
 
