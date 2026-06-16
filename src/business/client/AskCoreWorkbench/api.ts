@@ -23,7 +23,7 @@ import {
 
 const WORKBENCH_API_BASE = '/api/askcore/workbench';
 const ORGANIZATION_API_BASE = '/api/askcore/organizations';
-const DEFAULT_PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 100;
 
 type AskCoreOrganizationPayloadSummary = {
   createdAt?: string;

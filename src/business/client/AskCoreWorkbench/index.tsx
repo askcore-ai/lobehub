@@ -123,7 +123,7 @@ import {
   normalizeAskCoreWorkbenchTab,
 } from './utils';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 100;
 const OCR_INPUT_MODE_OPTIONS: Array<{ label: string; value: 'scan' | 'upload' }> = [
   { label: '上传图片', value: 'upload' },
   { label: '调用扫描仪', value: 'scan' },
@@ -144,6 +144,13 @@ export const SUBMISSION_OCR_LAYOUT_BREAKPOINTS = {
   controlSingleColumnMaxWidth: 980,
   minimumUsableWidth: 420,
   splitWorkspaceStackMaxWidth: 1440,
+} as const;
+
+export const RESOURCE_LIST_LAYOUT = {
+  cardFlexBasis: 'clamp(280px, 32vw, 420px)',
+  flow: 'horizontal',
+  mobileCardFlexBasis: 'min(86vw, 360px)',
+  overflowAxis: 'x',
 } as const;
 
 const lookupResources: Array<keyof LookupCollections> = [
@@ -587,23 +594,24 @@ const styles = createStaticStyles(({ css }) => ({
     }
   `,
   resourceMasonry: css`
-    column-count: 2;
-    column-gap: 14px;
+    scrollbar-gutter: stable;
+    scroll-snap-type: ${RESOURCE_LIST_LAYOUT.overflowAxis} proximity;
 
-    @media (width >= 1480px) {
-      column-count: 3;
-    }
+    overflow: auto hidden;
+    overscroll-behavior-x: contain;
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
 
-    @media (width <= 980px) {
-      column-count: 1;
-    }
+    padding-block-end: 8px;
   `,
   resourceCard: css`
     cursor: pointer;
+    scroll-snap-align: start;
 
-    break-inside: avoid;
+    flex: 0 0 ${RESOURCE_LIST_LAYOUT.cardFlexBasis};
 
-    margin-block-end: 14px;
+    min-width: 0;
     padding: 14px;
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 8px;
@@ -620,6 +628,10 @@ const styles = createStaticStyles(({ css }) => ({
       transform: translateY(-1px);
       border-color: ${cssVar.colorPrimaryBorder};
       box-shadow: 0 6px 18px rgb(0 0 0 / 5%);
+    }
+
+    @media (width <= 640px) {
+      flex-basis: ${RESOURCE_LIST_LAYOUT.mobileCardFlexBasis};
     }
   `,
   resourceCardSelected: css`

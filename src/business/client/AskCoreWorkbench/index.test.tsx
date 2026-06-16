@@ -8,6 +8,7 @@ import {
   buildAssignmentOcrRunSummary,
   buildSubmissionOcrAssignmentSelectOption,
   buildSubmissionOcrRunSummary,
+  RESOURCE_LIST_LAYOUT,
   SUBMISSION_OCR_LAYOUT_BREAKPOINTS,
 } from './index';
 
@@ -1056,6 +1057,15 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     });
   });
 
+  it('keeps resource list cards in horizontal flow', () => {
+    expect(RESOURCE_LIST_LAYOUT).toEqual({
+      cardFlexBasis: 'clamp(280px, 32vw, 420px)',
+      flow: 'horizontal',
+      mobileCardFlexBasis: 'min(86vw, 360px)',
+      overflowAxis: 'x',
+    });
+  });
+
   it('hides submission rows while an assignment tab request is still loading', async () => {
     const assignmentResponse = deferredResponse();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -1085,6 +1095,14 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     );
 
     await screen.findAllByText('张三');
+    expect(
+      fetchMock.mock.calls.some(([input]) => {
+        const url = String(input);
+        return (
+          url.startsWith('/api/askcore/workbench/submissions?') && url.includes('page_size=100')
+        );
+      }),
+    ).toBe(true);
 
     fireEvent.click(screen.getAllByText('作业')[0]);
     await waitFor(() =>

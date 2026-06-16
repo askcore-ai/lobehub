@@ -22,9 +22,7 @@ describe('AskCoreWorkbench API', () => {
     expect(askCoreWorkbenchResourceUrl('schools', 2, 20)).toBe(
       '/api/askcore/workbench/schools?include_total=true&page=2&page_size=20',
     );
-    expect(askCoreWorkbenchItemUrl('students', 201)).toBe(
-      '/api/askcore/workbench/students/201',
-    );
+    expect(askCoreWorkbenchItemUrl('students', 201)).toBe('/api/askcore/workbench/students/201');
   });
 
   it('does not fetch plugin-auth tokens or send browser bearer tokens', async () => {
@@ -124,6 +122,33 @@ describe('AskCoreWorkbench API', () => {
     });
   });
 
+  it('defaults resource list requests to 100 items per refresh', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe(
+        '/api/askcore/workbench/assignments?include_total=true&page=1&page_size=100',
+      );
+      return new Response(
+        JSON.stringify({
+          has_more: false,
+          items: [],
+          next_after_id: null,
+        }),
+        {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new AskCoreWorkbenchApiClient();
+    await expect(client.listResource('assignments')).resolves.toMatchObject({
+      has_more: false,
+      items: [],
+      next_after_id: null,
+    });
+  });
+
   it('builds first-party action, invocation, preview, and report requests', async () => {
     const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -165,13 +190,9 @@ describe('AskCoreWorkbench API', () => {
     await client.fetchPreviewBlob('uploads/org/report.pdf');
     await client.downloadSubmissionReportsZip([12, 13]);
 
-    expect(String(calls[0][0])).toBe(
-      '/api/askcore/workbench/actions/submission.report.generate',
-    );
+    expect(String(calls[0][0])).toBe('/api/askcore/workbench/actions/submission.report.generate');
     expect(String(calls[1][0])).toContain('/api/askcore/workbench/files/preview?object_key=');
-    expect(String(calls[2][0])).toBe(
-      '/api/askcore/workbench/submissions/reports/download',
-    );
+    expect(String(calls[2][0])).toBe('/api/askcore/workbench/submissions/reports/download');
     expect(client.getInvocationStreamUrl('inv-1')).toBe(
       '/api/askcore/workbench/invocations/inv-1/stream',
     );
@@ -181,29 +202,30 @@ describe('AskCoreWorkbench API', () => {
   });
 
   it('treats missing delete targets as idempotent completion', () => {
-    expect(isAskCoreWorkbenchDeleteNotFound(new AskCoreWorkbenchApiError('Submission not found', 400))).toBe(
-      true,
-    );
-    expect(isAskCoreWorkbenchDeleteNotFound(new AskCoreWorkbenchApiError('Entity not found', 404))).toBe(
-      true,
-    );
-    expect(isAskCoreWorkbenchDeleteNotFound(new AskCoreWorkbenchApiError('Permission denied', 403))).toBe(
-      false,
-    );
+    expect(
+      isAskCoreWorkbenchDeleteNotFound(new AskCoreWorkbenchApiError('Submission not found', 400)),
+    ).toBe(true);
+    expect(
+      isAskCoreWorkbenchDeleteNotFound(new AskCoreWorkbenchApiError('Entity not found', 404)),
+    ).toBe(true);
+    expect(
+      isAskCoreWorkbenchDeleteNotFound(new AskCoreWorkbenchApiError('Permission denied', 403)),
+    ).toBe(false);
   });
 
   it('reports progress while downloading submission report ZIPs when content length is known', async () => {
     const progress: Array<{ loaded: number; percent: number | null; phase: string }> = [];
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () =>
-        new Response('zip', {
-          headers: {
-            'content-length': '3',
-            'content-type': 'application/zip',
-          },
-          status: 200,
-        }),
+      vi.fn(
+        async () =>
+          new Response('zip', {
+            headers: {
+              'content-length': '3',
+              'content-type': 'application/zip',
+            },
+            status: 200,
+          }),
       ),
     );
 
