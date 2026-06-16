@@ -33,7 +33,7 @@ export const ASKCORE_WORKBENCH_TABS: AskCoreWorkbenchTabConfig[] = [
     ],
     key: 'questions',
     label: '题目',
-    newLabel: '新建题目',
+    newLabel: '手动新建',
     resource: 'questions',
     searchPlaceholder: '搜索题干、知识点',
   },

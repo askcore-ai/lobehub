@@ -844,6 +844,7 @@ type WorkbenchRoute =
   | { invocationId: string; kind: 'invocation'; path: string }
   | { kind: 'assignment-manual'; path: string }
   | { kind: 'assignment-ocr'; path: string }
+  | { kind: 'question-ocr'; path: string }
   | { kind: 'submission-ocr'; path: string };
 
 type DetailState =
@@ -889,6 +890,7 @@ const invocationActionLabelMap: Record<string, string> = {
   'ops.import.students': '导入学生',
   'ops.import.subjects': '导入科目',
   'ops.import.teachers': '导入教师',
+  'question.create_from_ocr': '题库 OCR 录入',
   'submission.create_from_ocr': '批量导入学生提交',
   'submission.explanation.regenerate': '重新生成讲解',
   'submission.explanation.save': '保存讲解',
@@ -1038,6 +1040,7 @@ const invocationProgressLabel = (record?: InvocationDisplayRecord | null) => {
   if (action === 'submission.create_from_ocr') return '提交处理进度';
   if (action === 'submission.grade.run' || action === 'submission.grade.retry') return '批改进度';
   if (action === 'assignment.draft.create_from_ocr') return '题目录入进度';
+  if (action === 'question.create_from_ocr') return '题库录入进度';
   return '任务进度';
 };
 
@@ -1056,6 +1059,7 @@ const formatCompletedInvocationResult = (
   if (action === 'submission.grade.run' || action === 'submission.grade.retry')
     return `批改 ${total} 道题`;
   if (action === 'assignment.draft.create_from_ocr') return `识别 ${total} 道题`;
+  if (action === 'question.create_from_ocr') return `处理 ${total} 道题`;
   return `完成 ${total} 项任务`;
 };
 
@@ -1065,6 +1069,7 @@ const invocationArtifactNoun = (record?: InvocationDisplayRecord | null) => {
   if (action.startsWith('submission.explanation.')) return '讲解';
   if (action === 'assignment.draft.create_from_ocr' || action === 'assignment.draft.create_manual')
     return '作业草稿';
+  if (action === 'question.create_from_ocr') return '题库录入结果';
   if (action === 'assignment.draft.publish') return '作业发布结果';
   if (action.startsWith('ops.import.')) return '导入结果';
   if (action === 'document.generate.docx') return '文档';
@@ -1087,11 +1092,12 @@ const formatInvocationResultSummary = (record?: InvocationDisplayRecord | null) 
 
 const runPanelVariantForInvocation = (
   invocation: RunState['invocation'],
-): 'assignment-ocr' | 'default' | 'submission-ocr' => {
+): 'assignment-ocr' | 'default' | 'question-ocr' | 'submission-ocr' => {
   const action = String(invocation?.action_id || '').trim();
   if (action === 'assignment.draft.create_from_ocr' || action === 'assignment.draft.publish') {
     return 'assignment-ocr';
   }
+  if (action === 'question.create_from_ocr') return 'question-ocr';
   if (action === 'submission.create_from_ocr') return 'submission-ocr';
   return 'default';
 };
@@ -1197,6 +1203,9 @@ const positiveId = (value: unknown) => {
   const parsed = Number(value || 0);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
 };
+
+const readPositiveIdArray = (value: unknown): number[] =>
+  Array.isArray(value) ? value.map(positiveId).filter((id) => id > 0) : [];
 
 const normalizeOcrInputType = (value: unknown): 'scan' | 'upload' =>
   String(value || '')
@@ -1338,6 +1347,8 @@ const assignmentOcrRelatedActions = new Set([
 ]);
 const submissionOcrVisibleArtifactTypes = new Set(['submission.ocr.batch.result']);
 const submissionOcrRelatedActions = new Set(['submission.create_from_ocr']);
+const questionOcrVisibleArtifactTypes = new Set(['question.ocr.import.result']);
+const questionOcrRelatedActions = new Set(['question.create_from_ocr']);
 
 const getProcessingProgressVerb = (invocation: RunState['invocation']) =>
   isTerminalInvocationState(invocation?.state) ? '已处理' : '正在处理';
@@ -1710,6 +1721,123 @@ export const buildSubmissionOcrRunSummary = (run: RunState): AssignmentOcrRunSum
   };
 };
 
+export const buildQuestionOcrRunSummary = (run: RunState): AssignmentOcrRunSummary => {
+  const invocation = run.invocation;
+  const actionId = String(invocation?.action_id || '').trim();
+  const isRelatedAction = !actionId || questionOcrRelatedActions.has(actionId);
+  const visibleArtifacts = isRelatedAction
+    ? run.artifacts.filter((artifact) => questionOcrVisibleArtifactTypes.has(artifact.type))
+    : [];
+  const hiddenArtifactIds = new Set(visibleArtifacts.map((artifact) => artifact.artifact_id));
+  const hiddenArtifacts = run.artifacts.filter(
+    (artifact) => !hiddenArtifactIds.has(artifact.artifact_id),
+  );
+  const questionTotal = Number(invocation?.question_total || 0) || 0;
+  const questionSucceeded = Number(invocation?.question_succeeded || 0) || 0;
+  const questionFailed = Number(invocation?.question_failed || 0) || 0;
+  const processedQuestions = questionTotal
+    ? Math.min(questionTotal, questionSucceeded + questionFailed)
+    : questionSucceeded + questionFailed;
+  const progressLabel = questionTotal
+    ? `${getProcessingProgressVerb(invocation)} ${processedQuestions}/${questionTotal}`
+    : '等待后端进度';
+  const progressPercent = questionTotal
+    ? clampPercent((processedQuestions / questionTotal) * 100)
+    : null;
+  const artifact = visibleArtifacts[0];
+  const content = artifact?.content || {};
+  const createdIds = readPositiveIdArray(content.created_question_ids);
+  const reusedIds = readPositiveIdArray(content.reused_question_ids);
+  const generatedAnswerIds = readPositiveIdArray(content.generated_answer_question_ids);
+  const skippedDuplicates = readRecordArray(content.skipped_duplicates);
+  const failedQuestions = readRecordArray(content.failed_questions);
+  const similarityDecisions = readRecordArray(content.similarity_decisions);
+  const progressStage = String(invocation?.progress_stage || invocation?.state || '').trim();
+  const state = String(invocation?.state || '').toLowerCase();
+  const failed = TERMINAL_INVOCATION_STATES.has(state) && state !== 'succeeded';
+  const hasImportResult = Boolean(artifact);
+  const status = !isRelatedAction
+    ? {
+        statusDescription: '当前跟踪的不是题库 OCR 录入任务。',
+        statusTitle: '正在跟踪其他任务',
+        statusTone: 'warning' as const,
+      }
+    : !invocation
+      ? {
+          statusDescription: '上传扫描件或调用扫描仪后，系统会识别题目、补全缺失答案并写入题库。',
+          statusTitle: '等待开始 OCR',
+          statusTone: 'info' as const,
+        }
+      : failed
+        ? {
+            statusDescription: invocation.failure_reason || '本次题库 OCR 录入失败。',
+            statusTitle: '题库 OCR 失败',
+            statusTone: 'danger' as const,
+          }
+        : state === 'succeeded'
+          ? hasImportResult
+            ? {
+                statusDescription: `新建 ${createdIds.length} 道，复用 ${reusedIds.length} 道，补全答案 ${generatedAnswerIds.length} 道。`,
+                statusTitle: '题库 OCR 已完成',
+                statusTone: failedQuestions.length ? ('warning' as const) : ('success' as const),
+              }
+            : {
+                statusDescription: '任务已结束，但这次没有返回题库导入结果。',
+                statusTitle: '题库 OCR 已完成',
+                statusTone: 'warning' as const,
+              }
+          : {
+              statusDescription: '后台正在识别题目、补全答案并做相似度去重。',
+              statusTitle: '题库 OCR 处理中',
+              statusTone: 'info' as const,
+            };
+
+  const resultItems = visibleArtifacts.map((item) => {
+    const itemContent = item.content || {};
+    const itemCreatedIds = readPositiveIdArray(itemContent.created_question_ids);
+    const itemReusedIds = readPositiveIdArray(itemContent.reused_question_ids);
+    const itemGeneratedAnswerIds = readPositiveIdArray(itemContent.generated_answer_question_ids);
+    const itemFailed = readRecordArray(itemContent.failed_questions);
+    const itemSkipped = readRecordArray(itemContent.skipped_duplicates);
+    const itemDecisions = readRecordArray(itemContent.similarity_decisions);
+    return {
+      description: [
+        `新建 ${itemCreatedIds.length}`,
+        `复用 ${itemReusedIds.length}`,
+        `补全答案 ${itemGeneratedAnswerIds.length}`,
+        `跳过重复 ${itemSkipped.length}`,
+        `失败 ${itemFailed.length}`,
+        `相似度判定 ${itemDecisions.length}`,
+      ].join(' · '),
+      title: '题库导入结果',
+    };
+  });
+
+  return {
+    emptyResultText:
+      invocation && TERMINAL_INVOCATION_STATES.has(state) && state !== 'succeeded'
+        ? '本次没有生成题库导入结果。'
+        : '识别完成后会在这里显示创建、复用、答案补全和相似度判定结果。',
+    hiddenArtifacts,
+    progressLabel,
+    progressPercent,
+    resultItems,
+    ...status,
+    technicalItems: [
+      { label: 'Invocation', value: invocation?.invocation_id || '--' },
+      { label: '状态', value: invocation?.state || '--' },
+      { label: '阶段', value: progressStage || '--' },
+      { label: '跟踪方式', value: getTrackingLabel(run.tracking || undefined) || '--' },
+      { label: '结果数', value: String(invocation?.artifact_count ?? run.artifacts.length) },
+      { label: '跳过重复', value: String(skippedDuplicates.length) },
+      { label: '失败题目', value: String(failedQuestions.length) },
+      { label: '相似度判定', value: String(similarityDecisions.length) },
+    ],
+    trackingLabel: getTrackingLabel(run.tracking || undefined),
+    visibleArtifacts,
+  };
+};
+
 const runNoticeForUploadProgress =
   (prefix: string) =>
   (progress: {
@@ -1766,6 +1894,7 @@ const parseWorkbenchRoute = (
   if (path === '/dashboard') return { kind: 'dashboard', path };
   if (path === '/assignments/new/manual') return { kind: 'assignment-manual', path };
   if (path === '/assignments/new/ocr') return { kind: 'assignment-ocr', path };
+  if (path === '/questions/new/ocr') return { kind: 'question-ocr', path };
   if (path === '/submissions/new/ocr') return { kind: 'submission-ocr', path };
 
   const parts = path.replace(/^\/+/, '').split('/').filter(Boolean);
@@ -3029,13 +3158,15 @@ const RunStatusPanel = ({
   onOpenSubmission?: (submissionId: number) => void;
   run: RunState;
   title?: string;
-  variant?: 'assignment-ocr' | 'default' | 'submission-ocr';
+  variant?: 'assignment-ocr' | 'default' | 'question-ocr' | 'submission-ocr';
 }) => {
-  if (variant === 'assignment-ocr' || variant === 'submission-ocr') {
+  if (variant === 'assignment-ocr' || variant === 'question-ocr' || variant === 'submission-ocr') {
     const summary =
       variant === 'assignment-ocr'
         ? buildAssignmentOcrRunSummary(run)
-        : buildSubmissionOcrRunSummary(run);
+        : variant === 'question-ocr'
+          ? buildQuestionOcrRunSummary(run)
+          : buildSubmissionOcrRunSummary(run);
     const batchArtifact = summary.visibleArtifacts.find(
       (artifact) => artifact.type === 'submission.ocr.batch.result',
     );
@@ -5655,6 +5786,255 @@ const AssignmentOcrCreateView = ({
   );
 };
 
+const QuestionOcrCreateView = ({
+  client,
+  lookups,
+  onBack,
+}: {
+  client: AskCoreWorkbenchApiClient;
+  lookups: LookupCollections;
+  onBack: () => void;
+}) => {
+  const [form] = Form.useForm();
+  const [inputType, setInputType] = useState<'scan' | 'upload'>('upload');
+  const [files, setFiles] = useState<File[]>([]);
+  const [scanners, setScanners] = useState<ScannerDevice[]>([]);
+  const [scannersLoading, setScannersLoading] = useState(false);
+  const [scannersError, setScannersError] = useState<string | null>(null);
+  const [scanScannerId, setScanScannerId] = useState<string>('');
+  const [scanMedia, setScanMedia] = useState<string>('A4');
+  const [scanDuplex, setScanDuplex] = useState(true);
+  const [scanPages, setScanPages] = useState<number | null>(null);
+  const [run, setRun] = useState<RunState>(() => emptyRunState());
+
+  useEffect(() => {
+    let cancelled = false;
+    setScannersLoading(true);
+    setScannersError(null);
+    client
+      .listScannerDevices()
+      .then((response) => {
+        if (cancelled) return;
+        setScanners(response.items || []);
+        setScanScannerId(response.default_scanner_id || response.items[0]?.scanner_id || '');
+        setScannersLoading(false);
+      })
+      .catch((reason) => {
+        if (cancelled) return;
+        setScanners([]);
+        setScannersError(asError(reason));
+        setScannersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
+
+  return (
+    <div className={styles.view}>
+      <DetailHeader
+        subtitle="上传扫描件或调用在线扫描仪，只录入题目到题库。"
+        title="OCR 录入题库"
+        onBack={onBack}
+      />
+      <div className={styles.splitWorkspace}>
+        <div className={styles.formPanel}>
+          <Form
+            form={form}
+            layout="vertical"
+            onFinish={async (values) => {
+              const subjectId = Number(values.subject_id || 0);
+              const gradeId = Number(values.grade_id || 0);
+              if (!subjectId || !gradeId) {
+                message.warning('请先选择科目和教学年级');
+                return;
+              }
+              if (inputType === 'upload' && !files.length) {
+                message.warning('请先选择扫描图片');
+                return;
+              }
+              if (inputType === 'scan' && !scanScannerId) {
+                message.warning('请先选择在线扫描仪');
+                return;
+              }
+              setRun({
+                ...emptyRunState(),
+                busy: true,
+                notice:
+                  inputType === 'upload'
+                    ? `正在上传扫描件 0/${files.length}…`
+                    : '正在调用在线扫描仪并启动题库 OCR…',
+              });
+              try {
+                const result =
+                  inputType === 'upload'
+                    ? await client
+                        .uploadScanFiles(files, {
+                          onProgress: (progress) =>
+                            setRun((current) => ({
+                              ...current,
+                              busy: true,
+                              error: null,
+                              notice: runNoticeForUploadProgress('正在上传扫描件')(progress),
+                            })),
+                        })
+                        .then((scanRefs) =>
+                          client.invokeAction('question.create_from_ocr', {
+                            grade_id: gradeId,
+                            input_type: 'upload',
+                            scan_refs: scanRefs,
+                            subject_id: subjectId,
+                          }),
+                        )
+                    : await client.invokeAction(
+                        'question.create_from_ocr',
+                        compactJsonRecord({
+                          grade_id: gradeId,
+                          input_type: 'scan',
+                          scan_duplex: scanDuplex,
+                          scan_media: scanMedia,
+                          scan_pages: scanPages || undefined,
+                          scan_scanner_id: scanScannerId,
+                          subject_id: subjectId,
+                        }),
+                      );
+                await waitForInvocation({
+                  client,
+                  invocationId: result.invocation_id,
+                  setRun,
+                });
+                message.success('题库 OCR 录入完成');
+              } catch (reason) {
+                const error = asError(reason);
+                setRun((current) => ({ ...current, busy: false, error, notice: null }));
+              }
+            }}
+          >
+            <div className={styles.fieldGrid}>
+              <Form.Item label="科目" name="subject_id" rules={[{ required: true }]}>
+                <Select
+                  placeholder="选择科目"
+                  options={fieldOptions(
+                    { key: 'subject_id', kind: 'select', label: '科目', optionsFrom: 'subjects' },
+                    lookups,
+                  )}
+                />
+              </Form.Item>
+              <Form.Item label="教学年级" name="grade_id" rules={[{ required: true }]}>
+                <Select
+                  placeholder="选择教学年级"
+                  options={fieldOptions(
+                    { key: 'grade_id', kind: 'select', label: '教学年级', optionsFrom: 'grades' },
+                    lookups,
+                  )}
+                />
+              </Form.Item>
+              <Form.Item label="录入方式">
+                <Segmented
+                  options={OCR_INPUT_MODE_OPTIONS}
+                  value={inputType}
+                  onChange={(value) => setInputType(normalizeOcrInputType(value))}
+                />
+              </Form.Item>
+            </div>
+
+            {inputType === 'upload' ? (
+              <Form.Item
+                extra="图片会先通过 presigned direct PUT 上传到对象存储。"
+                label="扫描图片"
+              >
+                <Upload
+                  multiple
+                  accept="image/*"
+                  beforeUpload={() => false}
+                  onChange={(info) => {
+                    setFiles(
+                      info.fileList.map((file) => file.originFileObj).filter(Boolean) as File[],
+                    );
+                  }}
+                >
+                  <Button icon={<UploadCloud size={14} />}>选择图片</Button>
+                </Upload>
+              </Form.Item>
+            ) : (
+              <div className={styles.fieldGrid}>
+                <Form.Item
+                  label="在线扫描仪"
+                  extra={
+                    scannersLoading
+                      ? '正在读取当前用户在线的 Windows 设备助手。'
+                      : scanners.length
+                        ? `当前检测到 ${scanners.length} 台在线扫描仪。`
+                        : '当前没有在线扫描仪，请先在 Windows 设备助手里完成绑定。'
+                  }
+                >
+                  <Select
+                    loading={scannersLoading}
+                    placeholder="选择扫描仪"
+                    value={scanScannerId || undefined}
+                    options={scanners.map((scanner) => ({
+                      label: scanner.display_name,
+                      value: scanner.scanner_id,
+                    }))}
+                    onChange={setScanScannerId}
+                  />
+                </Form.Item>
+                <Form.Item label="纸张">
+                  <Select
+                    options={OCR_SCAN_MEDIA_OPTIONS.map((value) => ({ label: value, value }))}
+                    value={scanMedia}
+                    onChange={setScanMedia}
+                  />
+                </Form.Item>
+                <Form.Item label="单双面">
+                  <Segmented
+                    value={scanDuplex ? 'true' : 'false'}
+                    options={[
+                      { label: '双面', value: 'true' },
+                      { label: '单面', value: 'false' },
+                    ]}
+                    onChange={(value) => setScanDuplex(value === 'true')}
+                  />
+                </Form.Item>
+                <Form.Item extra="留空则使用后端默认上限。" label="最多扫描页数">
+                  <InputNumber
+                    min={1}
+                    style={{ width: '100%' }}
+                    value={scanPages}
+                    onChange={(value) => setScanPages(value == null ? null : Number(value))}
+                  />
+                </Form.Item>
+              </div>
+            )}
+
+            {files.length ? (
+              <Space wrap>
+                {files.map((file) => (
+                  <Tag key={`${file.name}-${file.size}-${file.lastModified}`}>{file.name}</Tag>
+                ))}
+              </Space>
+            ) : null}
+
+            {scannersError ? (
+              <Alert showIcon message={`加载扫描仪失败：${scannersError}`} type="warning" />
+            ) : null}
+
+            <Button
+              className={styles.primary}
+              htmlType="submit"
+              icon={<FileScan size={14} />}
+              loading={run.busy}
+            >
+              {inputType === 'upload' ? '开始 OCR 录入题库' : '开始扫描、OCR 录入题库'}
+            </Button>
+          </Form>
+        </div>
+        <RunStatusPanel run={run} title="题库录入状态" variant="question-ocr" />
+      </div>
+    </div>
+  );
+};
+
 const SubmissionOcrCreateView = ({
   client,
   onOpenAssignment,
@@ -6960,6 +7340,23 @@ const AskCoreWorkbenchPage = memo(() => {
                   手动创建
                 </Button>
               </>
+            ) : resource === 'questions' ? (
+              <>
+                <Button
+                  className={styles.secondary}
+                  icon={<FileScan size={14} />}
+                  onClick={() => navigate(routeFor('questions', '/questions/new/ocr'))}
+                >
+                  OCR 录入
+                </Button>
+                <Button
+                  className={styles.primary}
+                  icon={<Plus size={14} />}
+                  onClick={() => navigate(routeFor('questions', '/questions/new'))}
+                >
+                  {config.newLabel || '手动新建'}
+                </Button>
+              </>
             ) : resource === 'submissions' ? (
               <Button
                 className={styles.primary}
@@ -7466,6 +7863,15 @@ const AskCoreWorkbenchPage = memo(() => {
           onOpenAssignment={(assignmentId) =>
             navigate(routeFor('assignments', buildResourceEntityPath('assignments', assignmentId)))
           }
+        />
+      );
+    }
+    if (currentRoute.kind === 'question-ocr') {
+      return (
+        <QuestionOcrCreateView
+          client={askCoreWorkbenchClient}
+          lookups={lookups}
+          onBack={() => navigate(routeFor('questions', buildResourceBasePath('questions')))}
         />
       );
     }

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AskCoreWorkbenchRoute,
   buildAssignmentOcrRunSummary,
+  buildQuestionOcrRunSummary,
   buildSubmissionOcrAssignmentSelectOption,
   buildSubmissionOcrRunSummary,
   RESOURCE_LIST_LAYOUT,
@@ -690,6 +691,73 @@ describe('AskCoreWorkbenchRoute assignment OCR run summary', () => {
   });
 });
 
+describe('AskCoreWorkbenchRoute question OCR run summary', () => {
+  const invocation = {
+    action_id: 'question.create_from_ocr',
+    artifact_count: 1,
+    created_at: '2026-06-16T00:00:00Z',
+    current_question_order_index: null,
+    failure_reason: null,
+    finished_at: '2026-06-16T00:02:00Z',
+    invocation_id: 'inv-question-ocr-1',
+    last_event_at: '2026-06-16T00:02:00Z',
+    plugin_id: 'aitutor-suite',
+    progress_stage: 'succeeded',
+    question_failed: 1,
+    question_succeeded: 4,
+    question_total: 5,
+    run_id: 30,
+    started_at: '2026-06-16T00:00:10Z',
+    state: 'succeeded',
+    workflow_name: 'workbench.question_ocr',
+  };
+
+  const artifact = (type: string, artifactId: string, content = {}) => ({
+    artifact_id: artifactId,
+    content,
+    created_at: '2026-06-16T00:02:00Z',
+    redaction: {},
+    references: [],
+    run_id: 30,
+    schema_version: 'v1',
+    summary: null,
+    title: null,
+    type,
+  });
+
+  it('summarizes created, reused, generated-answer, failure, and similarity counts', () => {
+    const summary = buildQuestionOcrRunSummary({
+      artifacts: [
+        artifact('assignment.draft', 'draft-hidden'),
+        artifact('question.ocr.import.result', 'question-import-1', {
+          created_question_ids: [101, 102],
+          failed_questions: [{ error: 'schema_invalid' }],
+          generated_answer_question_ids: [102],
+          reused_question_ids: [88],
+          similarity_decisions: [{ decision: 'duplicate' }, { decision: 'create_new' }],
+          skipped_duplicates: [{ existing_question_id: 88 }],
+        }),
+      ],
+      busy: false,
+      error: null,
+      invocation,
+      notice: null,
+      tracking: 'polling',
+    });
+
+    expect(summary.statusTitle).toBe('题库 OCR 已完成');
+    expect(summary.progressLabel).toBe('已处理 5/5');
+    expect(summary.visibleArtifacts.map((item) => item.type)).toEqual([
+      'question.ocr.import.result',
+    ]);
+    expect(summary.hiddenArtifacts.map((item) => item.type)).toEqual(['assignment.draft']);
+    expect(summary.resultItems[0]).toMatchObject({
+      description: '新建 2 · 复用 1 · 补全答案 1 · 跳过重复 1 · 失败 1 · 相似度判定 2',
+      title: '题库导入结果',
+    });
+  });
+});
+
 describe('AskCoreWorkbenchRoute submission list batch actions', () => {
   afterEach(() => {
     message.destroy();
@@ -1064,6 +1132,40 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
       mobileCardFlexBasis: 'min(86vw, 360px)',
       overflowAxis: 'x',
     });
+  });
+
+  it('adds a question-bank OCR entrypoint without assignment publishing controls', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.startsWith('/api/askcore/workbench/questions?')) {
+        return jsonResponse(listResponse('questions', []));
+      }
+
+      if (url === '/api/askcore/workbench/devices/scanners') {
+        return jsonResponse({ default_scanner_id: null, items: [] });
+      }
+
+      return emptyLookupFetch(url);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=questions']}>
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    const ocrButton = await screen.findByRole('button', { name: 'OCR 录入' });
+    expect(screen.getByRole('button', { name: '手动新建' })).toBeInTheDocument();
+
+    fireEvent.click(ocrButton);
+
+    expect(await screen.findByText('OCR 录入题库')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '开始 OCR 录入题库' })).toBeInTheDocument();
+    expect(screen.queryByText('发布范围')).not.toBeInTheDocument();
+    expect(screen.queryByText('错题变式训练')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '开始 OCR 创建并发布' })).not.toBeInTheDocument();
   });
 
   it('hides submission rows while an assignment tab request is still loading', async () => {
