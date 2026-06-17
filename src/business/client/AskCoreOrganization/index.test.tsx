@@ -389,8 +389,21 @@ describe('AskCoreOrganizationRoute', () => {
     );
 
     await waitFor(() => expect(screen.getAllByText('组织设置').length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole('button', { name: '教师' }));
+    await waitFor(() => expect(screen.getByText('教师 CSV 格式')).toBeInTheDocument());
+    expect(screen.getByText(/账号\/username/)).toBeInTheDocument();
+    expect(screen.getByText(/密码\/password/)).toBeInTheDocument();
+    expect(screen.getByText(/角色可填 TEACHER、ADMIN、PRINCIPAL/)).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole('button', { name: '学生' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: /新建学生/ })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('学生 CSV 格式')).toBeInTheDocument());
+    expect(screen.getByText(/姓名\/name/)).toBeInTheDocument();
+    expect(screen.getByText(/学号\/student_number/)).toBeInTheDocument();
+    expect(screen.getByText(/班级\/class_id\/班级id/)).toBeInTheDocument();
+    expect(screen.getByText(/班级列填写组织层级中的班级 ID/)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /新建学生/ })).toBeInTheDocument(),
+    );
 
     fireEvent.click(screen.getByRole('button', { name: /新建学生/ }));
     fireEvent.change(await screen.findByLabelText('学号'), { target: { value: '60' } });
@@ -530,7 +543,8 @@ describe('AskCoreOrganizationRoute', () => {
     await waitFor(() => expect(screen.getByText('高一 1 班 的身份')).toBeInTheDocument());
 
     fireEvent.mouseDown(screen.getByLabelText('身份'));
-    fireEvent.click(await screen.findByText('学生'));
+    const studentRoleOptions = await screen.findAllByText('学生');
+    fireEvent.click(studentRoleOptions.at(-1));
     fireEvent.mouseDown(screen.getByLabelText('学生'));
     fireEvent.click(await screen.findByText('王同学'));
     fireEvent.click(screen.getByRole('button', { name: /分配身份/ }));

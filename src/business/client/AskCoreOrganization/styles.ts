@@ -36,7 +36,9 @@ export const styles = createStaticStyles(({ css }) => ({
 
     background: ${cssVar.colorBgContainer};
 
-    transition: box-shadow 0.25s ease, transform 0.25s ease;
+    transition:
+      box-shadow 0.25s ease,
+      transform 0.25s ease;
 
     &:hover {
       box-shadow: 0 8px 24px rgb(0 0 0 / 6%);
@@ -174,7 +176,9 @@ export const styles = createStaticStyles(({ css }) => ({
 
     background: ${cssVar.colorBgContainer};
 
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition:
+      transform 0.2s ease,
+      box-shadow 0.2s ease;
 
     &:hover {
       transform: translateY(-2px);
@@ -201,7 +205,9 @@ export const styles = createStaticStyles(({ css }) => ({
 
     background: ${cssVar.colorBgContainer};
 
-    transition: box-shadow 0.25s ease, transform 0.25s ease;
+    transition:
+      box-shadow 0.25s ease,
+      transform 0.25s ease;
 
     &:hover {
       box-shadow: 0 4px 12px rgb(0 0 0 / 4%);
@@ -234,7 +240,7 @@ export const styles = createStaticStyles(({ css }) => ({
   `,
   sectionBody: css`
     padding-block: 16px;
-padding-inline: 20px;
+    padding-inline: 20px;
   `,
 
   // Member Card
@@ -652,7 +658,9 @@ padding-inline: 20px;
   // Settings
   settingsPanel: css`
     overflow: hidden;
-    transition: max-height 0.3s ease, opacity 0.3s ease;
+    transition:
+      max-height 0.3s ease,
+      opacity 0.3s ease;
   `,
   settingsHeader: css`
     cursor: pointer;
@@ -674,7 +682,7 @@ padding-inline: 20px;
   `,
   settingsBody: css`
     padding-block: 0 20px;
-padding-inline: 20px;
+    padding-inline: 20px;
   `,
   settingsRow: css`
     display: flex;
@@ -698,6 +706,44 @@ padding-inline: 20px;
     font-size: 13px;
     font-weight: 500;
     color: ${cssVar.colorText};
+  `,
+  csvFormatGuide: css`
+    margin-block-end: 12px;
+
+    .ant-alert-message,
+    .ant-alert-title {
+      font-weight: 650;
+    }
+  `,
+  csvFormatDescription: css`
+    display: grid;
+    gap: 6px;
+
+    font-size: 13px;
+    line-height: 1.6;
+    color: ${cssVar.colorTextSecondary};
+
+    strong {
+      color: ${cssVar.colorText};
+    }
+  `,
+  csvFormatExample: css`
+    display: block;
+
+    max-width: 100%;
+    margin-block-start: 4px;
+    padding-block: 6px;
+    padding-inline: 8px;
+    border-radius: 6px;
+
+    font-family: monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    color: ${cssVar.colorText};
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+
+    background: ${cssVar.colorFillQuaternary};
   `,
 
   // Search
@@ -752,7 +798,9 @@ padding-inline: 20px;
     background: ${cssVar.colorBgContainer};
     box-shadow: 0 1px 2px rgb(0 0 0 / 3%);
 
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
 
     &:hover {
       border-color: ${cssVar.colorPrimaryBorder};
@@ -851,11 +899,26 @@ padding-inline: 20px;
     animation: org-shake 0.3s ease;
 
     @keyframes org-shake {
-      0%, 100% { transform: translateX(0); }
-      20% { transform: translateX(-4px); }
-      40% { transform: translateX(4px); }
-      60% { transform: translateX(-2px); }
-      80% { transform: translateX(2px); }
+      0%,
+      100% {
+        transform: translateX(0);
+      }
+
+      20% {
+        transform: translateX(-4px);
+      }
+
+      40% {
+        transform: translateX(4px);
+      }
+
+      60% {
+        transform: translateX(-2px);
+      }
+
+      80% {
+        transform: translateX(2px);
+      }
     }
   `,
 

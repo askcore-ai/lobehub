@@ -22,10 +22,7 @@ import { useLocation } from 'react-router-dom';
 
 import { message } from '@/components/AntdStaticMethods';
 
-import {
-  askCoreWorkbenchClient,
-  isAskCoreWorkbenchDeleteNotFound,
-} from '../AskCoreWorkbench/api';
+import { askCoreWorkbenchClient, isAskCoreWorkbenchDeleteNotFound } from '../AskCoreWorkbench/api';
 import {
   type EditableResourceKey,
   EMPTY_LOOKUPS,
@@ -44,20 +41,12 @@ import {
   toFormState,
 } from '../AskCoreWorkbench/resourceMeta';
 import { type JsonRecord, type ResourceKey } from '../AskCoreWorkbench/types';
-import {
-  EducationOrgSection,
-  HeroCard,
-  MemberSection,
-  SettingsSection,
-} from './components';
+import { EducationOrgSection, HeroCard, MemberSection, SettingsSection } from './components';
 import { useOrganization } from './hooks/useOrganization';
 import { styles } from './styles';
 import { type AskCoreEducationOrgUnit } from './types';
 
-type OrganizationRosterResource = Extract<
-  ResourceKey,
-  'students' | 'teachers'
->;
+type OrganizationRosterResource = Extract<ResourceKey, 'students' | 'teachers'>;
 type TabKey = 'hierarchy' | 'members' | 'overview' | OrganizationRosterResource;
 
 const tabs: { key: TabKey; label: string }[] = [
@@ -68,10 +57,7 @@ const tabs: { key: TabKey; label: string }[] = [
   { key: 'students', label: '学生' },
 ];
 
-const rosterResources: OrganizationRosterResource[] = [
-  'teachers',
-  'students',
-];
+const rosterResources: OrganizationRosterResource[] = ['teachers', 'students'];
 const lookupResources: LookupCollectionKey[] = ['students', 'teachers'];
 const ROSTER_PAGE_SIZE = 20;
 const ROSTER_IMPORT_TERMINAL_STATES = new Set(['cancelled', 'failed', 'succeeded']);
@@ -124,7 +110,7 @@ const csvImportDefaults = (
 ) => {
   const defaults: JsonRecord = {};
   if (resource === 'students' && filterForm.org_unit_id) {
-    defaults.org_unit_id = Number(filterForm.org_unit_id);
+    defaults.class_id = Number(filterForm.org_unit_id);
   }
   return defaults;
 };
@@ -156,7 +142,8 @@ const labelForField = (resource: OrganizationRosterResource, key: string) => {
 const displayValue = (value: unknown) => {
   if (value === undefined || value === null || value === '') return '--';
   if (typeof value === 'boolean') return value ? '是' : '否';
-  if (typeof value === 'string') return /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 19).replace('T', ' ') : value;
+  if (typeof value === 'string')
+    return /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 19).replace('T', ' ') : value;
   if (typeof value === 'number') return value;
   return JSON.stringify(value);
 };
@@ -164,6 +151,35 @@ const displayValue = (value: unknown) => {
 const rosterColumnsByResource: Record<OrganizationRosterResource, string[]> = {
   students: ['name', 'student_number', 'class_name', 'gender'],
   teachers: ['real_name', 'username', 'role', 'school_name'],
+};
+
+const rosterCsvFormats: Record<
+  OrganizationRosterResource,
+  {
+    example: string[];
+    optional: string[];
+    required: string[];
+    tips: string[];
+  }
+> = {
+  students: {
+    example: ['姓名,学号,班级,性别,拼音名', '王同学,S001,3,female,wang tong xue'],
+    optional: ['性别/gender', '拼音名/pinyin_name'],
+    required: ['姓名/name', '学号/student_number', '班级/class_id/班级id（未按班级筛选时必填）'],
+    tips: [
+      '班级列填写组织层级中的班级 ID，不是班级名称。',
+      '如果上方已筛选班级，导入时会把该班级作为默认 class_id。',
+    ],
+  },
+  teachers: {
+    example: ['账号,密码,姓名,教师编号,角色', 'teacher1,temporary-pass-123,李老师,T001,TEACHER'],
+    optional: ['教师编号/teacher_number', '角色/role'],
+    required: ['账号/username', '密码/password', '姓名/real_name'],
+    tips: [
+      '角色可填 TEACHER、ADMIN、PRINCIPAL；留空默认 TEACHER。',
+      '密码只用于创建教师账号，服务端会哈希保存且不会回显。',
+    ],
+  },
 };
 
 const RosterField = ({
@@ -187,7 +203,9 @@ const RosterField = ({
   if (field.kind === 'number') return <InputNumber {...controlProps} style={{ width: '100%' }} />;
   if (field.kind === 'datetime') return <Input {...controlProps} type="datetime-local" />;
   if (field.kind === 'textarea' || field.kind === 'json') {
-    return <Input.TextArea {...controlProps} rows={field.rows || (field.kind === 'json' ? 8 : 3)} />;
+    return (
+      <Input.TextArea {...controlProps} rows={field.rows || (field.kind === 'json' ? 8 : 3)} />
+    );
   }
   return <Input {...controlProps} placeholder={field.placeholder || field.label} />;
 };
@@ -217,6 +235,7 @@ const OrganizationRosterSection = memo<{
 
   const filters = RESOURCE_FILTER_FIELDS[resource] || [];
   const formFields = RESOURCE_FORM_FIELDS[resource] || [];
+  const csvFormat = rosterCsvFormats[resource];
   const visibleIds = useMemo(
     () => new Set(items.map((item) => recordId(resource, item)).filter((id) => id > 0)),
     [items, resource],
@@ -447,7 +466,13 @@ const OrganizationRosterSection = memo<{
           <span className={styles.sectionTitle}>{RESOURCE_LABELS[resource].label}</span>
           <span className={styles.sectionSubtitle}>{RESOURCE_LABELS[resource].description}</span>
         </div>
-        <Button icon={<RefreshCw size={14} />} loading={loading} size="small" type="text" onClick={loadItems} />
+        <Button
+          icon={<RefreshCw size={14} />}
+          loading={loading}
+          size="small"
+          type="text"
+          onClick={loadItems}
+        />
       </div>
       <div className={styles.sectionBody}>
         {error ? <Alert showIcon style={{ marginBottom: 12 }} title={error} type="error" /> : null}
@@ -513,7 +538,11 @@ const OrganizationRosterSection = memo<{
                   return false;
                 }}
               >
-                <Button disabled={importing} icon={<FileSpreadsheet size={14} />} loading={importing}>
+                <Button
+                  disabled={importing}
+                  icon={<FileSpreadsheet size={14} />}
+                  loading={importing}
+                >
                   导入 CSV
                 </Button>
               </Upload>
@@ -526,12 +555,44 @@ const OrganizationRosterSection = memo<{
                   批量删除
                 </Button>
               </Popconfirm>
-              <Button className={styles.pillButton} icon={<Plus size={14} />} type="primary" onClick={() => openEditor(null)}>
+              <Button
+                className={styles.pillButton}
+                icon={<Plus size={14} />}
+                type="primary"
+                onClick={() => openEditor(null)}
+              >
                 新建{RESOURCE_LABELS[resource].singular}
               </Button>
             </Space>
           ) : null}
         </div>
+        {canManage ? (
+          <Alert
+            showIcon
+            className={styles.csvFormatGuide}
+            title={`${RESOURCE_LABELS[resource].singular} CSV 格式`}
+            type="info"
+            description={
+              <div className={styles.csvFormatDescription}>
+                <div>
+                  <strong>必填表头：</strong>
+                  {csvFormat.required.join('、')}
+                </div>
+                <div>
+                  <strong>可选表头：</strong>
+                  {csvFormat.optional.join('、')}
+                </div>
+                <div>
+                  <strong>示例：</strong>
+                  <code className={styles.csvFormatExample}>{csvFormat.example.join('\n')}</code>
+                </div>
+                {csvFormat.tips.map((tip) => (
+                  <div key={tip}>{tip}</div>
+                ))}
+              </div>
+            }
+          />
+        ) : null}
         <div className={styles.rosterListHeader}>
           {canManage ? (
             <Checkbox
@@ -548,7 +609,8 @@ const OrganizationRosterSection = memo<{
             <span className={styles.settingsLabel}>已加载记录</span>
           )}
           <span className={styles.settingsLabel}>
-            已加载 {items.length} 条{total != null ? ` / ${total} 条` : ''}，已选 {selectedIds.length} 条。
+            已加载 {items.length} 条{total != null ? ` / ${total} 条` : ''}，已选{' '}
+            {selectedIds.length} 条。
           </span>
         </div>
         {loading && !items.length ? (
@@ -559,8 +621,14 @@ const OrganizationRosterSection = memo<{
               const id = recordId(resource, item);
               const selected = id > 0 && selectedKeySet.has(id);
               const title =
-                String(item.name || item.title || item.real_name || item.student_name || item.student_number || '').trim() ||
-                `${RESOURCE_LABELS[resource].singular} #${id || '--'}`;
+                String(
+                  item.name ||
+                    item.title ||
+                    item.real_name ||
+                    item.student_name ||
+                    item.student_number ||
+                    '',
+                ).trim() || `${RESOURCE_LABELS[resource].singular} #${id || '--'}`;
               return (
                 <article
                   className={`${styles.rosterCard} ${selected ? styles.rosterCardSelected : ''}`}
@@ -619,7 +687,11 @@ const OrganizationRosterSection = memo<{
         )}
         {hasMore ? <div className={styles.scrollSentinel} ref={loadMoreTriggerRef} /> : null}
         <div className={styles.rosterLoadStatus}>
-          {loadingMore ? '正在加载更多…' : hasMore ? '滚动到底部会自动加载更多记录。' : '已加载完当前结果。'}
+          {loadingMore
+            ? '正在加载更多…'
+            : hasMore
+              ? '滚动到底部会自动加载更多记录。'
+              : '已加载完当前结果。'}
         </div>
       </div>
 
@@ -639,7 +711,9 @@ const OrganizationRosterSection = memo<{
               key={field.key}
               label={field.label}
               name={field.key}
-              rules={field.required ? [{ message: `请输入${field.label}`, required: true }] : undefined}
+              rules={
+                field.required ? [{ message: `请输入${field.label}`, required: true }] : undefined
+              }
             >
               <RosterField field={field} lookups={lookups} />
             </Form.Item>
@@ -720,48 +794,53 @@ export const AskCoreOrganizationRoute = memo(() => {
 
         {org.loading ? (
           <Skeleton active paragraph={{ rows: 8 }} />
-	        ) : org.current ? (
-	          <>
-	            <div className={styles.staggerItem} style={{ animationDelay: '0s' }}>
-	              <div className={styles.sectionCard}>
-	                <div className={styles.sectionHeader}>
-	                  <div className={styles.sectionHeaderLeft}>
-	                    <span className={styles.sectionTitle}>当前组织</span>
-	                    <span className={styles.sectionSubtitle}>{org.organizations.length} 个组织</span>
-	                  </div>
-	                  <Space wrap>
-	                    <Select
-	                      style={{ minWidth: 240 }}
-	                      value={org.current.id}
-	                      options={org.organizations.map((item) => ({
-	                        label: item.name,
-	                        value: item.id,
-	                      }))}
-	                      onChange={(value) => void org.handleActiveChange(value)}
-	                    />
-	                    <Button
-	                      className={styles.pillButton}
-	                      icon={<Plus size={14} />}
-	                      onClick={() => org.setCreateOpen(true)}
-	                    >
-	                      新建组织
-	                    </Button>
-	                  </Space>
-	                </div>
-	              </div>
-	            </div>
+        ) : org.current ? (
+          <>
+            <div className={styles.staggerItem} style={{ animationDelay: '0s' }}>
+              <div className={styles.sectionCard}>
+                <div className={styles.sectionHeader}>
+                  <div className={styles.sectionHeaderLeft}>
+                    <span className={styles.sectionTitle}>当前组织</span>
+                    <span className={styles.sectionSubtitle}>
+                      {org.organizations.length} 个组织
+                    </span>
+                  </div>
+                  <Space wrap>
+                    <Select
+                      style={{ minWidth: 240 }}
+                      value={org.current.id}
+                      options={org.organizations.map((item) => ({
+                        label: item.name,
+                        value: item.id,
+                      }))}
+                      onChange={(value) => void org.handleActiveChange(value)}
+                    />
+                    <Button
+                      className={styles.pillButton}
+                      icon={<Plus size={14} />}
+                      onClick={() => org.setCreateOpen(true)}
+                    >
+                      新建组织
+                    </Button>
+                  </Space>
+                </div>
+              </div>
+            </div>
 
-	            {/* Hero Card - always visible */}
-	            <div className={styles.staggerItem} style={{ animationDelay: '0.03s' }}>
-	              <HeroCard
-	                canUpdateMeta={org.canUpdateMeta}
-	                payload={org.payload}
-	                onEdit={() => setEditingMeta(true)}
-	              />
-	            </div>
+            {/* Hero Card - always visible */}
+            <div className={styles.staggerItem} style={{ animationDelay: '0.03s' }}>
+              <HeroCard
+                canUpdateMeta={org.canUpdateMeta}
+                payload={org.payload}
+                onEdit={() => setEditingMeta(true)}
+              />
+            </div>
 
             {/* Tab Navigation */}
-            <div className={styles.staggerItem} style={{ animationDelay: '0.06s', display: 'flex', justifyContent: 'center' }}>
+            <div
+              className={styles.staggerItem}
+              style={{ animationDelay: '0.06s', display: 'flex', justifyContent: 'center' }}
+            >
               <div className={styles.tabNav}>
                 {tabs.map((t) => (
                   <button
@@ -779,7 +858,10 @@ export const AskCoreOrganizationRoute = memo(() => {
             {/* Tab Content */}
             <div className={styles.tabContent} key={activeTab}>
               {activeTab === 'overview' && (
-                <div className={styles.staggerItem} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <div
+                  className={styles.staggerItem}
+                  style={{ display: 'flex', flexDirection: 'column', gap: 20 }}
+                >
                   {/* Stat Cards */}
                   <div className={styles.statGrid}>
                     {statCards.map((s) => (
@@ -809,11 +891,18 @@ export const AskCoreOrganizationRoute = memo(() => {
                       {editingMeta ? (
                         <div>
                           <Form form={org.metaForm} layout="vertical">
-                            <Form.Item label="组织名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
+                            <Form.Item
+                              label="组织名称"
+                              name="name"
+                              rules={[{ required: true, message: '请输入名称' }]}
+                            >
                               <Input maxLength={80} />
                             </Form.Item>
                             <Form.Item label="组织简介" name="description">
-                              <Input.TextArea autoSize={{ maxRows: 3, minRows: 2 }} maxLength={500} />
+                              <Input.TextArea
+                                autoSize={{ maxRows: 3, minRows: 2 }}
+                                maxLength={500}
+                              />
                             </Form.Item>
                             <Form.Item label="联系人" name="contact">
                               <Input maxLength={120} />
@@ -838,7 +927,9 @@ export const AskCoreOrganizationRoute = memo(() => {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                           <div className={styles.settingsRow}>
                             <span className={styles.settingsLabel}>组织名称</span>
-                            <span style={{ fontSize: 14, fontWeight: 500, color: cssVar.colorText }}>
+                            <span
+                              style={{ fontSize: 14, fontWeight: 500, color: cssVar.colorText }}
+                            >
                               {org.current?.name}
                             </span>
                           </div>
@@ -896,13 +987,13 @@ export const AskCoreOrganizationRoute = memo(() => {
                 />
               )}
 
-	              {activeTab === 'hierarchy' && (
-	                <EducationOrgSection
-	                  assigningRole={org.assigningRole}
-	                  canManage={org.canManage}
+              {activeTab === 'hierarchy' && (
+                <EducationOrgSection
+                  assigningRole={org.assigningRole}
+                  canManage={org.canManage}
                   creatingUnit={org.creatingUnit}
                   error={org.educationError}
-	                  loading={org.educationLoading}
+                  loading={org.educationLoading}
                   members={org.members}
                   orgRoleForm={org.orgRoleForm}
                   payload={org.educationPayload}
@@ -914,18 +1005,18 @@ export const AskCoreOrganizationRoute = memo(() => {
                   onAddSchool={org.handleAddSchoolUnit}
                   onAssignRole={org.handleAssignEducationRole}
                   onDeleteRole={org.handleDeleteEducationRole}
-	                  onReload={org.reloadEducationOrgUnits}
-	                />
-	              )}
+                  onReload={org.reloadEducationOrgUnits}
+                />
+              )}
 
-	              {rosterResources.includes(activeTab as OrganizationRosterResource) && (
-	                <OrganizationRosterSection
-	                  canManage={org.canManage}
-	                  classUnits={educationClassUnits}
-	                  resource={activeTab as OrganizationRosterResource}
-	                />
-	              )}
-	            </div>
+              {rosterResources.includes(activeTab as OrganizationRosterResource) && (
+                <OrganizationRosterSection
+                  canManage={org.canManage}
+                  classUnits={educationClassUnits}
+                  resource={activeTab as OrganizationRosterResource}
+                />
+              )}
+            </div>
           </>
         ) : org.organizations.length > 0 ? (
           <div className={styles.emptyState}>
@@ -985,7 +1076,11 @@ export const AskCoreOrganizationRoute = memo(() => {
         onOk={org.handleCreateOrganization}
       >
         <Form form={org.createForm} layout="vertical">
-          <Form.Item label="组织名称" name="name" rules={[{ required: true, message: '请输入组织名称' }]}>
+          <Form.Item
+            label="组织名称"
+            name="name"
+            rules={[{ required: true, message: '请输入组织名称' }]}
+          >
             <Input maxLength={80} placeholder="例如：Seed 的组织" />
           </Form.Item>
           <Form.Item label="组织简介" name="description">
