@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildQuestionPreviewDataFromPayload,
   deserializeQuestionPayload,
+  questionTypeOptionsForSubjectName,
+  schemaRefForQuestionType,
   serializeQuestionForm,
 } from './questionModel';
 import type { JsonRecord } from './types';
@@ -65,6 +67,11 @@ describe('AskCoreWorkbench questionModel', () => {
     expect(model.stem).toBe('已知函数 $f(x)=x^2+1$，则 $f(1)=$( )');
     expect(model.options[0]).toMatchObject({ content: '$1$', label: 'A' });
     expect(model.answerText).toBe('A');
+  });
+
+  it('allows math multiple-choice Gaokao question types', () => {
+    expect(questionTypeOptionsForSubjectName('数学')).toContain('多项选择题');
+    expect(schemaRefForQuestionType('多项选择题')).toBe('choice_question');
   });
 
   it('serializes sub-question edits without losing answers or thinking', () => {

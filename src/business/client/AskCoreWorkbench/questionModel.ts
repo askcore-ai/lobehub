@@ -95,6 +95,7 @@ export const GAOKAO_QUESTION_TYPE_OPTIONS_BY_SUBJECT: Record<string, string[]> =
   ],
   数学: [
     '选择题',
+    '多项选择题',
     '填空题',
     '解答题',
     '非选择题',
