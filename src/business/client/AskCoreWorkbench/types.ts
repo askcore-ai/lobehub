@@ -1,10 +1,6 @@
 'use client';
 
-export type AskCoreWorkbenchTab =
-  | 'overview'
-  | 'assignments'
-  | 'questions'
-  | 'submissions';
+export type AskCoreWorkbenchTab = 'overview' | 'assignments' | 'questions' | 'submissions';
 
 export type JsonPrimitive = boolean | number | string | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | JsonRecord;
@@ -63,6 +59,30 @@ export interface AskCoreWorkbenchDashboardPayload {
   drafts?: AskCoreWorkbenchRecord[];
   recent_invocations?: AskCoreWorkbenchRecord[];
 }
+
+export type AskCoreEducationPersona = {
+  better_auth_user_id: string;
+  display_name?: string | null;
+  org_unit_id?: number | null;
+  role: 'grade_admin' | 'homeroom_teacher' | 'school_admin' | 'student' | 'teacher';
+  roster_id?: number | null;
+  roster_kind: 'member' | 'student' | 'teacher';
+};
+
+export type AskCoreEducationWorkbenchMode =
+  | 'identity_required'
+  | 'student_managed'
+  | 'student_restricted'
+  | 'teacher';
+
+export type AskCoreEducationProfile = {
+  active_persona?: AskCoreEducationPersona | null;
+  capabilities: Record<string, boolean>;
+  default_persona?: AskCoreEducationPersona | null;
+  education_identities: AskCoreEducationPersona[];
+  org_composition: Record<string, number>;
+  workbench_mode: AskCoreEducationWorkbenchMode;
+};
 
 export type AskCoreOrganizationSummary = {
   created_at?: string | null;

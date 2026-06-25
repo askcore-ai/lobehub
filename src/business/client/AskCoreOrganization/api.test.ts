@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   assignAskCoreEducationRole,
+  bindAskCoreEducationIdentity,
   bootstrapAskCoreOrganization,
   createAskCoreClassUnit,
   createAskCoreCohortUnit,
+  createAskCoreEducationIdentityClaim,
   createAskCoreEducationOrgUnit,
   createAskCoreOrganization,
   createAskCoreOrganizationInvite,
@@ -14,6 +16,7 @@ import {
   fetchAskCoreEducationRoleAssignments,
   fetchAskCoreOrganizations,
   setActiveAskCoreOrganization,
+  unbindAskCoreEducationIdentity,
   updateAskCoreOrganizationMemberRole,
 } from './api';
 
@@ -23,8 +26,9 @@ describe('AskCoreOrganization api client', () => {
   });
 
   it('builds organization endpoints with same-origin credentials', async () => {
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
     );
     vi.stubGlobal('fetch', fetchMock);
 
@@ -39,7 +43,12 @@ describe('AskCoreOrganization api client', () => {
       role: 'member',
     });
     await fetchAskCoreEducationOrgUnits();
-    await createAskCoreEducationOrgUnit({ entry_year: 2025, name: '2025级', parent_id: 1, unit_type: 'cohort' });
+    await createAskCoreEducationOrgUnit({
+      entry_year: 2025,
+      name: '2025级',
+      parent_id: 1,
+      unit_type: 'cohort',
+    });
     await createAskCoreSchoolUnit({ name: 'Seed School' });
     await createAskCoreCohortUnit({ entryYear: 2025, parentUnitId: 3 });
     await createAskCoreClassUnit({ name: '高一 1 班', parentUnitId: 4 });
@@ -48,6 +57,13 @@ describe('AskCoreOrganization api client', () => {
       org_unit_id: 2,
       role: 'grade_admin',
     });
+    await bindAskCoreEducationIdentity({
+      better_auth_user_id: 'user-1',
+      roster_id: 7001,
+      roster_kind: 'student',
+    });
+    await createAskCoreEducationIdentityClaim({ roster_id: 9001, roster_kind: 'teacher' });
+    await unbindAskCoreEducationIdentity('student', 7001);
     await fetchAskCoreEducationRoleAssignments(2);
     await deleteAskCoreEducationRoleAssignment(9);
 
@@ -66,6 +82,9 @@ describe('AskCoreOrganization api client', () => {
       '/api/askcore/workbench/organization/units',
       '/api/askcore/workbench/organization/units',
       '/api/askcore/workbench/organization/roles',
+      '/api/askcore/workbench/organization/identity-bindings',
+      '/api/askcore/workbench/organization/identity-claims',
+      '/api/askcore/workbench/organization/identity-bindings/student/7001',
       '/api/askcore/workbench/organization/roles?org_unit_id=2',
       '/api/askcore/workbench/organization/roles/9',
     ]);
@@ -102,6 +121,19 @@ describe('AskCoreOrganization api client', () => {
       }),
       method: 'POST',
     });
-    expect(calls[13][1]).toMatchObject({ method: 'DELETE' });
+    expect(calls[12][1]).toMatchObject({
+      body: JSON.stringify({
+        better_auth_user_id: 'user-1',
+        roster_id: 7001,
+        roster_kind: 'student',
+      }),
+      method: 'POST',
+    });
+    expect(calls[13][1]).toMatchObject({
+      body: JSON.stringify({ roster_id: 9001, roster_kind: 'teacher' }),
+      method: 'POST',
+    });
+    expect(calls[14][1]).toMatchObject({ method: 'DELETE' });
+    expect(calls[16][1]).toMatchObject({ method: 'DELETE' });
   });
 });

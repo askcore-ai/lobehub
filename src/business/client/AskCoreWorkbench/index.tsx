@@ -63,7 +63,11 @@ import {
   emptyAskCoreWorkbenchList,
   isAskCoreWorkbenchDeleteNotFound,
 } from './api';
-import { ASKCORE_WORKBENCH_TAB_OPTIONS, ASKCORE_WORKBENCH_TABS } from './config';
+import {
+  ASKCORE_WORKBENCH_TABS,
+  askCoreWorkbenchTabOptionsForProfile,
+  askCoreWorkbenchTabsForProfile,
+} from './config';
 import {
   buildQuestionPreviewDataFromModel,
   buildQuestionPreviewDataFromPayload,
@@ -103,6 +107,7 @@ import {
   toFormState,
 } from './resourceMeta';
 import {
+  type AskCoreEducationProfile,
   type AskCoreOrganizationState,
   type AskCoreWorkbenchColumn,
   type AskCoreWorkbenchDashboardPayload,
@@ -852,7 +857,8 @@ type WorkbenchRoute =
   | { kind: 'assignment-manual'; path: string }
   | { kind: 'assignment-ocr'; path: string }
   | { kind: 'question-ocr'; path: string }
-  | { kind: 'submission-ocr'; path: string };
+  | { kind: 'submission-ocr'; path: string }
+  | { kind: 'student-submission-ocr'; path: string };
 
 type DetailState =
   | { item: JsonRecord; kind: 'generic' }
@@ -899,6 +905,7 @@ const invocationActionLabelMap: Record<string, string> = {
   'ops.import.teachers': '导入教师',
   'question.create_from_ocr': '题库 OCR 录入',
   'submission.create_from_ocr': '批量导入学生提交',
+  'submission.student_upload_from_ocr': '学生提交作业',
   'submission.explanation.regenerate': '重新生成讲解',
   'submission.explanation.save': '保存讲解',
   'submission.grade.retry': '重新批改提交',
@@ -1031,7 +1038,9 @@ const nonNegativeCount = (value: unknown) => {
 };
 
 const isSubmissionOcrInvocation = (record?: InvocationDisplayRecord | null) =>
-  normalizedInvocationAction(record) === 'submission.create_from_ocr';
+  ['submission.create_from_ocr', 'submission.student_upload_from_ocr'].includes(
+    normalizedInvocationAction(record),
+  );
 
 const getCompletedProgressCounts = (record?: InvocationDisplayRecord | null) => {
   const total = nonNegativeCount(record?.question_total);
@@ -1044,7 +1053,8 @@ const getCompletedProgressCounts = (record?: InvocationDisplayRecord | null) => 
 
 const invocationProgressLabel = (record?: InvocationDisplayRecord | null) => {
   const action = normalizedInvocationAction(record);
-  if (action === 'submission.create_from_ocr') return '提交处理进度';
+  if (action === 'submission.create_from_ocr' || action === 'submission.student_upload_from_ocr')
+    return '提交处理进度';
   if (action === 'submission.grade.run' || action === 'submission.grade.retry') return '批改进度';
   if (action === 'assignment.draft.create_from_ocr') return '题目录入进度';
   if (action === 'question.create_from_ocr') return '题库录入进度';
@@ -1062,7 +1072,8 @@ const formatCompletedInvocationResult = (
   total: number,
 ) => {
   const action = normalizedInvocationAction(record);
-  if (action === 'submission.create_from_ocr') return `处理 ${total} 份提交`;
+  if (action === 'submission.create_from_ocr' || action === 'submission.student_upload_from_ocr')
+    return `处理 ${total} 份提交`;
   if (action === 'submission.grade.run' || action === 'submission.grade.retry')
     return `批改 ${total} 道题`;
   if (action === 'assignment.draft.create_from_ocr') return `识别 ${total} 道题`;
@@ -1353,7 +1364,10 @@ const assignmentOcrRelatedActions = new Set([
   'assignment.draft.publish',
 ]);
 const submissionOcrVisibleArtifactTypes = new Set(['submission.ocr.batch.result']);
-const submissionOcrRelatedActions = new Set(['submission.create_from_ocr']);
+const submissionOcrRelatedActions = new Set([
+  'submission.create_from_ocr',
+  'submission.student_upload_from_ocr',
+]);
 const questionOcrVisibleArtifactTypes = new Set(['question.ocr.import.result']);
 const questionOcrRelatedActions = new Set(['question.create_from_ocr']);
 
@@ -1903,6 +1917,7 @@ const parseWorkbenchRoute = (
   if (path === '/assignments/new/ocr') return { kind: 'assignment-ocr', path };
   if (path === '/questions/new/ocr') return { kind: 'question-ocr', path };
   if (path === '/submissions/new/ocr') return { kind: 'submission-ocr', path };
+  if (path === '/submissions/new/student-ocr') return { kind: 'student-submission-ocr', path };
 
   const parts = path.replace(/^\/+/, '').split('/').filter(Boolean);
   if (parts[0] === 'invocations') {
@@ -3595,6 +3610,7 @@ const deriveAssignmentQuestionScore = (payload: JsonRecord) => {
 };
 
 const AssignmentDetailView = ({
+  canManage,
   client,
   detail,
   lookups,
@@ -3602,6 +3618,7 @@ const AssignmentDetailView = ({
   onEdit,
   onReload,
 }: {
+  canManage: boolean;
   client: AskCoreWorkbenchApiClient;
   detail: AssignmentDetailResponse;
   lookups: LookupCollections;
@@ -3906,32 +3923,34 @@ const AssignmentDetailView = ({
             左侧查看和编辑题目，支持 Markdown + LaTeX 预览、插入、删除、拖拽排序和批量删除。
           </div>
         </div>
-        <Space wrap>
-          <Button
-            className={styles.secondary}
-            icon={<Plus size={14} />}
-            onClick={() => {
-              const draft = buildAssignmentQuestionDraft({
-                gradeId,
-                questionType: draftQuestionType,
-                subjectId,
-              });
-              setQuestionItems((items) => [...items, draft]);
-              setActiveQuestionKey(draft.clientKey);
-            }}
-          >
-            添加题目
-          </Button>
-          <Popconfirm
-            disabled={!questionSelectedKeys.length}
-            title={`删除已选 ${questionSelectedKeys.length} 道题目？`}
-            onConfirm={() => deleteQuestionItems(questionSelectedKeys)}
-          >
-            <Button danger disabled={!questionSelectedKeys.length} icon={<Trash2 size={14} />}>
-              批量删除
+        {canManage ? (
+          <Space wrap>
+            <Button
+              className={styles.secondary}
+              icon={<Plus size={14} />}
+              onClick={() => {
+                const draft = buildAssignmentQuestionDraft({
+                  gradeId,
+                  questionType: draftQuestionType,
+                  subjectId,
+                });
+                setQuestionItems((items) => [...items, draft]);
+                setActiveQuestionKey(draft.clientKey);
+              }}
+            >
+              添加题目
             </Button>
-          </Popconfirm>
-        </Space>
+            <Popconfirm
+              disabled={!questionSelectedKeys.length}
+              title={`删除已选 ${questionSelectedKeys.length} 道题目？`}
+              onConfirm={() => deleteQuestionItems(questionSelectedKeys)}
+            >
+              <Button danger disabled={!questionSelectedKeys.length} icon={<Trash2 size={14} />}>
+                批量删除
+              </Button>
+            </Popconfirm>
+          </Space>
+        ) : null}
       </div>
       {questionError ? <Alert showIcon message={questionError} type="error" /> : null}
       {questionNotice ? <Alert showIcon message={questionNotice} type="success" /> : null}
@@ -3966,7 +3985,7 @@ const AssignmentDetailView = ({
               />
               <div
                 className={cx(styles.questionCard, active ? styles.questionCardActive : undefined)}
-                draggable={!questionSaving}
+                draggable={canManage && !questionSaving}
                 onDragStart={(event) => handleQuestionDragStart(event, item.clientKey)}
                 onDragEnd={() => {
                   setDraggingQuestionKey(null);
@@ -3975,19 +3994,23 @@ const AssignmentDetailView = ({
               >
                 <div className={styles.questionCardHeader}>
                   <Space wrap>
-                    <span className={styles.dragHandle} title="拖拽排序">
-                      <GripVertical size={16} />
-                    </span>
-                    <Checkbox
-                      checked={questionSelectedKeySet.has(item.clientKey)}
-                      onChange={(event) =>
-                        setQuestionSelectedKeys((keys) =>
-                          event.target.checked
-                            ? [...keys, item.clientKey]
-                            : keys.filter((key) => key !== item.clientKey),
-                        )
-                      }
-                    />
+                    {canManage ? (
+                      <>
+                        <span className={styles.dragHandle} title="拖拽排序">
+                          <GripVertical size={16} />
+                        </span>
+                        <Checkbox
+                          checked={questionSelectedKeySet.has(item.clientKey)}
+                          onChange={(event) =>
+                            setQuestionSelectedKeys((keys) =>
+                              event.target.checked
+                                ? [...keys, item.clientKey]
+                                : keys.filter((key) => key !== item.clientKey),
+                            )
+                          }
+                        />
+                      </>
+                    ) : null}
                     <strong>第 {index + 1} 题</strong>
                     <Tag bordered={false}>{preview.questionType}</Tag>
                     {item.scoreValue ? (
@@ -3995,23 +4018,25 @@ const AssignmentDetailView = ({
                     ) : null}
                     {item.isDirty || item.isDraft ? <Tag color="gold">未保存</Tag> : null}
                   </Space>
-                  <Space>
-                    <Button
-                      className={styles.secondary}
-                      size="small"
-                      onClick={() => setActiveQuestionKey(active ? null : item.clientKey)}
-                    >
-                      {active ? '收起编辑' : '编辑'}
-                    </Button>
-                    <Popconfirm
-                      title="删除该题目？"
-                      onConfirm={() => deleteQuestionItems([item.clientKey])}
-                    >
-                      <Button danger icon={<Trash2 size={14} />} size="small">
-                        删除
+                  {canManage ? (
+                    <Space>
+                      <Button
+                        className={styles.secondary}
+                        size="small"
+                        onClick={() => setActiveQuestionKey(active ? null : item.clientKey)}
+                      >
+                        {active ? '收起编辑' : '编辑'}
                       </Button>
-                    </Popconfirm>
-                  </Space>
+                      <Popconfirm
+                        title="删除该题目？"
+                        onConfirm={() => deleteQuestionItems([item.clientKey])}
+                      >
+                        <Button danger icon={<Trash2 size={14} />} size="small">
+                          删除
+                        </Button>
+                      </Popconfirm>
+                    </Space>
+                  ) : null}
                 </div>
                 {active ? (
                   <div className={styles.inlineEditor}>
@@ -4095,23 +4120,25 @@ const AssignmentDetailView = ({
         <span>
           共 {questionItems.length} 道题，{dirtyQuestionCount} 道未保存。
         </span>
-        <Button
-          className={styles.secondary}
-          disabled={!questionItems.length}
-          icon={<Plus size={14} />}
-          size="small"
-          onClick={() => {
-            const draft = buildAssignmentQuestionDraft({
-              gradeId,
-              questionType: draftQuestionType,
-              subjectId,
-            });
-            setQuestionItems((items) => [...items, draft]);
-            setActiveQuestionKey(draft.clientKey);
-          }}
-        >
-          末尾插入
-        </Button>
+        {canManage ? (
+          <Button
+            className={styles.secondary}
+            disabled={!questionItems.length}
+            icon={<Plus size={14} />}
+            size="small"
+            onClick={() => {
+              const draft = buildAssignmentQuestionDraft({
+                gradeId,
+                questionType: draftQuestionType,
+                subjectId,
+              });
+              setQuestionItems((items) => [...items, draft]);
+              setActiveQuestionKey(draft.clientKey);
+            }}
+          >
+            末尾插入
+          </Button>
+        ) : null}
       </div>
     </div>
   );
@@ -4122,9 +4149,11 @@ const AssignmentDetailView = ({
         subtitle={`作业 ID ${assignmentId || '--'}`}
         title={getRecordTitle('assignments', assignment)}
         actions={
-          <Button className={styles.secondary} icon={<Pencil size={14} />} onClick={onEdit}>
-            编辑作业
-          </Button>
+          canManage ? (
+            <Button className={styles.secondary} icon={<Pencil size={14} />} onClick={onEdit}>
+              编辑作业
+            </Button>
+          ) : undefined
         }
         onBack={onBack}
       />
@@ -4175,51 +4204,55 @@ const AssignmentDetailView = ({
           <div>
             <h3 className={styles.panelTitle}>发布对象</h3>
             <div className={styles.muted}>
-              按班级一次性增加发布对象，也可以添加单个学生；支持勾选后批量移除。
+              {canManage
+                ? '按班级一次性增加发布对象，也可以添加单个学生；支持勾选后批量移除。'
+                : '查看本作业的发布范围。'}
             </div>
           </div>
-          <Space wrap>
-            <Select
-              allowClear
-              placeholder="选择班级"
-              style={{ width: 180 }}
-              value={selectedClassId || undefined}
-              options={fieldOptions(
-                { key: 'org_unit_id', kind: 'select', label: '班级', optionsFrom: 'classes' },
-                lookups,
-              )}
-              onChange={(value) => setSelectedClassId(value || '')}
-            />
-            <Select
-              allowClear
-              placeholder="或选择单个学生"
-              style={{ width: 180 }}
-              value={selectedStudentId || undefined}
-              options={fieldOptions(
-                { key: 'student_id', kind: 'select', label: '学生', optionsFrom: 'students' },
-                lookups,
-              )}
-              onChange={(value) => setSelectedStudentId(value || '')}
-            />
-            <Button
-              className={styles.secondary}
-              disabled={!selectedClassId && !selectedStudentId}
-              icon={<Plus size={14} />}
-              loading={recipientBusy}
-              onClick={addRecipients}
-            >
-              添加学生/班级
-            </Button>
-            <Popconfirm
-              disabled={!recipientSelectedIds.length}
-              title={`移除已选 ${recipientSelectedIds.length} 个发布对象？`}
-              onConfirm={() => removeRecipients(recipientSelectedIds)}
-            >
-              <Button danger disabled={!recipientSelectedIds.length} icon={<Trash2 size={14} />}>
-                批量移除
+          {canManage ? (
+            <Space wrap>
+              <Select
+                allowClear
+                placeholder="选择班级"
+                style={{ width: 180 }}
+                value={selectedClassId || undefined}
+                options={fieldOptions(
+                  { key: 'org_unit_id', kind: 'select', label: '班级', optionsFrom: 'classes' },
+                  lookups,
+                )}
+                onChange={(value) => setSelectedClassId(value || '')}
+              />
+              <Select
+                allowClear
+                placeholder="或选择单个学生"
+                style={{ width: 180 }}
+                value={selectedStudentId || undefined}
+                options={fieldOptions(
+                  { key: 'student_id', kind: 'select', label: '学生', optionsFrom: 'students' },
+                  lookups,
+                )}
+                onChange={(value) => setSelectedStudentId(value || '')}
+              />
+              <Button
+                className={styles.secondary}
+                disabled={!selectedClassId && !selectedStudentId}
+                icon={<Plus size={14} />}
+                loading={recipientBusy}
+                onClick={addRecipients}
+              >
+                添加学生/班级
               </Button>
-            </Popconfirm>
-          </Space>
+              <Popconfirm
+                disabled={!recipientSelectedIds.length}
+                title={`移除已选 ${recipientSelectedIds.length} 个发布对象？`}
+                onConfirm={() => removeRecipients(recipientSelectedIds)}
+              >
+                <Button danger disabled={!recipientSelectedIds.length} icon={<Trash2 size={14} />}>
+                  批量移除
+                </Button>
+              </Popconfirm>
+            </Space>
+          ) : null}
         </div>
         {recipientItems.length ? (
           <Table
@@ -4229,23 +4262,29 @@ const AssignmentDetailView = ({
             rowKey={(row) => String(row.assignment_student_id || row.id || row.student_id)}
             size="small"
             columns={[
-              {
-                key: 'select',
-                render: (_, row) => {
-                  const id = Number(row.assignment_student_id || row.id || 0) || 0;
-                  return (
-                    <Checkbox
-                      checked={recipientSelectedIdSet.has(id)}
-                      onChange={(event) =>
-                        setRecipientSelectedIds((ids) =>
-                          event.target.checked ? [...ids, id] : ids.filter((entry) => entry !== id),
-                        )
-                      }
-                    />
-                  );
-                },
-                width: 52,
-              },
+              ...(canManage
+                ? [
+                    {
+                      key: 'select',
+                      render: (_: unknown, row: JsonRecord) => {
+                        const id = Number(row.assignment_student_id || row.id || 0) || 0;
+                        return (
+                          <Checkbox
+                            checked={recipientSelectedIdSet.has(id)}
+                            onChange={(event) =>
+                              setRecipientSelectedIds((ids) =>
+                                event.target.checked
+                                  ? [...ids, id]
+                                  : ids.filter((entry) => entry !== id),
+                              )
+                            }
+                          />
+                        );
+                      },
+                      width: 52,
+                    },
+                  ]
+                : []),
               {
                 key: 'student',
                 render: (_, row) => {
@@ -4269,21 +4308,28 @@ const AssignmentDetailView = ({
                   formatCellValue(value, { dataIndex: 'status', isStatus: true, title: '状态' }),
                 title: '状态',
               },
-              {
-                key: 'actions',
-                render: (_, row: JsonRecord) => {
-                  const id = Number(row.assignment_student_id || row.id || 0) || 0;
-                  return (
-                    <Popconfirm title="移除该发布对象？" onConfirm={() => removeRecipients([id])}>
-                      <Button danger size="small">
-                        移除
-                      </Button>
-                    </Popconfirm>
-                  );
-                },
-                title: '操作',
-                width: 120,
-              },
+              ...(canManage
+                ? [
+                    {
+                      key: 'actions',
+                      render: (_: unknown, row: JsonRecord) => {
+                        const id = Number(row.assignment_student_id || row.id || 0) || 0;
+                        return (
+                          <Popconfirm
+                            title="移除该发布对象？"
+                            onConfirm={() => removeRecipients([id])}
+                          >
+                            <Button danger size="small">
+                              移除
+                            </Button>
+                          </Popconfirm>
+                        );
+                      },
+                      title: '操作',
+                      width: 120,
+                    },
+                  ]
+                : []),
             ]}
           />
         ) : (
@@ -4474,6 +4520,7 @@ const SubmissionSubResultPreview = ({
 };
 
 const SubmissionDetailView = ({
+  canManage,
   client,
   detail,
   lookups,
@@ -4481,6 +4528,7 @@ const SubmissionDetailView = ({
   onEdit,
   onReload,
 }: {
+  canManage: boolean;
   client: AskCoreWorkbenchApiClient;
   detail: SubmissionDetailResponse;
   lookups: LookupCollections;
@@ -4788,31 +4836,33 @@ const SubmissionDetailView = ({
             左侧维护题目、学生作答、批改结果与讲评反馈；右侧保留原始图片对照。
           </div>
         </div>
-        <Space wrap>
-          <Button
-            className={styles.secondary}
-            icon={<Plus size={14} />}
-            onClick={() => {
-              const draft = {
-                ...buildSubmissionQuestionDraft(),
-                orderIndex: questionItems.length + 1,
-              };
-              setQuestionItems((items) => [...items, draft]);
-              setActiveQuestionKey(draft.clientKey);
-            }}
-          >
-            添加题目结果
-          </Button>
-          <Popconfirm
-            disabled={!questionSelectedKeys.length}
-            title={`删除已选 ${questionSelectedKeys.length} 条题目结果？`}
-            onConfirm={() => deleteQuestionItems(questionSelectedKeys)}
-          >
-            <Button danger disabled={!questionSelectedKeys.length} icon={<Trash2 size={14} />}>
-              批量删除
+        {canManage ? (
+          <Space wrap>
+            <Button
+              className={styles.secondary}
+              icon={<Plus size={14} />}
+              onClick={() => {
+                const draft = {
+                  ...buildSubmissionQuestionDraft(),
+                  orderIndex: questionItems.length + 1,
+                };
+                setQuestionItems((items) => [...items, draft]);
+                setActiveQuestionKey(draft.clientKey);
+              }}
+            >
+              添加题目结果
             </Button>
-          </Popconfirm>
-        </Space>
+            <Popconfirm
+              disabled={!questionSelectedKeys.length}
+              title={`删除已选 ${questionSelectedKeys.length} 条题目结果？`}
+              onConfirm={() => deleteQuestionItems(questionSelectedKeys)}
+            >
+              <Button danger disabled={!questionSelectedKeys.length} icon={<Trash2 size={14} />}>
+                批量删除
+              </Button>
+            </Popconfirm>
+          </Space>
+        ) : null}
       </div>
       {questionError ? <Alert showIcon message={questionError} type="error" /> : null}
       {questionNotice ? <Alert showIcon message={questionNotice} type="success" /> : null}
@@ -4846,7 +4896,7 @@ const SubmissionDetailView = ({
               />
               <div
                 className={cx(styles.questionCard, active ? styles.questionCardActive : undefined)}
-                draggable={!questionSaving}
+                draggable={canManage && !questionSaving}
                 onDragStart={(event) => handleQuestionDragStart(event, item.clientKey)}
                 onDragEnd={() => {
                   setDraggingQuestionKey(null);
@@ -4855,19 +4905,23 @@ const SubmissionDetailView = ({
               >
                 <div className={styles.questionCardHeader}>
                   <Space wrap>
-                    <span className={styles.dragHandle} title="拖拽排序">
-                      <GripVertical size={16} />
-                    </span>
-                    <Checkbox
-                      checked={questionSelectedKeySet.has(item.clientKey)}
-                      onChange={(event) =>
-                        setQuestionSelectedKeys((keys) =>
-                          event.target.checked
-                            ? [...keys, item.clientKey]
-                            : keys.filter((key) => key !== item.clientKey),
-                        )
-                      }
-                    />
+                    {canManage ? (
+                      <>
+                        <span className={styles.dragHandle} title="拖拽排序">
+                          <GripVertical size={16} />
+                        </span>
+                        <Checkbox
+                          checked={questionSelectedKeySet.has(item.clientKey)}
+                          onChange={(event) =>
+                            setQuestionSelectedKeys((keys) =>
+                              event.target.checked
+                                ? [...keys, item.clientKey]
+                                : keys.filter((key) => key !== item.clientKey),
+                            )
+                          }
+                        />
+                      </>
+                    ) : null}
                     <strong>第 {index + 1} 题</strong>
                     {item.scoreValue || item.maxScoreValue ? (
                       <span className={styles.muted}>
@@ -4884,23 +4938,25 @@ const SubmissionDetailView = ({
                     ) : null}
                     {item.isDirty || item.isDraft ? <Tag color="gold">未保存</Tag> : null}
                   </Space>
-                  <Space>
-                    <Button
-                      className={styles.secondary}
-                      size="small"
-                      onClick={() => setActiveQuestionKey(active ? null : item.clientKey)}
-                    >
-                      {active ? '收起编辑' : '编辑'}
-                    </Button>
-                    <Popconfirm
-                      title="删除该题目结果？"
-                      onConfirm={() => deleteQuestionItems([item.clientKey])}
-                    >
-                      <Button danger icon={<Trash2 size={14} />} size="small">
-                        删除
+                  {canManage ? (
+                    <Space>
+                      <Button
+                        className={styles.secondary}
+                        size="small"
+                        onClick={() => setActiveQuestionKey(active ? null : item.clientKey)}
+                      >
+                        {active ? '收起编辑' : '编辑'}
                       </Button>
-                    </Popconfirm>
-                  </Space>
+                      <Popconfirm
+                        title="删除该题目结果？"
+                        onConfirm={() => deleteQuestionItems([item.clientKey])}
+                      >
+                        <Button danger icon={<Trash2 size={14} />} size="small">
+                          删除
+                        </Button>
+                      </Popconfirm>
+                    </Space>
+                  ) : null}
                 </div>
 
                 {active ? (
@@ -5080,32 +5136,34 @@ const SubmissionDetailView = ({
         subtitle={`提交 ID ${submissionId || '--'}`}
         title={getRecordTitle('submissions', submission)}
         actions={
-          <>
-            <Button className={styles.secondary} icon={<Pencil size={14} />} onClick={onEdit}>
-              编辑提交
-            </Button>
-            <Popconfirm
-              description="会使用当前上传图片覆盖题目结果，并按本次 OCR 重新识别学生归属。"
-              disabled={busy || !submissionId || !hasSubmissionImages}
-              title="重新 OCR 并批改该提交？"
-              onConfirm={rerunSubmissionOcr}
-            >
+          canManage ? (
+            <>
+              <Button className={styles.secondary} icon={<Pencil size={14} />} onClick={onEdit}>
+                编辑提交
+              </Button>
+              <Popconfirm
+                description="会使用当前上传图片覆盖题目结果，并按本次 OCR 重新识别学生归属。"
+                disabled={busy || !submissionId || !hasSubmissionImages}
+                title="重新 OCR 并批改该提交？"
+                onConfirm={rerunSubmissionOcr}
+              >
+                <Button
+                  className={styles.secondary}
+                  disabled={busy || !submissionId || !hasSubmissionImages}
+                  icon={<RefreshCw size={14} />}
+                >
+                  重新 OCR 并批改
+                </Button>
+              </Popconfirm>
               <Button
                 className={styles.secondary}
-                disabled={busy || !submissionId || !hasSubmissionImages}
-                icon={<RefreshCw size={14} />}
+                disabled={busy || !submissionId}
+                onClick={() => runAction('submission.grade.run', { submission_id: submissionId })}
               >
-                重新 OCR 并批改
+                批改/讲解
               </Button>
-            </Popconfirm>
-            <Button
-              className={styles.secondary}
-              disabled={busy || !submissionId}
-              onClick={() => runAction('submission.grade.run', { submission_id: submissionId })}
-            >
-              批改/讲解
-            </Button>
-          </>
+            </>
+          ) : undefined
         }
         onBack={onBack}
       />
@@ -5144,7 +5202,7 @@ const SubmissionDetailView = ({
         />
       </div>
 
-      {isNeedsBinding ? (
+      {canManage && isNeedsBinding ? (
         <div className={styles.panel}>
           <h3 className={styles.panelTitle}>学生归属</h3>
           <Space wrap>
@@ -5204,26 +5262,32 @@ const SubmissionDetailView = ({
             >
               下载报告
             </Button>
-            <Button
-              className={styles.secondary}
-              disabled={!submissionId || busy}
-              onClick={() =>
-                runAction('submission.report.generate', {
-                  force: true,
-                  submission_id: submissionId,
-                })
-              }
-            >
-              生成报告
-            </Button>
-            <Button
-              className={styles.secondary}
-              disabled={!submissionId || busy}
-              icon={<Printer size={14} />}
-              onClick={() => runAction('submission.report.print', { submission_id: submissionId })}
-            >
-              打印报告
-            </Button>
+            {canManage ? (
+              <>
+                <Button
+                  className={styles.secondary}
+                  disabled={!submissionId || busy}
+                  onClick={() =>
+                    runAction('submission.report.generate', {
+                      force: true,
+                      submission_id: submissionId,
+                    })
+                  }
+                >
+                  生成报告
+                </Button>
+                <Button
+                  className={styles.secondary}
+                  disabled={!submissionId || busy}
+                  icon={<Printer size={14} />}
+                  onClick={() =>
+                    runAction('submission.report.print', { submission_id: submissionId })
+                  }
+                >
+                  打印报告
+                </Button>
+              </>
+            ) : null}
           </Space>
         </div>
         <Descriptions
@@ -6566,14 +6630,338 @@ const SubmissionOcrCreateView = ({
   );
 };
 
+type StudentSubmissionAssignmentOption = {
+  assignmentId: number;
+  assignmentMeta: string;
+  assignmentStudentId: number;
+  assignmentTitle: string;
+  label: string;
+  searchText: string;
+  value: number;
+};
+
+const buildStudentSubmissionAssignmentOption = (
+  item: JsonRecord,
+): StudentSubmissionAssignmentOption => {
+  const assignmentStudentId = positiveId(item.assignment_student_id || item.id);
+  const assignmentId = positiveId(item.assignment_id);
+  const assignmentTitle = scopeText(
+    item.assignment_title || item.title || assignmentId,
+    '未命名作业',
+  );
+  const metaParts = [
+    item.subject_name || item.subject_id
+      ? `科目 ${scopeText(item.subject_name || item.subject_id, '--')}`
+      : null,
+    item.grade_name || item.grade_id
+      ? `教学年级 ${scopeText(item.grade_name || item.grade_id, '--')}`
+      : null,
+    item.due_date ? `截止 ${compactDate(String(item.due_date))}` : null,
+    item.status ? `状态 ${String(item.status)}` : null,
+    assignmentId ? `作业 ID ${assignmentId}` : null,
+  ].filter(Boolean) as string[];
+  const assignmentMeta = metaParts.join(' · ');
+  const label = [assignmentTitle, assignmentMeta].filter(Boolean).join(' · ');
+
+  return {
+    assignmentId,
+    assignmentMeta,
+    assignmentStudentId,
+    assignmentTitle,
+    label,
+    searchText: [assignmentTitle, assignmentMeta].filter(Boolean).join(' '),
+    value: assignmentStudentId,
+  };
+};
+
+const StudentSubmissionOcrCreateView = ({
+  client,
+  onBack,
+  onOpenAssignment,
+  onOpenSubmission,
+}: {
+  client: AskCoreWorkbenchApiClient;
+  onBack: () => void;
+  onOpenAssignment: (assignmentId: number) => void;
+  onOpenSubmission: (submissionId: number) => void;
+}) => {
+  const [assignmentStudentId, setAssignmentStudentId] = useState<number | null>(null);
+  const [assignmentRows, setAssignmentRows] = useState<JsonRecord[]>([]);
+  const [assignmentRowsLoading, setAssignmentRowsLoading] = useState(false);
+  const [assignmentRowsError, setAssignmentRowsError] = useState<string | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [run, setRun] = useState<RunState>(() => emptyRunState());
+
+  useEffect(() => {
+    let cancelled = false;
+    setAssignmentRowsLoading(true);
+    setAssignmentRowsError(null);
+    client
+      .listAllResource('assignment-students')
+      .then((items) => {
+        if (cancelled) return;
+        setAssignmentRows(
+          items.filter((item) => positiveId(item.assignment_student_id || item.id) > 0),
+        );
+        setAssignmentRowsLoading(false);
+      })
+      .catch((reason) => {
+        if (cancelled) return;
+        setAssignmentRows([]);
+        setAssignmentRowsError(asError(reason));
+        setAssignmentRowsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
+
+  const selectedAssignmentStudentId = positiveId(assignmentStudentId);
+  const selectedAssignmentRow = useMemo(
+    () =>
+      assignmentRows.find(
+        (row) => positiveId(row.assignment_student_id || row.id) === selectedAssignmentStudentId,
+      ) || null,
+    [assignmentRows, selectedAssignmentStudentId],
+  );
+  const selectedAssignmentId = positiveId(selectedAssignmentRow?.assignment_id);
+  const assignmentOptions = useMemo(
+    () =>
+      assignmentRows
+        .map(buildStudentSubmissionAssignmentOption)
+        .filter((item) => item.assignmentStudentId > 0),
+    [assignmentRows],
+  );
+  const validationMessage = !selectedAssignmentStudentId
+    ? '请先选择一条分配给你的作业。'
+    : files.length <= 0
+      ? '请先上传答题图片。'
+      : null;
+
+  const startStudentSubmissionOcr = async () => {
+    setSubmitError(null);
+    if (validationMessage) {
+      setSubmitError(validationMessage);
+      return;
+    }
+    setRun({
+      ...emptyRunState(),
+      busy: true,
+      notice: `正在上传图片 0/${files.length}…`,
+    });
+    try {
+      const scanRefs = await client.uploadScanFiles(files, {
+        onProgress: (progress) =>
+          setRun((current) => ({
+            ...current,
+            busy: true,
+            error: null,
+            notice: runNoticeForUploadProgress('正在上传图片')(progress),
+          })),
+      });
+      const result = await client.invokeAction('submission.student_upload_from_ocr', {
+        assignment_student_id: selectedAssignmentStudentId,
+        input_type: 'upload',
+        scan_refs: scanRefs,
+      });
+      await waitForInvocation({ client, invocationId: result.invocation_id, setRun });
+    } catch (reason) {
+      const error = asError(reason);
+      setSubmitError(error);
+      setRun((current) => ({ ...current, busy: false, error, notice: null }));
+    }
+  };
+
+  return (
+    <div className={styles.view}>
+      <DetailHeader
+        subtitle="选择分配给你的作业并上传答题图片，系统会自动 OCR、批改并生成讲解。"
+        title="提交作业"
+        onBack={onBack}
+      />
+      <div className={styles.splitWorkspace}>
+        <div className={cx(styles.formPanel, styles.submissionOcrFormPanel)}>
+          <div className={styles.stack}>
+            <Form.Item
+              required
+              label="我的作业"
+              extra={
+                assignmentRowsLoading
+                  ? '正在加载分配给你的作业…'
+                  : `当前可提交 ${assignmentRows.length} 条作业。`
+              }
+            >
+              <Select
+                showSearch
+                loading={assignmentRowsLoading}
+                optionFilterProp="searchText"
+                options={assignmentOptions}
+                placeholder="选择要提交的作业"
+                popupMatchSelectWidth={560}
+                value={assignmentStudentId || undefined}
+                optionRender={(option) => {
+                  const data = option.data as StudentSubmissionAssignmentOption;
+                  return (
+                    <div className={styles.assignmentSelectOption}>
+                      <div className={styles.assignmentSelectOptionTitle}>
+                        {data.assignmentTitle}
+                      </div>
+                      {data.assignmentMeta ? (
+                        <div className={styles.assignmentSelectOptionMeta}>
+                          {data.assignmentMeta}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                }}
+                onChange={(value) => setAssignmentStudentId(Number(value))}
+              />
+            </Form.Item>
+
+            {selectedAssignmentRow ? (
+              <div className={styles.previewBox}>
+                <div className={styles.actionBar}>
+                  <h3 className={styles.panelTitle}>作业概览</h3>
+                  {selectedAssignmentId ? (
+                    <Button
+                      className={styles.secondary}
+                      size="small"
+                      onClick={() => onOpenAssignment(selectedAssignmentId)}
+                    >
+                      打开作业详情
+                    </Button>
+                  ) : null}
+                </div>
+                <Descriptions
+                  column={2}
+                  size="small"
+                  items={[
+                    {
+                      children: scopeText(
+                        selectedAssignmentRow.assignment_title || selectedAssignmentId,
+                        '--',
+                      ),
+                      label: '作业',
+                    },
+                    {
+                      children: scopeText(
+                        selectedAssignmentRow.subject_name || selectedAssignmentRow.subject_id,
+                        '--',
+                      ),
+                      label: '科目',
+                    },
+                    {
+                      children: scopeText(
+                        selectedAssignmentRow.grade_name || selectedAssignmentRow.grade_id,
+                        '--',
+                      ),
+                      label: '教学年级',
+                    },
+                    {
+                      children: selectedAssignmentRow.due_date
+                        ? compactDate(String(selectedAssignmentRow.due_date))
+                        : '--',
+                      label: '截止时间',
+                    },
+                  ]}
+                />
+              </div>
+            ) : null}
+
+            <Form.Item
+              extra="可上传一张或多张答题图片，图片会作为同一份提交处理。"
+              label="上传图片"
+            >
+              <Upload
+                multiple
+                accept="image/*"
+                beforeUpload={() => false}
+                onChange={(info) => {
+                  setFiles(
+                    info.fileList.map((file) => file.originFileObj).filter(Boolean) as File[],
+                  );
+                }}
+              >
+                <Button icon={<UploadCloud size={14} />}>选择图片</Button>
+              </Upload>
+            </Form.Item>
+
+            <div className={styles.previewBox}>
+              <h3 className={styles.panelTitle}>提交预览</h3>
+              <div className={styles.statGrid}>
+                <div className={styles.statItem}>
+                  <div className={styles.statTitle}>已选图片</div>
+                  <div className={styles.statValue}>{files.length || '--'}</div>
+                </div>
+                <div className={styles.statItem}>
+                  <div className={styles.statTitle}>作业学生</div>
+                  <div className={styles.statValue}>{selectedAssignmentStudentId || '--'}</div>
+                </div>
+              </div>
+            </div>
+
+            {files.length ? (
+              <Space wrap>
+                {files.map((file) => (
+                  <Tag key={`${file.name}-${file.size}-${file.lastModified}`}>{file.name}</Tag>
+                ))}
+              </Space>
+            ) : null}
+
+            {assignmentRowsError ? (
+              <Alert showIcon message={`加载我的作业失败：${assignmentRowsError}`} type="warning" />
+            ) : null}
+            {submitError ? <Alert showIcon message={submitError} type="error" /> : null}
+
+            <Space wrap>
+              <Button
+                className={styles.primary}
+                disabled={Boolean(validationMessage)}
+                icon={<UploadCloud size={14} />}
+                loading={run.busy}
+                onClick={() => void startStudentSubmissionOcr()}
+              >
+                提交并自动批改
+              </Button>
+              {validationMessage ? <span className={styles.muted}>{validationMessage}</span> : null}
+            </Space>
+          </div>
+        </div>
+        <RunStatusPanel run={run} variant="submission-ocr" onOpenSubmission={onOpenSubmission} />
+      </div>
+    </div>
+  );
+};
+
 const AskCoreWorkbenchPage = memo(() => {
   const location = useLocation();
   const navigate = useNavigate();
   const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const routeQuery = query.get('route');
   const routeTab = routeQuery ? askCoreWorkbenchTabFromRoute(routeQuery) : undefined;
-  const activeTab = normalizeAskCoreWorkbenchTab(query.get('tab') || routeTab);
-  const activeConfig = ASKCORE_WORKBENCH_TABS.find((tab) => tab.key === activeTab)!;
+  const [educationProfile, setEducationProfile] = useState<AskCoreEducationProfile | null>(null);
+  const [educationProfileLoading, setEducationProfileLoading] = useState(true);
+  const rawActiveTab = normalizeAskCoreWorkbenchTab(query.get('tab') || routeTab);
+  const availableTabs = useMemo(
+    () => askCoreWorkbenchTabsForProfile(educationProfile),
+    [educationProfile],
+  );
+  const availableTabKeys = useMemo(
+    () => new Set<AskCoreWorkbenchTab>(availableTabs.map((tab) => tab.key)),
+    [availableTabs],
+  );
+  const activeTab = availableTabKeys.has(rawActiveTab)
+    ? rawActiveTab
+    : availableTabs[0]?.key || 'overview';
+  const activeConfig =
+    availableTabs.find((tab) => tab.key === activeTab) ||
+    availableTabs[0] ||
+    ASKCORE_WORKBENCH_TABS[0];
+  const tabOptions = useMemo(
+    () => askCoreWorkbenchTabOptionsForProfile(educationProfile),
+    [educationProfile],
+  );
   const currentRoute = useMemo(
     () => parseWorkbenchRoute(routeQuery, activeTab),
     [activeTab, routeQuery],
@@ -6601,6 +6989,16 @@ const AskCoreWorkbenchPage = memo(() => {
     useState<SubmissionListBatchStatus | null>(null);
   const listVersionRef = useRef(0);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
+  const capabilities = educationProfile?.capabilities || null;
+  const workbenchMode = educationProfile?.workbench_mode;
+  const isRestrictedStudent = workbenchMode === 'student_restricted';
+  const isIdentityRequired = workbenchMode === 'identity_required';
+  const canCreateAssignment = capabilities ? Boolean(capabilities.can_create_assignment) : true;
+  const canCreateQuestion = capabilities ? Boolean(capabilities.can_create_question) : true;
+  const canRunTeacherSubmissionOcr = capabilities
+    ? Boolean(capabilities.can_run_teacher_submission_ocr)
+    : true;
+  const canSubmitOwnWork = capabilities ? Boolean(capabilities.can_submit_own_work) : false;
 
   const navigateToTab = useCallback(
     (tab: AskCoreWorkbenchTab) => {
@@ -6608,6 +7006,18 @@ const AskCoreWorkbenchPage = memo(() => {
     },
     [navigate],
   );
+
+  const loadEducationProfile = useCallback(async () => {
+    setEducationProfileLoading(true);
+    try {
+      setEducationProfile(await askCoreWorkbenchClient.getEducationProfile());
+    } catch (err) {
+      setEducationProfile(null);
+      setError(err instanceof Error ? err.message : '身份信息加载失败');
+    } finally {
+      setEducationProfileLoading(false);
+    }
+  }, []);
 
   const backToList = useCallback(() => {
     const resource =
@@ -6846,6 +7256,14 @@ const AskCoreWorkbenchPage = memo(() => {
   }, [currentRoute]);
 
   useEffect(() => {
+    void loadEducationProfile();
+  }, [loadEducationProfile]);
+
+  useEffect(() => {
+    if (!educationProfileLoading && rawActiveTab !== activeTab) navigateToTab(activeTab);
+  }, [activeTab, educationProfileLoading, navigateToTab, rawActiveTab]);
+
+  useEffect(() => {
     void loadLookups();
   }, [loadLookups]);
 
@@ -6987,6 +7405,25 @@ const AskCoreWorkbenchPage = memo(() => {
     return (
       <div className={styles.view}>
         {renderOrganizationBanner()}
+        {educationProfileLoading ? (
+          <Alert showIcon message="正在读取当前教育身份…" type="info" />
+        ) : null}
+        {isIdentityRequired ? (
+          <Alert
+            showIcon
+            description="当前账号已经进入组织，但还没有绑定到教师或学生名册。可以在组织管理中申请或由管理员绑定身份。"
+            message="请先完成教师或学生身份绑定"
+            type="warning"
+          />
+        ) : null}
+        {isRestrictedStudent ? (
+          <Alert
+            showIcon
+            description="当前组织同时存在教师和学生，你可以查看分配给自己的作业并提交作业，创建作业和题库管理由教师完成。"
+            message="学生工作台"
+            type="info"
+          />
+        ) : null}
         <div className={styles.statGrid}>
           {stats.map((item) => (
             <div className={styles.statItem} key={item.key}>
@@ -7011,7 +7448,9 @@ const AskCoreWorkbenchPage = memo(() => {
   };
 
   const renderResourceList = (resource: ResourceKey) => {
-    const config = ASKCORE_WORKBENCH_TABS.find((tab) => tab.resource === resource)!;
+    const config =
+      availableTabs.find((tab) => tab.resource === resource) ||
+      ASKCORE_WORKBENCH_TABS.find((tab) => tab.resource === resource)!;
     const filters = RESOURCE_FILTER_FIELDS[resource] || [];
     const listPending = loading && !loadingMore;
     const displayedItems = listPending ? [] : filteredItems;
@@ -7391,7 +7830,7 @@ const AskCoreWorkbenchPage = memo(() => {
             </Button>
           </div>
           <Space wrap>
-            {resource === 'assignments' ? (
+            {resource === 'assignments' && canCreateAssignment ? (
               <>
                 <Button
                   className={styles.secondary}
@@ -7407,7 +7846,7 @@ const AskCoreWorkbenchPage = memo(() => {
                   手动创建
                 </Button>
               </>
-            ) : resource === 'questions' ? (
+            ) : resource === 'questions' && canCreateQuestion ? (
               <>
                 <Button
                   className={styles.secondary}
@@ -7425,14 +7864,29 @@ const AskCoreWorkbenchPage = memo(() => {
                 </Button>
               </>
             ) : resource === 'submissions' ? (
-              <Button
-                className={styles.primary}
-                icon={<FileScan size={14} />}
-                onClick={() => navigate(routeFor('submissions', '/submissions/new/ocr'))}
-              >
-                OCR 录入
-              </Button>
-            ) : (
+              <>
+                {canRunTeacherSubmissionOcr ? (
+                  <Button
+                    className={styles.primary}
+                    icon={<FileScan size={14} />}
+                    onClick={() => navigate(routeFor('submissions', '/submissions/new/ocr'))}
+                  >
+                    OCR 录入
+                  </Button>
+                ) : null}
+                {canSubmitOwnWork ? (
+                  <Button
+                    className={styles.primary}
+                    icon={<UploadCloud size={14} />}
+                    onClick={() =>
+                      navigate(routeFor('submissions', '/submissions/new/student-ocr'))
+                    }
+                  >
+                    提交作业
+                  </Button>
+                ) : null}
+              </>
+            ) : !isRestrictedStudent && !isIdentityRequired ? (
               <Button
                 className={styles.primary}
                 icon={<Plus size={14} />}
@@ -7447,50 +7901,52 @@ const AskCoreWorkbenchPage = memo(() => {
               >
                 {config.newLabel || `新建${RESOURCE_LABELS[resource].singular}`}
               </Button>
-            )}
+            ) : null}
           </Space>
         </div>
 
         <div className={styles.actionBar}>
           <Space wrap>
-            <Popconfirm
-              disabled={!selectedIds.length || submissionBatchBusy}
-              title={`批量删除 ${selectedIds.length} 条记录？`}
-              onConfirm={async () => {
-                const deleted: number[] = [];
-                const failed: string[] = [];
-                for (const id of selectedIds) {
-                  try {
-                    await askCoreWorkbenchClient.deleteResource(resource, id);
-                    deleted.push(id);
-                  } catch (error) {
-                    if (isAskCoreWorkbenchDeleteNotFound(error)) {
+            {!isRestrictedStudent && !isIdentityRequired ? (
+              <Popconfirm
+                disabled={!selectedIds.length || submissionBatchBusy}
+                title={`批量删除 ${selectedIds.length} 条记录？`}
+                onConfirm={async () => {
+                  const deleted: number[] = [];
+                  const failed: string[] = [];
+                  for (const id of selectedIds) {
+                    try {
+                      await askCoreWorkbenchClient.deleteResource(resource, id);
                       deleted.push(id);
-                    } else {
-                      failed.push(`ID ${id}: ${asError(error)}`);
+                    } catch (error) {
+                      if (isAskCoreWorkbenchDeleteNotFound(error)) {
+                        deleted.push(id);
+                      } else {
+                        failed.push(`ID ${id}: ${asError(error)}`);
+                      }
                     }
                   }
-                }
-                if (failed.length) {
-                  message.error(
-                    `已删除 ${deleted.length} 条，失败 ${failed.length} 条：${failed[0]}`,
-                  );
-                } else {
-                  message.success('批量删除完成');
-                }
-                setResourceSelectedRowKeys([]);
-                await reloadListOrDashboard();
-              }}
-            >
-              <Button
-                danger
-                disabled={!selectedIds.length || submissionBatchBusy}
-                icon={<Trash2 size={14} />}
+                  if (failed.length) {
+                    message.error(
+                      `已删除 ${deleted.length} 条，失败 ${failed.length} 条：${failed[0]}`,
+                    );
+                  } else {
+                    message.success('批量删除完成');
+                  }
+                  setResourceSelectedRowKeys([]);
+                  await reloadListOrDashboard();
+                }}
               >
-                批量删除
-              </Button>
-            </Popconfirm>
-            {resource === 'submissions' ? (
+                <Button
+                  danger
+                  disabled={!selectedIds.length || submissionBatchBusy}
+                  icon={<Trash2 size={14} />}
+                >
+                  批量删除
+                </Button>
+              </Popconfirm>
+            ) : null}
+            {resource === 'submissions' && canRunTeacherSubmissionOcr ? (
               <>
                 <Popconfirm
                   description="会使用各提交已有图片覆盖 OCR、批改和学生归属结果；没有图片的提交会记录为失败。"
@@ -7789,6 +8245,7 @@ const AskCoreWorkbenchPage = memo(() => {
     if (detail.kind === 'assignment') {
       return (
         <AssignmentDetailView
+          canManage={canCreateAssignment}
           client={askCoreWorkbenchClient}
           detail={detail.detail}
           lookups={lookups}
@@ -7801,6 +8258,7 @@ const AskCoreWorkbenchPage = memo(() => {
     if (detail.kind === 'submission') {
       return (
         <SubmissionDetailView
+          canManage={canRunTeacherSubmissionOcr}
           client={askCoreWorkbenchClient}
           detail={detail.detail}
           lookups={lookups}
@@ -7907,9 +8365,16 @@ const AskCoreWorkbenchPage = memo(() => {
     if (currentRoute.kind === 'dashboard') return renderDashboard();
     if (currentRoute.kind === 'invocation') return renderInvocationDetail();
     if (currentRoute.kind === 'list') return renderResourceList(currentRoute.resource);
+    if (currentRoute.kind === 'new' && (isRestrictedStudent || isIdentityRequired)) {
+      return renderDashboard();
+    }
     if (currentRoute.kind === 'new') return renderEditOrCreate(currentRoute.resource, 'create');
+    if (currentRoute.kind === 'edit' && (isRestrictedStudent || isIdentityRequired)) {
+      return renderDashboard();
+    }
     if (currentRoute.kind === 'detail' || currentRoute.kind === 'edit') return renderDetail();
     if (currentRoute.kind === 'assignment-manual') {
+      if (!canCreateAssignment) return renderDashboard();
       return (
         <AssignmentManualCreateView
           client={askCoreWorkbenchClient}
@@ -7922,6 +8387,7 @@ const AskCoreWorkbenchPage = memo(() => {
       );
     }
     if (currentRoute.kind === 'assignment-ocr') {
+      if (!canCreateAssignment) return renderDashboard();
       return (
         <AssignmentOcrCreateView
           client={askCoreWorkbenchClient}
@@ -7934,6 +8400,7 @@ const AskCoreWorkbenchPage = memo(() => {
       );
     }
     if (currentRoute.kind === 'question-ocr') {
+      if (!canCreateQuestion) return renderDashboard();
       return (
         <QuestionOcrCreateView
           client={askCoreWorkbenchClient}
@@ -7943,8 +8410,24 @@ const AskCoreWorkbenchPage = memo(() => {
       );
     }
     if (currentRoute.kind === 'submission-ocr') {
+      if (!canRunTeacherSubmissionOcr) return renderDashboard();
       return (
         <SubmissionOcrCreateView
+          client={askCoreWorkbenchClient}
+          onBack={backToList}
+          onOpenAssignment={(assignmentId) =>
+            navigate(routeFor('assignments', buildResourceEntityPath('assignments', assignmentId)))
+          }
+          onOpenSubmission={(submissionId) =>
+            navigate(routeFor('submissions', buildResourceEntityPath('submissions', submissionId)))
+          }
+        />
+      );
+    }
+    if (currentRoute.kind === 'student-submission-ocr') {
+      if (!canSubmitOwnWork) return renderDashboard();
+      return (
+        <StudentSubmissionOcrCreateView
           client={askCoreWorkbenchClient}
           onBack={backToList}
           onOpenAssignment={(assignmentId) =>
@@ -7965,7 +8448,7 @@ const AskCoreWorkbenchPage = memo(() => {
         <Segmented
           block
           className={styles.tabs}
-          options={ASKCORE_WORKBENCH_TAB_OPTIONS}
+          options={tabOptions}
           value={activeTab}
           onChange={(value) => navigateToTab(value as AskCoreWorkbenchTab)}
         />

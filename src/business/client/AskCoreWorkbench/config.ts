@@ -1,6 +1,10 @@
 'use client';
 
-import { type AskCoreWorkbenchTabConfig } from './types';
+import {
+  type AskCoreEducationProfile,
+  type AskCoreWorkbenchTab,
+  type AskCoreWorkbenchTabConfig,
+} from './types';
 
 export const ASKCORE_WORKBENCH_PATH = '/askcore/workbench';
 export const ASKCORE_WORKBENCH_PLUGIN_ID = 'aitutor-suite';
@@ -58,6 +62,35 @@ export const ASKCORE_WORKBENCH_TAB_OPTIONS = ASKCORE_WORKBENCH_TABS.map((tab) =>
   label: tab.label,
   value: tab.key,
 }));
+
+const tabOptionsFromConfigs = (tabs: AskCoreWorkbenchTabConfig[]) =>
+  tabs.map((tab) => ({
+    label: tab.label,
+    value: tab.key,
+  }));
+
+export const askCoreWorkbenchTabsForProfile = (
+  profile: AskCoreEducationProfile | null,
+): AskCoreWorkbenchTabConfig[] => {
+  if (profile?.workbench_mode === 'student_restricted') {
+    return ASKCORE_WORKBENCH_TABS.filter((tab) =>
+      new Set<AskCoreWorkbenchTab>(['overview', 'assignments', 'submissions']).has(tab.key),
+    ).map((tab) =>
+      tab.key === 'submissions'
+        ? { ...tab, label: '我的提交', newLabel: '提交作业' }
+        : tab.key === 'assignments'
+          ? { ...tab, label: '我的作业', newLabel: undefined }
+          : tab,
+    );
+  }
+  if (profile?.workbench_mode === 'identity_required') {
+    return ASKCORE_WORKBENCH_TABS.filter((tab) => tab.key === 'overview');
+  }
+  return ASKCORE_WORKBENCH_TABS;
+};
+
+export const askCoreWorkbenchTabOptionsForProfile = (profile: AskCoreEducationProfile | null) =>
+  tabOptionsFromConfigs(askCoreWorkbenchTabsForProfile(profile));
 
 export const ASKCORE_WORKBENCH_COUNT_LABELS: Record<string, string> = {
   assignments: '作业',

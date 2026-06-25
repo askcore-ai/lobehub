@@ -101,3 +101,33 @@ export interface AskCoreEducationRoleAssignment {
 export interface AskCoreEducationRoleAssignmentPayload {
   items: AskCoreEducationRoleAssignment[];
 }
+
+export type AskCoreEducationIdentityRosterKind = 'student' | 'teacher';
+
+export interface AskCoreEducationIdentityBindingInput {
+  better_auth_user_id: string;
+  roster_id: number;
+  roster_kind: AskCoreEducationIdentityRosterKind;
+}
+
+export interface AskCoreEducationIdentityBinding {
+  better_auth_user_id?: string | null;
+  org_id: string;
+  roster_id: number;
+  roster_kind: AskCoreEducationIdentityRosterKind;
+}
+
+export interface AskCoreEducationIdentityClaimInput {
+  roster_id: number;
+  roster_kind: AskCoreEducationIdentityRosterKind;
+}
+
+export interface AskCoreEducationIdentityClaim {
+  better_auth_user_id: string;
+  id: number;
+  org_id: string;
+  requested_by_user_id: string;
+  roster_id: number;
+  roster_kind: AskCoreEducationIdentityRosterKind;
+  status: 'approved' | 'pending' | 'rejected';
+}

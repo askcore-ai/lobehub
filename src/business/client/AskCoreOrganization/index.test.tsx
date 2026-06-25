@@ -544,7 +544,7 @@ describe('AskCoreOrganizationRoute', () => {
 
     fireEvent.mouseDown(screen.getByLabelText('身份'));
     const studentRoleOptions = await screen.findAllByText('学生');
-    fireEvent.click(studentRoleOptions.at(-1));
+    fireEvent.click(studentRoleOptions.at(-1)!);
     fireEvent.mouseDown(screen.getByLabelText('学生'));
     fireEvent.click(await screen.findByText('王同学'));
     fireEvent.click(screen.getByRole('button', { name: /分配身份/ }));

@@ -1,4 +1,9 @@
 import {
+  type AskCoreEducationIdentityBinding,
+  type AskCoreEducationIdentityBindingInput,
+  type AskCoreEducationIdentityClaim,
+  type AskCoreEducationIdentityClaimInput,
+  type AskCoreEducationIdentityRosterKind,
   type AskCoreEducationOrgUnitCreateInput,
   type AskCoreEducationOrgUnitPayload,
   type AskCoreEducationRoleAssignment,
@@ -192,10 +197,51 @@ export const assignAskCoreEducationRole = (input: AskCoreEducationRoleAssignment
 
 export const fetchAskCoreEducationRoleAssignments = (orgUnitId?: number) => {
   const query = orgUnitId ? `?org_unit_id=${orgUnitId}` : '';
-  return requestJson<AskCoreEducationRoleAssignmentPayload>(`${EDUCATION_ORG_API_BASE}/roles${query}`);
+  return requestJson<AskCoreEducationRoleAssignmentPayload>(
+    `${EDUCATION_ORG_API_BASE}/roles${query}`,
+  );
 };
 
 export const deleteAskCoreEducationRoleAssignment = (assignmentId: number) =>
   requestJson<AskCoreEducationRoleAssignment>(`${EDUCATION_ORG_API_BASE}/roles/${assignmentId}`, {
     method: 'DELETE',
   });
+
+export const bindAskCoreEducationIdentity = (input: AskCoreEducationIdentityBindingInput) =>
+  requestJson<AskCoreEducationIdentityBinding>(`${EDUCATION_ORG_API_BASE}/identity-bindings`, {
+    body: JSON.stringify(input),
+    method: 'POST',
+  });
+
+export const unbindAskCoreEducationIdentity = (
+  rosterKind: AskCoreEducationIdentityRosterKind,
+  rosterId: number,
+) =>
+  requestJson<AskCoreEducationIdentityBinding>(
+    `${EDUCATION_ORG_API_BASE}/identity-bindings/${rosterKind}/${rosterId}`,
+    {
+      method: 'DELETE',
+    },
+  );
+
+export const createAskCoreEducationIdentityClaim = (input: AskCoreEducationIdentityClaimInput) =>
+  requestJson<AskCoreEducationIdentityClaim>(`${EDUCATION_ORG_API_BASE}/identity-claims`, {
+    body: JSON.stringify(input),
+    method: 'POST',
+  });
+
+export const approveAskCoreEducationIdentityClaim = (claimId: number) =>
+  requestJson<AskCoreEducationIdentityClaim>(
+    `${EDUCATION_ORG_API_BASE}/identity-claims/${claimId}/approve`,
+    {
+      method: 'POST',
+    },
+  );
+
+export const rejectAskCoreEducationIdentityClaim = (claimId: number) =>
+  requestJson<AskCoreEducationIdentityClaim>(
+    `${EDUCATION_ORG_API_BASE}/identity-claims/${claimId}/reject`,
+    {
+      method: 'POST',
+    },
+  );

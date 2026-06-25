@@ -1,12 +1,25 @@
 'use client';
 
-import { Alert, Button, Empty, Form, Input, Popconfirm, Select, Spin, Tag, Tooltip } from 'antd';
+import {
+  Alert,
+  Button,
+  Empty,
+  Form,
+  Input,
+  Popconfirm,
+  Select,
+  Space,
+  Spin,
+  Tag,
+  Tooltip,
+} from 'antd';
 import { Check, Plus, RefreshCw, UserRoundPlus, X } from 'lucide-react';
 import { memo, useMemo, useState } from 'react';
 
 import { type JsonRecord } from '../../AskCoreWorkbench/types';
 import { styles } from '../styles';
 import {
+  type AskCoreEducationIdentityRosterKind,
   type AskCoreEducationOrgUnit,
   type AskCoreEducationOrgUnitPayload,
   type AskCoreEducationOrgUnitType,
@@ -64,16 +77,24 @@ const numericId = (record: JsonRecord, keys: string[]) => {
 
 interface EducationOrgSectionProps {
   assigningRole: boolean;
+  bindingIdentity: boolean;
   canManage: boolean;
   creatingUnit: boolean;
   error: string | undefined;
+  identityForm: ReturnType<typeof Form.useForm>[0];
   loading: boolean;
   members: AskCoreOrganizationMember[];
   onAddChild: (parent: AskCoreEducationOrgUnit, name: string) => Promise<void>;
   onAddSchool: (name: string, description?: string) => Promise<void>;
   onAssignRole: () => Promise<void>;
+  onBindIdentity: () => Promise<void>;
+  onCreateIdentityClaim: () => Promise<void>;
   onDeleteRole: (assignmentId: number) => Promise<void>;
   onReload: () => void;
+  onUnbindIdentity: (
+    rosterKind: AskCoreEducationIdentityRosterKind,
+    rosterId: number,
+  ) => Promise<void>;
   orgRoleForm: ReturnType<typeof Form.useForm>[0];
   payload: AskCoreEducationOrgUnitPayload | null;
   roleAssignments: AskCoreEducationRoleAssignment[];
@@ -90,16 +111,21 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
     canManage,
     creatingUnit,
     assigningRole,
+    bindingIdentity,
     members,
     teachers,
     students,
     roleAssignments,
     roleLoading,
     orgRoleForm,
+    identityForm,
     onAddSchool,
     onAddChild,
     onAssignRole,
+    onBindIdentity,
+    onCreateIdentityClaim,
     onDeleteRole,
+    onUnbindIdentity,
     onReload,
   }) => {
     const [addingSchool, setAddingSchool] = useState(false);
@@ -107,6 +133,9 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
     const [schoolDescription, setSchoolDescription] = useState('');
     const [selectedUnitId, setSelectedUnitId] = useState<number | null>(null);
     const [subjectKind, setSubjectKind] = useState<'member' | 'student' | 'teacher'>('member');
+    const [identityRosterKind, setIdentityRosterKind] =
+      useState<AskCoreEducationIdentityRosterKind>('teacher');
+    const [identityRosterId, setIdentityRosterId] = useState<number | null>(null);
 
     const units = useMemo(() => payload?.units ?? [], [payload?.units]);
     const roots = useMemo(() => units.filter((u) => !u.parent_id), [units]);
@@ -149,6 +178,56 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
       }));
     }, [members, students, subjectKind, teachers]);
 
+    const memberOptions = useMemo(
+      () =>
+        members.map((member) => ({
+          label: member.email
+            ? `${member.name || '未命名成员'} · ${member.email}`
+            : member.name || '未命名成员',
+          value: member.userId,
+        })),
+      [members],
+    );
+
+    const identityRosterRows = identityRosterKind === 'teacher' ? teachers : students;
+    const identityRosterOptions = useMemo(
+      () =>
+        identityRosterRows
+          .map((row) => {
+            const id = numericId(row, [
+              identityRosterKind === 'teacher' ? 'teacher_id' : 'student_id',
+              'id',
+            ]);
+            if (!id) return null;
+            const boundUserId = String(row.better_auth_user_id || '').trim();
+            const boundMember = members.find((member) => member.userId === boundUserId);
+            const name =
+              identityRosterKind === 'teacher'
+                ? String(row.real_name || row.username || row.name || '未命名教师')
+                : String(row.name || row.real_name || row.student_number || '未命名学生');
+            const number =
+              identityRosterKind === 'teacher'
+                ? String(row.teacher_number || row.username || '').trim()
+                : String(row.student_number || '').trim();
+            const boundLabel = boundUserId
+              ? `已绑定 ${boundMember?.email || boundMember?.name || boundUserId}`
+              : '未绑定账号';
+            return {
+              boundUserId,
+              label: [name.trim(), number, boundLabel].filter(Boolean).join(' · '),
+              value: String(id),
+            };
+          })
+          .filter((item): item is { boundUserId: string; label: string; value: string } =>
+            Boolean(item),
+          ),
+      [identityRosterKind, identityRosterRows, members],
+    );
+
+    const selectedIdentityRosterOption = identityRosterOptions.find(
+      (option) => Number(option.value) === identityRosterId,
+    );
+
     const subjectLabel = (assignment: AskCoreEducationRoleAssignment) => {
       if (assignment.teacher_id) {
         const teacher = teachers.find(
@@ -187,6 +266,16 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
       orgRoleForm.setFieldsValue({
         subject_kind: nextSubjectKind,
         subject_value: undefined,
+      });
+    };
+
+    const handleIdentityRosterKindChange = (value: AskCoreEducationIdentityRosterKind) => {
+      setIdentityRosterKind(value);
+      setIdentityRosterId(null);
+      identityForm.setFieldsValue({
+        identity_roster_id: undefined,
+        identity_roster_kind: value,
+        identity_user_id: undefined,
       });
     };
 
@@ -376,6 +465,98 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
                       </Button>
                     </Form>
                   )}
+                  <div
+                    style={{
+                      borderTop: '1px solid rgba(0,0,0,0.06)',
+                      marginTop: 16,
+                      paddingTop: 16,
+                    }}
+                  >
+                    <div className={styles.rolePanelHeader}>
+                      <div>
+                        <div className={styles.rolePanelTitle}>账号身份绑定</div>
+                        <div className={styles.rolePanelMeta}>
+                          教师/学生可以绑定到 AskCore 注册账号，也可以保持未绑定。
+                        </div>
+                      </div>
+                    </div>
+                    <Form className={styles.roleAssignForm} form={identityForm} layout="vertical">
+                      <Form.Item
+                        initialValue="teacher"
+                        label="名册类型"
+                        name="identity_roster_kind"
+                        rules={[{ required: true, message: '请选择名册类型' }]}
+                      >
+                        <Select
+                          options={[
+                            { label: '教师', value: 'teacher' },
+                            { label: '学生', value: 'student' },
+                          ]}
+                          onChange={handleIdentityRosterKindChange}
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        label={identityRosterKind === 'teacher' ? '教师名册' : '学生名册'}
+                        name="identity_roster_id"
+                        rules={[{ required: true, message: '请选择名册身份' }]}
+                      >
+                        <Select
+                          showSearch
+                          optionFilterProp="label"
+                          options={identityRosterOptions}
+                          placeholder={
+                            identityRosterKind === 'teacher' ? '搜索教师名册' : '搜索学生名册'
+                          }
+                          onChange={(value) => setIdentityRosterId(Number(value))}
+                        />
+                      </Form.Item>
+                      {canManage ? (
+                        <Form.Item
+                          label="绑定账号"
+                          name="identity_user_id"
+                          rules={[{ required: true, message: '请选择组织成员账号' }]}
+                        >
+                          <Select
+                            showSearch
+                            optionFilterProp="label"
+                            options={memberOptions}
+                            placeholder="搜索组织成员"
+                          />
+                        </Form.Item>
+                      ) : null}
+                      <Space wrap>
+                        {canManage ? (
+                          <Button
+                            className={styles.pillButton}
+                            loading={bindingIdentity}
+                            type="primary"
+                            onClick={onBindIdentity}
+                          >
+                            绑定账号
+                          </Button>
+                        ) : null}
+                        <Button
+                          className={styles.pillButton}
+                          loading={bindingIdentity}
+                          onClick={onCreateIdentityClaim}
+                        >
+                          申请绑定为我
+                        </Button>
+                        {canManage && selectedIdentityRosterOption?.boundUserId ? (
+                          <Popconfirm
+                            title="解除该名册身份与账号的绑定？"
+                            onConfirm={() =>
+                              onUnbindIdentity(identityRosterKind, Number(identityRosterId || 0))
+                            }
+                          >
+                            <Button danger loading={bindingIdentity}>
+                              解绑
+                            </Button>
+                          </Popconfirm>
+                        ) : null}
+                      </Space>
+                    </Form>
+                  </div>
                 </>
               ) : (
                 <div className={styles.rolePanelEmptyState}>

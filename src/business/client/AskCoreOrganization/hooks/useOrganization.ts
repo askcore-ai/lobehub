@@ -9,8 +9,10 @@ import { askCoreWorkbenchClient } from '../../AskCoreWorkbench/api';
 import { type JsonRecord } from '../../AskCoreWorkbench/types';
 import {
   assignAskCoreEducationRole,
+  bindAskCoreEducationIdentity,
   createAskCoreClassUnit,
   createAskCoreCohortUnit,
+  createAskCoreEducationIdentityClaim,
   createAskCoreEducationOrgUnit,
   createAskCoreOrganization,
   createAskCoreOrganizationInvite,
@@ -21,6 +23,7 @@ import {
   fetchAskCoreOrganizations,
   removeAskCoreOrganizationMember,
   setActiveAskCoreOrganization,
+  unbindAskCoreEducationIdentity,
   updateAskCoreOrganization,
   updateAskCoreOrganizationMemberRole,
 } from '../api';
@@ -49,22 +52,28 @@ export const useOrganization = () => {
   const [inviteResult, setInviteResult] = useState<AskCoreInvitePayload | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
 
-  const [educationPayload, setEducationPayload] = useState<AskCoreEducationOrgUnitPayload | null>(null);
+  const [educationPayload, setEducationPayload] = useState<AskCoreEducationOrgUnitPayload | null>(
+    null,
+  );
   const [educationLoading, setEducationLoading] = useState(false);
   const [educationError, setEducationError] = useState<string | undefined>();
-  const [educationRoleAssignments, setEducationRoleAssignments] = useState<AskCoreEducationRoleAssignment[]>([]);
+  const [educationRoleAssignments, setEducationRoleAssignments] = useState<
+    AskCoreEducationRoleAssignment[]
+  >([]);
   const [educationRoleLoading, setEducationRoleLoading] = useState(false);
   const [educationTeachers, setEducationTeachers] = useState<JsonRecord[]>([]);
   const [educationStudents, setEducationStudents] = useState<JsonRecord[]>([]);
 
   const [creatingUnit, setCreatingUnit] = useState(false);
   const [assigningRole, setAssigningRole] = useState(false);
+  const [bindingIdentity, setBindingIdentity] = useState(false);
 
   const [createForm] = Form.useForm();
   const [metaForm] = Form.useForm();
   const [inviteForm] = Form.useForm();
   const [orgUnitForm] = Form.useForm();
   const [orgRoleForm] = Form.useForm();
+  const [identityForm] = Form.useForm();
 
   const current = payload?.current ?? null;
   const canManage = current?.role === 'owner' || current?.role === 'admin';
@@ -326,6 +335,59 @@ export const useOrganization = () => {
     [reloadEducationRoleAssignments, reloadEducationRoleSubjects],
   );
 
+  const handleBindEducationIdentity = useCallback(async () => {
+    const values = await identityForm.validateFields([
+      'identity_roster_kind',
+      'identity_roster_id',
+      'identity_user_id',
+    ]);
+    setBindingIdentity(true);
+    try {
+      await bindAskCoreEducationIdentity({
+        better_auth_user_id: String(values.identity_user_id),
+        roster_id: Number(values.identity_roster_id),
+        roster_kind: values.identity_roster_kind,
+      });
+      await reloadEducationRoleAssignments();
+      await reloadEducationRoleSubjects();
+      message.success('账号身份已绑定');
+    } finally {
+      setBindingIdentity(false);
+    }
+  }, [identityForm, reloadEducationRoleAssignments, reloadEducationRoleSubjects]);
+
+  const handleCreateEducationIdentityClaim = useCallback(async () => {
+    const values = await identityForm.validateFields([
+      'identity_roster_kind',
+      'identity_roster_id',
+    ]);
+    setBindingIdentity(true);
+    try {
+      await createAskCoreEducationIdentityClaim({
+        roster_id: Number(values.identity_roster_id),
+        roster_kind: values.identity_roster_kind,
+      });
+      message.success('身份绑定申请已提交');
+    } finally {
+      setBindingIdentity(false);
+    }
+  }, [identityForm]);
+
+  const handleUnbindEducationIdentity = useCallback(
+    async (rosterKind: 'student' | 'teacher', rosterId: number) => {
+      setBindingIdentity(true);
+      try {
+        await unbindAskCoreEducationIdentity(rosterKind, rosterId);
+        await reloadEducationRoleAssignments();
+        await reloadEducationRoleSubjects();
+        message.success('账号身份绑定已解除');
+      } finally {
+        setBindingIdentity(false);
+      }
+    },
+    [reloadEducationRoleAssignments, reloadEducationRoleSubjects],
+  );
+
   const handleRoleChange = useCallback(
     async (memberId: string, role: AskCoreOrganizationRole) => {
       if (!current) return;
@@ -396,14 +458,19 @@ export const useOrganization = () => {
     educationStudents,
     creatingUnit,
     assigningRole,
+    bindingIdentity,
     orgUnitForm,
     orgRoleForm,
+    identityForm,
     handleCreateEducationUnit,
     handleCreateSchoolUnit,
     handleAddSchoolUnit,
     handleAddEducationChild,
     handleAssignEducationRole,
     handleDeleteEducationRole,
+    handleBindEducationIdentity,
+    handleCreateEducationIdentityClaim,
+    handleUnbindEducationIdentity,
     reloadEducationOrgUnits,
     reloadEducationRoleAssignments,
 

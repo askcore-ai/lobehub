@@ -2,6 +2,7 @@
 
 import {
   type AnyResourceKey,
+  type AskCoreEducationProfile,
   type AskCoreOrganizationState,
   type AskCoreWorkbenchDashboardPayload,
   type AskCoreWorkbenchListPayload,
@@ -311,7 +312,7 @@ export class AskCoreWorkbenchApiClient {
   }
 
   listResource(
-    resource: ResourceKey,
+    resource: AnyResourceKey,
     filters: JsonRecord = {},
     options: {
       afterId?: number | null;
@@ -330,7 +331,7 @@ export class AskCoreWorkbenchApiClient {
     return this.requestJson<ResourceListResponse>(`/${resource}?${query.toString()}`);
   }
 
-  async listAllResource(resource: ResourceKey, filters: JsonRecord = {}) {
+  async listAllResource(resource: AnyResourceKey, filters: JsonRecord = {}) {
     const items: JsonRecord[] = [];
     let afterId: number | null = null;
 
@@ -413,6 +414,10 @@ export class AskCoreWorkbenchApiClient {
 
   getDashboard() {
     return this.requestJson<AskCoreWorkbenchDashboardPayload>('/dashboard');
+  }
+
+  getEducationProfile() {
+    return this.requestJson<AskCoreEducationProfile>('/me');
   }
 
   getOrganizationState() {

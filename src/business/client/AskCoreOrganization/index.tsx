@@ -990,9 +990,11 @@ export const AskCoreOrganizationRoute = memo(() => {
               {activeTab === 'hierarchy' && (
                 <EducationOrgSection
                   assigningRole={org.assigningRole}
+                  bindingIdentity={org.bindingIdentity}
                   canManage={org.canManage}
                   creatingUnit={org.creatingUnit}
                   error={org.educationError}
+                  identityForm={org.identityForm}
                   loading={org.educationLoading}
                   members={org.members}
                   orgRoleForm={org.orgRoleForm}
@@ -1004,8 +1006,11 @@ export const AskCoreOrganizationRoute = memo(() => {
                   onAddChild={org.handleAddEducationChild}
                   onAddSchool={org.handleAddSchoolUnit}
                   onAssignRole={org.handleAssignEducationRole}
+                  onBindIdentity={org.handleBindEducationIdentity}
+                  onCreateIdentityClaim={org.handleCreateEducationIdentityClaim}
                   onDeleteRole={org.handleDeleteEducationRole}
                   onReload={org.reloadEducationOrgUnits}
+                  onUnbindIdentity={org.handleUnbindEducationIdentity}
                 />
               )}
 
