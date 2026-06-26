@@ -1,4 +1,4 @@
-export { EducationOrgSection } from './EducationOrgSection';
+export { EducationIdentitySection, EducationOrgSection } from './EducationOrgSection';
 export { HeroCard } from './HeroCard';
 export { InviteSlideOver } from './InviteSlideOver';
 export { MemberCard } from './MemberCard';

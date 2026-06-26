@@ -266,6 +266,87 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
       '/organization',
     );
   });
+
+  it('links identity-required users to the organization identity application tab', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/askcore/workbench/me') {
+        return new Response(
+          JSON.stringify({
+            active_persona: null,
+            capabilities: {
+              can_create_assignment: false,
+              can_create_question: false,
+              can_run_teacher_submission_ocr: false,
+              can_submit_own_work: false,
+            },
+            default_persona: null,
+            education_identities: [],
+            org_composition: { students: 1, teachers: 1 },
+            workbench_mode: 'identity_required',
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 200 },
+        );
+      }
+      if (url === '/api/askcore/workbench/dashboard') {
+        return new Response(
+          JSON.stringify({
+            active_invocations: [],
+            counts: { assignments: 0, questions: 0, submissions: 0 },
+            drafts: [],
+            recent_invocations: [],
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 200 },
+        );
+      }
+      if (url === '/api/askcore/organizations') {
+        return new Response(
+          JSON.stringify({
+            current: {
+              id: 'org-1',
+              isActive: true,
+              name: 'AskCore School',
+              role: 'member',
+              slug: 'askcore-school',
+            },
+            members: [],
+            organizations: [
+              {
+                id: 'org-1',
+                isActive: true,
+                name: 'AskCore School',
+                role: 'member',
+                slug: 'askcore-school',
+              },
+            ],
+            permissions: {
+              canInvite: false,
+              canManageMembers: false,
+              canUpdateMeta: false,
+            },
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 200 },
+        );
+      }
+      return new Response(JSON.stringify(emptyListResponse), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=overview']}>
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText('请先完成教师或学生身份绑定')).toBeInTheDocument());
+    expect(screen.getByRole('link', { name: '去提交身份申请' })).toHaveAttribute(
+      'href',
+      '/organization?tab=identity',
+    );
+  });
 });
 
 describe('AskCoreWorkbenchRoute assignment detail', () => {

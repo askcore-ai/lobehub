@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  approveAskCoreEducationIdentityClaim,
   assignAskCoreEducationRole,
   bindAskCoreEducationIdentity,
   bootstrapAskCoreOrganization,
@@ -12,9 +13,11 @@ import {
   createAskCoreOrganizationInvite,
   createAskCoreSchoolUnit,
   deleteAskCoreEducationRoleAssignment,
+  fetchAskCoreEducationIdentityClaims,
   fetchAskCoreEducationOrgUnits,
   fetchAskCoreEducationRoleAssignments,
   fetchAskCoreOrganizations,
+  rejectAskCoreEducationIdentityClaim,
   setActiveAskCoreOrganization,
   unbindAskCoreEducationIdentity,
   updateAskCoreOrganizationMemberRole,
@@ -63,6 +66,9 @@ describe('AskCoreOrganization api client', () => {
       roster_kind: 'student',
     });
     await createAskCoreEducationIdentityClaim({ roster_id: 9001, roster_kind: 'teacher' });
+    await fetchAskCoreEducationIdentityClaims();
+    await approveAskCoreEducationIdentityClaim(31);
+    await rejectAskCoreEducationIdentityClaim(32);
     await unbindAskCoreEducationIdentity('student', 7001);
     await fetchAskCoreEducationRoleAssignments(2);
     await deleteAskCoreEducationRoleAssignment(9);
@@ -84,6 +90,9 @@ describe('AskCoreOrganization api client', () => {
       '/api/askcore/workbench/organization/roles',
       '/api/askcore/workbench/organization/identity-bindings',
       '/api/askcore/workbench/organization/identity-claims',
+      '/api/askcore/workbench/organization/identity-claims?status=pending',
+      '/api/askcore/workbench/organization/identity-claims/31/approve',
+      '/api/askcore/workbench/organization/identity-claims/32/reject',
       '/api/askcore/workbench/organization/identity-bindings/student/7001',
       '/api/askcore/workbench/organization/roles?org_unit_id=2',
       '/api/askcore/workbench/organization/roles/9',
@@ -133,7 +142,9 @@ describe('AskCoreOrganization api client', () => {
       body: JSON.stringify({ roster_id: 9001, roster_kind: 'teacher' }),
       method: 'POST',
     });
-    expect(calls[14][1]).toMatchObject({ method: 'DELETE' });
-    expect(calls[16][1]).toMatchObject({ method: 'DELETE' });
+    expect(calls[15][1]).toMatchObject({ method: 'POST' });
+    expect(calls[16][1]).toMatchObject({ method: 'POST' });
+    expect(calls[17][1]).toMatchObject({ method: 'DELETE' });
+    expect(calls[19][1]).toMatchObject({ method: 'DELETE' });
   });
 });

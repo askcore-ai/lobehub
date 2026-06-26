@@ -3,6 +3,7 @@ import {
   type AskCoreEducationIdentityBindingInput,
   type AskCoreEducationIdentityClaim,
   type AskCoreEducationIdentityClaimInput,
+  type AskCoreEducationIdentityClaimPayload,
   type AskCoreEducationIdentityRosterKind,
   type AskCoreEducationOrgUnitCreateInput,
   type AskCoreEducationOrgUnitPayload,
@@ -229,6 +230,13 @@ export const createAskCoreEducationIdentityClaim = (input: AskCoreEducationIdent
     body: JSON.stringify(input),
     method: 'POST',
   });
+
+export const fetchAskCoreEducationIdentityClaims = (
+  status: AskCoreEducationIdentityClaim['status'] | 'all' = 'pending',
+) =>
+  requestJson<AskCoreEducationIdentityClaimPayload>(
+    `${EDUCATION_ORG_API_BASE}/identity-claims?status=${encodeURIComponent(status)}`,
+  );
 
 export const approveAskCoreEducationIdentityClaim = (claimId: number) =>
   requestJson<AskCoreEducationIdentityClaim>(

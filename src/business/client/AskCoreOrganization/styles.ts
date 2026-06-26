@@ -654,6 +654,78 @@ export const styles = createStaticStyles(({ css }) => ({
     color: ${cssVar.colorTextSecondary};
     text-align: center;
   `,
+  identityLayout: css`
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 20px;
+
+    @media (width <= 820px) {
+      grid-template-columns: 1fr;
+    }
+  `,
+  identityPanel: css`
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 12px;
+
+    background: ${cssVar.colorFillQuaternary};
+  `,
+  identityPanelHeader: css`
+    margin-block-end: 12px;
+  `,
+  identityClaimList: css`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  `,
+  identityClaimItem: css`
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+
+    min-height: 56px;
+    padding-block: 10px;
+    padding-inline: 0;
+    border-block-end: 1px solid ${cssVar.colorBorderSecondary};
+
+    &:last-child {
+      border-block-end: 0;
+    }
+
+    @media (width <= 700px) {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+  `,
+  identityClaimMain: css`
+    min-width: 0;
+  `,
+  identityClaimTitle: css`
+    overflow: hidden;
+
+    font-size: 14px;
+    font-weight: 650;
+    line-height: 1.45;
+    color: ${cssVar.colorText};
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  `,
+  identityClaimMeta: css`
+    margin-block-start: 2px;
+
+    font-size: 12px;
+    line-height: 1.5;
+    color: ${cssVar.colorTextSecondary};
+    overflow-wrap: anywhere;
+  `,
+  identityClaimLoading: css`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 120px;
+  `,
 
   // Settings
   settingsPanel: css`

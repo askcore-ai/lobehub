@@ -563,4 +563,260 @@ describe('AskCoreOrganizationRoute', () => {
       expect(studentFetches).toBeGreaterThan(1);
     });
   }, 20_000);
+
+  it('lets a regular member submit an education identity claim from the identity tab', async () => {
+    const payload = {
+      current: {
+        id: 'org-1',
+        isActive: true,
+        name: 'Seed 的组织',
+        role: 'member',
+        slug: 'seed',
+      },
+      members: [
+        {
+          email: 'teacher@askcore.cn',
+          id: 'mem-teacher',
+          name: 'Teacher User',
+          role: 'member',
+          userId: 'user-teacher',
+        },
+      ],
+      organizations: [
+        {
+          id: 'org-1',
+          isActive: true,
+          name: 'Seed 的组织',
+          role: 'member',
+          slug: 'seed',
+        },
+      ],
+      permissions: {
+        canInvite: false,
+        canManageMembers: false,
+        canUpdateMeta: false,
+      },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/units')) {
+        return new Response(JSON.stringify({ org_id: 'org-1', units: [] }), { status: 200 });
+      }
+      if (url.includes('/workbench/organization/roles')) {
+        return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      }
+      if (url.includes('/workbench/organization/identity-claims') && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            better_auth_user_id: 'user-teacher',
+            id: 31,
+            org_id: 'org-1',
+            requested_by_user_id: 'user-teacher',
+            roster_id: 9001,
+            roster_kind: 'teacher',
+            status: 'pending',
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes('/workbench/organization/identity-claims')) {
+        return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      }
+      if (url.includes('/api/askcore/workbench/teachers')) {
+        return new Response(
+          JSON.stringify({
+            has_more: false,
+            items: [
+              {
+                id: 9001,
+                real_name: '李老师',
+                teacher_id: 9001,
+                teacher_number: 'T001',
+              },
+            ],
+            page: 1,
+            page_size: 100,
+            resource: 'teachers',
+            total: 1,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes('/api/askcore/workbench/students')) {
+        return new Response(
+          JSON.stringify({
+            has_more: false,
+            items: [],
+            page: 1,
+            page_size: 100,
+            resource: 'students',
+            total: 0,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify(payload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/organization?tab=identity']}>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getAllByText('提交身份申请').length).toBeGreaterThan(0));
+    expect(screen.getByText('我的身份申请')).toBeInTheDocument();
+    expect(screen.queryByText('管理员直接绑定')).not.toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByLabelText('教师名册'));
+    fireEvent.click(await screen.findByText(/李老师/));
+    fireEvent.click(screen.getByRole('button', { name: '提交身份申请' }));
+
+    await waitFor(() => {
+      const createCall = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          String(input).includes('/workbench/organization/identity-claims') &&
+          init?.method === 'POST',
+      );
+      expect(createCall).toBeTruthy();
+      expect(JSON.parse(String(createCall?.[1]?.body))).toEqual({
+        roster_id: 9001,
+        roster_kind: 'teacher',
+      });
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/workbench/organization/identity-claims?status=all',
+      expect.any(Object),
+    );
+  }, 20_000);
+
+  it('lets an organization admin approve a pending education identity claim', async () => {
+    const payload = {
+      current: {
+        id: 'org-1',
+        isActive: true,
+        name: 'Seed 的组织',
+        role: 'owner',
+        slug: 'seed',
+      },
+      members: [
+        {
+          email: 'student@askcore.cn',
+          id: 'mem-student',
+          name: 'Student User',
+          role: 'member',
+          userId: 'user-student',
+        },
+      ],
+      organizations: [
+        {
+          id: 'org-1',
+          isActive: true,
+          name: 'Seed 的组织',
+          role: 'owner',
+          slug: 'seed',
+        },
+      ],
+      permissions: {
+        canInvite: true,
+        canManageMembers: true,
+        canUpdateMeta: true,
+      },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/units')) {
+        return new Response(JSON.stringify({ org_id: 'org-1', units: [] }), { status: 200 });
+      }
+      if (url.includes('/workbench/organization/roles')) {
+        return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      }
+      if (url.includes('/workbench/organization/identity-claims/41/approve')) {
+        return new Response(
+          JSON.stringify({
+            better_auth_user_id: 'user-student',
+            id: 41,
+            org_id: 'org-1',
+            requested_by_user_id: 'user-student',
+            roster_id: 7001,
+            roster_kind: 'student',
+            status: 'approved',
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes('/workbench/organization/identity-claims')) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                better_auth_user_id: 'user-student',
+                id: 41,
+                org_id: 'org-1',
+                requested_by_user_id: 'user-student',
+                roster_id: 7001,
+                roster_kind: 'student',
+                status: 'pending',
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes('/api/askcore/workbench/teachers')) {
+        return new Response(
+          JSON.stringify({
+            has_more: false,
+            items: [],
+            page: 1,
+            page_size: 100,
+            resource: 'teachers',
+            total: 0,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes('/api/askcore/workbench/students')) {
+        return new Response(
+          JSON.stringify({
+            has_more: false,
+            items: [{ id: 7001, name: '王同学', student_id: 7001, student_number: 'S001' }],
+            page: 1,
+            page_size: 100,
+            resource: 'students',
+            total: 1,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify(payload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/organization?tab=identity']}>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText('待审批身份申请')).toBeInTheDocument());
+    expect(screen.getByText(/学生 · 王同学/)).toBeInTheDocument();
+    expect(screen.getByText(/student@askcore.cn/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /通\s*过/ }));
+
+    await waitFor(() => {
+      const approveCall = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          String(input).includes('/workbench/organization/identity-claims/41/approve') &&
+          init?.method === 'POST',
+      );
+      expect(approveCall).toBeTruthy();
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/workbench/organization/identity-claims?status=pending',
+      expect.any(Object),
+    );
+  }, 20_000);
 });

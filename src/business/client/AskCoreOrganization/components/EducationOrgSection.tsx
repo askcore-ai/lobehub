@@ -19,6 +19,7 @@ import { memo, useMemo, useState } from 'react';
 import { type JsonRecord } from '../../AskCoreWorkbench/types';
 import { styles } from '../styles';
 import {
+  type AskCoreEducationIdentityClaim,
   type AskCoreEducationIdentityRosterKind,
   type AskCoreEducationOrgUnit,
   type AskCoreEducationOrgUnitPayload,
@@ -44,6 +45,11 @@ const roleLabels: Record<AskCoreEducationRole, string> = {
 };
 
 type RoleSubjectKind = 'member' | 'student' | 'teacher';
+type IdentityRosterOption = {
+  boundUserId: string;
+  label: string;
+  value: string;
+};
 
 const roleOptionsByUnitType: Record<AskCoreEducationOrgUnitType, AskCoreEducationRole[]> = {
   class: ['homeroom_teacher', 'teacher', 'student'],
@@ -74,6 +80,74 @@ const numericId = (record: JsonRecord, keys: string[]) => {
   }
   return 0;
 };
+
+const identityStatusLabels: Record<AskCoreEducationIdentityClaim['status'], string> = {
+  approved: '已通过',
+  pending: '待审批',
+  rejected: '已拒绝',
+};
+
+const identityStatusColors: Record<AskCoreEducationIdentityClaim['status'], string> = {
+  approved: 'green',
+  pending: 'gold',
+  rejected: 'red',
+};
+
+const rosterKindLabels: Record<AskCoreEducationIdentityRosterKind, string> = {
+  student: '学生',
+  teacher: '教师',
+};
+
+const memberLabel = (members: AskCoreOrganizationMember[], userId: string) => {
+  const member = members.find((item) => item.userId === userId);
+  if (!member) return userId;
+  return member.email ? `${member.name || '未命名成员'} · ${member.email}` : member.name || userId;
+};
+
+const rosterName = (
+  rosterKind: AskCoreEducationIdentityRosterKind,
+  rosterId: number,
+  teachers: JsonRecord[],
+  students: JsonRecord[],
+) => {
+  const rows = rosterKind === 'teacher' ? teachers : students;
+  const row = rows.find(
+    (item) =>
+      numericId(item, [rosterKind === 'teacher' ? 'teacher_id' : 'student_id', 'id']) === rosterId,
+  );
+  if (!row) return `${rosterKindLabels[rosterKind]} #${rosterId}`;
+  if (rosterKind === 'teacher') {
+    return String(row.real_name || row.username || row.name || `教师 #${rosterId}`);
+  }
+  return String(row.name || row.real_name || row.student_number || `学生 #${rosterId}`);
+};
+
+const buildIdentityRosterOptions = (
+  rosterKind: AskCoreEducationIdentityRosterKind,
+  rows: JsonRecord[],
+  members: AskCoreOrganizationMember[],
+): IdentityRosterOption[] =>
+  rows
+    .map((row) => {
+      const id = numericId(row, [rosterKind === 'teacher' ? 'teacher_id' : 'student_id', 'id']);
+      if (!id) return null;
+      const boundUserId = String(row.better_auth_user_id || '').trim();
+      const name =
+        rosterKind === 'teacher'
+          ? String(row.real_name || row.username || row.name || '未命名教师')
+          : String(row.name || row.real_name || row.student_number || '未命名学生');
+      const number =
+        rosterKind === 'teacher'
+          ? String(row.teacher_number || row.username || '').trim()
+          : String(row.student_number || '').trim();
+      const boundLabel = boundUserId ? `已绑定 ${memberLabel(members, boundUserId)}` : '未绑定账号';
+      return {
+        boundUserId,
+        label: [name.trim(), number, boundLabel].filter(Boolean).join(' · '),
+        value: String(id),
+      };
+    })
+    .filter((item): item is IdentityRosterOption => Boolean(item));
 
 interface EducationOrgSectionProps {
   assigningRole: boolean;
@@ -191,36 +265,7 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
 
     const identityRosterRows = identityRosterKind === 'teacher' ? teachers : students;
     const identityRosterOptions = useMemo(
-      () =>
-        identityRosterRows
-          .map((row) => {
-            const id = numericId(row, [
-              identityRosterKind === 'teacher' ? 'teacher_id' : 'student_id',
-              'id',
-            ]);
-            if (!id) return null;
-            const boundUserId = String(row.better_auth_user_id || '').trim();
-            const boundMember = members.find((member) => member.userId === boundUserId);
-            const name =
-              identityRosterKind === 'teacher'
-                ? String(row.real_name || row.username || row.name || '未命名教师')
-                : String(row.name || row.real_name || row.student_number || '未命名学生');
-            const number =
-              identityRosterKind === 'teacher'
-                ? String(row.teacher_number || row.username || '').trim()
-                : String(row.student_number || '').trim();
-            const boundLabel = boundUserId
-              ? `已绑定 ${boundMember?.email || boundMember?.name || boundUserId}`
-              : '未绑定账号';
-            return {
-              boundUserId,
-              label: [name.trim(), number, boundLabel].filter(Boolean).join(' · '),
-              value: String(id),
-            };
-          })
-          .filter((item): item is { boundUserId: string; label: string; value: string } =>
-            Boolean(item),
-          ),
+      () => buildIdentityRosterOptions(identityRosterKind, identityRosterRows, members),
       [identityRosterKind, identityRosterRows, members],
     );
 
@@ -573,3 +618,248 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
 );
 
 EducationOrgSection.displayName = 'EducationOrgSection';
+
+interface EducationIdentitySectionProps {
+  bindingIdentity: boolean;
+  canManage: boolean;
+  claims: AskCoreEducationIdentityClaim[];
+  claimsLoading: boolean;
+  identityForm: ReturnType<typeof Form.useForm>[0];
+  members: AskCoreOrganizationMember[];
+  onApproveClaim: (claimId: number) => Promise<void>;
+  onBindIdentity: () => Promise<void>;
+  onCreateIdentityClaim: () => Promise<void>;
+  onRejectClaim: (claimId: number) => Promise<void>;
+  onReloadClaims: () => void;
+  onUnbindIdentity: (
+    rosterKind: AskCoreEducationIdentityRosterKind,
+    rosterId: number,
+  ) => Promise<void>;
+  reviewingClaimId: number | null;
+  students: JsonRecord[];
+  teachers: JsonRecord[];
+}
+
+export const EducationIdentitySection = memo<EducationIdentitySectionProps>(
+  ({
+    bindingIdentity,
+    canManage,
+    claims,
+    claimsLoading,
+    identityForm,
+    members,
+    reviewingClaimId,
+    students,
+    teachers,
+    onApproveClaim,
+    onBindIdentity,
+    onCreateIdentityClaim,
+    onRejectClaim,
+    onReloadClaims,
+    onUnbindIdentity,
+  }) => {
+    const [identityRosterKind, setIdentityRosterKind] =
+      useState<AskCoreEducationIdentityRosterKind>('teacher');
+    const [identityRosterId, setIdentityRosterId] = useState<number | null>(null);
+
+    const memberOptions = useMemo(
+      () =>
+        members.map((member) => ({
+          label: memberLabel(members, member.userId),
+          value: member.userId,
+        })),
+      [members],
+    );
+
+    const identityRosterRows = identityRosterKind === 'teacher' ? teachers : students;
+    const identityRosterOptions = useMemo(
+      () => buildIdentityRosterOptions(identityRosterKind, identityRosterRows, members),
+      [identityRosterKind, identityRosterRows, members],
+    );
+    const selectedIdentityRosterOption = identityRosterOptions.find(
+      (option) => Number(option.value) === identityRosterId,
+    );
+
+    const handleIdentityRosterKindChange = (value: AskCoreEducationIdentityRosterKind) => {
+      setIdentityRosterKind(value);
+      setIdentityRosterId(null);
+      identityForm.setFieldsValue({
+        identity_roster_id: undefined,
+        identity_roster_kind: value,
+        identity_user_id: undefined,
+      });
+    };
+
+    const renderClaim = (claim: AskCoreEducationIdentityClaim) => {
+      const rosterLabel = rosterName(claim.roster_kind, claim.roster_id, teachers, students);
+      const userLabel = memberLabel(members, claim.better_auth_user_id);
+      return (
+        <div className={styles.identityClaimItem} key={claim.id}>
+          <div className={styles.identityClaimMain}>
+            <div className={styles.identityClaimTitle}>
+              {rosterKindLabels[claim.roster_kind]} · {rosterLabel}
+            </div>
+            <div className={styles.identityClaimMeta}>{userLabel}</div>
+          </div>
+          <Space wrap>
+            <Tag color={identityStatusColors[claim.status] || 'default'}>
+              {identityStatusLabels[claim.status] || claim.status}
+            </Tag>
+            {canManage && claim.status === 'pending' ? (
+              <>
+                <Button
+                  loading={reviewingClaimId === claim.id}
+                  size="small"
+                  type="primary"
+                  onClick={() => onApproveClaim(claim.id)}
+                >
+                  通过
+                </Button>
+                <Button
+                  danger
+                  loading={reviewingClaimId === claim.id}
+                  size="small"
+                  onClick={() => onRejectClaim(claim.id)}
+                >
+                  拒绝
+                </Button>
+              </>
+            ) : null}
+          </Space>
+        </div>
+      );
+    };
+
+    return (
+      <div className={styles.sectionCard}>
+        <div className={styles.sectionHeader}>
+          <div className={styles.sectionHeaderLeft}>
+            <span className={styles.sectionTitle}>教育身份绑定</span>
+            <span className={styles.sectionSubtitle}>提交申请、绑定账号和审批身份</span>
+          </div>
+          <Button
+            icon={<RefreshCw size={14} />}
+            loading={claimsLoading}
+            size="small"
+            type="text"
+            onClick={onReloadClaims}
+          />
+        </div>
+        <div className={styles.sectionBody}>
+          <div className={styles.identityLayout}>
+            <section className={styles.identityPanel}>
+              <div className={styles.identityPanelHeader}>
+                <div className={styles.rolePanelTitle}>提交身份申请</div>
+                <div className={styles.rolePanelMeta}>
+                  选择教师或学生名册身份，提交后由组织管理员审批。
+                </div>
+              </div>
+              <Form className={styles.roleAssignForm} form={identityForm} layout="vertical">
+                <Form.Item
+                  initialValue="teacher"
+                  label="名册类型"
+                  name="identity_roster_kind"
+                  rules={[{ required: true, message: '请选择名册类型' }]}
+                >
+                  <Select
+                    options={[
+                      { label: '教师', value: 'teacher' },
+                      { label: '学生', value: 'student' },
+                    ]}
+                    onChange={handleIdentityRosterKindChange}
+                  />
+                </Form.Item>
+                <Form.Item
+                  label={identityRosterKind === 'teacher' ? '教师名册' : '学生名册'}
+                  name="identity_roster_id"
+                  rules={[{ required: true, message: '请选择名册身份' }]}
+                >
+                  <Select
+                    showSearch
+                    optionFilterProp="label"
+                    options={identityRosterOptions}
+                    placeholder={identityRosterKind === 'teacher' ? '搜索教师名册' : '搜索学生名册'}
+                    onChange={(value) => setIdentityRosterId(Number(value))}
+                  />
+                </Form.Item>
+                {canManage ? (
+                  <Form.Item
+                    label="绑定账号"
+                    name="identity_user_id"
+                    rules={[{ required: true, message: '请选择组织成员账号' }]}
+                  >
+                    <Select
+                      showSearch
+                      optionFilterProp="label"
+                      options={memberOptions}
+                      placeholder="搜索组织成员"
+                    />
+                  </Form.Item>
+                ) : null}
+                <Space wrap>
+                  <Button
+                    className={styles.pillButton}
+                    loading={bindingIdentity}
+                    type={canManage ? 'default' : 'primary'}
+                    onClick={onCreateIdentityClaim}
+                  >
+                    提交身份申请
+                  </Button>
+                  {canManage ? (
+                    <Button
+                      className={styles.pillButton}
+                      loading={bindingIdentity}
+                      type="primary"
+                      onClick={onBindIdentity}
+                    >
+                      管理员直接绑定
+                    </Button>
+                  ) : null}
+                  {canManage && selectedIdentityRosterOption?.boundUserId ? (
+                    <Popconfirm
+                      title="解除该名册身份与账号的绑定？"
+                      onConfirm={() =>
+                        onUnbindIdentity(identityRosterKind, Number(identityRosterId || 0))
+                      }
+                    >
+                      <Button danger loading={bindingIdentity}>
+                        解绑
+                      </Button>
+                    </Popconfirm>
+                  ) : null}
+                </Space>
+              </Form>
+            </section>
+
+            <section className={styles.identityPanel}>
+              <div className={styles.identityPanelHeader}>
+                <div className={styles.rolePanelTitle}>
+                  {canManage ? '待审批身份申请' : '我的身份申请'}
+                </div>
+                <div className={styles.rolePanelMeta}>
+                  {canManage
+                    ? '管理员通过后，申请人会立即绑定到对应教师或学生名册。'
+                    : '管理员审批通过后，工作台会按你的教师或学生身份显示。'}
+                </div>
+              </div>
+              {claimsLoading ? (
+                <div className={styles.identityClaimLoading}>
+                  <Spin size="small" />
+                </div>
+              ) : claims.length ? (
+                <div className={styles.identityClaimList}>{claims.map(renderClaim)}</div>
+              ) : (
+                <Empty
+                  description={canManage ? '暂无待审批身份申请' : '暂无身份申请'}
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                />
+              )}
+            </section>
+          </div>
+        </div>
+      </div>
+    );
+  },
+);
+
+EducationIdentitySection.displayName = 'EducationIdentitySection';

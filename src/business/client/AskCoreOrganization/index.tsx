@@ -41,17 +41,24 @@ import {
   toFormState,
 } from '../AskCoreWorkbench/resourceMeta';
 import { type JsonRecord, type ResourceKey } from '../AskCoreWorkbench/types';
-import { EducationOrgSection, HeroCard, MemberSection, SettingsSection } from './components';
+import {
+  EducationIdentitySection,
+  EducationOrgSection,
+  HeroCard,
+  MemberSection,
+  SettingsSection,
+} from './components';
 import { useOrganization } from './hooks/useOrganization';
 import { styles } from './styles';
 import { type AskCoreEducationOrgUnit } from './types';
 
 type OrganizationRosterResource = Extract<ResourceKey, 'students' | 'teachers'>;
-type TabKey = 'hierarchy' | 'members' | 'overview' | OrganizationRosterResource;
+type TabKey = 'hierarchy' | 'identity' | 'members' | 'overview' | OrganizationRosterResource;
 
 const tabs: { key: TabKey; label: string }[] = [
   { key: 'overview', label: '概览' },
   { key: 'members', label: '成员' },
+  { key: 'identity', label: '身份绑定' },
   { key: 'hierarchy', label: '层级' },
   { key: 'teachers', label: '教师' },
   { key: 'students', label: '学生' },
@@ -984,6 +991,26 @@ export const AskCoreOrganizationRoute = memo(() => {
                   onInvite={org.handleInvite}
                   onRemove={org.handleRemoveMember}
                   onRoleChange={org.handleRoleChange}
+                />
+              )}
+
+              {activeTab === 'identity' && (
+                <EducationIdentitySection
+                  bindingIdentity={org.bindingIdentity}
+                  canManage={org.canManage}
+                  claims={org.educationIdentityClaims}
+                  claimsLoading={org.educationIdentityClaimsLoading}
+                  identityForm={org.identityForm}
+                  members={org.members}
+                  reviewingClaimId={org.reviewingIdentityClaim}
+                  students={org.educationStudents}
+                  teachers={org.educationTeachers}
+                  onApproveClaim={org.handleApproveEducationIdentityClaim}
+                  onBindIdentity={org.handleBindEducationIdentity}
+                  onCreateIdentityClaim={org.handleCreateEducationIdentityClaim}
+                  onRejectClaim={org.handleRejectEducationIdentityClaim}
+                  onReloadClaims={org.reloadEducationIdentityClaims}
+                  onUnbindIdentity={org.handleUnbindEducationIdentity}
                 />
               )}
 

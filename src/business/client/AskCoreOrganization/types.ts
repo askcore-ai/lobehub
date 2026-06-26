@@ -127,7 +127,13 @@ export interface AskCoreEducationIdentityClaim {
   id: number;
   org_id: string;
   requested_by_user_id: string;
+  reviewed_at?: string | null;
+  reviewed_by_user_id?: string | null;
   roster_id: number;
   roster_kind: AskCoreEducationIdentityRosterKind;
   status: 'approved' | 'pending' | 'rejected';
+}
+
+export interface AskCoreEducationIdentityClaimPayload {
+  items: AskCoreEducationIdentityClaim[];
 }

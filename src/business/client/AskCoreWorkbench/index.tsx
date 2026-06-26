@@ -7411,9 +7411,16 @@ const AskCoreWorkbenchPage = memo(() => {
         {isIdentityRequired ? (
           <Alert
             showIcon
-            description="当前账号已经进入组织，但还没有绑定到教师或学生名册。可以在组织管理中申请或由管理员绑定身份。"
+            description="当前账号已经进入组织，但还没有绑定到教师或学生名册。请提交身份申请，或联系组织管理员在同一页面审批并绑定身份。"
             message="请先完成教师或学生身份绑定"
             type="warning"
+            action={
+              <Link to="/organization?tab=identity">
+                <Button size="small" type="primary">
+                  去提交身份申请
+                </Button>
+              </Link>
+            }
           />
         ) : null}
         {isRestrictedStudent ? (
