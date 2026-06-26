@@ -46,6 +46,7 @@ import {
   EducationOrgSection,
   HeroCard,
   MemberSection,
+  OrganizationDirectorySection,
   SettingsSection,
 } from './components';
 import { useOrganization } from './hooks/useOrganization';
@@ -53,15 +54,17 @@ import { styles } from './styles';
 import { type AskCoreEducationOrgUnit } from './types';
 
 type OrganizationRosterResource = Extract<ResourceKey, 'students' | 'teachers'>;
-type TabKey = 'hierarchy' | 'identity' | 'members' | 'overview' | OrganizationRosterResource;
+type TabKey =
+  | 'directory'
+  | 'hierarchy'
+  | 'identity'
+  | 'members'
+  | 'overview'
+  | OrganizationRosterResource;
 
 const tabs: { key: TabKey; label: string }[] = [
   { key: 'overview', label: '概览' },
-  { key: 'members', label: '成员' },
-  { key: 'identity', label: '身份绑定' },
-  { key: 'hierarchy', label: '层级' },
-  { key: 'teachers', label: '教师' },
-  { key: 'students', label: '学生' },
+  { key: 'directory', label: '组织架构' },
 ];
 
 const rosterResources: OrganizationRosterResource[] = ['teachers', 'students'];
@@ -83,7 +86,7 @@ const classUnitLookupItems = (units: AskCoreEducationOrgUnit[]): JsonRecord[] =>
     }));
 
 const normalizeTab = (value?: string | null): TabKey =>
-  tabs.some((tab) => tab.key === value) ? (value as TabKey) : 'overview';
+  tabs.some((tab) => tab.key === value) ? (value as TabKey) : 'directory';
 
 const normalizeFormValues = (values: Record<string, unknown>) =>
   Object.fromEntries(
@@ -992,6 +995,10 @@ export const AskCoreOrganizationRoute = memo(() => {
                   onRemove={org.handleRemoveMember}
                   onRoleChange={org.handleRoleChange}
                 />
+              )}
+
+              {activeTab === 'directory' && (
+                <OrganizationDirectorySection canManage={org.canManage} />
               )}
 
               {activeTab === 'identity' && (

@@ -10,9 +10,16 @@ import {
   type AskCoreEducationRoleAssignment,
   type AskCoreEducationRoleAssignmentCreateInput,
   type AskCoreEducationRoleAssignmentPayload,
+  type AskCoreDirectoryInvitation,
+  type AskCoreDirectoryInvitationCreateInput,
+  type AskCoreDirectoryPerson,
+  type AskCoreDirectoryPersonCreateInput,
+  type AskCoreDirectoryPersonPatchInput,
+  type AskCoreDirectoryPersonRoleInput,
   type AskCoreInviteChannel,
   type AskCoreInviteExpiry,
   type AskCoreInvitePayload,
+  type AskCoreOrganizationDirectoryPayload,
   type AskCoreOrganizationPayload,
   type AskCoreOrganizationRole,
 } from './types';
@@ -166,6 +173,76 @@ export const createAskCoreClassUnit = (input: {
     name: input.name,
     parent_id: input.parentUnitId,
     unit_type: 'class',
+  });
+
+export const createAskCoreDepartmentUnit = (input: {
+  description?: string;
+  name: string;
+  parentUnitId?: number;
+}) =>
+  createAskCoreEducationOrgUnit({
+    description: input.description,
+    name: input.name,
+    parent_id: input.parentUnitId,
+    unit_type: 'department',
+  });
+
+export const fetchAskCoreOrganizationDirectory = (includeArchived = false) => {
+  const query = includeArchived ? '?include_archived=true' : '';
+  return requestJson<AskCoreOrganizationDirectoryPayload>(
+    `${EDUCATION_ORG_API_BASE}/directory${query}`,
+  );
+};
+
+export const createAskCoreDirectoryPerson = (input: AskCoreDirectoryPersonCreateInput) =>
+  requestJson<AskCoreDirectoryPerson>(`${EDUCATION_ORG_API_BASE}/people`, {
+    body: JSON.stringify(input),
+    method: 'POST',
+  });
+
+export const updateAskCoreDirectoryPerson = (
+  personId: number,
+  input: AskCoreDirectoryPersonPatchInput,
+) =>
+  requestJson<AskCoreDirectoryPerson>(`${EDUCATION_ORG_API_BASE}/people/${personId}`, {
+    body: JSON.stringify(input),
+    method: 'PATCH',
+  });
+
+export const createAskCoreDirectoryPersonRole = (
+  personId: number,
+  input: AskCoreDirectoryPersonRoleInput,
+) =>
+  requestJson<AskCoreEducationRoleAssignment>(
+    `${EDUCATION_ORG_API_BASE}/people/${personId}/roles`,
+    {
+      body: JSON.stringify(input),
+      method: 'POST',
+    },
+  );
+
+export const deleteAskCoreDirectoryPersonRole = (personId: number, roleAssignmentId: number) =>
+  requestJson<AskCoreEducationRoleAssignment>(
+    `${EDUCATION_ORG_API_BASE}/people/${personId}/roles/${roleAssignmentId}`,
+    { method: 'DELETE' },
+  );
+
+export const bindAskCoreDirectoryPersonAccount = (personId: number, betterAuthUserId: string) =>
+  requestJson<AskCoreDirectoryPerson>(`${EDUCATION_ORG_API_BASE}/people/${personId}/bind-account`, {
+    body: JSON.stringify({ better_auth_user_id: betterAuthUserId }),
+    method: 'POST',
+  });
+
+export const unbindAskCoreDirectoryPersonAccount = (personId: number) =>
+  requestJson<AskCoreDirectoryPerson>(
+    `${EDUCATION_ORG_API_BASE}/people/${personId}/bind-account`,
+    { method: 'DELETE' },
+  );
+
+export const createAskCoreDirectoryInvitation = (input: AskCoreDirectoryInvitationCreateInput) =>
+  requestJson<AskCoreDirectoryInvitation>(`${EDUCATION_ORG_API_BASE}/directory-invitations`, {
+    body: JSON.stringify(input),
+    method: 'POST',
   });
 
 const roleAssignmentBody = (input: AskCoreEducationRoleAssignmentCreateInput) => {

@@ -33,6 +33,7 @@ import { OrgTreeNode } from './OrgTreeNode';
 const unitTypeLabels = {
   class: '班级',
   cohort: '届别',
+  department: '部门',
   school: '学校',
 };
 
@@ -54,6 +55,7 @@ type IdentityRosterOption = {
 const roleOptionsByUnitType: Record<AskCoreEducationOrgUnitType, AskCoreEducationRole[]> = {
   class: ['homeroom_teacher', 'teacher', 'student'],
   cohort: ['grade_admin', 'teacher'],
+  department: ['teacher'],
   school: ['school_admin', 'teacher'],
 };
 
