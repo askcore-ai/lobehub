@@ -954,6 +954,145 @@ export const styles = createStaticStyles(({ css }) => ({
     height: 12px;
   `,
 
+  // Unified Directory
+  directoryWorkspace: css`
+    display: grid;
+    grid-template-columns: minmax(180px, 0.85fr) minmax(240px, 1.1fr) minmax(280px, 1.35fr);
+    gap: 14px;
+
+    @media (width <= 980px) {
+      grid-template-columns: 1fr;
+    }
+  `,
+  directoryPane: css`
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 8px;
+    background: ${cssVar.colorBgContainer};
+  `,
+  directoryPaneTitle: css`
+    margin-block-end: 10px;
+    font-size: 13px;
+    font-weight: 650;
+    color: ${cssVar.colorText};
+  `,
+  directoryTree: css`
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  `,
+  directoryTreeNode: css`
+    cursor: pointer;
+
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+
+    width: 100%;
+    min-height: 34px;
+    padding-block: 6px;
+    padding-inline: 10px;
+    border: 0;
+    border-radius: 8px;
+
+    font-size: 13px;
+    color: ${cssVar.colorText};
+    text-align: start;
+
+    background: transparent;
+
+    &:hover {
+      background: ${cssVar.colorFillQuaternary};
+    }
+  `,
+  directoryTreeNodeActive: css`
+    background: ${cssVar.colorFillSecondary};
+  `,
+  directoryInlineForm: css`
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-block-end: 12px;
+
+    .ant-form-item {
+      margin-block-end: 0;
+    }
+  `,
+  directoryPeopleList: css`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  `,
+  directoryPersonRow: css`
+    cursor: pointer;
+
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+
+    width: 100%;
+    padding: 10px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 8px;
+
+    text-align: start;
+
+    background: ${cssVar.colorBgContainer};
+
+    strong,
+    small {
+      display: block;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    small {
+      margin-block-start: 2px;
+      font-size: 12px;
+      color: ${cssVar.colorTextDescription};
+    }
+
+    &:hover {
+      border-color: ${cssVar.colorPrimaryBorder};
+    }
+  `,
+  directoryPersonRowActive: css`
+    border-color: ${cssVar.colorPrimary};
+    box-shadow: 0 0 0 1px ${cssVar.colorPrimaryBorder};
+  `,
+  directoryDetail: css`
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  `,
+  directoryPersonName: css`
+    margin-block-end: 6px;
+    font-size: 18px;
+    font-weight: 700;
+    color: ${cssVar.colorText};
+  `,
+  directoryDetailTitle: css`
+    margin-block-end: 8px;
+    font-size: 13px;
+    font-weight: 650;
+    color: ${cssVar.colorText};
+  `,
+  directoryMetaLine: css`
+    margin-block-end: 8px;
+    font-size: 13px;
+    color: ${cssVar.colorTextSecondary};
+    overflow-wrap: anywhere;
+  `,
+  centerPane: css`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 180px;
+  `,
+
   // Animations
   staggerItem: css`
     transform: translateY(20px);

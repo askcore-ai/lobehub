@@ -5,21 +5,29 @@ import {
   assignAskCoreEducationRole,
   bindAskCoreEducationIdentity,
   bootstrapAskCoreOrganization,
+  bindAskCoreDirectoryPersonAccount,
   createAskCoreClassUnit,
   createAskCoreCohortUnit,
+  createAskCoreDirectoryInvitation,
+  createAskCoreDirectoryPerson,
+  createAskCoreDirectoryPersonRole,
   createAskCoreEducationIdentityClaim,
   createAskCoreEducationOrgUnit,
   createAskCoreOrganization,
   createAskCoreOrganizationInvite,
   createAskCoreSchoolUnit,
+  deleteAskCoreDirectoryPersonRole,
   deleteAskCoreEducationRoleAssignment,
+  fetchAskCoreOrganizationDirectory,
   fetchAskCoreEducationIdentityClaims,
   fetchAskCoreEducationOrgUnits,
   fetchAskCoreEducationRoleAssignments,
   fetchAskCoreOrganizations,
   rejectAskCoreEducationIdentityClaim,
   setActiveAskCoreOrganization,
+  unbindAskCoreDirectoryPersonAccount,
   unbindAskCoreEducationIdentity,
+  updateAskCoreDirectoryPerson,
   updateAskCoreOrganizationMemberRole,
 } from './api';
 
@@ -55,6 +63,22 @@ describe('AskCoreOrganization api client', () => {
     await createAskCoreSchoolUnit({ name: 'Seed School' });
     await createAskCoreCohortUnit({ entryYear: 2025, parentUnitId: 3 });
     await createAskCoreClassUnit({ name: '高一 1 班', parentUnitId: 4 });
+    await fetchAskCoreOrganizationDirectory();
+    await createAskCoreDirectoryPerson({
+      display_name: '李老师',
+      primary_org_unit_id: 4,
+      roster_kind: 'teacher',
+    });
+    await updateAskCoreDirectoryPerson(10, { primary_org_unit_id: 5 });
+    await createAskCoreDirectoryPersonRole(10, { org_unit_id: 4, role: 'teacher' });
+    await deleteAskCoreDirectoryPersonRole(10, 99);
+    await bindAskCoreDirectoryPersonAccount(10, 'user-10');
+    await unbindAskCoreDirectoryPersonAccount(10);
+    await createAskCoreDirectoryInvitation({
+      invitation_kind: 'open',
+      primary_org_unit_id: 4,
+      preset_roles: ['student'],
+    });
     await assignAskCoreEducationRole({
       subject: { kind: 'member', userId: 'user-1' },
       org_unit_id: 2,
@@ -87,6 +111,14 @@ describe('AskCoreOrganization api client', () => {
       '/api/askcore/workbench/organization/units',
       '/api/askcore/workbench/organization/units',
       '/api/askcore/workbench/organization/units',
+      '/api/askcore/workbench/organization/directory',
+      '/api/askcore/workbench/organization/people',
+      '/api/askcore/workbench/organization/people/10',
+      '/api/askcore/workbench/organization/people/10/roles',
+      '/api/askcore/workbench/organization/people/10/roles/99',
+      '/api/askcore/workbench/organization/people/10/bind-account',
+      '/api/askcore/workbench/organization/people/10/bind-account',
+      '/api/askcore/workbench/organization/directory-invitations',
       '/api/askcore/workbench/organization/roles',
       '/api/askcore/workbench/organization/identity-bindings',
       '/api/askcore/workbench/organization/identity-claims',
@@ -122,7 +154,37 @@ describe('AskCoreOrganization api client', () => {
       body: JSON.stringify({ name: '高一 1 班', parent_id: 4, unit_type: 'class' }),
       method: 'POST',
     });
-    expect(calls[11][1]).toMatchObject({
+    expect(calls[12][1]).toMatchObject({
+      body: JSON.stringify({
+        display_name: '李老师',
+        primary_org_unit_id: 4,
+        roster_kind: 'teacher',
+      }),
+      method: 'POST',
+    });
+    expect(calls[13][1]).toMatchObject({
+      body: JSON.stringify({ primary_org_unit_id: 5 }),
+      method: 'PATCH',
+    });
+    expect(calls[14][1]).toMatchObject({
+      body: JSON.stringify({ org_unit_id: 4, role: 'teacher' }),
+      method: 'POST',
+    });
+    expect(calls[15][1]).toMatchObject({ method: 'DELETE' });
+    expect(calls[16][1]).toMatchObject({
+      body: JSON.stringify({ better_auth_user_id: 'user-10' }),
+      method: 'POST',
+    });
+    expect(calls[17][1]).toMatchObject({ method: 'DELETE' });
+    expect(calls[18][1]).toMatchObject({
+      body: JSON.stringify({
+        invitation_kind: 'open',
+        primary_org_unit_id: 4,
+        preset_roles: ['student'],
+      }),
+      method: 'POST',
+    });
+    expect(calls[19][1]).toMatchObject({
       body: JSON.stringify({
         better_auth_user_id: 'user-1',
         org_unit_id: 2,
@@ -130,7 +192,7 @@ describe('AskCoreOrganization api client', () => {
       }),
       method: 'POST',
     });
-    expect(calls[12][1]).toMatchObject({
+    expect(calls[20][1]).toMatchObject({
       body: JSON.stringify({
         better_auth_user_id: 'user-1',
         roster_id: 7001,
@@ -138,13 +200,13 @@ describe('AskCoreOrganization api client', () => {
       }),
       method: 'POST',
     });
-    expect(calls[13][1]).toMatchObject({
+    expect(calls[21][1]).toMatchObject({
       body: JSON.stringify({ roster_id: 9001, roster_kind: 'teacher' }),
       method: 'POST',
     });
-    expect(calls[15][1]).toMatchObject({ method: 'POST' });
-    expect(calls[16][1]).toMatchObject({ method: 'POST' });
-    expect(calls[17][1]).toMatchObject({ method: 'DELETE' });
-    expect(calls[19][1]).toMatchObject({ method: 'DELETE' });
+    expect(calls[23][1]).toMatchObject({ method: 'POST' });
+    expect(calls[24][1]).toMatchObject({ method: 'POST' });
+    expect(calls[25][1]).toMatchObject({ method: 'DELETE' });
+    expect(calls[27][1]).toMatchObject({ method: 'DELETE' });
   });
 });
