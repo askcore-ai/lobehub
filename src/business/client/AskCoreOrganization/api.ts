@@ -1,4 +1,12 @@
 import {
+  type AskCoreDirectoryImportInput,
+  type AskCoreDirectoryImportResult,
+  type AskCoreDirectoryInvitation,
+  type AskCoreDirectoryInvitationCreateInput,
+  type AskCoreDirectoryPerson,
+  type AskCoreDirectoryPersonCreateInput,
+  type AskCoreDirectoryPersonPatchInput,
+  type AskCoreDirectoryPersonRoleInput,
   type AskCoreEducationIdentityBinding,
   type AskCoreEducationIdentityBindingInput,
   type AskCoreEducationIdentityClaim,
@@ -10,22 +18,19 @@ import {
   type AskCoreEducationRoleAssignment,
   type AskCoreEducationRoleAssignmentCreateInput,
   type AskCoreEducationRoleAssignmentPayload,
-  type AskCoreDirectoryInvitation,
-  type AskCoreDirectoryInvitationCreateInput,
-  type AskCoreDirectoryPerson,
-  type AskCoreDirectoryPersonCreateInput,
-  type AskCoreDirectoryPersonPatchInput,
-  type AskCoreDirectoryPersonRoleInput,
   type AskCoreInviteChannel,
   type AskCoreInviteExpiry,
   type AskCoreInvitePayload,
   type AskCoreOrganizationDirectoryPayload,
   type AskCoreOrganizationPayload,
   type AskCoreOrganizationRole,
+  type AskCorePresignUploadPayload,
+  type AskCorePresignUploadResult,
 } from './types';
 
 const ORGANIZATION_API_BASE = '/api/askcore/organizations';
 const EDUCATION_ORG_API_BASE = '/api/askcore/workbench/organization';
+const WORKBENCH_UPLOAD_API_BASE = '/api/askcore/workbench/uploads';
 
 export class AskCoreOrganizationApiError extends Error {
   status: number;
@@ -241,6 +246,42 @@ export const unbindAskCoreDirectoryPersonAccount = (personId: number) =>
 
 export const createAskCoreDirectoryInvitation = (input: AskCoreDirectoryInvitationCreateInput) =>
   requestJson<AskCoreDirectoryInvitation>(`${EDUCATION_ORG_API_BASE}/directory-invitations`, {
+    body: JSON.stringify(input),
+    method: 'POST',
+  });
+
+export const presignAskCoreWorkbenchUpload = (input: AskCorePresignUploadPayload) =>
+  requestJson<AskCorePresignUploadResult>(`${WORKBENCH_UPLOAD_API_BASE}/presign`, {
+    body: JSON.stringify(input),
+    method: 'POST',
+  });
+
+const sha256Hex = async (file: File) => {
+  const buffer = await file.arrayBuffer();
+  const digest = await crypto.subtle.digest('SHA-256', buffer);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+};
+
+export const uploadAskCoreCsv = async (file: File) => {
+  const signed = await presignAskCoreWorkbenchUpload({
+    content_type: 'text/csv',
+    filename: file.name,
+    purpose: 'csv',
+    sha256: await sha256Hex(file),
+  });
+  const upload = await fetch(signed.upload_url, {
+    body: file,
+    headers: signed.required_headers,
+    method: 'PUT',
+  });
+  if (!upload.ok) {
+    throw new AskCoreOrganizationApiError(upload.statusText || 'CSV 上传失败', upload.status);
+  }
+  return signed.object_key;
+};
+
+export const importAskCoreDirectoryPeople = (input: AskCoreDirectoryImportInput) =>
+  requestJson<AskCoreDirectoryImportResult>(`${EDUCATION_ORG_API_BASE}/directory-imports`, {
     body: JSON.stringify(input),
     method: 'POST',
   });

@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   approveAskCoreEducationIdentityClaim,
   assignAskCoreEducationRole,
+  bindAskCoreDirectoryPersonAccount,
   bindAskCoreEducationIdentity,
   bootstrapAskCoreOrganization,
-  bindAskCoreDirectoryPersonAccount,
   createAskCoreClassUnit,
   createAskCoreCohortUnit,
   createAskCoreDirectoryInvitation,
@@ -18,11 +18,13 @@ import {
   createAskCoreSchoolUnit,
   deleteAskCoreDirectoryPersonRole,
   deleteAskCoreEducationRoleAssignment,
-  fetchAskCoreOrganizationDirectory,
   fetchAskCoreEducationIdentityClaims,
   fetchAskCoreEducationOrgUnits,
   fetchAskCoreEducationRoleAssignments,
+  fetchAskCoreOrganizationDirectory,
   fetchAskCoreOrganizations,
+  importAskCoreDirectoryPeople,
+  presignAskCoreWorkbenchUpload,
   rejectAskCoreEducationIdentityClaim,
   setActiveAskCoreOrganization,
   unbindAskCoreDirectoryPersonAccount,
@@ -79,6 +81,22 @@ describe('AskCoreOrganization api client', () => {
       primary_org_unit_id: 4,
       preset_roles: ['student'],
     });
+    await presignAskCoreWorkbenchUpload({
+      content_type: 'text/csv',
+      filename: 'people.csv',
+      purpose: 'csv',
+    });
+    await importAskCoreDirectoryPeople({
+      csv_ref: {
+        locator: { kind: 'object_store', object_key: 'uploads/org-1/tmp/people.csv' },
+        media_type: 'text/csv',
+        purpose: 'csv',
+      },
+      default_role: 'student',
+      primary_org_unit_id: 4,
+      roster_kind: 'student',
+      scope: 'unit',
+    });
     await assignAskCoreEducationRole({
       subject: { kind: 'member', userId: 'user-1' },
       org_unit_id: 2,
@@ -119,6 +137,8 @@ describe('AskCoreOrganization api client', () => {
       '/api/askcore/workbench/organization/people/10/bind-account',
       '/api/askcore/workbench/organization/people/10/bind-account',
       '/api/askcore/workbench/organization/directory-invitations',
+      '/api/askcore/workbench/uploads/presign',
+      '/api/askcore/workbench/organization/directory-imports',
       '/api/askcore/workbench/organization/roles',
       '/api/askcore/workbench/organization/identity-bindings',
       '/api/askcore/workbench/organization/identity-claims',
@@ -186,13 +206,35 @@ describe('AskCoreOrganization api client', () => {
     });
     expect(calls[19][1]).toMatchObject({
       body: JSON.stringify({
+        content_type: 'text/csv',
+        filename: 'people.csv',
+        purpose: 'csv',
+      }),
+      method: 'POST',
+    });
+    expect(calls[20][1]).toMatchObject({
+      body: JSON.stringify({
+        csv_ref: {
+          locator: { kind: 'object_store', object_key: 'uploads/org-1/tmp/people.csv' },
+          media_type: 'text/csv',
+          purpose: 'csv',
+        },
+        default_role: 'student',
+        primary_org_unit_id: 4,
+        roster_kind: 'student',
+        scope: 'unit',
+      }),
+      method: 'POST',
+    });
+    expect(calls[21][1]).toMatchObject({
+      body: JSON.stringify({
         better_auth_user_id: 'user-1',
         org_unit_id: 2,
         role: 'grade_admin',
       }),
       method: 'POST',
     });
-    expect(calls[20][1]).toMatchObject({
+    expect(calls[22][1]).toMatchObject({
       body: JSON.stringify({
         better_auth_user_id: 'user-1',
         roster_id: 7001,
@@ -200,13 +242,13 @@ describe('AskCoreOrganization api client', () => {
       }),
       method: 'POST',
     });
-    expect(calls[21][1]).toMatchObject({
+    expect(calls[23][1]).toMatchObject({
       body: JSON.stringify({ roster_id: 9001, roster_kind: 'teacher' }),
       method: 'POST',
     });
-    expect(calls[23][1]).toMatchObject({ method: 'POST' });
-    expect(calls[24][1]).toMatchObject({ method: 'POST' });
-    expect(calls[25][1]).toMatchObject({ method: 'DELETE' });
+    expect(calls[25][1]).toMatchObject({ method: 'POST' });
+    expect(calls[26][1]).toMatchObject({ method: 'POST' });
     expect(calls[27][1]).toMatchObject({ method: 'DELETE' });
+    expect(calls[29][1]).toMatchObject({ method: 'DELETE' });
   });
 });

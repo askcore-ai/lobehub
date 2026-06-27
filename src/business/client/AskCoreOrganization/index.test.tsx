@@ -205,10 +205,28 @@ describe('AskCoreOrganizationRoute', () => {
     expect(within(directory).getAllByText('邀请中').length).toBeGreaterThan(0);
     expect(within(directory).getAllByText(/教师/).length).toBeGreaterThan(0);
     expect(within(directory).getByText('账号绑定')).toBeInTheDocument();
-    expect(within(directory).getByText('邀请与加入')).toBeInTheDocument();
+    expect(within(directory).getByText('定向邀请')).toBeInTheDocument();
+    expect(within(directory).queryByPlaceholderText('不定向邀请位置')).not.toBeInTheDocument();
+    expect(within(directory).getByRole('button', { name: /新建人员/ })).toBeInTheDocument();
+    expect(within(directory).getByRole('button', { name: /不定向邀请/ })).toBeInTheDocument();
+    expect(within(directory).getByRole('button', { name: /批量导入/ })).toBeInTheDocument();
+    expect(within(directory).getByRole('button', { name: /导出/ })).toBeInTheDocument();
 
-    fireEvent.click(within(directory).getByText('高一 1 班'));
+    const orgTree = within(directory).getByLabelText('组织树');
+    expect(within(orgTree).getByRole('button', { name: /全部人员/ })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+
+    fireEvent.click(within(orgTree).getByRole('button', { name: /高一 1 班/ }));
     await waitFor(() => expect(within(directory).getAllByText('王同学').length).toBeGreaterThan(0));
+    expect(within(orgTree).getByRole('button', { name: /高一 1 班/ })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
     expect(within(directory).getAllByText('已注册').length).toBeGreaterThan(0);
+    expect(within(directory).getByRole('button', { name: /添加到当前节点/ })).toBeInTheDocument();
+    expect(within(directory).getByRole('button', { name: /当前节点邀请/ })).toBeInTheDocument();
+    expect(within(directory).getByRole('button', { name: /批量导入到当前节点/ })).toBeInTheDocument();
   });
 });

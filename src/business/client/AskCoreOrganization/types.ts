@@ -224,3 +224,39 @@ export interface AskCoreDirectoryInvitationCreateInput {
   preset_roles?: AskCoreEducationRole[];
   primary_org_unit_id?: number | null;
 }
+
+export interface AskCorePresignUploadPayload {
+  content_type: string;
+  filename?: string | null;
+  purpose: 'csv' | 'scan';
+  sha256?: string | null;
+}
+
+export interface AskCorePresignUploadResult {
+  expires_at: string;
+  object_key: string;
+  required_headers: Record<string, string>;
+  upload_url: string;
+}
+
+export interface AskCoreDirectoryImportInput {
+  csv_ref: {
+    locator: {
+      kind: 'object_store';
+      object_key: string;
+    };
+    media_type?: string | null;
+    purpose?: 'csv' | null;
+  };
+  default_role?: AskCoreEducationRole | null;
+  primary_org_unit_id?: number | null;
+  roster_kind?: AskCoreDirectoryRosterKind | null;
+  scope: 'organization' | 'unit';
+}
+
+export interface AskCoreDirectoryImportResult {
+  created_count: number;
+  errors: Array<{ message: string; row_number: number }>;
+  skipped_count: number;
+  updated_count: number;
+}

@@ -955,20 +955,52 @@ export const styles = createStaticStyles(({ css }) => ({
   `,
 
   // Unified Directory
+  directoryToolbar: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-end;
+
+    margin-block-end: 14px;
+    padding-block: 10px;
+    padding-inline: 12px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 8px;
+
+    background: ${cssVar.colorFillQuaternary};
+  `,
+  directoryToolbarForm: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: flex-end;
+
+    .ant-form-item {
+      min-width: 132px;
+      margin-block-end: 0;
+    }
+
+    .ant-btn {
+      min-height: 32px;
+    }
+  `,
   directoryWorkspace: css`
     display: grid;
-    grid-template-columns: minmax(180px, 0.85fr) minmax(240px, 1.1fr) minmax(280px, 1.35fr);
+    grid-template-columns: minmax(220px, 0.8fr) minmax(360px, 1.25fr) minmax(320px, 1.05fr);
     gap: 14px;
 
-    @media (width <= 980px) {
+    @media (width <= 1120px) {
       grid-template-columns: 1fr;
     }
   `,
   directoryPane: css`
+    overflow: hidden;
+
     min-width: 0;
     padding: 12px;
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 8px;
+
     background: ${cssVar.colorBgContainer};
   `,
   directoryPaneTitle: css`
@@ -977,6 +1009,22 @@ export const styles = createStaticStyles(({ css }) => ({
     font-weight: 650;
     color: ${cssVar.colorText};
   `,
+  directoryPaneHeader: css`
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    justify-content: space-between;
+
+    margin-block-end: 10px;
+    padding-block-end: 10px;
+    border-block-end: 1px solid ${cssVar.colorBorderSecondary};
+  `,
+  directoryPaneMeta: css`
+    font-size: 12px;
+    line-height: 1.5;
+    color: ${cssVar.colorTextSecondary};
+    overflow-wrap: anywhere;
+  `,
   directoryTree: css`
     display: flex;
     flex-direction: column;
@@ -984,6 +1032,8 @@ export const styles = createStaticStyles(({ css }) => ({
   `,
   directoryTreeNode: css`
     cursor: pointer;
+
+    position: relative;
 
     display: flex;
     gap: 8px;
@@ -1003,12 +1053,81 @@ export const styles = createStaticStyles(({ css }) => ({
 
     background: transparent;
 
+    transition:
+      border-color 0.15s ease,
+      background 0.15s ease,
+      color 0.15s ease,
+      box-shadow 0.15s ease;
+
+    &::before {
+      content: '';
+
+      position: absolute;
+      inset-block: 5px;
+      inset-inline-start: 0;
+
+      width: 3px;
+      border-radius: 999px;
+
+      opacity: 0;
+      background: ${cssVar.colorPrimary};
+
+      transition: opacity 0.15s ease;
+    }
+
     &:hover {
       background: ${cssVar.colorFillQuaternary};
     }
+
+    &:focus-visible {
+      outline: 2px solid ${cssVar.colorPrimaryBorder};
+      outline-offset: 2px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+
+      &::before {
+        transition: none;
+      }
+    }
   `,
   directoryTreeNodeActive: css`
-    background: ${cssVar.colorFillSecondary};
+    border-color: ${cssVar.colorPrimaryBorder};
+    font-weight: 650;
+    color: ${cssVar.colorPrimaryText};
+    background: ${cssVar.colorPrimaryBg};
+
+    &::before {
+      opacity: 1;
+    }
+  `,
+  directoryTreeNodeAncestor: css`
+    color: ${cssVar.colorPrimaryText};
+    background: ${cssVar.colorFillQuaternary};
+  `,
+  directoryTreeNodeLabel: css`
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+
+    span,
+    small {
+      overflow: hidden;
+      min-width: 0;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    small {
+      font-size: 11px;
+      font-weight: 400;
+      color: ${cssVar.colorTextDescription};
+    }
+  `,
+  directoryTreeTag: css`
+    margin-inline-end: 0;
+    font-size: 11px;
   `,
   directoryInlineForm: css`
     display: grid;
@@ -1018,6 +1137,19 @@ export const styles = createStaticStyles(({ css }) => ({
 
     .ant-form-item {
       margin-block-end: 0;
+    }
+  `,
+  directoryNodeActions: css`
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+
+    margin-block-end: 12px;
+    padding-block-end: 12px;
+    border-block-end: 1px solid ${cssVar.colorBorderSecondary};
+
+    @media (width <= 760px) {
+      grid-template-columns: 1fr;
     }
   `,
   directoryPeopleList: css`
@@ -1042,6 +1174,12 @@ export const styles = createStaticStyles(({ css }) => ({
 
     background: ${cssVar.colorBgContainer};
 
+    transition:
+      border-color 0.15s ease,
+      background 0.15s ease,
+      box-shadow 0.15s ease,
+      transform 0.15s ease;
+
     strong,
     small {
       display: block;
@@ -1057,16 +1195,62 @@ export const styles = createStaticStyles(({ css }) => ({
 
     &:hover {
       border-color: ${cssVar.colorPrimaryBorder};
+      background: ${cssVar.colorFillQuaternary};
+    }
+
+    &:focus-visible {
+      outline: 2px solid ${cssVar.colorPrimaryBorder};
+      outline-offset: 2px;
+    }
+
+    &:active {
+      transform: translateY(1px);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+
+      &:active {
+        transform: none;
+      }
     }
   `,
   directoryPersonRowActive: css`
     border-color: ${cssVar.colorPrimary};
+    background: ${cssVar.colorPrimaryBg};
     box-shadow: 0 0 0 1px ${cssVar.colorPrimaryBorder};
+  `,
+  directoryPersonContent: css`
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+  `,
+  directoryPersonTags: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+
+    .ant-tag {
+      margin-inline-end: 0;
+    }
+  `,
+  directoryFileInput: css`
+    display: none;
   `,
   directoryDetail: css`
     display: flex;
     flex-direction: column;
     gap: 16px;
+  `,
+  directoryDetailSection: css`
+    padding-block-end: 14px;
+    border-block-end: 1px solid ${cssVar.colorBorderSecondary};
+
+    &:last-child {
+      padding-block-end: 0;
+      border-block-end: 0;
+    }
   `,
   directoryPersonName: css`
     margin-block-end: 6px;
