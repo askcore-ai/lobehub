@@ -30,8 +30,9 @@ export const styles = createStaticStyles(({ css }) => ({
 
     overflow: hidden;
     display: flex;
+    flex-direction: column;
     gap: 16px;
-    align-items: center;
+    align-items: stretch;
 
     padding-block: 20px;
     padding-inline: 24px;
@@ -46,6 +47,16 @@ export const styles = createStaticStyles(({ css }) => ({
 
     &:hover {
       box-shadow: 0 8px 24px rgb(0 0 0 / 6%);
+    }
+  `,
+  heroSummary: css`
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    min-width: 0;
+
+    @media (width <= 700px) {
+      flex-wrap: wrap;
     }
   `,
   heroAvatarWrap: css`
@@ -90,13 +101,49 @@ export const styles = createStaticStyles(({ css }) => ({
 
     margin-block-start: 2px;
   `,
+  heroOverviewStats: css`
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+
+    @media (width <= 760px) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  `,
+  heroOverviewStat: css`
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    justify-content: space-between;
+
+    min-width: 0;
+    padding-block: 8px;
+    padding-inline: 10px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 8px;
+
+    background: ${cssVar.colorFillQuaternary};
+
+    strong {
+      font-size: 18px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      color: ${cssVar.colorText};
+    }
+
+    span {
+      overflow: hidden;
+
+      font-size: 12px;
+      color: ${cssVar.colorTextSecondary};
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  `,
   heroEditForm: css`
-    max-width: 480px;
-    margin-block: 20px 0;
-    margin-inline: auto;
-
+    width: 100%;
     text-align: start;
-
     transition: all 0.3s ease;
   `,
   heroEditActions: css`
@@ -104,6 +151,38 @@ export const styles = createStaticStyles(({ css }) => ({
     gap: 10px;
     justify-content: flex-end;
     margin-block-start: 12px;
+  `,
+  heroInfoGrid: css`
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 8px 16px;
+
+    padding-block-start: 2px;
+
+    font-size: 13px;
+    line-height: 1.5;
+
+    span {
+      color: ${cssVar.colorTextSecondary};
+    }
+
+    strong {
+      min-width: 0;
+      font-weight: 500;
+      color: ${cssVar.colorText};
+      overflow-wrap: anywhere;
+    }
+
+    @media (width <= 700px) {
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+  `,
+  heroOrgId: css`
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    font-family: monospace;
   `,
 
   // Tab Navigation
@@ -1461,10 +1540,9 @@ export const styles = createStaticStyles(({ css }) => ({
     inset-block-start: 0;
 
     display: grid;
-    grid-template-columns: minmax(110px, 1.1fr) minmax(120px, 1.1fr) minmax(
-        116px,
-        1fr
-      ) 58px 74px 64px;
+    grid-template-columns:
+      minmax(110px, 1.1fr) minmax(120px, 1.1fr) minmax(116px, 1fr)
+      58px 74px 64px;
     gap: 8px;
     align-items: center;
 
@@ -1494,10 +1572,9 @@ export const styles = createStaticStyles(({ css }) => ({
     position: relative;
 
     display: grid;
-    grid-template-columns: minmax(110px, 1.1fr) minmax(120px, 1.1fr) minmax(
-        116px,
-        1fr
-      ) 58px 74px 64px;
+    grid-template-columns:
+      minmax(110px, 1.1fr) minmax(120px, 1.1fr) minmax(116px, 1fr)
+      58px 74px 64px;
     gap: 8px;
     align-items: center;
 

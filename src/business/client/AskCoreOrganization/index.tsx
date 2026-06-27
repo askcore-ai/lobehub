@@ -62,11 +62,6 @@ type TabKey =
   | 'overview'
   | OrganizationRosterResource;
 
-const tabs: { key: TabKey; label: string }[] = [
-  { key: 'overview', label: '概览' },
-  { key: 'directory', label: '组织架构' },
-];
-
 const rosterResources: OrganizationRosterResource[] = ['teachers', 'students'];
 const lookupResources: LookupCollectionKey[] = ['students', 'teachers'];
 const ROSTER_PAGE_SIZE = 20;
@@ -85,8 +80,7 @@ const classUnitLookupItems = (units: AskCoreEducationOrgUnit[]): JsonRecord[] =>
       org_unit_id: unit.id,
     }));
 
-const normalizeTab = (value?: string | null): TabKey =>
-  tabs.some((tab) => tab.key === value) ? (value as TabKey) : 'directory';
+const normalizeTab = (_value?: string | null): TabKey => 'directory';
 
 const normalizeFormValues = (values: Record<string, unknown>) =>
   Object.fromEntries(
@@ -787,9 +781,7 @@ export const AskCoreOrganizationRoute = memo(() => {
 
   return (
     <div className={styles.page}>
-      <div
-        className={`${styles.pageInner} ${activeTab === 'directory' ? styles.pageInnerWide : ''}`}
-      >
+      <div className={`${styles.pageInner} ${styles.pageInnerWide}`}>
         {org.error && (
           <Alert
             showIcon
@@ -843,28 +835,17 @@ export const AskCoreOrganizationRoute = memo(() => {
             <div className={styles.staggerItem} style={{ animationDelay: '0.03s' }}>
               <HeroCard
                 canUpdateMeta={org.canUpdateMeta}
+                editing={editingMeta}
+                metaForm={org.metaForm}
                 payload={org.payload}
+                savedPulse={savedPulse}
+                saving={org.savingMeta}
+                stats={statCards}
+                onCancel={handleCancelMeta}
+                onCopyId={copyId}
                 onEdit={() => setEditingMeta(true)}
+                onSave={() => void handleSaveMeta()}
               />
-            </div>
-
-            {/* Tab Navigation */}
-            <div
-              className={styles.staggerItem}
-              style={{ animationDelay: '0.06s', display: 'flex', justifyContent: 'center' }}
-            >
-              <div className={styles.tabNav}>
-                {tabs.map((t) => (
-                  <button
-                    className={`${styles.tabButton} ${activeTab === t.key ? styles.tabButtonActive : ''}`}
-                    key={t.key}
-                    type="button"
-                    onClick={() => setActiveTab(t.key)}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
             </div>
 
             {/* Tab Content */}
