@@ -26,7 +26,9 @@ vi.mock('@/store/serverConfig', () => ({
   ) => selector({ featureFlags: { hideGitHub: false, showMarket: true } }),
 }));
 
-const educationProfile = (workbenchMode: 'identity_required' | 'teacher') => ({
+const educationProfile = (
+  workbenchMode: 'identity_required' | 'student_managed' | 'student_restricted' | 'teacher',
+) => ({
   active_persona: null,
   capabilities: {},
   default_persona: null,
@@ -64,7 +66,7 @@ describe('useNavLayout AskCore workbench entry', () => {
     );
   });
 
-  it('shows the teaching workbench entry after a teacher or student identity is available', async () => {
+  it('shows the teaching workbench entry after a teacher identity is available', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response(JSON.stringify(educationProfile('teacher')))),
@@ -72,6 +74,27 @@ describe('useNavLayout AskCore workbench entry', () => {
 
     const { result } = renderHook(() => useNavLayout());
 
-    await waitFor(() => expect(workbenchItem(result.current.topNavItems)?.hidden).toBe(false));
+    await waitFor(() =>
+      expect(workbenchItem(result.current.topNavItems)).toMatchObject({
+        hidden: false,
+        title: 'tab.askcoreTeachingWorkbench',
+      }),
+    );
+  });
+
+  it('shows an equal learning workbench entry after a student identity is available', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(educationProfile('student_restricted')))),
+    );
+
+    const { result } = renderHook(() => useNavLayout());
+
+    await waitFor(() =>
+      expect(workbenchItem(result.current.topNavItems)).toMatchObject({
+        hidden: false,
+        title: 'tab.askcoreLearningWorkbench',
+      }),
+    );
   });
 });

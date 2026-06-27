@@ -34,7 +34,7 @@ export interface NavLayout {
   };
 }
 
-type AskCoreWorkbenchNavAccess = 'hidden' | 'loading' | 'visible';
+type AskCoreWorkbenchNavAccess = 'identity_required' | 'learning' | 'loading' | 'teaching';
 
 let cachedAskCoreWorkbenchNavAccess: AskCoreWorkbenchNavAccess | null = null;
 let pendingAskCoreWorkbenchNavAccess: Promise<AskCoreWorkbenchNavAccess> | null = null;
@@ -42,9 +42,16 @@ let pendingAskCoreWorkbenchNavAccess: Promise<AskCoreWorkbenchNavAccess> | null 
 const resolveAskCoreWorkbenchNavAccess = async (): Promise<AskCoreWorkbenchNavAccess> => {
   try {
     const profile = await askCoreWorkbenchClient.getEducationProfile();
-    return profile.workbench_mode === 'identity_required' ? 'hidden' : 'visible';
+    if (profile.workbench_mode === 'identity_required') return 'identity_required';
+    if (
+      profile.workbench_mode === 'student_managed' ||
+      profile.workbench_mode === 'student_restricted'
+    ) {
+      return 'learning';
+    }
+    return 'teaching';
   } catch {
-    return 'visible';
+    return 'teaching';
   }
 };
 
@@ -121,17 +128,21 @@ export const useNavLayout = (): NavLayout => {
           url: '/organization',
         },
         {
-          hidden: askCoreWorkbenchNavAccess !== 'hidden',
+          hidden: askCoreWorkbenchNavAccess !== 'identity_required',
           icon: UserCheck,
           key: 'askcore-identity-claim',
           title: t('tab.askcoreIdentityClaim'),
           url: '/organization?action=identity-claim',
         },
         {
-          hidden: askCoreWorkbenchNavAccess !== 'visible',
+          hidden: !['learning', 'teaching'].includes(askCoreWorkbenchNavAccess),
           icon: BriefcaseBusiness,
           key: SidebarTabKey.AskCore,
-          title: t('tab.askcoreWorkbench'),
+          title: t(
+            askCoreWorkbenchNavAccess === 'learning'
+              ? 'tab.askcoreLearningWorkbench'
+              : 'tab.askcoreTeachingWorkbench',
+          ),
           url: ASKCORE_WORKBENCH_PATH,
         },
       ] as NavItem[],

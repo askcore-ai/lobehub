@@ -425,6 +425,8 @@
   "sync.title": "Sync Status",
   "sync.unconnected.tip": "Signaling server connection failed, and peer-to-peer communication channel cannot be established. Please check the network and try again.",
   "tab.askcoreIdentityClaim": "Identity Application",
+  "tab.askcoreLearningWorkbench": "Learning Workbench",
+  "tab.askcoreTeachingWorkbench": "Teaching Workbench",
   "tab.askcoreWorkbench": "Teaching Workbench",
   "tab.audio": "Audio",
   "tab.chat": "Chat",

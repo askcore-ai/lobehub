@@ -508,6 +508,8 @@ export default {
   'tab.audio': 'Audio',
   'tab.askcoreWorkbench': 'Teaching Workbench',
   'tab.askcoreIdentityClaim': 'Identity Application',
+  'tab.askcoreLearningWorkbench': 'Learning Workbench',
+  'tab.askcoreTeachingWorkbench': 'Teaching Workbench',
   'tab.chat': 'Chat',
   'recents': 'Recents',
   'tab.community': 'Community',

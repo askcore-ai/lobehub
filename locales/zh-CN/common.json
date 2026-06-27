@@ -425,6 +425,8 @@
   "sync.title": "同步状态",
   "sync.unconnected.tip": "信令服务器连接失败，将无法建立点对点通信。请检查网络后重试",
   "tab.askcoreIdentityClaim": "身份申请",
+  "tab.askcoreLearningWorkbench": "学习工作台",
+  "tab.askcoreTeachingWorkbench": "教学工作台",
   "tab.askcoreWorkbench": "教学工作台",
   "tab.audio": "音频",
   "tab.chat": "会话",
