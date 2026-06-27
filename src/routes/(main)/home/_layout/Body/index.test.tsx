@@ -12,11 +12,13 @@ interface MockGlobalState {
   updateSystemStatus: (patch: Partial<MockGlobalState['status']>) => void;
 }
 
+type MockNavItem = { hidden?: boolean; key: string; title: string; url: string };
+
 const mocks = vi.hoisted(() => ({
   globalState: undefined as unknown as MockGlobalState,
   navLayout: {
-    bottomMenuItems: [] as { key: string; title: string; url: string }[],
-    topNavItems: [] as { key: string; title: string; url: string }[],
+    bottomMenuItems: [] as MockNavItem[],
+    topNavItems: [] as MockNavItem[],
   },
   updateSystemStatus: vi.fn(),
 }));
@@ -161,6 +163,27 @@ describe('Home sidebar body', () => {
     expect(children[3]).toHaveTextContent('Image');
     expect(children[4]).toHaveTextContent('Tasks');
     expect(children[5]).toHaveTextContent('Resource');
+  });
+
+  it('renders the identity-claim entry for users whose persisted sidebar predates that system item', () => {
+    mocks.navLayout = {
+      bottomMenuItems: [],
+      topNavItems: [
+        { key: 'pages', title: 'Pages', url: '/page' },
+        { hidden: true, key: 'askcore', title: 'Teaching Workbench', url: '/askcore/workbench' },
+        {
+          key: 'askcore-identity-claim',
+          title: '身份申请',
+          url: '/organization?action=identity-claim',
+        },
+      ],
+    };
+    mocks.globalState.status.sidebarItems = ['pages', 'askcore', 'recents', 'agent'];
+
+    render(<Body />);
+
+    expect(screen.getByText('身份申请')).toBeInTheDocument();
+    expect(screen.queryByText('Teaching Workbench')).not.toBeInTheDocument();
   });
 
   it('keeps a top item that was dragged past the spacer in its new position', () => {

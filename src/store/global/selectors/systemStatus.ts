@@ -58,6 +58,7 @@ export const DEFAULT_SIDEBAR_ITEMS: string[] = [
   'pages',
   'organization',
   'askcore',
+  'askcore-identity-claim',
   'tasks',
   'recents',
   'agent',
@@ -97,8 +98,7 @@ const withAllKnownKeys = (order: string[]): string[] => {
       if (previousKnownIndex >= 0) previousKnownIndices.push(previousKnownIndex);
     }
 
-    const previousIndex =
-      previousKnownIndices.length > 0 ? Math.max(...previousKnownIndices) : -1;
+    const previousIndex = previousKnownIndices.length > 0 ? Math.max(...previousKnownIndices) : -1;
     next.splice(previousIndex >= 0 ? previousIndex + 1 : next.length, 0, key);
   }
 
