@@ -7415,7 +7415,7 @@ const AskCoreWorkbenchPage = memo(() => {
             message="请先完成教师或学生身份绑定"
             type="warning"
             action={
-              <Link to="/organization?tab=identity">
+              <Link to="/organization?action=identity-claim">
                 <Button size="small" type="primary">
                   去提交身份申请
                 </Button>

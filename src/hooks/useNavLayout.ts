@@ -1,7 +1,8 @@
 import { BriefcaseBusiness, Building2, HomeIcon, SearchIcon } from 'lucide-react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { askCoreWorkbenchClient } from '@/business/client/AskCoreWorkbench/api';
 import { ASKCORE_WORKBENCH_PATH } from '@/business/client/AskCoreWorkbench/config';
 import { getRouteById } from '@/config/routes';
 import { useGlobalStore } from '@/store/global';
@@ -33,10 +34,58 @@ export interface NavLayout {
   };
 }
 
+type AskCoreWorkbenchNavAccess = 'hidden' | 'loading' | 'visible';
+
+let cachedAskCoreWorkbenchNavAccess: AskCoreWorkbenchNavAccess | null = null;
+let pendingAskCoreWorkbenchNavAccess: Promise<AskCoreWorkbenchNavAccess> | null = null;
+
+const resolveAskCoreWorkbenchNavAccess = async (): Promise<AskCoreWorkbenchNavAccess> => {
+  try {
+    const profile = await askCoreWorkbenchClient.getEducationProfile();
+    return profile.workbench_mode === 'identity_required' ? 'hidden' : 'visible';
+  } catch {
+    return 'visible';
+  }
+};
+
+const getAskCoreWorkbenchNavAccess = () => {
+  if (cachedAskCoreWorkbenchNavAccess) return Promise.resolve(cachedAskCoreWorkbenchNavAccess);
+  pendingAskCoreWorkbenchNavAccess ||= resolveAskCoreWorkbenchNavAccess().then((access) => {
+    cachedAskCoreWorkbenchNavAccess = access;
+    pendingAskCoreWorkbenchNavAccess = null;
+    return access;
+  });
+  return pendingAskCoreWorkbenchNavAccess;
+};
+
+const useAskCoreWorkbenchNavAccess = () => {
+  const [access, setAccess] = useState<AskCoreWorkbenchNavAccess>(
+    cachedAskCoreWorkbenchNavAccess || 'loading',
+  );
+
+  useEffect(() => {
+    let active = true;
+    void getAskCoreWorkbenchNavAccess().then((nextAccess) => {
+      if (active) setAccess(nextAccess);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return access;
+};
+
+export const __resetAskCoreWorkbenchNavAccessForTest = () => {
+  cachedAskCoreWorkbenchNavAccess = null;
+  pendingAskCoreWorkbenchNavAccess = null;
+};
+
 export const useNavLayout = (): NavLayout => {
   const { t } = useTranslation('common');
   const toggleCommandMenu = useGlobalStore((s) => s.toggleCommandMenu);
   const { showMarket, hideGitHub } = useServerConfigStore(featureFlagsSelectors);
+  const askCoreWorkbenchNavAccess = useAskCoreWorkbenchNavAccess();
 
   const topNavItems = useMemo(
     () =>
@@ -72,13 +121,14 @@ export const useNavLayout = (): NavLayout => {
           url: '/organization',
         },
         {
+          hidden: askCoreWorkbenchNavAccess !== 'visible',
           icon: BriefcaseBusiness,
           key: SidebarTabKey.AskCore,
           title: t('tab.askcoreWorkbench'),
           url: ASKCORE_WORKBENCH_PATH,
         },
       ] as NavItem[],
-    [t, toggleCommandMenu],
+    [askCoreWorkbenchNavAccess, t, toggleCommandMenu],
   );
 
   const bottomMenuItems = useMemo(

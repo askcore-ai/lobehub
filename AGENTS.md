@@ -2,6 +2,10 @@
 
 Guidelines for using AI coding agents in this LobeHub repository.
 
+## Hard Constraints
+
+- Compatibility policy: unless the user explicitly requests compatibility, do not add legacy route, schema, data, or code fallbacks. Breaking changes must migrate old data, schemas, and code paths into the new version instead of keeping old-version compatibility branches.
+
 ## Tech Stack
 
 - Next.js 16 + React 19 + TypeScript

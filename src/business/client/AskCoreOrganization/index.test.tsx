@@ -44,6 +44,34 @@ const activeOrganizationPayload = {
   },
 };
 
+const memberOrganizationPayload = {
+  ...activeOrganizationPayload,
+  current: {
+    ...activeOrganizationPayload.current,
+    role: 'member',
+  },
+  members: [
+    {
+      email: 'member@askcore.cn',
+      id: 'mem-member',
+      name: 'Member',
+      role: 'member',
+      userId: 'user-member',
+    },
+  ],
+  organizations: [
+    {
+      ...activeOrganizationPayload.organizations[0],
+      role: 'member',
+    },
+  ],
+  permissions: {
+    canInvite: false,
+    canManageMembers: false,
+    canUpdateMeta: false,
+  },
+};
+
 const directoryPayload = {
   invitations: [
     {
@@ -233,5 +261,80 @@ describe('AskCoreOrganizationRoute', () => {
     expect(
       within(directory).getByRole('button', { name: /批量导入到当前节点/ }),
     ).toBeInTheDocument();
+  });
+
+  it('opens identity claim drawer from the organization action query', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/directory')) {
+        return new Response(JSON.stringify(directoryPayload), { status: 200 });
+      }
+      if (url.endsWith('/workbench/organization/identity-claims?status=all')) {
+        return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      }
+      if (url.endsWith('/workbench/organization/identity-claims')) {
+        return new Response(
+          JSON.stringify({
+            better_auth_user_id: 'user-member',
+            id: 31,
+            org_id: 'org-1',
+            requested_by_user_id: 'user-member',
+            roster_id: 301,
+            roster_kind: 'teacher',
+            status: 'pending',
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify(memberOrganizationPayload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/organization?action=identity-claim']}>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText('身份申请与审批')).toBeInTheDocument());
+    const drawer = screen.getByRole('dialog');
+    expect(screen.getByRole('button', { name: /提交身份申请/ })).toBeInTheDocument();
+    expect(within(drawer).getByText('李老师')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '身份绑定' })).not.toBeInTheDocument();
+
+    const claimButton = within(drawer)
+      .getAllByRole('button', { name: /申请绑定/ })
+      .find((button) => !button.hasAttribute('disabled'));
+    expect(claimButton).toBeDefined();
+    fireEvent.click(claimButton!);
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/askcore/workbench/organization/identity-claims',
+        expect.objectContaining({
+          body: JSON.stringify({ roster_id: 301, roster_kind: 'teacher' }),
+          method: 'POST',
+        }),
+      ),
+    );
+  });
+
+  it('does not support the legacy identity tab query as an identity application entry', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/directory')) {
+        return new Response(JSON.stringify(directoryPayload), { status: 200 });
+      }
+      return new Response(JSON.stringify(memberOrganizationPayload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/organization?tab=identity']}>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText('组织架构工作区')).toBeInTheDocument());
+    expect(screen.queryByText('身份申请与审批')).not.toBeInTheDocument();
   });
 });

@@ -3,6 +3,7 @@
 import {
   Alert,
   Button,
+  Drawer,
   Empty,
   Form,
   Input,
@@ -27,22 +28,28 @@ import {
   UserRoundPlus,
 } from 'lucide-react';
 import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 import { message } from '@/components/AntdStaticMethods';
 
 import {
+  approveAskCoreEducationIdentityClaim,
   bindAskCoreDirectoryPersonAccount,
   createAskCoreDirectoryInvitation,
   createAskCoreDirectoryPerson,
   createAskCoreDirectoryPersonRole,
+  createAskCoreEducationIdentityClaim,
+  fetchAskCoreEducationIdentityClaims,
   fetchAskCoreOrganizationDirectory,
   importAskCoreDirectoryPeople,
+  rejectAskCoreEducationIdentityClaim,
   uploadAskCoreCsv,
 } from '../api';
 import { styles } from '../styles';
 import {
   type AskCoreDirectoryPerson,
   type AskCoreDirectoryRosterKind,
+  type AskCoreEducationIdentityClaim,
   type AskCoreEducationOrgUnit,
   type AskCoreEducationOrgUnitType,
   type AskCoreEducationRole,
@@ -79,6 +86,15 @@ interface DirectoryTreeSelectNode {
   value: number;
 }
 
+interface IdentityClaimTarget {
+  disabledReason?: string;
+  key: string;
+  person: AskCoreDirectoryPerson;
+  rosterId: number;
+  rosterKind: AskCoreDirectoryRosterKind;
+  unitPath: string;
+}
+
 const unitTypeLabels: Record<AskCoreEducationOrgUnitType, string> = {
   class: '班级',
   cohort: '届别',
@@ -111,6 +127,11 @@ const rosterKindOptions: { label: string; value: AskCoreDirectoryRosterKind }[] 
   { label: '教师', value: 'teacher' },
   { label: '学生', value: 'student' },
 ];
+
+const rosterKindLabels: Record<AskCoreDirectoryRosterKind, string> = {
+  student: '学生',
+  teacher: '教师',
+};
 
 const directoryFilterOptions: { key: DirectoryFilterKey; label: string }[] = [
   { key: 'all', label: '全部' },
@@ -262,10 +283,18 @@ interface OrganizationDirectorySectionProps {
 
 export const OrganizationDirectorySection = memo<OrganizationDirectorySectionProps>(
   ({ canManage }) => {
+    const location = useLocation();
     const [payload, setPayload] = useState<AskCoreOrganizationDirectoryPayload | null>(null);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | undefined>();
+    const [identityDrawerOpen, setIdentityDrawerOpen] = useState(false);
+    const [identityClaims, setIdentityClaims] = useState<AskCoreEducationIdentityClaim[]>([]);
+    const [identityClaimsLoading, setIdentityClaimsLoading] = useState(false);
+    const [submittingIdentityClaimKey, setSubmittingIdentityClaimKey] = useState<string | null>(
+      null,
+    );
+    const [reviewingIdentityClaimId, setReviewingIdentityClaimId] = useState<number | null>(null);
     const [selectedUnitId, setSelectedUnitId] = useState<number | null>(null);
     const [selectedPersonId, setSelectedPersonId] = useState<number | null>(null);
     const [searchText, setSearchText] = useState('');
@@ -286,6 +315,9 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       | AskCoreEducationRole
       | undefined;
 
+    const shouldOpenIdentityDrawer =
+      new URLSearchParams(location.search).get('action') === 'identity-claim';
+
     const loadDirectory = useCallback(async () => {
       setLoading(true);
       setError(undefined);
@@ -304,6 +336,25 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       void loadDirectory();
     }, [loadDirectory]);
 
+    const loadIdentityClaims = useCallback(async () => {
+      setIdentityClaimsLoading(true);
+      try {
+        const next = await fetchAskCoreEducationIdentityClaims(canManage ? 'pending' : 'all');
+        setIdentityClaims(next.items);
+      } catch (reason) {
+        message.error(reason instanceof Error ? reason.message : '身份申请加载失败');
+      } finally {
+        setIdentityClaimsLoading(false);
+      }
+    }, [canManage]);
+
+    useEffect(() => {
+      if (shouldOpenIdentityDrawer) {
+        setIdentityDrawerOpen(true);
+        void loadIdentityClaims();
+      }
+    }, [loadIdentityClaims, shouldOpenIdentityDrawer]);
+
     const units = useMemo(() => payload?.units ?? [], [payload?.units]);
     const people = useMemo(() => payload?.people ?? [], [payload?.people]);
     const roleAssignments = useMemo(
@@ -312,6 +363,10 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     );
     const invitations = useMemo(() => payload?.invitations ?? [], [payload?.invitations]);
     const rosterLinks = useMemo(() => payload?.roster_links ?? [], [payload?.roster_links]);
+    const personById = useMemo(
+      () => new Map(people.map((person) => [person.id, person])),
+      [people],
+    );
     const unitById = useMemo(() => new Map(units.map((unit) => [unit.id, unit])), [units]);
     const childrenByParent = useMemo(() => makeChildrenByParent(units), [units]);
     const selectedUnit = selectedUnitId ? unitById.get(selectedUnitId) || null : null;
@@ -369,6 +424,46 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       }
       return map;
     }, [invitations]);
+    const pendingIdentityClaimKeys = useMemo(() => {
+      const keys = new Set<string>();
+      for (const claim of identityClaims) {
+        if (claim.status !== 'pending') continue;
+        keys.add(`${claim.roster_kind}:${claim.roster_id}`);
+      }
+      return keys;
+    }, [identityClaims]);
+    const identityClaimTargets = useMemo<IdentityClaimTarget[]>(
+      () =>
+        rosterLinks.flatMap((link) => {
+          const person = personById.get(link.person_id);
+          if (!person) return [];
+          const key = `${link.roster_kind}:${link.roster_id}`;
+          const disabledReason = person.better_auth_user_id
+            ? '已绑定账号'
+            : pendingIdentityClaimKeys.has(key)
+              ? '已提交待审批'
+              : undefined;
+          return [
+            {
+              disabledReason,
+              key,
+              person,
+              rosterId: link.roster_id,
+              rosterKind: link.roster_kind,
+              unitPath: unitPathLabel(person.primary_org_unit_id),
+            },
+          ];
+        }),
+      [pendingIdentityClaimKeys, personById, rosterLinks, unitPathLabel],
+    );
+    const identityClaimTargetByRosterKey = useMemo(
+      () => new Map(identityClaimTargets.map((target) => [target.key, target])),
+      [identityClaimTargets],
+    );
+    const pendingIdentityClaims = useMemo(
+      () => identityClaims.filter((claim) => claim.status === 'pending'),
+      [identityClaims],
+    );
 
     const roleBadgesForPerson = useCallback(
       (personId: number): DirectoryRoleBadgeModel[] => {
@@ -417,7 +512,6 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
 
     const selectedPerson =
       filteredPeople.find((person) => person.id === selectedPersonId) || filteredPeople[0] || null;
-    const selectedPersonRoles = selectedPerson ? rolesByPersonId.get(selectedPerson.id) || [] : [];
     const selectedPersonLinks = selectedPerson ? linksByPersonId.get(selectedPerson.id) || [] : [];
     const selectedPersonPendingInvites = selectedPerson
       ? pendingInvitationsByPersonId.get(selectedPerson.id) || 0
@@ -616,6 +710,44 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       }
     };
 
+    const openIdentityDrawer = () => {
+      setIdentityDrawerOpen(true);
+      void loadIdentityClaims();
+    };
+
+    const submitIdentityClaim = async (target: IdentityClaimTarget) => {
+      setSubmittingIdentityClaimKey(target.key);
+      try {
+        await createAskCoreEducationIdentityClaim({
+          roster_id: target.rosterId,
+          roster_kind: target.rosterKind,
+        });
+        await loadIdentityClaims();
+        message.success('身份申请已提交');
+      } finally {
+        setSubmittingIdentityClaimKey(null);
+      }
+    };
+
+    const reviewIdentityClaim = async (
+      claim: AskCoreEducationIdentityClaim,
+      action: 'approve' | 'reject',
+    ) => {
+      setReviewingIdentityClaimId(claim.id);
+      try {
+        if (action === 'approve') {
+          await approveAskCoreEducationIdentityClaim(claim.id);
+          message.success('身份申请已通过');
+        } else {
+          await rejectAskCoreEducationIdentityClaim(claim.id);
+          message.success('身份申请已拒绝');
+        }
+        await Promise.all([loadIdentityClaims(), loadDirectory()]);
+      } finally {
+        setReviewingIdentityClaimId(null);
+      }
+    };
+
     const exportDirectory = () => {
       if (!payload) return;
       const header = ['姓名', '注册状态', '主位置', '角色'];
@@ -757,6 +889,81 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       );
     };
 
+    const identityDrawerContent = canManage ? (
+      <div className={styles.directoryIdentityList}>
+        <div className={styles.directoryIdentityIntro}>
+          身份审批
+          <span>待处理 {pendingIdentityClaims.length} 个</span>
+        </div>
+        {pendingIdentityClaims.length ? (
+          pendingIdentityClaims.map((claim) => {
+            const target = identityClaimTargetByRosterKey.get(
+              `${claim.roster_kind}:${claim.roster_id}`,
+            );
+            return (
+              <div className={styles.directoryIdentityItem} key={claim.id}>
+                <div className={styles.directoryIdentityItemMain}>
+                  <strong>{target?.person.display_name || `名册 #${claim.roster_id}`}</strong>
+                  <span>
+                    {rosterKindLabels[claim.roster_kind]}名册 ·{' '}
+                    {target?.unitPath || `#${claim.roster_id}`}
+                  </span>
+                  <small>申请账号 {claim.better_auth_user_id}</small>
+                </div>
+                <Space>
+                  <Button
+                    loading={reviewingIdentityClaimId === claim.id}
+                    onClick={() => reviewIdentityClaim(claim, 'reject')}
+                  >
+                    拒绝
+                  </Button>
+                  <Button
+                    loading={reviewingIdentityClaimId === claim.id}
+                    type="primary"
+                    onClick={() => reviewIdentityClaim(claim, 'approve')}
+                  >
+                    通过
+                  </Button>
+                </Space>
+              </div>
+            );
+          })
+        ) : (
+          <Empty description="暂无待审批身份申请" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        )}
+      </div>
+    ) : (
+      <div className={styles.directoryIdentityList}>
+        <div className={styles.directoryIdentityIntro}>
+          提交身份申请
+          <span>请选择与你本人对应的教师或学生名册，提交后由组织管理员审批。</span>
+        </div>
+        {identityClaimTargets.length ? (
+          identityClaimTargets.map((target) => (
+            <div className={styles.directoryIdentityItem} key={target.key}>
+              <div className={styles.directoryIdentityItemMain}>
+                <strong>{target.person.display_name}</strong>
+                <span>
+                  {rosterKindLabels[target.rosterKind]}名册 · {target.unitPath}
+                </span>
+                {target.disabledReason ? <small>{target.disabledReason}</small> : null}
+              </div>
+              <Button
+                disabled={Boolean(target.disabledReason)}
+                loading={submittingIdentityClaimKey === target.key}
+                type="primary"
+                onClick={() => submitIdentityClaim(target)}
+              >
+                申请绑定
+              </Button>
+            </div>
+          ))
+        ) : (
+          <Empty description="暂无可申请的教师或学生名册" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        )}
+      </div>
+    );
+
     return (
       <section aria-label="组织架构工作区" className={styles.directorySurface}>
         <input
@@ -788,6 +995,9 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
             <p>统一管理人员、部门、角色、账号与邀请</p>
           </div>
           <div className={styles.directoryTopbarActions}>
+            <Button loading={identityClaimsLoading} onClick={openIdentityDrawer}>
+              {canManage ? '身份审批' : '提交身份申请'}
+            </Button>
             <Button icon={<RefreshCw size={14} />} loading={loading} onClick={loadDirectory}>
               刷新
             </Button>
@@ -1131,6 +1341,21 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         ) : (
           <Empty description="暂无组织架构数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
         )}
+        <Drawer
+          destroyOnClose
+          open={identityDrawerOpen}
+          size="default"
+          title="身份申请与审批"
+          onClose={() => setIdentityDrawerOpen(false)}
+        >
+          {identityClaimsLoading && !identityClaims.length ? (
+            <div className={styles.centerPane}>
+              <Spin />
+            </div>
+          ) : (
+            identityDrawerContent
+          )}
+        </Drawer>
       </section>
     );
   },

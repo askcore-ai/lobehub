@@ -1954,6 +1954,117 @@ export const styles = createStaticStyles(({ css }) => ({
       background: ${cssVar.colorFillQuaternary};
     }
   `,
+  directoryIdentityList: css`
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  `,
+  directoryIdentityIntro: css`
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    padding-block-end: 12px;
+    border-block-end: 1px solid #e5e6eb;
+
+    font-size: 14px;
+    font-weight: 650;
+    color: #1f2329;
+
+    span {
+      font-size: 13px;
+      font-weight: 400;
+      line-height: 1.5;
+      color: #646a73;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      border-color: ${cssVar.colorBorderSecondary};
+      color: ${cssVar.colorText};
+
+      span {
+        color: ${cssVar.colorTextSecondary};
+      }
+    }
+  `,
+  directoryIdentityItem: css`
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+
+    min-width: 0;
+    padding-block: 10px;
+    border-block-end: 1px solid #e5e6eb;
+
+    &:last-child {
+      border-block-end: 0;
+    }
+
+    @media (width <= 560px) {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      border-color: ${cssVar.colorBorderSecondary};
+    }
+  `,
+  directoryIdentityItemMain: css`
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 3px;
+
+    min-width: 0;
+
+    strong,
+    span,
+    small {
+      overflow: hidden;
+      min-width: 0;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    strong {
+      font-size: 14px;
+      font-weight: 650;
+      color: #1f2329;
+    }
+
+    span {
+      font-size: 13px;
+      color: #646a73;
+    }
+
+    small {
+      font-size: 12px;
+      color: #86909c;
+    }
+
+    @media (width <= 560px) {
+      strong,
+      span,
+      small {
+        white-space: normal;
+      }
+    }
+
+    @media (prefers-color-scheme: dark) {
+      strong {
+        color: ${cssVar.colorText};
+      }
+
+      span {
+        color: ${cssVar.colorTextSecondary};
+      }
+
+      small {
+        color: ${cssVar.colorTextDescription};
+      }
+    }
+  `,
   centerPane: css`
     display: flex;
     align-items: center;

@@ -267,7 +267,7 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
     );
   });
 
-  it('links identity-required users to the organization identity application tab', async () => {
+  it('links identity-required users to the organization identity claim action', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/askcore/workbench/me') {
@@ -344,7 +344,7 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
     await waitFor(() => expect(screen.getByText('请先完成教师或学生身份绑定')).toBeInTheDocument());
     expect(screen.getByRole('link', { name: '去提交身份申请' })).toHaveAttribute(
       'href',
-      '/organization?tab=identity',
+      '/organization?action=identity-claim',
     );
   });
 });
