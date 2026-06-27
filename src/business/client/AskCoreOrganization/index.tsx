@@ -787,7 +787,9 @@ export const AskCoreOrganizationRoute = memo(() => {
 
   return (
     <div className={styles.page}>
-      <div className={styles.pageInner}>
+      <div
+        className={`${styles.pageInner} ${activeTab === 'directory' ? styles.pageInnerWide : ''}`}
+      >
         {org.error && (
           <Alert
             showIcon

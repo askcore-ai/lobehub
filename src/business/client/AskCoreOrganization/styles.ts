@@ -19,6 +19,10 @@ export const styles = createStaticStyles(({ css }) => ({
     margin-block: 0;
     margin-inline: auto;
   `,
+  pageInnerWide: css`
+    gap: 16px;
+    width: min(1440px, 100%);
+  `,
 
   // Hero Card
   heroCard: css`
@@ -955,59 +959,263 @@ export const styles = createStaticStyles(({ css }) => ({
   `,
 
   // Unified Directory
-  directoryToolbar: css`
+  directorySurface: css`
     display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    align-items: flex-end;
+    flex-direction: column;
+    gap: 12px;
 
-    margin-block-end: 14px;
-    padding-block: 10px;
-    padding-inline: 12px;
-    border: 1px solid ${cssVar.colorBorderSecondary};
+    box-sizing: border-box;
+    width: 100%;
+    padding: 16px;
+    border: 1px solid #e5e6eb;
     border-radius: 8px;
 
-    background: ${cssVar.colorFillQuaternary};
-  `,
-  directoryToolbarForm: css`
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: flex-end;
+    color: #1f2329;
 
-    .ant-form-item {
-      min-width: 132px;
+    background: #f7f8fa;
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    :where(.ant-btn) {
+      min-height: 34px;
+      border-radius: 6px;
+      box-shadow: none;
+    }
+
+    :where(.ant-input-affix-wrapper, .ant-select-selector) {
+      min-height: 34px !important;
+      border-radius: 6px !important;
+    }
+
+    :where(.ant-form-item) {
       margin-block-end: 0;
     }
 
-    .ant-btn {
-      min-height: 32px;
+    @media (prefers-color-scheme: dark) {
+      border-color: ${cssVar.colorBorderSecondary};
+      color: ${cssVar.colorText};
+      background: ${cssVar.colorBgLayout};
+    }
+  `,
+  directoryTopbar: css`
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    justify-content: space-between;
+
+    padding-block: 2px 6px;
+
+    h2,
+    p {
+      margin: 0;
+    }
+
+    h2 {
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1.3;
+      color: #1f2329;
+    }
+
+    p {
+      margin-block-start: 4px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #646a73;
+    }
+
+    @media (width <= 700px) {
+      flex-direction: column;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      h2 {
+        color: ${cssVar.colorText};
+      }
+
+      p {
+        color: ${cssVar.colorTextSecondary};
+      }
+    }
+  `,
+  directoryTopbarActions: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+
+    @media (width <= 700px) {
+      justify-content: flex-start;
+      width: 100%;
+    }
+  `,
+  directoryCommandBar: css`
+    display: grid;
+    grid-template-columns: minmax(220px, 320px) minmax(280px, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+
+    padding: 10px;
+    border: 1px solid #e5e6eb;
+    border-radius: 8px;
+
+    background: #fff;
+
+    @media (width <= 1100px) {
+      grid-template-columns: 1fr;
+      align-items: stretch;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      border-color: ${cssVar.colorBorderSecondary};
+      background: ${cssVar.colorBgContainer};
+    }
+  `,
+  directoryFilterGroup: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  `,
+  directoryFilterChip: css`
+    cursor: pointer;
+
+    min-height: 28px;
+    padding-block: 4px;
+    padding-inline: 10px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.4;
+    color: #646a73;
+
+    background: transparent;
+
+    transition:
+      border-color 0.15s ease,
+      background 0.15s ease,
+      color 0.15s ease;
+
+    &:hover {
+      color: #1f2329;
+      background: #f2f3f5;
+    }
+
+    &:focus-visible {
+      outline: 2px solid rgb(51 112 255 / 30%);
+      outline-offset: 2px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      color: ${cssVar.colorTextSecondary};
+
+      &:hover {
+        color: ${cssVar.colorText};
+        background: ${cssVar.colorFillQuaternary};
+      }
+    }
+  `,
+  directoryFilterChipActive: css`
+    border-color: #bdd2ff;
+    color: #245bdb;
+    background: #eef5ff;
+
+    &:hover {
+      color: #245bdb;
+      background: #eef5ff;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      border-color: ${cssVar.colorPrimaryBorder};
+      color: ${cssVar.colorPrimaryText};
+      background: ${cssVar.colorPrimaryBg};
+    }
+  `,
+  directoryActionPanel: css`
+    width: min(320px, calc(100vw - 48px));
+  `,
+  directoryActionPanelTitle: css`
+    margin-block-end: 12px;
+    font-size: 14px;
+    font-weight: 650;
+    color: #1f2329;
+
+    @media (prefers-color-scheme: dark) {
+      color: ${cssVar.colorText};
+    }
+  `,
+  directoryActionForm: css`
+    display: grid;
+    gap: 10px;
+
+    .ant-form-item-label {
+      padding-block-end: 3px;
+    }
+
+    .ant-form-item-label > label {
+      height: auto;
+      font-size: 12px;
+      color: ${cssVar.colorTextSecondary};
     }
   `,
   directoryWorkspace: css`
     display: grid;
-    grid-template-columns: minmax(220px, 0.8fr) minmax(360px, 1.25fr) minmax(320px, 1.05fr);
-    gap: 14px;
+    grid-template-columns: 240px minmax(420px, 1fr) 320px;
+    gap: 16px;
+    align-items: stretch;
 
-    @media (width <= 1120px) {
+    @media (width <= 1360px) {
+      grid-template-columns: 220px minmax(360px, 1fr) 280px;
+    }
+
+    @media (width <= 1100px) {
       grid-template-columns: 1fr;
     }
   `,
   directoryPane: css`
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 
     min-width: 0;
-    padding: 12px;
-    border: 1px solid ${cssVar.colorBorderSecondary};
+    min-height: 620px;
+    border: 1px solid #e5e6eb;
     border-radius: 8px;
 
-    background: ${cssVar.colorBgContainer};
+    background: #fff;
+
+    @media (width <= 1100px) {
+      min-height: 0;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      border-color: ${cssVar.colorBorderSecondary};
+      background: ${cssVar.colorBgContainer};
+    }
   `,
   directoryPaneTitle: css`
-    margin-block-end: 10px;
-    font-size: 13px;
+    margin: 0;
+    padding-block: 14px 10px;
+    padding-inline: 16px;
+
+    font-size: 14px;
     font-weight: 650;
-    color: ${cssVar.colorText};
+    line-height: 1.45;
+    color: #1f2329;
+
+    @media (prefers-color-scheme: dark) {
+      color: ${cssVar.colorText};
+    }
   `,
   directoryPaneHeader: css`
     display: flex;
@@ -1015,20 +1223,52 @@ export const styles = createStaticStyles(({ css }) => ({
     align-items: flex-start;
     justify-content: space-between;
 
-    margin-block-end: 10px;
-    padding-block-end: 10px;
-    border-block-end: 1px solid ${cssVar.colorBorderSecondary};
+    padding-block: 14px;
+    padding-inline: 16px;
+    border-block-end: 1px solid #e5e6eb;
+
+    @media (width <= 700px) {
+      flex-direction: column;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      border-color: ${cssVar.colorBorderSecondary};
+    }
+  `,
+  directoryBreadcrumb: css`
+    margin-block-end: 3px;
+
+    font-size: 12px;
+    line-height: 1.45;
+    color: #86909c;
+    overflow-wrap: anywhere;
+
+    @media (prefers-color-scheme: dark) {
+      color: ${cssVar.colorTextDescription};
+    }
   `,
   directoryPaneMeta: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+
     font-size: 12px;
     line-height: 1.5;
-    color: ${cssVar.colorTextSecondary};
+    color: #646a73;
     overflow-wrap: anywhere;
+
+    @media (prefers-color-scheme: dark) {
+      color: ${cssVar.colorTextSecondary};
+    }
   `,
   directoryTree: css`
+    overflow: auto;
     display: flex;
     flex-direction: column;
     gap: 4px;
+
+    padding-block: 0 14px;
+    padding-inline: 10px;
   `,
   directoryTreeNode: css`
     cursor: pointer;
@@ -1045,10 +1285,10 @@ export const styles = createStaticStyles(({ css }) => ({
     padding-block: 6px;
     padding-inline: 10px;
     border: 0;
-    border-radius: 8px;
+    border-radius: 6px;
 
     font-size: 13px;
-    color: ${cssVar.colorText};
+    color: #1f2329;
     text-align: start;
 
     background: transparent;
@@ -1076,11 +1316,11 @@ export const styles = createStaticStyles(({ css }) => ({
     }
 
     &:hover {
-      background: ${cssVar.colorFillQuaternary};
+      background: #f2f3f5;
     }
 
     &:focus-visible {
-      outline: 2px solid ${cssVar.colorPrimaryBorder};
+      outline: 2px solid rgb(51 112 255 / 30%);
       outline-offset: 2px;
     }
 
@@ -1091,20 +1331,37 @@ export const styles = createStaticStyles(({ css }) => ({
         transition: none;
       }
     }
+
+    @media (prefers-color-scheme: dark) {
+      color: ${cssVar.colorText};
+
+      &:hover {
+        background: ${cssVar.colorFillQuaternary};
+      }
+    }
   `,
   directoryTreeNodeActive: css`
-    border-color: ${cssVar.colorPrimaryBorder};
     font-weight: 650;
-    color: ${cssVar.colorPrimaryText};
-    background: ${cssVar.colorPrimaryBg};
+    color: #245bdb;
+    background: #eef5ff;
 
     &::before {
       opacity: 1;
     }
+
+    @media (prefers-color-scheme: dark) {
+      color: ${cssVar.colorPrimaryText};
+      background: ${cssVar.colorPrimaryBg};
+    }
   `,
   directoryTreeNodeAncestor: css`
-    color: ${cssVar.colorPrimaryText};
-    background: ${cssVar.colorFillQuaternary};
+    color: #245bdb;
+    background: #f7faff;
+
+    @media (prefers-color-scheme: dark) {
+      color: ${cssVar.colorPrimaryText};
+      background: ${cssVar.colorFillQuaternary};
+    }
   `,
   directoryTreeNodeLabel: css`
     display: grid;
@@ -1122,85 +1379,176 @@ export const styles = createStaticStyles(({ css }) => ({
     small {
       font-size: 11px;
       font-weight: 400;
-      color: ${cssVar.colorTextDescription};
+      color: #86909c;
+
+      @media (prefers-color-scheme: dark) {
+        color: ${cssVar.colorTextDescription};
+      }
     }
   `,
-  directoryTreeTag: css`
-    margin-inline-end: 0;
+  directoryTreeCount: css`
+    flex-shrink: 0;
+
+    min-width: 26px;
+    padding-block: 2px;
+    padding-inline: 7px;
+    border-radius: 999px;
+
     font-size: 11px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: #646a73;
+    text-align: center;
+
+    background: #f2f3f5;
+
+    @media (prefers-color-scheme: dark) {
+      color: ${cssVar.colorTextSecondary};
+      background: ${cssVar.colorFillQuaternary};
+    }
+  `,
+  directoryScopeOption: css`
+    display: grid;
+    gap: 2px;
+    line-height: 1.35;
+
+    span,
+    small {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    span {
+      font-size: 13px;
+      color: ${cssVar.colorText};
+    }
+
+    small {
+      font-size: 11px;
+      color: ${cssVar.colorTextDescription};
+    }
   `,
   directoryInlineForm: css`
     display: grid;
     grid-template-columns: 1fr;
     gap: 8px;
-    margin-block-end: 12px;
+    margin-block-start: 10px;
 
     .ant-form-item {
       margin-block-end: 0;
     }
   `,
   directoryNodeActions: css`
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-
-    margin-block-end: 12px;
-    padding-block-end: 12px;
-    border-block-end: 1px solid ${cssVar.colorBorderSecondary};
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
 
     @media (width <= 760px) {
-      grid-template-columns: 1fr;
+      justify-content: flex-start;
     }
   `,
-  directoryPeopleList: css`
+  directoryPeopleTable: css`
+    overflow: auto;
     display: flex;
     flex-direction: column;
+    min-height: 0;
+  `,
+  directoryPeopleHeader: css`
+    position: sticky;
+    z-index: 1;
+    inset-block-start: 0;
+
+    display: grid;
+    grid-template-columns: minmax(110px, 1.1fr) minmax(120px, 1.1fr) minmax(
+        116px,
+        1fr
+      ) 58px 74px 64px;
     gap: 8px;
+    align-items: center;
+
+    min-height: 36px;
+    padding-inline: 14px;
+    border-block-end: 1px solid #e5e6eb;
+
+    font-size: 12px;
+    font-weight: 600;
+    color: #86909c;
+
+    background: #fff;
+
+    @media (width <= 700px) {
+      display: none;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      border-color: ${cssVar.colorBorderSecondary};
+      color: ${cssVar.colorTextDescription};
+      background: ${cssVar.colorBgContainer};
+    }
   `,
   directoryPersonRow: css`
     cursor: pointer;
 
-    display: flex;
-    gap: 10px;
+    position: relative;
+
+    display: grid;
+    grid-template-columns: minmax(110px, 1.1fr) minmax(120px, 1.1fr) minmax(
+        116px,
+        1fr
+      ) 58px 74px 64px;
+    gap: 8px;
     align-items: center;
-    justify-content: space-between;
 
     width: 100%;
-    padding: 10px;
-    border: 1px solid ${cssVar.colorBorderSecondary};
-    border-radius: 8px;
+    min-height: 58px;
+    padding-block: 8px;
+    padding-inline: 14px;
+    border: 0;
+    border-block-end: 1px solid #e5e6eb;
+    border-radius: 0;
 
     text-align: start;
 
-    background: ${cssVar.colorBgContainer};
+    background: transparent;
 
     transition:
-      border-color 0.15s ease,
       background 0.15s ease,
-      box-shadow 0.15s ease,
       transform 0.15s ease;
+
+    &::before {
+      content: '';
+
+      position: absolute;
+      inset-block: 8px;
+      inset-inline-start: 0;
+
+      width: 3px;
+      border-radius: 999px;
+
+      opacity: 0;
+      background: #3370ff;
+    }
 
     strong,
     small {
+      overflow: hidden;
       display: block;
-      min-width: 0;
-      overflow-wrap: anywhere;
-    }
 
-    small {
-      margin-block-start: 2px;
-      font-size: 12px;
-      color: ${cssVar.colorTextDescription};
+      min-width: 0;
+
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     &:hover {
-      border-color: ${cssVar.colorPrimaryBorder};
-      background: ${cssVar.colorFillQuaternary};
+      background: #f7f8fa;
     }
 
     &:focus-visible {
-      outline: 2px solid ${cssVar.colorPrimaryBorder};
-      outline-offset: 2px;
+      outline: 2px solid rgb(51 112 255 / 30%);
+      outline-offset: -2px;
     }
 
     &:active {
@@ -1214,61 +1562,320 @@ export const styles = createStaticStyles(({ css }) => ({
         transform: none;
       }
     }
+
+    @media (width <= 700px) {
+      grid-template-columns: 1fr;
+      gap: 6px;
+      padding-block: 12px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      border-color: ${cssVar.colorBorderSecondary};
+
+      &:hover {
+        background: ${cssVar.colorFillQuaternary};
+      }
+    }
   `,
   directoryPersonRowActive: css`
-    border-color: ${cssVar.colorPrimary};
-    background: ${cssVar.colorPrimaryBg};
-    box-shadow: 0 0 0 1px ${cssVar.colorPrimaryBorder};
+    background: #eef5ff;
+
+    &::before {
+      opacity: 1;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      background: ${cssVar.colorPrimaryBg};
+    }
   `,
-  directoryPersonContent: css`
-    display: grid;
-    gap: 4px;
-    width: 100%;
+  directoryPersonIdentity: css`
+    display: flex;
+    gap: 8px;
+    align-items: center;
     min-width: 0;
+
+    svg {
+      flex-shrink: 0;
+      color: #86909c;
+    }
+
+    strong {
+      font-size: 14px;
+      font-weight: 650;
+      line-height: 1.35;
+      color: #1f2329;
+    }
+
+    small {
+      margin-block-start: 2px;
+      font-size: 12px;
+      line-height: 1.35;
+      color: #86909c;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      svg,
+      small {
+        color: ${cssVar.colorTextDescription};
+      }
+
+      strong {
+        color: ${cssVar.colorText};
+      }
+    }
   `,
-  directoryPersonTags: css`
+  directoryCellText: css`
+    overflow: hidden;
+
+    min-width: 0;
+
+    font-size: 12px;
+    line-height: 1.45;
+    color: #646a73;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    @media (width <= 700px) {
+      white-space: normal;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      color: ${cssVar.colorTextSecondary};
+    }
+  `,
+  directoryRoleStack: css`
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
+    min-width: 0;
+  `,
+  directoryRoleTag: css`
+    display: inline-flex;
+    align-items: center;
 
-    .ant-tag {
-      margin-inline-end: 0;
+    max-width: 100%;
+    height: 22px;
+    margin-inline-end: 0;
+    padding-inline: 7px;
+    border: 1px solid #e5e6eb;
+    border-radius: 6px;
+
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 20px;
+    color: #646a73;
+
+    background: #f7f8fa;
+
+    &[data-tone='admin'] {
+      border-color: #d7c9ff;
+      color: #6425d0;
+      background: #f5f0ff;
+    }
+
+    &[data-tone='teacher'] {
+      border-color: #c9ddff;
+      color: #245bdb;
+      background: #eef5ff;
+    }
+
+    &[data-tone='student'] {
+      border-color: #b7ebc0;
+      color: #1f7a3d;
+      background: #effbf2;
+    }
+
+    &[data-tone='roster'] {
+      border-color: #d8dadf;
+      color: #4e5969;
+      background: #f2f3f5;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      border-color: ${cssVar.colorBorderSecondary};
+      color: ${cssVar.colorTextSecondary};
+      background: ${cssVar.colorFillQuaternary};
+
+      &[data-tone] {
+        color: ${cssVar.colorText};
+        background: ${cssVar.colorBgElevated};
+      }
     }
   `,
   directoryFileInput: css`
     display: none;
   `,
+  directoryInspectorHeader: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    padding-inline-end: 16px;
+    border-block-end: 1px solid #e5e6eb;
+
+    span {
+      font-size: 12px;
+      color: #86909c;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      border-color: ${cssVar.colorBorderSecondary};
+
+      span {
+        color: ${cssVar.colorTextDescription};
+      }
+    }
+  `,
   directoryDetail: css`
+    overflow: auto;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 0;
+
+    min-height: 0;
+    padding-inline: 16px;
+  `,
+  directoryDetailHero: css`
+    display: flex;
+    gap: 12px;
+    align-items: center;
+
+    padding-block: 16px;
+    border-block-end: 1px solid #e5e6eb;
+
+    @media (prefers-color-scheme: dark) {
+      border-color: ${cssVar.colorBorderSecondary};
+    }
+  `,
+  directoryPersonAvatar: css`
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+
+    font-size: 16px;
+    font-weight: 700;
+    color: #245bdb;
+
+    background: #eef5ff;
+
+    @media (prefers-color-scheme: dark) {
+      color: ${cssVar.colorPrimaryText};
+      background: ${cssVar.colorPrimaryBg};
+    }
   `,
   directoryDetailSection: css`
-    padding-block-end: 14px;
-    border-block-end: 1px solid ${cssVar.colorBorderSecondary};
+    padding-block: 14px;
+    border-block-end: 1px solid #e5e6eb;
 
     &:last-child {
-      padding-block-end: 0;
       border-block-end: 0;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      border-color: ${cssVar.colorBorderSecondary};
     }
   `,
   directoryPersonName: css`
-    margin-block-end: 6px;
-    font-size: 18px;
+    margin-block-end: 8px;
+
+    font-size: 20px;
     font-weight: 700;
-    color: ${cssVar.colorText};
+    line-height: 1.3;
+    color: #1f2329;
+
+    @media (prefers-color-scheme: dark) {
+      color: ${cssVar.colorText};
+    }
   `,
   directoryDetailTitle: css`
     margin-block-end: 8px;
     font-size: 13px;
     font-weight: 650;
-    color: ${cssVar.colorText};
+    color: #1f2329;
+
+    @media (prefers-color-scheme: dark) {
+      color: ${cssVar.colorText};
+    }
   `,
   directoryMetaLine: css`
     margin-block-end: 8px;
     font-size: 13px;
-    color: ${cssVar.colorTextSecondary};
+    color: #646a73;
     overflow-wrap: anywhere;
+
+    @media (prefers-color-scheme: dark) {
+      color: ${cssVar.colorTextSecondary};
+    }
+  `,
+  directoryInfoGrid: css`
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 6px 10px;
+
+    font-size: 13px;
+    line-height: 1.5;
+
+    span {
+      color: #86909c;
+    }
+
+    strong {
+      min-width: 0;
+      font-weight: 500;
+      color: #1f2329;
+      overflow-wrap: anywhere;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      span {
+        color: ${cssVar.colorTextDescription};
+      }
+
+      strong {
+        color: ${cssVar.colorText};
+      }
+    }
+  `,
+  directoryInspectorTags: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  `,
+  directoryStatusTag: css`
+    height: 22px;
+    margin-inline-end: 0;
+    padding-inline: 7px;
+    border: 1px solid #e5e6eb;
+    border-radius: 6px;
+
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 20px;
+    color: #4e5969;
+
+    background: #f7f8fa;
+
+    &[data-status='registered'] {
+      border-color: #b7ebc0;
+      color: #1f7a3d;
+      background: #effbf2;
+    }
+
+    &[data-status='invited'] {
+      border-color: #fed4a4;
+      color: #9a5b00;
+      background: #fff7e8;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      border-color: ${cssVar.colorBorderSecondary};
+      color: ${cssVar.colorTextSecondary};
+      background: ${cssVar.colorFillQuaternary};
+    }
   `,
   centerPane: css`
     display: flex;

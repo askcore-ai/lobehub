@@ -171,10 +171,9 @@ describe('AskCoreOrganizationRoute', () => {
           return new Response(JSON.stringify(directoryPayload), { status: 200 });
         }
         if (url.endsWith('/workbench/organization/units')) {
-          return new Response(
-            JSON.stringify({ org_id: 'org-1', units: directoryPayload.units }),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify({ org_id: 'org-1', units: directoryPayload.units }), {
+            status: 200,
+          });
         }
         if (url.includes('/workbench/organization/roles')) {
           return new Response(JSON.stringify({ items: directoryPayload.role_assignments }), {
@@ -191,14 +190,16 @@ describe('AskCoreOrganizationRoute', () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(screen.getByRole('button', { name: '组织架构' })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '组织架构' })).toBeInTheDocument(),
+    );
     expect(screen.queryByRole('button', { name: '成员' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '身份绑定' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '教师' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '学生' })).not.toBeInTheDocument();
 
     const directory = screen.getByLabelText('组织架构工作区');
-    expect(within(directory).getByText('Seed School')).toBeInTheDocument();
+    await waitFor(() => expect(within(directory).getByText('Seed School')).toBeInTheDocument());
     expect(within(directory).getByText('数学组')).toBeInTheDocument();
     expect(within(directory).getByText('高一 1 班')).toBeInTheDocument();
     expect(within(directory).getAllByText('李老师').length).toBeGreaterThan(0);
@@ -227,6 +228,8 @@ describe('AskCoreOrganizationRoute', () => {
     expect(within(directory).getAllByText('已注册').length).toBeGreaterThan(0);
     expect(within(directory).getByRole('button', { name: /添加到当前节点/ })).toBeInTheDocument();
     expect(within(directory).getByRole('button', { name: /当前节点邀请/ })).toBeInTheDocument();
-    expect(within(directory).getByRole('button', { name: /批量导入到当前节点/ })).toBeInTheDocument();
+    expect(
+      within(directory).getByRole('button', { name: /批量导入到当前节点/ }),
+    ).toBeInTheDocument();
   });
 });
