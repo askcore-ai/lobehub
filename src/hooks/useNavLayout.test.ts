@@ -38,6 +38,9 @@ const educationProfile = (workbenchMode: 'identity_required' | 'teacher') => ({
 const workbenchItem = (items: ReturnType<typeof useNavLayout>['topNavItems']) =>
   items.find((item) => item.url === ASKCORE_WORKBENCH_PATH);
 
+const identityClaimItem = (items: ReturnType<typeof useNavLayout>['topNavItems']) =>
+  items.find((item) => item.url === '/organization?action=identity-claim');
+
 beforeEach(() => {
   __resetAskCoreWorkbenchNavAccessForTest();
   vi.restoreAllMocks();
@@ -53,6 +56,12 @@ describe('useNavLayout AskCore workbench entry', () => {
     const { result } = renderHook(() => useNavLayout());
 
     await waitFor(() => expect(workbenchItem(result.current.topNavItems)?.hidden).toBe(true));
+    await waitFor(() =>
+      expect(identityClaimItem(result.current.topNavItems)).toMatchObject({
+        hidden: false,
+        title: 'tab.askcoreIdentityClaim',
+      }),
+    );
   });
 
   it('shows the teaching workbench entry after a teacher or student identity is available', async () => {

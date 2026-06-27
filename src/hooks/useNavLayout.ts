@@ -1,4 +1,4 @@
-import { BriefcaseBusiness, Building2, HomeIcon, SearchIcon } from 'lucide-react';
+import { BriefcaseBusiness, Building2, HomeIcon, SearchIcon, UserCheck } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -119,6 +119,13 @@ export const useNavLayout = (): NavLayout => {
           key: SidebarTabKey.Organization,
           title: t('tab.organization'),
           url: '/organization',
+        },
+        {
+          hidden: askCoreWorkbenchNavAccess !== 'hidden',
+          icon: UserCheck,
+          key: 'askcore-identity-claim',
+          title: t('tab.askcoreIdentityClaim'),
+          url: '/organization?action=identity-claim',
         },
         {
           hidden: askCoreWorkbenchNavAccess !== 'visible',

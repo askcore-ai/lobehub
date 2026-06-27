@@ -507,6 +507,7 @@ export default {
   'tab.image': 'Image',
   'tab.audio': 'Audio',
   'tab.askcoreWorkbench': 'Teaching Workbench',
+  'tab.askcoreIdentityClaim': 'Identity Application',
   'tab.chat': 'Chat',
   'recents': 'Recents',
   'tab.community': 'Community',
