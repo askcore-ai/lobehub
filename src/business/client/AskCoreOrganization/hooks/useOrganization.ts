@@ -16,7 +16,6 @@ import {
   createAskCoreEducationIdentityClaim,
   createAskCoreEducationOrgUnit,
   createAskCoreOrganization,
-  createAskCoreOrganizationInvite,
   createAskCoreSchoolUnit,
   deleteAskCoreEducationRoleAssignment,
   fetchAskCoreEducationIdentityClaims,
@@ -37,7 +36,6 @@ import {
   type AskCoreEducationOrgUnitPayload,
   type AskCoreEducationRoleAssignment,
   type AskCoreInviteChannel,
-  type AskCoreInviteExpiry,
   type AskCoreInvitePayload,
   type AskCoreOrganizationPayload,
   type AskCoreOrganizationRole,
@@ -223,21 +221,14 @@ export const useOrganization = () => {
 
   const handleInvite = useCallback(async () => {
     if (!current) return;
-    const values = await inviteForm.validateFields();
     setInviteLoading(true);
     try {
-      const invite = await createAskCoreOrganizationInvite(current.id, {
-        channel: inviteChannel,
-        email: values.email,
-        expiresIn: values.expiresIn as AskCoreInviteExpiry,
-        role: values.role as Extract<AskCoreOrganizationRole, 'admin' | 'member'>,
-      });
-      setInviteResult(invite);
-      if (inviteChannel === 'email') message.success('邀请邮件已发送');
+      setInviteResult(null);
+      message.warning('请在组织架构中使用带教师/学生名册预设的邀请');
     } finally {
       setInviteLoading(false);
     }
-  }, [current, inviteChannel, inviteForm]);
+  }, [current]);
 
   const handleInviteChannelChange = useCallback(
     (nextChannel: AskCoreInviteChannel) => {

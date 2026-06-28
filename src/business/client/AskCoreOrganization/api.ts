@@ -7,6 +7,7 @@ import {
   type AskCoreDirectoryPersonCreateInput,
   type AskCoreDirectoryPersonPatchInput,
   type AskCoreDirectoryPersonRoleInput,
+  type AskCoreDirectoryRosterKind,
   type AskCoreEducationIdentityBinding,
   type AskCoreEducationIdentityBindingInput,
   type AskCoreEducationIdentityClaim,
@@ -15,6 +16,7 @@ import {
   type AskCoreEducationIdentityRosterKind,
   type AskCoreEducationOrgUnitCreateInput,
   type AskCoreEducationOrgUnitPayload,
+  type AskCoreEducationRole,
   type AskCoreEducationRoleAssignment,
   type AskCoreEducationRoleAssignmentCreateInput,
   type AskCoreEducationRoleAssignmentPayload,
@@ -128,9 +130,14 @@ export const createAskCoreOrganizationInvite = (
   organizationId: string,
   input: {
     channel: AskCoreInviteChannel;
+    directory_invitation_token: string;
     email?: string;
     expiresIn: AskCoreInviteExpiry;
+    person_id?: number;
+    preset_roles: AskCoreEducationRole[];
+    primary_org_unit_id?: number | null;
     role: Extract<AskCoreOrganizationRole, 'admin' | 'member'>;
+    roster_kind: AskCoreDirectoryRosterKind;
   },
 ) =>
   requestJson<AskCoreInvitePayload>(`${ORGANIZATION_API_BASE}/${organizationId}/invites`, {
@@ -239,10 +246,9 @@ export const bindAskCoreDirectoryPersonAccount = (personId: number, betterAuthUs
   });
 
 export const unbindAskCoreDirectoryPersonAccount = (personId: number) =>
-  requestJson<AskCoreDirectoryPerson>(
-    `${EDUCATION_ORG_API_BASE}/people/${personId}/bind-account`,
-    { method: 'DELETE' },
-  );
+  requestJson<AskCoreDirectoryPerson>(`${EDUCATION_ORG_API_BASE}/people/${personId}/bind-account`, {
+    method: 'DELETE',
+  });
 
 export const createAskCoreDirectoryInvitation = (input: AskCoreDirectoryInvitationCreateInput) =>
   requestJson<AskCoreDirectoryInvitation>(`${EDUCATION_ORG_API_BASE}/directory-invitations`, {

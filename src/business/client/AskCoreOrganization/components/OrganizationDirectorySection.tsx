@@ -39,6 +39,7 @@ import {
   createAskCoreDirectoryPerson,
   createAskCoreDirectoryPersonRole,
   createAskCoreEducationIdentityClaim,
+  createAskCoreOrganizationInvite,
   fetchAskCoreEducationIdentityClaims,
   fetchAskCoreOrganizationDirectory,
   importAskCoreDirectoryPeople,
@@ -149,6 +150,15 @@ const allRoleOptions = (Object.keys(roleLabels) as AskCoreEducationRole[]).map((
   label: roleLabels[role],
   value: role,
 }));
+
+const invitationRoleOptions = (
+  rosterKind: AskCoreDirectoryRosterKind | undefined,
+  options: { label: string; value: AskCoreEducationRole }[],
+) => {
+  if (rosterKind === 'student') return options.filter((option) => option.value === 'student');
+  if (rosterKind === 'teacher') return options.filter((option) => option.value !== 'student');
+  return options;
+};
 
 const sortUnits = (units: AskCoreEducationOrgUnit[]) =>
   [...units].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0) || a.id - b.id);
@@ -319,6 +329,12 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     const watchedRole = Form.useWatch('role', roleForm) as AskCoreEducationRole | undefined;
     const watchedOrgInviteRole = Form.useWatch('role', orgInviteForm) as
       | AskCoreEducationRole
+      | undefined;
+    const watchedOrgInviteRosterKind = Form.useWatch('roster_kind', orgInviteForm) as
+      | AskCoreDirectoryRosterKind
+      | undefined;
+    const watchedUnitInviteRosterKind = Form.useWatch('roster_kind', unitInviteForm) as
+      | AskCoreDirectoryRosterKind
       | undefined;
 
     const shouldOpenIdentityDrawer =
@@ -635,6 +651,22 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       [buildUnitTreeData, watchedOrgInviteRole],
     );
     const plainTreeData = useMemo(() => buildUnitTreeData(), [buildUnitTreeData]);
+    const orgInvitePositionTreeData = useMemo<DirectoryTreeSelectNode[]>(
+      () =>
+        watchedOrgInviteRosterKind === 'teacher'
+          ? [
+              {
+                disabled: false,
+                key: ALL_PEOPLE_TREE_VALUE,
+                label: '全部人员',
+                title: '全部人员',
+                value: ALL_PEOPLE_TREE_VALUE,
+              },
+              ...orgInviteTreeData,
+            ]
+          : orgInviteTreeData,
+      [orgInviteTreeData, watchedOrgInviteRosterKind],
+    );
     const personPrimaryUnitTreeData = useMemo<DirectoryTreeSelectNode[]>(
       () => [
         {
@@ -651,6 +683,10 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     const selectedUnitRoleOptions = (
       selectedUnit ? roleOptionsByUnitType[selectedUnit.unit_type] : []
     ).map((role) => ({ label: roleLabels[role], value: role }));
+
+    const copyInviteLink = (link: string) => {
+      void navigator.clipboard?.writeText(link).catch(() => undefined);
+    };
 
     const createPerson = async (scope: 'organization' | 'unit') => {
       const form = scope === 'organization' ? orgPersonForm : unitPersonForm;
@@ -677,21 +713,59 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     };
 
     const createOpenInvitation = async (scope: 'organization' | 'unit') => {
+      if (!payload) return;
       const form = scope === 'organization' ? orgInviteForm : unitInviteForm;
       const values = await form.validateFields();
-      const primaryOrgUnitId = scope === 'unit' ? selectedUnitId : values.primary_org_unit_id;
-      if (!primaryOrgUnitId) return;
+      const rosterKind = values.roster_kind as AskCoreDirectoryRosterKind | undefined;
+      if (!rosterKind) {
+        message.error('请选择教师或学生名册');
+        return;
+      }
+      const rawPrimaryOrgUnitId = scope === 'unit' ? selectedUnitId : values.primary_org_unit_id;
+      const primaryOrgUnitId =
+        rawPrimaryOrgUnitId === ALL_PEOPLE_TREE_VALUE
+          ? null
+          : rawPrimaryOrgUnitId
+            ? Number(rawPrimaryOrgUnitId)
+            : null;
+      const targetUnit = primaryOrgUnitId ? unitById.get(primaryOrgUnitId) : undefined;
+      if (rosterKind === 'student' && targetUnit?.unit_type !== 'class') {
+        message.error('学生邀请必须选择班级');
+        return;
+      }
+      const presetRole = (values.role as AskCoreEducationRole | undefined) || rosterKind;
+      if (!targetUnit && presetRole !== 'teacher') {
+        message.error('管理类或学生角色必须选择作用范围');
+        return;
+      }
+      if (targetUnit && !roleAllowedForUnit(presetRole, targetUnit)) {
+        message.error(`${roleLabels[presetRole]}不能分配到${unitTypeLabels[targetUnit.unit_type]}`);
+        return;
+      }
       setSaving(true);
       try {
-        await createAskCoreDirectoryInvitation({
+        const directoryInvitation = await createAskCoreDirectoryInvitation({
           email: values.email || undefined,
           invitation_kind: 'open',
           primary_org_unit_id: primaryOrgUnitId,
-          preset_roles: values.role ? [values.role] : [],
+          preset_roles: [presetRole],
         });
+        const invite = await createAskCoreOrganizationInvite(payload.org_id, {
+          channel: values.email ? 'email' : 'link',
+          directory_invitation_token: directoryInvitation.token,
+          email: values.email || undefined,
+          expiresIn: '7d',
+          preset_roles: [presetRole],
+          primary_org_unit_id: primaryOrgUnitId,
+          role: 'member',
+          roster_kind: rosterKind,
+        });
+        copyInviteLink(invite.link);
         form.resetFields();
         await loadDirectory();
-        message.success(scope === 'unit' ? '当前节点邀请链接已创建' : '不定向邀请已创建');
+        message.success(
+          scope === 'unit' ? '当前节点邀请链接已创建并复制' : '不定向邀请已创建并复制',
+        );
       } finally {
         setSaving(false);
       }
@@ -754,18 +828,40 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     };
 
     const createDirectedInvitation = async () => {
-      if (!selectedPerson) return;
+      if (!payload || !selectedPerson) return;
+      const rosterLink =
+        selectedPersonLinks.find((link) => link.roster_kind === 'teacher') ||
+        selectedPersonLinks[0];
+      if (!rosterLink) {
+        message.error('此人员还没有教师或学生名册链接，不能发送定向邀请');
+        return;
+      }
       const values = await directInviteForm.validateFields();
+      const email = values.email || selectedPerson.email || undefined;
+      const presetRole: AskCoreEducationRole =
+        rosterLink.roster_kind === 'student' ? 'student' : 'teacher';
       setSaving(true);
       try {
-        await createAskCoreDirectoryInvitation({
-          email: values.email || selectedPerson.email || undefined,
+        const directoryInvitation = await createAskCoreDirectoryInvitation({
+          email,
           invitation_kind: 'directed',
           person_id: selectedPerson.id,
         });
+        const invite = await createAskCoreOrganizationInvite(payload.org_id, {
+          channel: email ? 'email' : 'link',
+          directory_invitation_token: directoryInvitation.token,
+          email,
+          expiresIn: '7d',
+          person_id: selectedPerson.id,
+          preset_roles: [presetRole],
+          primary_org_unit_id: selectedPerson.primary_org_unit_id ?? null,
+          role: 'member',
+          roster_kind: rosterLink.roster_kind,
+        });
+        copyInviteLink(invite.link);
         directInviteForm.resetFields();
         await loadDirectory();
-        message.success('定向邀请已创建');
+        message.success('定向邀请已创建并复制');
       } finally {
         setSaving(false);
       }
@@ -882,11 +978,25 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
             {scope === 'unit' ? '当前节点邀请' : '不定向邀请'}
           </div>
           <Form className={styles.directoryActionForm} form={form} layout="vertical">
+            <Form.Item
+              label="名册类型"
+              name="roster_kind"
+              rules={[{ message: '请选择教师或学生名册', required: true }]}
+            >
+              <Select
+                options={rosterKindOptions}
+                placeholder="选择教师或学生"
+                onChange={() => form.resetFields(['role', 'primary_org_unit_id'])}
+              />
+            </Form.Item>
             <Form.Item label="预设角色" name="role">
               <Select
                 allowClear
-                options={scope === 'unit' ? selectedUnitRoleOptions : allRoleOptions}
                 placeholder="可选"
+                options={invitationRoleOptions(
+                  scope === 'unit' ? watchedUnitInviteRosterKind : watchedOrgInviteRosterKind,
+                  scope === 'unit' ? selectedUnitRoleOptions : allRoleOptions,
+                )}
                 onChange={() => {
                   if (scope === 'organization') orgInviteForm.resetFields(['primary_org_unit_id']);
                 }}
@@ -896,13 +1006,21 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
               <Form.Item
                 label="邀请位置"
                 name="primary_org_unit_id"
-                rules={[{ message: '请选择邀请位置', required: true }]}
+                rules={[
+                  {
+                    message: '学生邀请必须选择班级',
+                    required: watchedOrgInviteRosterKind === 'student',
+                  },
+                ]}
               >
                 <TreeSelect
                   showSearch
                   treeDefaultExpandAll
-                  placeholder="选择位置"
-                  treeData={orgInviteTreeData}
+                  allowClear={watchedOrgInviteRosterKind !== 'student'}
+                  placeholder={
+                    watchedOrgInviteRosterKind === 'teacher' ? '默认全部人员' : '选择班级'
+                  }
+                  treeData={orgInvitePositionTreeData}
                   treeNodeFilterProp="label"
                 />
               </Form.Item>

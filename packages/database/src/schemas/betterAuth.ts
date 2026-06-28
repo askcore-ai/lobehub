@@ -3,6 +3,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -135,6 +136,7 @@ export const askcoreOrganizationInvites = pgTable(
     createdByUserId: text('created_by_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    directoryInvitationToken: text('directory_invitation_token'),
     email: text('email'),
     expiresAt: timestamp('expires_at').notNull(),
     id: text('id').primaryKey(),
@@ -142,14 +144,19 @@ export const askcoreOrganizationInvites = pgTable(
     organizationId: text('organization_id')
       .notNull()
       .references(() => organization.id, { onDelete: 'cascade' }),
+    personId: integer('person_id'),
+    presetRoles: jsonb('preset_roles').$type<string[]>(),
+    primaryOrgUnitId: integer('primary_org_unit_id'),
     revokedAt: timestamp('revoked_at'),
     role: text('role').default('member').notNull(),
+    rosterKind: text('roster_kind'),
     tokenHash: text('token_hash').notNull(),
     useCount: integer('use_count').default(0).notNull(),
   },
   (table) => [
     uniqueIndex('askcore_organization_invites_token_hash_unique').on(table.tokenHash),
     index('askcore_organization_invites_organization_id_idx').on(table.organizationId),
+    index('askcore_organization_invites_directory_token_idx').on(table.directoryInvitationToken),
     index('askcore_organization_invites_email_idx').on(table.email),
     index('askcore_organization_invites_expires_at_idx').on(table.expiresAt),
   ],

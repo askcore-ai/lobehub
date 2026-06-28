@@ -52,8 +52,12 @@ describe('AskCoreOrganization api client', () => {
     await updateAskCoreOrganizationMemberRole('org-1', 'mem-1', 'admin');
     await createAskCoreOrganizationInvite('org-1', {
       channel: 'qr',
+      directory_invitation_token: 'dir-token',
       expiresIn: '7d',
+      preset_roles: ['student'],
+      primary_org_unit_id: 4,
       role: 'member',
+      roster_kind: 'student',
     });
     await fetchAskCoreEducationOrgUnits();
     await createAskCoreEducationOrgUnit({

@@ -44,10 +44,15 @@ export interface AskCoreOrganizationPayload {
 
 export interface AskCoreInvitePayload {
   channel: AskCoreInviteChannel;
+  directoryInvitationToken: string;
   email?: string;
   expiresIn: AskCoreInviteExpiry;
   link: string;
+  personId?: number;
+  presetRoles: AskCoreEducationRole[];
+  primaryOrgUnitId?: number;
   role: Extract<AskCoreOrganizationRole, 'admin' | 'member'>;
+  rosterKind: AskCoreDirectoryRosterKind;
   token: string;
 }
 
