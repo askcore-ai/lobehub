@@ -30,6 +30,7 @@ import {
   updateAskCoreOrganization,
   updateAskCoreOrganizationMemberRole,
 } from '../api';
+import { ASKCORE_ORGANIZATION_CHANGED_EVENT } from '../events';
 import {
   type AskCoreEducationIdentityClaim,
   type AskCoreEducationOrgUnit,
@@ -41,6 +42,10 @@ import {
   type AskCoreOrganizationPayload,
   type AskCoreOrganizationRole,
 } from '../types';
+
+const notifyAskCoreOrganizationChanged = () => {
+  window.dispatchEvent(new Event(ASKCORE_ORGANIZATION_CHANGED_EVENT));
+};
 
 export const useOrganization = () => {
   const [payload, setPayload] = useState<AskCoreOrganizationPayload | null>(null);
@@ -188,6 +193,7 @@ export const useOrganization = () => {
       setPayload(next);
       setCreateOpen(false);
       createForm.resetFields();
+      notifyAskCoreOrganizationChanged();
       message.success('组织已创建并激活');
     } finally {
       setCreating(false);
@@ -198,6 +204,7 @@ export const useOrganization = () => {
     const next = await setActiveAskCoreOrganization(organizationId);
     setPayload(next);
     setInviteResult(null);
+    notifyAskCoreOrganizationChanged();
     message.success('已切换激活组织');
   }, []);
 

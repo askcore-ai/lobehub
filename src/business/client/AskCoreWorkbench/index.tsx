@@ -6999,6 +6999,8 @@ const AskCoreWorkbenchPage = memo(() => {
     ? Boolean(capabilities.can_run_teacher_submission_ocr)
     : true;
   const canSubmitOwnWork = capabilities ? Boolean(capabilities.can_submit_own_work) : false;
+  const activeOrganization = organizationState?.organization || null;
+  const organizationRequired = !organizationLoading && !activeOrganization?.organization_id;
 
   const navigateToTab = useCallback(
     (tab: AskCoreWorkbenchTab) => {
@@ -7405,51 +7407,69 @@ const AskCoreWorkbenchPage = memo(() => {
     return (
       <div className={styles.view}>
         {renderOrganizationBanner()}
-        {educationProfileLoading ? (
-          <Alert showIcon message="正在读取当前教育身份…" type="info" />
-        ) : null}
-        {isIdentityRequired ? (
+        {organizationRequired ? (
           <Alert
             showIcon
-            description="当前账号已经进入组织，但还没有绑定到教师或学生名册。请提交身份申请，或联系组织管理员在同一页面审批并绑定身份。"
-            message="请先完成教师或学生身份绑定"
+            description="请先在组织页选择或创建当前组织。身份申请、教学工作台和学习工作台都会按当前组织计算。"
+            message="请选择组织"
             type="warning"
             action={
-              <Link to="/organization?action=identity-claim">
+              <Link to="/organization">
                 <Button size="small" type="primary">
-                  去提交身份申请
+                  进入组织页
                 </Button>
               </Link>
             }
           />
-        ) : null}
-        {isRestrictedStudent ? (
-          <Alert
-            showIcon
-            description="当前组织同时存在教师和学生，你可以查看分配给自己的作业并提交作业，创建作业和题库管理由教师完成。"
-            message="学生工作台"
-            type="info"
-          />
-        ) : null}
-        <div className={styles.statGrid}>
-          {stats.map((item) => (
-            <div className={styles.statItem} key={item.key}>
-              <div className={styles.statTitle}>{item.label}</div>
-              <div className={styles.statValue}>{item.value}</div>
+        ) : (
+          <>
+            {educationProfileLoading ? (
+              <Alert showIcon message="正在读取当前教育身份…" type="info" />
+            ) : null}
+            {isIdentityRequired ? (
+              <Alert
+                showIcon
+                description="当前账号已经进入组织，但还没有绑定到教师或学生名册。请提交身份申请，或联系组织管理员在同一页面审批并绑定身份。"
+                message="请先完成教师或学生身份绑定"
+                type="warning"
+                action={
+                  <Link to="/organization?action=identity-claim">
+                    <Button size="small" type="primary">
+                      去提交身份申请
+                    </Button>
+                  </Link>
+                }
+              />
+            ) : null}
+            {isRestrictedStudent ? (
+              <Alert
+                showIcon
+                description="当前组织同时存在教师和学生，你可以查看分配给自己的作业并提交作业，创建作业和题库管理由教师完成。"
+                message="学生工作台"
+                type="info"
+              />
+            ) : null}
+            <div className={styles.statGrid}>
+              {stats.map((item) => (
+                <div className={styles.statItem} key={item.key}>
+                  <div className={styles.statTitle}>{item.label}</div>
+                  <div className={styles.statValue}>{item.value}</div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-        <div className={styles.table}>
-          <Table
-            columns={invocationColumns}
-            dataSource={recent}
-            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
-            pagination={false}
-            rowKey={(record) => String(record.invocation_id || record.run_id)}
-            scroll={{ x: 1150 }}
-            size="middle"
-          />
-        </div>
+            <div className={styles.table}>
+              <Table
+                columns={invocationColumns}
+                dataSource={recent}
+                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+                pagination={false}
+                rowKey={(record) => String(record.invocation_id || record.run_id)}
+                scroll={{ x: 1150 }}
+                size="middle"
+              />
+            </div>
+          </>
+        )}
       </div>
     );
   };
@@ -8452,13 +8472,15 @@ const AskCoreWorkbenchPage = memo(() => {
   return (
     <div className={styles.page}>
       <div className={styles.body}>
-        <Segmented
-          block
-          className={styles.tabs}
-          options={tabOptions}
-          value={activeTab}
-          onChange={(value) => navigateToTab(value as AskCoreWorkbenchTab)}
-        />
+        {organizationRequired ? null : (
+          <Segmented
+            block
+            className={styles.tabs}
+            options={tabOptions}
+            value={activeTab}
+            onChange={(value) => navigateToTab(value as AskCoreWorkbenchTab)}
+          />
+        )}
 
         {error ? (
           <Alert
@@ -8482,7 +8504,9 @@ const AskCoreWorkbenchPage = memo(() => {
           />
         ) : null}
 
-        <div style={{ marginTop: 18 }}>{renderMain()}</div>
+        <div style={{ marginTop: organizationRequired ? 0 : 18 }}>
+          {organizationRequired ? renderDashboard() : renderMain()}
+        </div>
       </div>
     </div>
   );

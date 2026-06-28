@@ -13,6 +13,34 @@ import {
   SUBMISSION_OCR_LAYOUT_BREAKPOINTS,
 } from './index';
 
+const activeOrganizationResponse = () =>
+  new Response(
+    JSON.stringify({
+      current: {
+        id: 'org_askcore_school_2026',
+        isActive: true,
+        name: 'AskCore School',
+        role: 'owner',
+        slug: 'askcore-school',
+      },
+      organizations: [
+        {
+          id: 'org_askcore_school_2026',
+          isActive: true,
+          name: 'AskCore School',
+          role: 'owner',
+          slug: 'askcore-school',
+        },
+      ],
+      permissions: {
+        canInvite: true,
+        canManageMembers: true,
+        canUpdateMeta: true,
+      },
+    }),
+    { headers: { 'content-type': 'application/json' }, status: 200 },
+  );
+
 describe('AskCoreWorkbenchRoute dashboard overview', () => {
   afterEach(() => {
     message.destroy();
@@ -223,7 +251,7 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
     expect(screen.getByRole('button', { name: '返回总览' })).toBeInTheDocument();
   }, 15_000);
 
-  it('keeps the dashboard usable when the active organization state is unavailable', async () => {
+  it('blocks the workbench dashboard when no active organization is selected', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/askcore/workbench/dashboard') {
@@ -238,9 +266,9 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
         );
       }
       if (url === '/api/askcore/organizations') {
-        return new Response(JSON.stringify({ detail: 'organization unavailable' }), {
+        return new Response(JSON.stringify({ current: null, organizations: [] }), {
           headers: { 'content-type': 'application/json' },
-          status: 503,
+          status: 200,
         });
       }
       return new Response(JSON.stringify(emptyListResponse), {
@@ -256,11 +284,15 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(screen.getByText('未获取到当前激活组织')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('请选择组织')).toBeInTheDocument());
 
-    expect(screen.getAllByText('提交').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('题目').length).toBeGreaterThan(0);
-    expect(screen.getByText('批量导入学生提交')).toBeInTheDocument();
+    expect(screen.queryByText('提交')).not.toBeInTheDocument();
+    expect(screen.queryByText('题目')).not.toBeInTheDocument();
+    expect(screen.queryByText('批量导入学生提交')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '进入组织页' })).toHaveAttribute(
+      'href',
+      '/organization',
+    );
     expect(screen.getByRole('link', { name: '打开组织管理' })).toHaveAttribute(
       'href',
       '/organization',
@@ -359,6 +391,8 @@ describe('AskCoreWorkbenchRoute assignment detail', () => {
   it('renders assignment recipients from nested backend student and classroom fields', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
+
+      if (url === '/api/askcore/organizations') return activeOrganizationResponse();
 
       if (url === '/api/askcore/workbench/assignments/501/detail') {
         return new Response(
@@ -527,6 +561,8 @@ describe('AskCoreWorkbenchRoute submission detail binding', () => {
   ) => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+
+      if (url === '/api/askcore/organizations') return activeOrganizationResponse();
 
       if (url === '/api/askcore/workbench/submissions/1109/detail') {
         return new Response(JSON.stringify(submissionDetail(status, assignmentStudentId, files)), {
@@ -900,6 +936,8 @@ describe('AskCoreWorkbenchRoute submission list batch actions', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
 
+      if (url === '/api/askcore/organizations') return activeOrganizationResponse();
+
       if (url.startsWith('/api/askcore/workbench/submissions?')) {
         return new Response(
           JSON.stringify({
@@ -1173,6 +1211,9 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
   };
 
   const emptyLookupFetch = (url: string) => {
+    if (url === '/api/askcore/organizations') {
+      return activeOrganizationResponse();
+    }
     if (url === '/api/askcore/workbench/organization/units') {
       return jsonResponse({ units: [] });
     }

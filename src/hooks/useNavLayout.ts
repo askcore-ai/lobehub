@@ -2,6 +2,7 @@ import { BriefcaseBusiness, Building2, HomeIcon, SearchIcon, UserCheck } from 'l
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { ASKCORE_ORGANIZATION_CHANGED_EVENT } from '@/business/client/AskCoreOrganization/events';
 import { askCoreWorkbenchClient } from '@/business/client/AskCoreWorkbench/api';
 import { ASKCORE_WORKBENCH_PATH } from '@/business/client/AskCoreWorkbench/config';
 import { getRouteById } from '@/config/routes';
@@ -34,50 +35,65 @@ export interface NavLayout {
   };
 }
 
-type AskCoreWorkbenchNavAccess = 'identity_required' | 'learning' | 'loading' | 'teaching';
-
-let cachedAskCoreWorkbenchNavAccess: AskCoreWorkbenchNavAccess | null = null;
-let pendingAskCoreWorkbenchNavAccess: Promise<AskCoreWorkbenchNavAccess> | null = null;
+type AskCoreWorkbenchNavAccess =
+  | 'identity_required'
+  | 'learning'
+  | 'loading'
+  | 'organization_required'
+  | 'teaching';
 
 const resolveAskCoreWorkbenchNavAccess = async (): Promise<AskCoreWorkbenchNavAccess> => {
   try {
+    const organizationState = await askCoreWorkbenchClient.getOrganizationState();
+    if (!organizationState.organization?.organization_id) return 'organization_required';
+  } catch {
+    return 'organization_required';
+  }
+
+  try {
     const profile = await askCoreWorkbenchClient.getEducationProfile();
-    if (profile.workbench_mode === 'identity_required') return 'identity_required';
-    if (
-      profile.workbench_mode === 'student_managed' ||
-      profile.workbench_mode === 'student_restricted'
-    ) {
-      return 'learning';
+    switch (profile.workbench_mode) {
+      case 'identity_required': {
+        return 'identity_required';
+      }
+      case 'student_managed':
+      case 'student_restricted': {
+        return 'learning';
+      }
+      case 'teacher': {
+        return 'teaching';
+      }
+      default: {
+        return 'identity_required';
+      }
     }
-    if (profile.workbench_mode === 'teacher') return 'teaching';
-    return 'identity_required';
   } catch {
     return 'identity_required';
   }
 };
 
-const getAskCoreWorkbenchNavAccess = () => {
-  if (cachedAskCoreWorkbenchNavAccess) return Promise.resolve(cachedAskCoreWorkbenchNavAccess);
-  pendingAskCoreWorkbenchNavAccess ||= resolveAskCoreWorkbenchNavAccess().then((access) => {
-    cachedAskCoreWorkbenchNavAccess = access;
-    pendingAskCoreWorkbenchNavAccess = null;
-    return access;
-  });
-  return pendingAskCoreWorkbenchNavAccess;
-};
-
 const useAskCoreWorkbenchNavAccess = () => {
-  const [access, setAccess] = useState<AskCoreWorkbenchNavAccess>(
-    cachedAskCoreWorkbenchNavAccess || 'loading',
-  );
+  const [access, setAccess] = useState<AskCoreWorkbenchNavAccess>('loading');
 
   useEffect(() => {
     let active = true;
-    void getAskCoreWorkbenchNavAccess().then((nextAccess) => {
-      if (active) setAccess(nextAccess);
-    });
+    let requestId = 0;
+
+    const refresh = () => {
+      const currentRequestId = requestId + 1;
+      requestId = currentRequestId;
+      setAccess('loading');
+      void resolveAskCoreWorkbenchNavAccess().then((nextAccess) => {
+        if (active && requestId === currentRequestId) setAccess(nextAccess);
+      });
+    };
+
+    refresh();
+    window.addEventListener(ASKCORE_ORGANIZATION_CHANGED_EVENT, refresh);
+
     return () => {
       active = false;
+      window.removeEventListener(ASKCORE_ORGANIZATION_CHANGED_EVENT, refresh);
     };
   }, []);
 
@@ -85,8 +101,7 @@ const useAskCoreWorkbenchNavAccess = () => {
 };
 
 export const __resetAskCoreWorkbenchNavAccessForTest = () => {
-  cachedAskCoreWorkbenchNavAccess = null;
-  pendingAskCoreWorkbenchNavAccess = null;
+  return undefined;
 };
 
 export const useNavLayout = (): NavLayout => {
