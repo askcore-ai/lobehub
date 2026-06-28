@@ -413,7 +413,7 @@ describe('AskCoreOrganizationRoute', () => {
     expect(screen.getByPlaceholderText('输入姓名搜索教师或学生名册')).toBeInTheDocument();
   });
 
-  it('opens the identity application form from the action query even for organization admins', async () => {
+  it('opens the application form by default for organization admins and keeps approval reachable', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith('/workbench/organization/directory')) {
@@ -453,14 +453,24 @@ describe('AskCoreOrganizationRoute', () => {
     await waitFor(() => expect(screen.getByText('身份申请与审批')).toBeInTheDocument());
     const drawer = screen.getByRole('dialog');
     await waitFor(() => expect(within(drawer).getByText('提交身份申请')).toBeInTheDocument());
+    expect(within(drawer).getByText('提交申请')).toBeInTheDocument();
+    expect(within(drawer).getByText('身份审批')).toBeInTheDocument();
     fireEvent.change(within(drawer).getByPlaceholderText('输入姓名搜索教师或学生名册'), {
       target: { value: '李' },
     });
     expect(within(drawer).getByText('李老师')).toBeInTheDocument();
-    expect(within(drawer).queryByText('身份审批')).not.toBeInTheDocument();
     expect(within(drawer).queryByText('暂无待审批身份申请')).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/askcore/workbench/organization/identity-claims?status=all',
+      expect.any(Object),
+    );
+
+    fireEvent.click(within(drawer).getByRole('button', { name: '身份审批' }));
+
+    await waitFor(() => expect(within(drawer).getByText('待处理 1 个')).toBeInTheDocument());
+    expect(within(drawer).getByText('申请账号 other-user')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/workbench/organization/identity-claims?status=pending',
       expect.any(Object),
     );
   });

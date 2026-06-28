@@ -1959,6 +1959,28 @@ export const styles = createStaticStyles(({ css }) => ({
     flex-direction: column;
     gap: 10px;
   `,
+  directoryIdentityModeSwitch: css`
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+
+    padding: 3px;
+    border: 1px solid #e5e6eb;
+    border-radius: 8px;
+
+    background: #f7f8fa;
+
+    button {
+      height: 30px;
+      border-radius: 6px;
+      box-shadow: none;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      border-color: ${cssVar.colorBorderSecondary};
+      background: ${cssVar.colorFillQuaternary};
+    }
+  `,
   directoryIdentityIntro: css`
     display: flex;
     flex-direction: column;

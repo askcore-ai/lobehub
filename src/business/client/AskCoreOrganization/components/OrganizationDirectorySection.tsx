@@ -306,6 +306,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     const [activeFilter, setActiveFilter] = useState<DirectoryFilterKey>('all');
     const orgImportInputRef = useRef<HTMLInputElement>(null);
     const unitImportInputRef = useRef<HTMLInputElement>(null);
+    const consumedIdentityActionLocationKeyRef = useRef<string | null>(null);
     const [orgPersonForm] = Form.useForm();
     const [unitPersonForm] = Form.useForm();
     const [orgInviteForm] = Form.useForm();
@@ -366,8 +367,14 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     }, [loadIdentityClaims]);
 
     useEffect(() => {
-      if (shouldOpenIdentityDrawer) openIdentityClaimDrawer();
-    }, [openIdentityClaimDrawer, shouldOpenIdentityDrawer]);
+      if (!shouldOpenIdentityDrawer) {
+        consumedIdentityActionLocationKeyRef.current = null;
+        return;
+      }
+      if (consumedIdentityActionLocationKeyRef.current === location.key) return;
+      consumedIdentityActionLocationKeyRef.current = location.key;
+      openIdentityClaimDrawer();
+    }, [location.key, openIdentityClaimDrawer, shouldOpenIdentityDrawer]);
 
     useEffect(() => {
       window.addEventListener(ASKCORE_IDENTITY_CLAIM_OPEN_EVENT, openIdentityClaimDrawer);
@@ -375,6 +382,15 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         window.removeEventListener(ASKCORE_IDENTITY_CLAIM_OPEN_EVENT, openIdentityClaimDrawer);
       };
     }, [openIdentityClaimDrawer]);
+
+    const switchIdentityDrawerMode = useCallback(
+      (nextMode: IdentityDrawerMode) => {
+        setIdentityDrawerMode(nextMode);
+        if (nextMode === 'claim') setIdentityClaimSearchText('');
+        void loadIdentityClaims(nextMode);
+      },
+      [loadIdentityClaims],
+    );
 
     const units = useMemo(() => payload?.units ?? [], [payload?.units]);
     const people = useMemo(() => payload?.people ?? [], [payload?.people]);
@@ -936,9 +952,28 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     };
 
     const showIdentityReview = canManage && identityDrawerMode === 'review';
+    const identityDrawerModeSwitch = canManage ? (
+      <div className={styles.directoryIdentityModeSwitch}>
+        <Button
+          block
+          type={identityDrawerMode === 'claim' ? 'primary' : 'default'}
+          onClick={() => switchIdentityDrawerMode('claim')}
+        >
+          提交申请
+        </Button>
+        <Button
+          block
+          type={identityDrawerMode === 'review' ? 'primary' : 'default'}
+          onClick={() => switchIdentityDrawerMode('review')}
+        >
+          身份审批
+        </Button>
+      </div>
+    ) : null;
 
     const identityDrawerContent = showIdentityReview ? (
       <div className={styles.directoryIdentityList}>
+        {identityDrawerModeSwitch}
         <div className={styles.directoryIdentityIntro}>
           身份审批
           <span>待处理 {pendingIdentityClaims.length} 个</span>
@@ -982,6 +1017,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       </div>
     ) : (
       <div className={styles.directoryIdentityList}>
+        {identityDrawerModeSwitch}
         <div className={styles.directoryIdentityIntro}>
           提交身份申请
           <span>输入你的姓名，找到与你本人对应的教师或学生名册，提交后由组织管理员审批。</span>
