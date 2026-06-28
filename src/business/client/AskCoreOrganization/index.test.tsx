@@ -354,10 +354,13 @@ describe('AskCoreOrganizationRoute', () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(screen.getByText('身份申请与审批')).toBeInTheDocument());
-    const drawer = screen.getByRole('dialog');
+    const drawer = await screen.findByRole('dialog');
+    await waitFor(() =>
+      expect(within(drawer).getAllByText('提交身份申请').length).toBeGreaterThan(0),
+    );
     expect(screen.getByRole('button', { name: /提交身份申请/ })).toBeInTheDocument();
     expect(within(drawer).getByPlaceholderText('输入姓名搜索教师或学生名册')).toBeInTheDocument();
+    expect(within(drawer).queryByText(/审批/)).not.toBeInTheDocument();
     expect(within(drawer).queryByText('李老师')).not.toBeInTheDocument();
     expect(within(drawer).getByText('请输入姓名搜索可申请的教师或学生名册')).toBeInTheDocument();
     fireEvent.change(within(drawer).getByPlaceholderText('输入姓名搜索教师或学生名册'), {

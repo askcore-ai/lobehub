@@ -478,7 +478,9 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
           const disabledReason = person.better_auth_user_id
             ? '已绑定账号'
             : pendingIdentityClaimKeys.has(key)
-              ? '已提交待审批'
+              ? canManage
+                ? '已提交待审批'
+                : '申请处理中'
               : undefined;
           return [
             {
@@ -491,7 +493,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
             },
           ];
         }),
-      [pendingIdentityClaimKeys, personById, rosterLinks, unitPathLabel],
+      [canManage, pendingIdentityClaimKeys, personById, rosterLinks, unitPathLabel],
     );
     const identityClaimSearchKeyword = identityClaimSearchText.trim().toLowerCase();
     const searchedIdentityClaimTargets = useMemo(() => {
@@ -1020,7 +1022,11 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         {identityDrawerModeSwitch}
         <div className={styles.directoryIdentityIntro}>
           提交身份申请
-          <span>输入你的姓名，找到与你本人对应的教师或学生名册，提交后由组织管理员审批。</span>
+          <span>
+            {canManage
+              ? '输入你的姓名，找到与你本人对应的教师或学生名册，提交后进入身份审批队列。'
+              : '输入你的姓名，找到与你本人对应的教师或学生名册，提交申请后组织管理员会处理绑定。'}
+          </span>
         </div>
         <Input
           allowClear
@@ -1441,7 +1447,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
           destroyOnClose
           open={identityDrawerOpen}
           size="default"
-          title="身份申请与审批"
+          title={canManage ? '身份申请与审批' : '提交身份申请'}
           onClose={() => setIdentityDrawerOpen(false)}
         >
           {identityClaimsLoading && !identityClaims.length ? (
