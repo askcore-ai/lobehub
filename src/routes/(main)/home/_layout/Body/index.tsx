@@ -35,6 +35,7 @@ const ACCORDION_KEYS = new Set<string>([GroupKey.Recents, GroupKey.Agent]);
 /** Keys rendered in the header — must be excluded from the body to avoid duplicates
  * when migrating users whose persisted sidebarItems still include them. */
 const HEADER_KEYS = new Set<string>(['home', 'search']);
+const REQUIRED_NAV_KEYS = new Set<string>(['organization', 'askcore', 'askcore-identity-claim']);
 
 const accordionComponents: Record<string, (key: string) => ReactElement> = {
   [GroupKey.Agent]: (key) => <Agent itemKey={key} key={key} />,
@@ -103,7 +104,11 @@ const Body = memo(() => {
 
   // Items that must always be visible regardless of hiddenSections
   const isVisible = useCallback(
-    (k: string) => k === GroupKey.Agent || k === SIDEBAR_SPACER_ID || !hiddenSections.includes(k),
+    (k: string) =>
+      k === GroupKey.Agent ||
+      k === SIDEBAR_SPACER_ID ||
+      REQUIRED_NAV_KEYS.has(k) ||
+      !hiddenSections.includes(k),
     [hiddenSections],
   );
 

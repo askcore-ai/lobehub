@@ -66,6 +66,42 @@ describe('useNavLayout AskCore workbench entry', () => {
     );
   });
 
+  it('does not expose the teaching workbench when the identity profile request fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () => new Response(JSON.stringify({ detail: 'missing identity' }), { status: 500 }),
+      ),
+    );
+
+    const { result } = renderHook(() => useNavLayout());
+
+    await waitFor(() => expect(workbenchItem(result.current.topNavItems)?.hidden).toBe(true));
+    await waitFor(() =>
+      expect(identityClaimItem(result.current.topNavItems)).toMatchObject({
+        hidden: false,
+        title: 'tab.askcoreIdentityClaim',
+      }),
+    );
+  });
+
+  it('does not expose the teaching workbench when the identity profile payload is invalid', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ raw: '<html>signin</html>' }))),
+    );
+
+    const { result } = renderHook(() => useNavLayout());
+
+    await waitFor(() => expect(workbenchItem(result.current.topNavItems)?.hidden).toBe(true));
+    await waitFor(() =>
+      expect(identityClaimItem(result.current.topNavItems)).toMatchObject({
+        hidden: false,
+        title: 'tab.askcoreIdentityClaim',
+      }),
+    );
+  });
+
   it('shows the teaching workbench entry after a teacher identity is available', async () => {
     vi.stubGlobal(
       'fetch',

@@ -186,6 +186,39 @@ describe('Home sidebar body', () => {
     expect(screen.queryByText('Teaching Workbench')).not.toBeInTheDocument();
   });
 
+  it('keeps required AskCore navigation visible even when local hidden sections are stale', () => {
+    mocks.navLayout = {
+      bottomMenuItems: [],
+      topNavItems: [
+        { key: 'organization', title: '组织', url: '/organization' },
+        { key: 'askcore', title: '学习工作台', url: '/askcore/workbench' },
+        {
+          key: 'askcore-identity-claim',
+          title: '身份申请',
+          url: '/organization?action=identity-claim',
+        },
+      ],
+    };
+    mocks.globalState.status.hiddenSidebarSections = [
+      'organization',
+      'askcore',
+      'askcore-identity-claim',
+    ];
+    mocks.globalState.status.sidebarItems = [
+      'organization',
+      'askcore-identity-claim',
+      'askcore',
+      'recents',
+      'agent',
+    ];
+
+    render(<Body />);
+
+    expect(screen.getByText('组织')).toBeInTheDocument();
+    expect(screen.getByText('身份申请')).toBeInTheDocument();
+    expect(screen.getByText('学习工作台')).toBeInTheDocument();
+  });
+
   it('keeps a top item that was dragged past the spacer in its new position', () => {
     mocks.navLayout = {
       bottomMenuItems: [{ key: 'image', title: 'Image', url: '/image' }],

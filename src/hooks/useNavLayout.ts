@@ -49,9 +49,10 @@ const resolveAskCoreWorkbenchNavAccess = async (): Promise<AskCoreWorkbenchNavAc
     ) {
       return 'learning';
     }
-    return 'teaching';
+    if (profile.workbench_mode === 'teacher') return 'teaching';
+    return 'identity_required';
   } catch {
-    return 'teaching';
+    return 'identity_required';
   }
 };
 
