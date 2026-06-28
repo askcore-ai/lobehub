@@ -227,6 +227,8 @@ describe('AskCoreOrganizationRoute', () => {
     expect(screen.queryByRole('button', { name: '身份绑定' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '教师' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '学生' })).not.toBeInTheDocument();
+    expect(screen.getByText('1 注册成员')).toBeInTheDocument();
+    expect(screen.getByText('注册成员')).toBeInTheDocument();
 
     const directory = screen.getByLabelText('组织架构工作区');
     await waitFor(() => expect(within(directory).getByText('Seed School')).toBeInTheDocument());
@@ -244,6 +246,7 @@ describe('AskCoreOrganizationRoute', () => {
     expect(within(directory).getByRole('button', { name: /导出/ })).toBeInTheDocument();
 
     const orgTree = within(directory).getByLabelText('组织树');
+    expect(within(orgTree).getByRole('button', { name: /全部人员.*2/ })).toBeInTheDocument();
     expect(within(orgTree).getByRole('button', { name: /全部人员/ })).toHaveAttribute(
       'aria-current',
       'true',

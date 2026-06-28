@@ -80,7 +80,7 @@ export const HeroCard = memo<HeroCardProps>(
               </span>
               <span style={{ color: cssVar.colorTextSecondary, fontSize: 12 }}>
                 <UsersRound size={12} style={{ marginRight: 3, verticalAlign: -2 }} />
-                {payload?.members.length || 0} 成员
+                {payload?.members.length || 0} 注册成员
               </span>
             </div>
           </div>

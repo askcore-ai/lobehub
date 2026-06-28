@@ -769,7 +769,7 @@ export const AskCoreOrganizationRoute = memo(() => {
   }, []);
 
   const statCards = [
-    { label: '成员', value: org.members.length },
+    { label: '注册成员', value: org.members.length },
     { label: '学校', value: org.educationUnits.filter((u) => u.unit_type === 'school').length },
     { label: '届别', value: org.educationUnits.filter((u) => u.unit_type === 'cohort').length },
     { label: '班级', value: org.educationUnits.filter((u) => u.unit_type === 'class').length },
