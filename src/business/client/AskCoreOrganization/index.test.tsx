@@ -318,6 +318,55 @@ describe('AskCoreOrganizationRoute', () => {
     );
   });
 
+  it('opens the identity application form from the action query even for organization admins', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/directory')) {
+        return new Response(JSON.stringify(directoryPayload), { status: 200 });
+      }
+      if (url.endsWith('/workbench/organization/identity-claims?status=all')) {
+        return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      }
+      if (url.endsWith('/workbench/organization/identity-claims?status=pending')) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                better_auth_user_id: 'other-user',
+                id: 41,
+                org_id: 'org-1',
+                requested_by_user_id: 'other-user',
+                roster_id: 301,
+                roster_kind: 'teacher',
+                status: 'pending',
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/organization?action=identity-claim']}>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText('身份申请与审批')).toBeInTheDocument());
+    const drawer = screen.getByRole('dialog');
+    await waitFor(() => expect(within(drawer).getByText('提交身份申请')).toBeInTheDocument());
+    expect(within(drawer).getByText('李老师')).toBeInTheDocument();
+    expect(within(drawer).queryByText('身份审批')).not.toBeInTheDocument();
+    expect(within(drawer).queryByText('暂无待审批身份申请')).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/workbench/organization/identity-claims?status=all',
+      expect.any(Object),
+    );
+  });
+
   it('does not support the legacy identity tab query as an identity application entry', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

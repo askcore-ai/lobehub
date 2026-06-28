@@ -58,6 +58,7 @@ import {
 
 type DirectoryFilterKey = 'all' | 'invited' | 'registered' | 'student' | 'teacher' | 'unregistered';
 type DirectoryRoleTone = 'admin' | 'roster' | 'student' | 'teacher';
+type IdentityDrawerMode = 'claim' | 'review';
 
 interface DirectoryRoleBadgeModel {
   key: string;
@@ -289,6 +290,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | undefined>();
     const [identityDrawerOpen, setIdentityDrawerOpen] = useState(false);
+    const [identityDrawerMode, setIdentityDrawerMode] = useState<IdentityDrawerMode>('claim');
     const [identityClaims, setIdentityClaims] = useState<AskCoreEducationIdentityClaim[]>([]);
     const [identityClaimsLoading, setIdentityClaimsLoading] = useState(false);
     const [submittingIdentityClaimKey, setSubmittingIdentityClaimKey] = useState<string | null>(
@@ -336,22 +338,28 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       void loadDirectory();
     }, [loadDirectory]);
 
-    const loadIdentityClaims = useCallback(async () => {
-      setIdentityClaimsLoading(true);
-      try {
-        const next = await fetchAskCoreEducationIdentityClaims(canManage ? 'pending' : 'all');
-        setIdentityClaims(next.items);
-      } catch (reason) {
-        message.error(reason instanceof Error ? reason.message : '身份申请加载失败');
-      } finally {
-        setIdentityClaimsLoading(false);
-      }
-    }, [canManage]);
+    const loadIdentityClaims = useCallback(
+      async (mode: IdentityDrawerMode = identityDrawerMode) => {
+        setIdentityClaimsLoading(true);
+        try {
+          const next = await fetchAskCoreEducationIdentityClaims(
+            canManage && mode === 'review' ? 'pending' : 'all',
+          );
+          setIdentityClaims(next.items);
+        } catch (reason) {
+          message.error(reason instanceof Error ? reason.message : '身份申请加载失败');
+        } finally {
+          setIdentityClaimsLoading(false);
+        }
+      },
+      [canManage, identityDrawerMode],
+    );
 
     useEffect(() => {
       if (shouldOpenIdentityDrawer) {
+        setIdentityDrawerMode('claim');
         setIdentityDrawerOpen(true);
-        void loadIdentityClaims();
+        void loadIdentityClaims('claim');
       }
     }, [loadIdentityClaims, shouldOpenIdentityDrawer]);
 
@@ -711,8 +719,10 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     };
 
     const openIdentityDrawer = () => {
+      const nextMode: IdentityDrawerMode = canManage ? 'review' : 'claim';
+      setIdentityDrawerMode(nextMode);
       setIdentityDrawerOpen(true);
-      void loadIdentityClaims();
+      void loadIdentityClaims(nextMode);
     };
 
     const submitIdentityClaim = async (target: IdentityClaimTarget) => {
@@ -722,7 +732,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
           roster_id: target.rosterId,
           roster_kind: target.rosterKind,
         });
-        await loadIdentityClaims();
+        await loadIdentityClaims('claim');
         message.success('身份申请已提交');
       } finally {
         setSubmittingIdentityClaimKey(null);
@@ -742,7 +752,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
           await rejectAskCoreEducationIdentityClaim(claim.id);
           message.success('身份申请已拒绝');
         }
-        await Promise.all([loadIdentityClaims(), loadDirectory()]);
+        await Promise.all([loadIdentityClaims('review'), loadDirectory()]);
       } finally {
         setReviewingIdentityClaimId(null);
       }
@@ -889,7 +899,9 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       );
     };
 
-    const identityDrawerContent = canManage ? (
+    const showIdentityReview = canManage && identityDrawerMode === 'review';
+
+    const identityDrawerContent = showIdentityReview ? (
       <div className={styles.directoryIdentityList}>
         <div className={styles.directoryIdentityIntro}>
           身份审批
