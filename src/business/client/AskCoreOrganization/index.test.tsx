@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -357,7 +357,13 @@ describe('AskCoreOrganizationRoute', () => {
     await waitFor(() => expect(screen.getByText('身份申请与审批')).toBeInTheDocument());
     const drawer = screen.getByRole('dialog');
     expect(screen.getByRole('button', { name: /提交身份申请/ })).toBeInTheDocument();
-    expect(within(drawer).getByText('李老师')).toBeInTheDocument();
+    expect(within(drawer).getByPlaceholderText('输入姓名搜索教师或学生名册')).toBeInTheDocument();
+    expect(within(drawer).queryByText('李老师')).not.toBeInTheDocument();
+    expect(within(drawer).getByText('请输入姓名搜索可申请的教师或学生名册')).toBeInTheDocument();
+    fireEvent.change(within(drawer).getByPlaceholderText('输入姓名搜索教师或学生名册'), {
+      target: { value: '李' },
+    });
+    await waitFor(() => expect(within(drawer).getByText('李老师')).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: '身份绑定' })).not.toBeInTheDocument();
 
     const claimButton = within(drawer)
@@ -374,6 +380,37 @@ describe('AskCoreOrganizationRoute', () => {
         }),
       ),
     );
+  });
+
+  it('reopens identity claim drawer when the identity application entry is triggered on the same route', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/directory')) {
+        return new Response(JSON.stringify(directoryPayload), { status: 200 });
+      }
+      if (url.endsWith('/workbench/organization/identity-claims?status=all')) {
+        return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify(memberOrganizationPayload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/organization?action=identity-claim']}>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('Close'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    act(() => {
+      window.dispatchEvent(new Event('askcore:identity-claim-open'));
+    });
+
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    expect(screen.getByPlaceholderText('输入姓名搜索教师或学生名册')).toBeInTheDocument();
   });
 
   it('opens the identity application form from the action query even for organization admins', async () => {
@@ -416,6 +453,9 @@ describe('AskCoreOrganizationRoute', () => {
     await waitFor(() => expect(screen.getByText('身份申请与审批')).toBeInTheDocument());
     const drawer = screen.getByRole('dialog');
     await waitFor(() => expect(within(drawer).getByText('提交身份申请')).toBeInTheDocument());
+    fireEvent.change(within(drawer).getByPlaceholderText('输入姓名搜索教师或学生名册'), {
+      target: { value: '李' },
+    });
     expect(within(drawer).getByText('李老师')).toBeInTheDocument();
     expect(within(drawer).queryByText('身份审批')).not.toBeInTheDocument();
     expect(within(drawer).queryByText('暂无待审批身份申请')).not.toBeInTheDocument();

@@ -45,6 +45,7 @@ import {
   rejectAskCoreEducationIdentityClaim,
   uploadAskCoreCsv,
 } from '../api';
+import { ASKCORE_IDENTITY_CLAIM_OPEN_EVENT } from '../events';
 import { styles } from '../styles';
 import {
   type AskCoreDirectoryPerson,
@@ -292,6 +293,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     const [error, setError] = useState<string | undefined>();
     const [identityDrawerOpen, setIdentityDrawerOpen] = useState(false);
     const [identityDrawerMode, setIdentityDrawerMode] = useState<IdentityDrawerMode>('claim');
+    const [identityClaimSearchText, setIdentityClaimSearchText] = useState('');
     const [identityClaims, setIdentityClaims] = useState<AskCoreEducationIdentityClaim[]>([]);
     const [identityClaimsLoading, setIdentityClaimsLoading] = useState(false);
     const [submittingIdentityClaimKey, setSubmittingIdentityClaimKey] = useState<string | null>(
@@ -356,13 +358,23 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       [canManage, identityDrawerMode],
     );
 
+    const openIdentityClaimDrawer = useCallback(() => {
+      setIdentityDrawerMode('claim');
+      setIdentityClaimSearchText('');
+      setIdentityDrawerOpen(true);
+      void loadIdentityClaims('claim');
+    }, [loadIdentityClaims]);
+
     useEffect(() => {
-      if (shouldOpenIdentityDrawer) {
-        setIdentityDrawerMode('claim');
-        setIdentityDrawerOpen(true);
-        void loadIdentityClaims('claim');
-      }
-    }, [loadIdentityClaims, shouldOpenIdentityDrawer]);
+      if (shouldOpenIdentityDrawer) openIdentityClaimDrawer();
+    }, [openIdentityClaimDrawer, shouldOpenIdentityDrawer]);
+
+    useEffect(() => {
+      window.addEventListener(ASKCORE_IDENTITY_CLAIM_OPEN_EVENT, openIdentityClaimDrawer);
+      return () => {
+        window.removeEventListener(ASKCORE_IDENTITY_CLAIM_OPEN_EVENT, openIdentityClaimDrawer);
+      };
+    }, [openIdentityClaimDrawer]);
 
     const units = useMemo(() => payload?.units ?? [], [payload?.units]);
     const people = useMemo(() => payload?.people ?? [], [payload?.people]);
@@ -465,6 +477,13 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         }),
       [pendingIdentityClaimKeys, personById, rosterLinks, unitPathLabel],
     );
+    const identityClaimSearchKeyword = identityClaimSearchText.trim().toLowerCase();
+    const searchedIdentityClaimTargets = useMemo(() => {
+      if (!identityClaimSearchKeyword) return [];
+      return identityClaimTargets.filter((target) =>
+        target.person.display_name.toLowerCase().includes(identityClaimSearchKeyword),
+      );
+    }, [identityClaimSearchKeyword, identityClaimTargets]);
     const identityClaimTargetByRosterKey = useMemo(
       () => new Map(identityClaimTargets.map((target) => [target.key, target])),
       [identityClaimTargets],
@@ -737,6 +756,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     const openIdentityDrawer = () => {
       const nextMode: IdentityDrawerMode = canManage ? 'review' : 'claim';
       setIdentityDrawerMode(nextMode);
+      if (nextMode === 'claim') setIdentityClaimSearchText('');
       setIdentityDrawerOpen(true);
       void loadIdentityClaims(nextMode);
     };
@@ -964,10 +984,22 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       <div className={styles.directoryIdentityList}>
         <div className={styles.directoryIdentityIntro}>
           提交身份申请
-          <span>请选择与你本人对应的教师或学生名册，提交后由组织管理员审批。</span>
+          <span>输入你的姓名，找到与你本人对应的教师或学生名册，提交后由组织管理员审批。</span>
         </div>
-        {identityClaimTargets.length ? (
-          identityClaimTargets.map((target) => (
+        <Input
+          allowClear
+          placeholder="输入姓名搜索教师或学生名册"
+          prefix={<Search size={14} />}
+          value={identityClaimSearchText}
+          onChange={(event) => setIdentityClaimSearchText(event.target.value)}
+        />
+        {!identityClaimSearchKeyword ? (
+          <Empty
+            description="请输入姓名搜索可申请的教师或学生名册"
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          />
+        ) : searchedIdentityClaimTargets.length ? (
+          searchedIdentityClaimTargets.map((target) => (
             <div className={styles.directoryIdentityItem} key={target.key}>
               <div className={styles.directoryIdentityItemMain}>
                 <strong>{target.person.display_name}</strong>
@@ -987,7 +1019,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
             </div>
           ))
         ) : (
-          <Empty description="暂无可申请的教师或学生名册" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <Empty description="没有匹配的教师或学生名册" image={Empty.PRESENTED_IMAGE_SIMPLE} />
         )}
       </div>
     );

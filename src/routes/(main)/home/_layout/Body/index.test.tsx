@@ -51,8 +51,18 @@ vi.mock('react-i18next', () => ({
 }));
 
 vi.mock('react-router-dom', () => ({
-  Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
-    <a href={to}>{children}</a>
+  Link: ({
+    children,
+    onClick,
+    to,
+  }: {
+    children: React.ReactNode;
+    onClick?: React.MouseEventHandler<HTMLAnchorElement>;
+    to: string;
+  }) => (
+    <a href={to} onClick={onClick}>
+      {children}
+    </a>
   ),
   useNavigate: () => vi.fn(),
 }));
@@ -184,6 +194,29 @@ describe('Home sidebar body', () => {
 
     expect(screen.getByText('身份申请')).toBeInTheDocument();
     expect(screen.queryByText('Teaching Workbench')).not.toBeInTheDocument();
+  });
+
+  it('dispatches the identity claim open event when clicking the identity application entry', () => {
+    const handleIdentityClaimOpen = vi.fn();
+    window.addEventListener('askcore:identity-claim-open', handleIdentityClaimOpen);
+    mocks.navLayout = {
+      bottomMenuItems: [],
+      topNavItems: [
+        {
+          key: 'askcore-identity-claim',
+          title: '身份申请',
+          url: '/organization?action=identity-claim',
+        },
+      ],
+    };
+    mocks.globalState.status.sidebarItems = ['askcore-identity-claim'];
+
+    render(<Body />);
+
+    fireEvent.click(screen.getByText('身份申请'));
+
+    expect(handleIdentityClaimOpen).toHaveBeenCalledTimes(1);
+    window.removeEventListener('askcore:identity-claim-open', handleIdentityClaimOpen);
   });
 
   it('keeps required AskCore navigation visible even when local hidden sections are stale', () => {

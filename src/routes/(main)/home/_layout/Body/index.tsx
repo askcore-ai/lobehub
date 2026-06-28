@@ -8,6 +8,7 @@ import { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { ASKCORE_IDENTITY_CLAIM_OPEN_EVENT } from '@/business/client/AskCoreOrganization/events';
 import NavItem from '@/features/NavPanel/components/NavItem';
 import { useActiveTabKey } from '@/hooks/useActiveTabKey';
 import type { NavItem as NavItemType } from '@/hooks/useNavLayout';
@@ -128,6 +129,9 @@ const Body = memo(() => {
           onClick={(e) => {
             if (isModifierClick(e)) return;
             e.preventDefault();
+            if (key === 'askcore-identity-claim') {
+              window.dispatchEvent(new Event(ASKCORE_IDENTITY_CLAIM_OPEN_EVENT));
+            }
             navigate(navItem.url!);
           }}
         >
