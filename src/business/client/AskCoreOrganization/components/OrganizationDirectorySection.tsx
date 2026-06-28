@@ -59,6 +59,7 @@ import {
 type DirectoryFilterKey = 'all' | 'invited' | 'registered' | 'student' | 'teacher' | 'unregistered';
 type DirectoryRoleTone = 'admin' | 'roster' | 'student' | 'teacher';
 type IdentityDrawerMode = 'claim' | 'review';
+const ALL_PEOPLE_TREE_VALUE = 0;
 
 interface DirectoryRoleBadgeModel {
   key: string;
@@ -597,6 +598,19 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       [buildUnitTreeData, watchedOrgInviteRole],
     );
     const plainTreeData = useMemo(() => buildUnitTreeData(), [buildUnitTreeData]);
+    const personPrimaryUnitTreeData = useMemo<DirectoryTreeSelectNode[]>(
+      () => [
+        {
+          disabled: false,
+          key: ALL_PEOPLE_TREE_VALUE,
+          label: '全部人员',
+          title: '全部人员',
+          value: ALL_PEOPLE_TREE_VALUE,
+        },
+        ...plainTreeData,
+      ],
+      [plainTreeData],
+    );
     const selectedUnitRoleOptions = (
       selectedUnit ? roleOptionsByUnitType[selectedUnit.unit_type] : []
     ).map((role) => ({ label: roleLabels[role], value: role }));
@@ -612,7 +626,9 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
           primary_org_unit_id:
             scope === 'unit'
               ? selectedUnitId || undefined
-              : values.primary_org_unit_id || undefined,
+              : values.primary_org_unit_id === ALL_PEOPLE_TREE_VALUE
+                ? null
+                : values.primary_org_unit_id || undefined,
           roster_kind: values.roster_kind,
         });
         form.resetFields();
@@ -804,7 +820,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                   showSearch
                   treeDefaultExpandAll
                   placeholder="选择主位置"
-                  treeData={plainTreeData}
+                  treeData={personPrimaryUnitTreeData}
                   treeNodeFilterProp="label"
                 />
               </Form.Item>

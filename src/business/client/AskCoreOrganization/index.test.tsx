@@ -263,6 +263,64 @@ describe('AskCoreOrganizationRoute', () => {
     ).toBeInTheDocument();
   });
 
+  it('creates an organization-level person without a primary unit when selecting all people', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/directory')) {
+        return new Response(JSON.stringify(directoryPayload), { status: 200 });
+      }
+      if (url.endsWith('/workbench/organization/people') && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            display_name: '无层级人员',
+            id: 103,
+            lifecycle_status: 'active',
+            org_id: 'org-1',
+            primary_org_unit_id: null,
+            registration_status: 'unregistered',
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    const directory = await screen.findByLabelText('组织架构工作区');
+    await waitFor(() => expect(within(directory).getByText('Seed School')).toBeInTheDocument());
+
+    fireEvent.click(within(directory).getByRole('button', { name: /新建人员/ }));
+    const nameInput = await screen.findByPlaceholderText('输入姓名');
+    const panel = nameInput.closest('.ant-popover') || document.body;
+    fireEvent.change(within(panel as HTMLElement).getByPlaceholderText('输入姓名'), {
+      target: { value: '无层级人员' },
+    });
+    fireEvent.mouseDown(within(panel as HTMLElement).getByText('选择主位置'));
+    fireEvent.click(await screen.findByTitle('全部人员'));
+    fireEvent.click(within(panel as HTMLElement).getByRole('button', { name: '确认创建' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/askcore/workbench/organization/people',
+        expect.objectContaining({
+          body: JSON.stringify({
+            display_name: '无层级人员',
+            email: undefined,
+            primary_org_unit_id: null,
+            roster_kind: undefined,
+          }),
+          method: 'POST',
+        }),
+      ),
+    );
+  });
+
   it('opens identity claim drawer from the organization action query', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
