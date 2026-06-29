@@ -71,8 +71,8 @@ import {
   type AskCoreOrganizationRole,
 } from '../types';
 
-type DirectoryFilterKey =
-  'all' | 'identity_required' | 'invited' | 'registered' | 'student' | 'teacher' | 'unregistered';
+type DirectoryFilterKey = 'all' | 'student' | 'teacher' | 'todo';
+type DirectoryActionKind = 'create' | 'import' | 'invite';
 type DirectoryRoleTone = 'admin' | 'roster' | 'student' | 'teacher';
 type IdentityDrawerMode = 'claim' | 'review';
 const ALL_PEOPLE_TREE_VALUE = 0;
@@ -154,6 +154,13 @@ const roleOptionsByUnitType: Record<AskCoreEducationOrgUnitType, AskCoreEducatio
   school: ['school_admin', 'teacher'],
 };
 
+const defaultEducationRoleByUnitType: Record<AskCoreEducationOrgUnitType, AskCoreEducationRole> = {
+  class: 'student',
+  cohort: 'teacher',
+  department: 'teacher',
+  school: 'teacher',
+};
+
 const rosterKindOptions: { label: string; value: AskCoreDirectoryRosterKind }[] = [
   { label: '教师', value: 'teacher' },
   { label: '学生', value: 'student' },
@@ -164,14 +171,14 @@ const rosterKindLabels: Record<AskCoreDirectoryRosterKind, string> = {
   teacher: '教师',
 };
 
+const rosterKindForEducationRole = (role?: AskCoreEducationRole): AskCoreDirectoryRosterKind =>
+  role === 'student' ? 'student' : 'teacher';
+
 const directoryFilterOptions: { key: DirectoryFilterKey; label: string }[] = [
   { key: 'all', label: '全部' },
+  { key: 'todo', label: '待处理' },
   { key: 'teacher', label: '教师' },
   { key: 'student', label: '学生' },
-  { key: 'identity_required', label: '待补全' },
-  { key: 'registered', label: '已注册' },
-  { key: 'unregistered', label: '未注册' },
-  { key: 'invited', label: '邀请中' },
 ];
 
 const allRoleOptions = (Object.keys(roleLabels) as AskCoreEducationRole[]).map((role) => ({
@@ -358,6 +365,10 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     const [includeDescendants, setIncludeDescendants] = useState(true);
     const [unitCreateOpen, setUnitCreateOpen] = useState(false);
     const [unitEditOpen, setUnitEditOpen] = useState(false);
+    const [orgActionOpen, setOrgActionOpen] = useState(false);
+    const [unitActionOpen, setUnitActionOpen] = useState(false);
+    const [activeOrgAction, setActiveOrgAction] = useState<DirectoryActionKind>('create');
+    const [activeUnitAction, setActiveUnitAction] = useState<DirectoryActionKind>('create');
     const orgImportInputRef = useRef<HTMLInputElement>(null);
     const unitImportInputRef = useRef<HTMLInputElement>(null);
     const consumedIdentityActionLocationKeyRef = useRef<string | null>(null);
@@ -534,6 +545,18 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
           : people,
       [descendantUnitIds, includeDescendants, people, selectedUnitId],
     );
+    const descendantPeopleCount = useMemo(
+      () =>
+        selectedUnitId
+          ? people.filter(
+              (person) =>
+                person.primary_org_unit_id !== null &&
+                person.primary_org_unit_id !== undefined &&
+                descendantUnitIds.has(person.primary_org_unit_id),
+            ).length
+          : people.length,
+      [descendantUnitIds, people, selectedUnitId],
+    );
     const peopleCountByUnitId = useMemo(() => {
       const map = new Map<number, number>();
       for (const person of people) {
@@ -670,14 +693,12 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
           }
           const pendingInvites = pendingInvitationsByPersonId.get(person.id) || 0;
           if (activeFilter === 'all') return true;
-          if (
-            activeFilter === 'registered' ||
-            activeFilter === 'unregistered' ||
-            activeFilter === 'invited'
-          ) {
-            return person.registration_status === activeFilter;
-          }
-          if (activeFilter === 'identity_required') return personNeedsEducationIdentity(person);
+          if (activeFilter === 'todo')
+            return (
+              personNeedsEducationIdentity(person) ||
+              pendingInvites > 0 ||
+              person.registration_status === 'invited'
+            );
           if (activeFilter === 'teacher') {
             return badges.some((badge) => badge.tone === 'teacher' || badge.label.includes('教师'));
           }
@@ -721,6 +742,35 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         selectedUnitId
       );
     }).length;
+    const todoCounts = useMemo(() => {
+      let identityRequired = 0;
+      let invited = 0;
+      const todoPersonIds = new Set<number>();
+      for (const person of basePeople) {
+        if (personNeedsEducationIdentity(person)) {
+          identityRequired += 1;
+          todoPersonIds.add(person.id);
+        }
+        if (
+          person.registration_status === 'invited' ||
+          (pendingInvitationsByPersonId.get(person.id) || 0) > 0
+        ) {
+          invited += 1;
+          todoPersonIds.add(person.id);
+        }
+      }
+      return {
+        identityClaims: pendingIdentityClaims.length,
+        identityRequired,
+        invited,
+        total: todoPersonIds.size + pendingIdentityClaims.length,
+      };
+    }, [
+      basePeople,
+      pendingIdentityClaims.length,
+      pendingInvitationsByPersonId,
+      personNeedsEducationIdentity,
+    ]);
 
     const directoryRows = useMemo<DirectoryPersonRowModel[]>(
       () =>
@@ -900,6 +950,60 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     const selectedUnitRoleOptions = (
       selectedUnit ? roleOptionsByUnitType[selectedUnit.unit_type] : []
     ).map((role) => ({ label: roleLabels[role], value: role }));
+    const selectedUnitDefaultRole = selectedUnit
+      ? defaultEducationRoleByUnitType[selectedUnit.unit_type]
+      : undefined;
+    const selectedUnitPresetLabel =
+      selectedUnit && selectedUnitDefaultRole
+        ? `${roleLabels[selectedUnitDefaultRole]} · ${selectedUnit.name}`
+        : undefined;
+
+    const applyActionDefaults = (scope: 'organization' | 'unit', action: DirectoryActionKind) => {
+      const isUnitScope = scope === 'unit' && selectedUnit && selectedUnitDefaultRole;
+      if (action === 'create') {
+        const form = scope === 'organization' ? orgPersonForm : unitPersonForm;
+        form.resetFields();
+        if (isUnitScope) {
+          form.setFieldsValue({
+            education_role: selectedUnitDefaultRole,
+            roster_kind: rosterKindForEducationRole(selectedUnitDefaultRole),
+          });
+        }
+        return;
+      }
+      if (action === 'invite') {
+        const form = scope === 'organization' ? orgInviteForm : unitInviteForm;
+        form.resetFields();
+        if (isUnitScope) {
+          form.setFieldsValue({
+            role: selectedUnitDefaultRole,
+            roster_kind: rosterKindForEducationRole(selectedUnitDefaultRole),
+          });
+        }
+        return;
+      }
+      const form = scope === 'organization' ? orgImportForm : unitImportForm;
+      form.resetFields();
+      if (isUnitScope) {
+        form.setFieldsValue({
+          default_role: selectedUnitDefaultRole,
+          roster_kind: rosterKindForEducationRole(selectedUnitDefaultRole),
+        });
+      }
+    };
+
+    const selectAction = (scope: 'organization' | 'unit', action: DirectoryActionKind) => {
+      if (scope === 'organization') setActiveOrgAction(action);
+      else setActiveUnitAction(action);
+      applyActionDefaults(scope, action);
+    };
+
+    const openActionPopover = (scope: 'organization' | 'unit', open: boolean) => {
+      if (scope === 'organization') setOrgActionOpen(open);
+      else setUnitActionOpen(open);
+      if (open)
+        applyActionDefaults(scope, scope === 'organization' ? activeOrgAction : activeUnitAction);
+    };
 
     const copyInviteLink = (link: string) => {
       void navigator.clipboard?.writeText(link).catch(() => undefined);
@@ -1447,8 +1551,11 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       return (
         <div className={styles.directoryActionPanel}>
           <div className={styles.directoryActionPanelTitle}>
-            {scope === 'unit' ? '添加到当前节点' : '新建人员'}
+            {scope === 'unit' ? '新建当前范围人员' : '新建人员'}
           </div>
+          {scope === 'unit' && selectedUnitPresetLabel ? (
+            <div className={styles.directoryPresetSummary}>{selectedUnitPresetLabel}</div>
+          ) : null}
           <Form className={styles.directoryActionForm} form={form} layout="vertical">
             <Form.Item
               label="姓名"
@@ -1639,6 +1746,42 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       );
     };
 
+    const actionHubContent = (scope: 'organization' | 'unit') => {
+      const activeAction = scope === 'organization' ? activeOrgAction : activeUnitAction;
+      return (
+        <div className={styles.directoryActionHub}>
+          <div className={styles.directoryActionMenu}>
+            <Button
+              block
+              type={activeAction === 'create' ? 'primary' : 'default'}
+              onClick={() => selectAction(scope, 'create')}
+            >
+              新建人员
+            </Button>
+            <Button
+              block
+              type={activeAction === 'invite' ? 'primary' : 'default'}
+              onClick={() => selectAction(scope, 'invite')}
+            >
+              邀请加入
+            </Button>
+            <Button
+              block
+              type={activeAction === 'import' ? 'primary' : 'default'}
+              onClick={() => selectAction(scope, 'import')}
+            >
+              批量导入名单
+            </Button>
+          </div>
+          {activeAction === 'create'
+            ? createPersonContent(scope)
+            : activeAction === 'invite'
+              ? invitationContent(scope)
+              : importContent(scope)}
+        </div>
+      );
+    };
+
     const showIdentityReview = canManage && identityDrawerMode === 'review';
     const identityDrawerModeSwitch = canManage ? (
       <div className={styles.directoryIdentityModeSwitch}>
@@ -1793,24 +1936,17 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
               导出
             </Button>
             {canManage ? (
-              <>
-                <Popover
-                  content={importContent('organization')}
-                  placement="bottomRight"
-                  trigger="click"
-                >
-                  <Button icon={<Upload size={14} />}>批量导入</Button>
-                </Popover>
-                <Popover
-                  content={createPersonContent('organization')}
-                  placement="bottomRight"
-                  trigger="click"
-                >
-                  <Button icon={<UserRoundPlus size={14} />} type="primary">
-                    新建人员
-                  </Button>
-                </Popover>
-              </>
+              <Popover
+                content={actionHubContent('organization')}
+                open={orgActionOpen}
+                placement="bottomRight"
+                trigger="click"
+                onOpenChange={(open) => openActionPopover('organization', open)}
+              >
+                <Button icon={<UserRoundPlus size={14} />} type="primary">
+                  添加人员
+                </Button>
+              </Popover>
             ) : null}
           </div>
         </div>
@@ -1826,7 +1962,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
           <div className={styles.directoryFilterGroup}>
             {directoryFilterOptions.map((option) => (
               <button
-                aria-label={`筛选${option.label}`}
+                aria-label={option.key === 'todo' ? option.label : `筛选${option.label}`}
                 aria-pressed={activeFilter === option.key}
                 key={option.key}
                 type="button"
@@ -1839,18 +1975,39 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
               </button>
             ))}
           </div>
-          {canManage ? (
-            <Popover
-              content={invitationContent('organization')}
-              placement="bottomRight"
-              trigger="click"
-            >
-              <Button icon={<Send size={14} />}>不定向邀请</Button>
-            </Popover>
-          ) : null}
         </div>
 
-        {error ? <Alert showIcon title={error} type="error" /> : null}
+        <div className={styles.directoryTodoStrip}>
+          <button
+            aria-pressed={activeFilter === 'todo'}
+            type="button"
+            onClick={() => setActiveFilter('todo')}
+          >
+            待处理 {todoCounts.total}
+          </button>
+          <button type="button" onClick={() => setActiveFilter('todo')}>
+            待补全身份 {todoCounts.identityRequired}
+          </button>
+          <button type="button" onClick={() => setActiveFilter('todo')}>
+            邀请中 {todoCounts.invited}
+          </button>
+          <button type="button" onClick={openIdentityDrawer}>
+            身份待审 {todoCounts.identityClaims}
+          </button>
+        </div>
+
+        {error ? (
+          <Alert
+            showIcon
+            title={error}
+            type="error"
+            action={
+              <Button loading={loading} size="small" onClick={loadDirectory}>
+                重试
+              </Button>
+            }
+          />
+        ) : null}
         {loading && !payload ? (
           <div className={styles.centerPane}>
             <Spin />
@@ -1920,6 +2077,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                   </div>
                   <div className={styles.directoryPaneMeta}>
                     <span>直属 {directPeople.length} 人</span>
+                    <span>含下级 {descendantPeopleCount} 人</span>
                     <span>邀请中 {selectedNodePendingInvites} 个</span>
                     <span>当前显示 {directoryRows.length} 人</span>
                   </div>
@@ -1937,29 +2095,15 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                     />
                   ) : null}
                   {canManage && selectedUnit ? (
-                    <>
-                      <Popover
-                        content={createPersonContent('unit')}
-                        placement="bottomRight"
-                        trigger="click"
-                      >
-                        <Button icon={<Plus size={14} />}>添加到当前节点</Button>
-                      </Popover>
-                      <Popover
-                        content={importContent('unit')}
-                        placement="bottomRight"
-                        trigger="click"
-                      >
-                        <Button icon={<Upload size={14} />}>批量导入到当前节点</Button>
-                      </Popover>
-                      <Popover
-                        content={invitationContent('unit')}
-                        placement="bottomRight"
-                        trigger="click"
-                      >
-                        <Button icon={<Send size={14} />}>当前节点邀请</Button>
-                      </Popover>
-                    </>
+                    <Popover
+                      content={actionHubContent('unit')}
+                      open={unitActionOpen}
+                      placement="bottomRight"
+                      trigger="click"
+                      onOpenChange={(open) => openActionPopover('unit', open)}
+                    >
+                      <Button icon={<Plus size={14} />}>添加到当前范围</Button>
+                    </Popover>
                   ) : null}
                 </div>
               </div>
@@ -2016,7 +2160,44 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                     </button>
                   ))
                 ) : (
-                  <Empty description="当前筛选下暂无人员" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description={
+                      searchText
+                        ? '没有找到匹配人员'
+                        : activeFilter === 'all'
+                          ? '当前范围暂无人员'
+                          : '当前筛选下暂无人员'
+                    }
+                  >
+                    <Space wrap>
+                      {searchText || activeFilter !== 'all' ? (
+                        <Button
+                          onClick={() => {
+                            setSearchText('');
+                            setActiveFilter('all');
+                          }}
+                        >
+                          清除筛选
+                        </Button>
+                      ) : null}
+                      {canManage ? (
+                        <Popover
+                          content={actionHubContent(selectedUnit ? 'unit' : 'organization')}
+                          open={selectedUnit ? unitActionOpen : orgActionOpen}
+                          placement="bottomRight"
+                          trigger="click"
+                          onOpenChange={(open) =>
+                            openActionPopover(selectedUnit ? 'unit' : 'organization', open)
+                          }
+                        >
+                          <Button icon={<UserRoundPlus size={14} />} type="primary">
+                            {selectedUnit ? '在当前范围添加人员' : '添加人员'}
+                          </Button>
+                        </Popover>
+                      ) : null}
+                    </Space>
+                  </Empty>
                 )}
               </div>
             </section>
@@ -2318,7 +2499,16 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
             </section>
           </div>
         ) : (
-          <Empty description="暂无组织架构数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <Empty
+            description={error ? '组织架构加载失败' : '暂无组织架构数据'}
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          >
+            {error ? (
+              <Button loading={loading} onClick={loadDirectory}>
+                重试
+              </Button>
+            ) : null}
+          </Empty>
         )}
         <Drawer
           destroyOnClose
