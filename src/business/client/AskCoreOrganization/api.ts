@@ -15,6 +15,7 @@ import {
   type AskCoreEducationIdentityClaimPayload,
   type AskCoreEducationIdentityRosterKind,
   type AskCoreEducationOrgUnitCreateInput,
+  type AskCoreEducationOrgUnitPatchInput,
   type AskCoreEducationOrgUnitPayload,
   type AskCoreEducationRole,
   type AskCoreEducationRoleAssignment,
@@ -152,6 +153,23 @@ export const createAskCoreEducationOrgUnit = (input: AskCoreEducationOrgUnitCrea
   requestJson<AskCoreEducationOrgUnitPayload['units'][number]>(`${EDUCATION_ORG_API_BASE}/units`, {
     body: JSON.stringify(input),
     method: 'POST',
+  });
+
+export const updateAskCoreEducationOrgUnit = (
+  unitId: number,
+  input: AskCoreEducationOrgUnitPatchInput,
+) =>
+  requestJson<AskCoreEducationOrgUnitPayload['units'][number]>(
+    `${EDUCATION_ORG_API_BASE}/units/${unitId}`,
+    {
+      body: JSON.stringify(input),
+      method: 'PATCH',
+    },
+  );
+
+export const deleteAskCoreEducationOrgUnit = (unitId: number) =>
+  requestJson<{ deleted: boolean; id: number }>(`${EDUCATION_ORG_API_BASE}/units/${unitId}`, {
+    method: 'DELETE',
   });
 
 export const createAskCoreSchoolUnit = (input: { description?: string; name: string }) =>

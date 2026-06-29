@@ -1314,6 +1314,30 @@ export const styles = createStaticStyles(({ css }) => ({
       border-color: ${cssVar.colorBorderSecondary};
     }
   `,
+  directoryTreeHeader: css`
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+
+    padding-block: 10px;
+    padding-inline: 14px;
+    border-block-end: 1px solid #e5e6eb;
+
+    @media (prefers-color-scheme: dark) {
+      border-color: ${cssVar.colorBorderSecondary};
+    }
+  `,
+  directoryTreeHeaderTitle: css`
+    font-size: 14px;
+    font-weight: 650;
+    line-height: 1.45;
+    color: #1f2329;
+
+    @media (prefers-color-scheme: dark) {
+      color: ${cssVar.colorText};
+    }
+  `,
   directoryBreadcrumb: css`
     margin-block-end: 3px;
 
