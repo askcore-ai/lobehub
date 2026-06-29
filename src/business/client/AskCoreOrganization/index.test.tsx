@@ -237,8 +237,8 @@ describe('AskCoreOrganizationRoute', () => {
     expect(within(directory).getAllByText('李老师').length).toBeGreaterThan(0);
     expect(within(directory).getAllByText('邀请中').length).toBeGreaterThan(0);
     expect(within(directory).getAllByText(/教师/).length).toBeGreaterThan(0);
-    expect(within(directory).getByText('账号绑定')).toBeInTheDocument();
-    expect(within(directory).getByText('定向邀请')).toBeInTheDocument();
+    expect(within(directory).queryByText('账号绑定')).not.toBeInTheDocument();
+    expect(within(directory).queryByText('定向邀请')).not.toBeInTheDocument();
     expect(within(directory).queryByPlaceholderText('不定向邀请位置')).not.toBeInTheDocument();
     expect(within(directory).getByRole('button', { name: /添加人员/ })).toBeInTheDocument();
     expect(within(directory).queryByRole('button', { name: /^新建人员$/ })).not.toBeInTheDocument();
@@ -248,17 +248,18 @@ describe('AskCoreOrganizationRoute', () => {
     expect(within(directory).queryByRole('button', { name: /^批量导入$/ })).not.toBeInTheDocument();
     expect(within(directory).getByRole('button', { name: /导出/ })).toBeInTheDocument();
     expect(within(directory).getByRole('button', { name: '待处理' })).toBeInTheDocument();
+    expect(within(directory).queryByText(/含下级/)).not.toBeInTheDocument();
 
     const orgTree = within(directory).getByLabelText('组织树');
-    expect(within(orgTree).getByRole('button', { name: /全部人员.*2/ })).toBeInTheDocument();
-    expect(within(orgTree).getByRole('button', { name: /全部人员/ })).toHaveAttribute(
+    expect(within(orgTree).getByRole('button', { name: /Seed 的组织.*2/ })).toBeInTheDocument();
+    expect(within(orgTree).getByRole('button', { name: /Seed 的组织.*2/ })).toHaveAttribute(
       'aria-current',
       'true',
     );
 
-    fireEvent.click(within(orgTree).getByRole('button', { name: /高一 1 班/ }));
+    fireEvent.click(within(orgTree).getByRole('button', { name: /^高一 1 班/ }));
     await waitFor(() => expect(within(directory).getAllByText('王同学').length).toBeGreaterThan(0));
-    expect(within(orgTree).getByRole('button', { name: /高一 1 班/ })).toHaveAttribute(
+    expect(within(orgTree).getByRole('button', { name: /^高一 1 班/ })).toHaveAttribute(
       'aria-current',
       'true',
     );
@@ -270,6 +271,12 @@ describe('AskCoreOrganizationRoute', () => {
     expect(
       within(directory).queryByRole('button', { name: /批量导入到当前节点/ }),
     ).not.toBeInTheDocument();
+    fireEvent.click(within(directory).getByRole('button', { name: /王同学/ }));
+    const personDrawerTitle = await screen.findByText('人员详情 #102');
+    const personDrawer =
+      (personDrawerTitle.closest('.ant-drawer') as HTMLElement | null) || document.body;
+    expect(within(personDrawer).getByText('账号绑定')).toBeInTheDocument();
+    expect(within(personDrawer).getByText('定向邀请')).toBeInTheDocument();
   });
 
   it('lets admins create and edit organization units from the organization tree', async () => {
@@ -319,7 +326,7 @@ describe('AskCoreOrganizationRoute', () => {
     const directory = await screen.findByLabelText('组织架构工作区');
     await waitFor(() => expect(within(directory).getByLabelText('组织树')).toBeInTheDocument());
     const orgTree = within(directory).getByLabelText('组织树');
-    fireEvent.click(within(orgTree).getByRole('button', { name: '新建节点' }));
+    fireEvent.click(within(orgTree).getByRole('button', { name: '在Seed 的组织下新建节点' }));
     const createNameInput = await screen.findByPlaceholderText('输入节点名称');
     const createPanel = createNameInput.closest('.ant-popover') || document.body;
     fireEvent.change(within(createPanel as HTMLElement).getByPlaceholderText('输入节点名称'), {
@@ -349,8 +356,7 @@ describe('AskCoreOrganizationRoute', () => {
     );
     await waitFor(() => expect(within(orgTree).getByText('行政办公室')).toBeInTheDocument());
 
-    fireEvent.click(within(orgTree).getByRole('button', { name: /数学组/ }));
-    fireEvent.click(within(orgTree).getByRole('button', { name: '编辑节点' }));
+    fireEvent.click(within(orgTree).getByRole('button', { name: '编辑数学组' }));
     const editNameInput = await screen.findByDisplayValue('数学组');
     const editPanel = editNameInput.closest('.ant-popover') || document.body;
     fireEvent.change(editNameInput, { target: { value: '理科组' } });
@@ -375,7 +381,7 @@ describe('AskCoreOrganizationRoute', () => {
         }),
       ),
     );
-    expect(within(orgTree).getByRole('button', { name: '删除节点' })).toBeInTheDocument();
+    expect(within(orgTree).getByRole('button', { name: '删除理科组' })).toBeInTheDocument();
   });
 
   it('creates an organization-level person without a primary unit when selecting all people', async () => {
@@ -418,7 +424,8 @@ describe('AskCoreOrganizationRoute', () => {
       target: { value: '无层级人员' },
     });
     fireEvent.mouseDown(within(panel as HTMLElement).getByText('选择主位置'));
-    fireEvent.click(await screen.findByTitle('全部人员'));
+    const rootPositionOptions = await screen.findAllByTitle('Seed 的组织');
+    fireEvent.click(rootPositionOptions.at(-1)!);
     fireEvent.mouseDown(within(panel as HTMLElement).getByText('选择教育身份'));
     fireEvent.click(await screen.findByTitle('教师'));
     fireEvent.mouseDown(within(panel as HTMLElement).getByText('选择作用范围'));
@@ -475,7 +482,7 @@ describe('AskCoreOrganizationRoute', () => {
 
     const directory = await screen.findByLabelText('组织架构工作区');
     const orgTree = within(directory).getByLabelText('组织树');
-    fireEvent.click(within(orgTree).getByRole('button', { name: /高一 1 班/ }));
+    fireEvent.click(within(orgTree).getByRole('button', { name: /^高一 1 班/ }));
 
     fireEvent.click(within(directory).getByRole('button', { name: /添加到当前范围/ }));
     fireEvent.click(await screen.findByRole('button', { name: '新建人员' }));

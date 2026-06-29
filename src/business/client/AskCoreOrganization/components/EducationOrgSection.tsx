@@ -543,17 +543,15 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
                         />
                       </Form.Item>
                       <Form.Item
-                        label={identityRosterKind === 'teacher' ? '教师名册' : '学生名册'}
+                        label={identityRosterKind === 'teacher' ? '教师' : '学生'}
                         name="identity_roster_id"
-                        rules={[{ required: true, message: '请选择名册身份' }]}
+                        rules={[{ required: true, message: '请选择身份' }]}
                       >
                         <Select
                           showSearch
                           optionFilterProp="label"
                           options={identityRosterOptions}
-                          placeholder={
-                            identityRosterKind === 'teacher' ? '搜索教师名册' : '搜索学生名册'
-                          }
+                          placeholder={identityRosterKind === 'teacher' ? '搜索教师' : '搜索学生'}
                           onChange={(value) => setIdentityRosterId(Number(value))}
                         />
                       </Form.Item>
@@ -772,15 +770,15 @@ export const EducationIdentitySection = memo<EducationIdentitySectionProps>(
                   />
                 </Form.Item>
                 <Form.Item
-                  label={identityRosterKind === 'teacher' ? '教师名册' : '学生名册'}
+                  label={identityRosterKind === 'teacher' ? '教师' : '学生'}
                   name="identity_roster_id"
-                  rules={[{ required: true, message: '请选择名册身份' }]}
+                  rules={[{ required: true, message: '请选择身份' }]}
                 >
                   <Select
                     showSearch
                     optionFilterProp="label"
                     options={identityRosterOptions}
-                    placeholder={identityRosterKind === 'teacher' ? '搜索教师名册' : '搜索学生名册'}
+                    placeholder={identityRosterKind === 'teacher' ? '搜索教师' : '搜索学生'}
                     onChange={(value) => setIdentityRosterId(Number(value))}
                   />
                 </Form.Item>

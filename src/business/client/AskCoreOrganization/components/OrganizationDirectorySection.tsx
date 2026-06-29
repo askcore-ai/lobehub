@@ -10,7 +10,6 @@ import {
   InputNumber,
   Popconfirm,
   Popover,
-  Segmented,
   Select,
   Space,
   Spin,
@@ -256,7 +255,10 @@ const matchesSearch = (person: AskCoreDirectoryPerson, query: string) => {
 
 const UnitTree = memo<{
   activeAncestorIds: Set<number>;
+  canManage: boolean;
   peopleCountByUnitId: Map<number, number>;
+  renderNodeActions: (unit: AskCoreEducationOrgUnit | null) => ReactNode;
+  rootLabel: string;
   selectedUnitId: number | null;
   totalPeopleCount: number;
   units: AskCoreEducationOrgUnit[];
@@ -264,7 +266,10 @@ const UnitTree = memo<{
 }>(
   ({
     activeAncestorIds,
+    canManage,
     peopleCountByUnitId,
+    renderNodeActions,
+    rootLabel,
     selectedUnitId,
     totalPeopleCount,
     units,
@@ -277,44 +282,54 @@ const UnitTree = memo<{
         const active = selectedUnitId === unit.id;
         const ancestor = activeAncestorIds.has(unit.id) && !active;
         return [
-          <button
-            aria-current={active ? 'true' : undefined}
+          <div
             key={unit.id}
             style={{ paddingInlineStart: 12 + depth * 16 }}
-            type="button"
-            className={`${styles.directoryTreeNode} ${active ? styles.directoryTreeNodeActive : ''} ${
-              ancestor ? styles.directoryTreeNodeAncestor : ''
-            }`}
-            onClick={() => onSelect(unit.id)}
+            className={`${styles.directoryTreeNodeRow} ${
+              active ? styles.directoryTreeNodeRowActive : ''
+            } ${ancestor ? styles.directoryTreeNodeAncestor : ''}`}
           >
-            <span className={styles.directoryTreeNodeLabel}>
-              <span>{unit.name}</span>
-              <small>{unitTypeLabels[unit.unit_type]}</small>
-            </span>
-            <span className={styles.directoryTreeCount}>
-              {peopleCountByUnitId.get(unit.id) || 0}
-            </span>
-          </button>,
+            <button
+              aria-current={active ? 'true' : undefined}
+              className={styles.directoryTreeNode}
+              type="button"
+              onClick={() => onSelect(unit.id)}
+            >
+              <span className={styles.directoryTreeNodeLabel}>
+                <span>{unit.name}</span>
+                <small>{unitTypeLabels[unit.unit_type]}</small>
+              </span>
+              <span className={styles.directoryTreeCount}>
+                {peopleCountByUnitId.get(unit.id) || 0}
+              </span>
+            </button>
+            {canManage ? renderNodeActions(unit) : null}
+          </div>,
           ...renderBranch(unit.id, depth + 1),
         ];
       });
 
     return (
       <div className={styles.directoryTree}>
-        <button
-          aria-current={selectedUnitId === null ? 'true' : undefined}
-          type="button"
-          className={`${styles.directoryTreeNode} ${
-            selectedUnitId === null ? styles.directoryTreeNodeActive : ''
+        <div
+          className={`${styles.directoryTreeNodeRow} ${
+            selectedUnitId === null ? styles.directoryTreeNodeRowActive : ''
           }`}
-          onClick={() => onSelect(null)}
         >
-          <span className={styles.directoryTreeNodeLabel}>
-            <span>全部人员</span>
-            <small>组织</small>
-          </span>
-          <span className={styles.directoryTreeCount}>{totalPeopleCount}</span>
-        </button>
+          <button
+            aria-current={selectedUnitId === null ? 'true' : undefined}
+            className={styles.directoryTreeNode}
+            type="button"
+            onClick={() => onSelect(null)}
+          >
+            <span className={styles.directoryTreeNodeLabel}>
+              <span>{rootLabel}</span>
+              <small>组织</small>
+            </span>
+            <span className={styles.directoryTreeCount}>{totalPeopleCount}</span>
+          </button>
+          {canManage ? renderNodeActions(null) : null}
+        </div>
         {renderBranch(null)}
       </div>
     );
@@ -325,10 +340,11 @@ UnitTree.displayName = 'UnitTree';
 
 interface OrganizationDirectorySectionProps {
   canManage: boolean;
+  organizationName?: string;
 }
 
 export const OrganizationDirectorySection = memo<OrganizationDirectorySectionProps>(
-  ({ canManage }) => {
+  ({ canManage, organizationName }) => {
     const location = useLocation();
     const [payload, setPayload] = useState<AskCoreOrganizationDirectoryPayload | null>(null);
     const [loading, setLoading] = useState(false);
@@ -347,9 +363,9 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     const [selectedPersonId, setSelectedPersonId] = useState<number | null>(null);
     const [searchText, setSearchText] = useState('');
     const [activeFilter, setActiveFilter] = useState<DirectoryFilterKey>('all');
-    const [includeDescendants, setIncludeDescendants] = useState(true);
     const [unitCreateOpen, setUnitCreateOpen] = useState(false);
     const [unitEditOpen, setUnitEditOpen] = useState(false);
+    const [unitActionTarget, setUnitActionTarget] = useState<'root' | number | null>(null);
     const [orgActionOpen, setOrgActionOpen] = useState(false);
     const [unitActionOpen, setUnitActionOpen] = useState(false);
     const [activeOrgAction, setActiveOrgAction] = useState<DirectoryActionKind>('create');
@@ -393,7 +409,6 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       try {
         const next = await fetchAskCoreOrganizationDirectory();
         setPayload(next);
-        setSelectedPersonId((current) => current ?? next.people[0]?.id ?? null);
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : '组织架构加载失败');
       } finally {
@@ -457,6 +472,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
 
     const units = useMemo(() => payload?.units ?? [], [payload?.units]);
     const people = useMemo(() => payload?.people ?? [], [payload?.people]);
+    const rootNodeLabel = organizationName || '当前组织';
     const roleAssignments = useMemo(
       () => payload?.role_assignments ?? [],
       [payload?.role_assignments],
@@ -485,19 +501,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       },
       [unitById],
     );
-    const selectedPathLabel = selectedUnit ? unitPathLabel(selectedUnit.id) : '全部人员';
-    const descendantUnitIds = useMemo(() => {
-      if (!selectedUnitId) return new Set<number>();
-      const ids = new Set<number>([selectedUnitId]);
-      const visit = (parentId: number) => {
-        for (const child of childrenByParent.get(parentId) || []) {
-          ids.add(child.id);
-          visit(child.id);
-        }
-      };
-      visit(selectedUnitId);
-      return ids;
-    }, [childrenByParent, selectedUnitId]);
+    const selectedPathLabel = selectedUnit ? unitPathLabel(selectedUnit.id) : rootNodeLabel;
     const directPeople = useMemo(
       () =>
         selectedUnitId
@@ -505,31 +509,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
           : people,
       [people, selectedUnitId],
     );
-    const basePeople = useMemo(
-      () =>
-        selectedUnitId
-          ? people.filter((person) =>
-              includeDescendants
-                ? person.primary_org_unit_id !== null &&
-                  person.primary_org_unit_id !== undefined &&
-                  descendantUnitIds.has(person.primary_org_unit_id)
-                : person.primary_org_unit_id === selectedUnitId,
-            )
-          : people,
-      [descendantUnitIds, includeDescendants, people, selectedUnitId],
-    );
-    const descendantPeopleCount = useMemo(
-      () =>
-        selectedUnitId
-          ? people.filter(
-              (person) =>
-                person.primary_org_unit_id !== null &&
-                person.primary_org_unit_id !== undefined &&
-                descendantUnitIds.has(person.primary_org_unit_id),
-            ).length
-          : people.length,
-      [descendantUnitIds, people, selectedUnitId],
-    );
+    const basePeople = directPeople;
     const peopleCountByUnitId = useMemo(() => {
       const map = new Map<number, number>();
       for (const person of people) {
@@ -631,7 +611,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         }
         return (linksByPersonId.get(personId) || []).map((link) => ({
           key: `roster-${link.id}`,
-          label: link.roster_kind === 'teacher' ? '教师名册' : '学生名册',
+          label: link.roster_kind === 'teacher' ? '教师' : '学生',
           tone: 'roster',
         }));
       },
@@ -669,8 +649,9 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       ],
     );
 
-    const selectedPerson =
-      filteredPeople.find((person) => person.id === selectedPersonId) || filteredPeople[0] || null;
+    const selectedPerson = selectedPersonId
+      ? filteredPeople.find((person) => person.id === selectedPersonId) || null
+      : null;
     const selectedPersonLinks = selectedPerson ? linksByPersonId.get(selectedPerson.id) || [] : [];
     const selectedPersonPendingInvites = selectedPerson
       ? pendingInvitationsByPersonId.get(selectedPerson.id) || 0
@@ -734,13 +715,8 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     );
 
     useEffect(() => {
-      if (!filteredPeople.length) {
+      if (selectedPersonId && !filteredPeople.some((person) => person.id === selectedPersonId))
         setSelectedPersonId(null);
-        return;
-      }
-      if (!filteredPeople.some((person) => person.id === selectedPersonId)) {
-        setSelectedPersonId(filteredPeople[0].id);
-      }
     }, [filteredPeople, selectedPersonId]);
 
     const buildUnitTreeData = useCallback(
@@ -813,26 +789,26 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         {
           disabled: false,
           key: ALL_PEOPLE_TREE_VALUE,
-          label: '全部人员',
-          title: '全部人员',
+          label: rootNodeLabel,
+          title: rootNodeLabel,
           value: ALL_PEOPLE_TREE_VALUE,
         },
         ...buildUnitParentTreeData(watchedCreateUnitType),
       ],
-      [buildUnitParentTreeData, watchedCreateUnitType],
+      [buildUnitParentTreeData, rootNodeLabel, watchedCreateUnitType],
     );
     const editUnitParentTreeData = useMemo<DirectoryTreeSelectNode[]>(
       () => [
         {
           disabled: false,
           key: ALL_PEOPLE_TREE_VALUE,
-          label: '全部人员',
-          title: '全部人员',
+          label: rootNodeLabel,
+          title: rootNodeLabel,
           value: ALL_PEOPLE_TREE_VALUE,
         },
         ...buildUnitParentTreeData(watchedEditUnitType, selectedUnit?.id),
       ],
-      [buildUnitParentTreeData, selectedUnit?.id, watchedEditUnitType],
+      [buildUnitParentTreeData, rootNodeLabel, selectedUnit?.id, watchedEditUnitType],
     );
     const orgInvitePositionTreeData = useMemo<DirectoryTreeSelectNode[]>(
       () =>
@@ -841,27 +817,27 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
               {
                 disabled: false,
                 key: ALL_PEOPLE_TREE_VALUE,
-                label: '全部人员',
-                title: '全部人员',
+                label: rootNodeLabel,
+                title: rootNodeLabel,
                 value: ALL_PEOPLE_TREE_VALUE,
               },
               ...orgInviteTreeData,
             ]
           : orgInviteTreeData,
-      [orgInviteTreeData, watchedOrgInviteRosterKind],
+      [orgInviteTreeData, rootNodeLabel, watchedOrgInviteRosterKind],
     );
     const personPrimaryUnitTreeData = useMemo<DirectoryTreeSelectNode[]>(
       () => [
         {
           disabled: false,
           key: ALL_PEOPLE_TREE_VALUE,
-          label: '全部人员',
-          title: '全部人员',
+          label: rootNodeLabel,
+          title: rootNodeLabel,
           value: ALL_PEOPLE_TREE_VALUE,
         },
         ...plainTreeData,
       ],
-      [plainTreeData],
+      [plainTreeData, rootNodeLabel],
     );
     const selectedUnitRoleOptions = (
       selectedUnit ? roleOptionsByUnitType[selectedUnit.unit_type] : []
@@ -1009,12 +985,12 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       }
     };
 
-    const deleteUnit = async () => {
-      if (!selectedUnit) return;
+    const deleteUnit = async (unit: AskCoreEducationOrgUnit | null = selectedUnit) => {
+      if (!unit) return;
       setSaving(true);
       try {
-        await deleteAskCoreEducationOrgUnit(selectedUnit.id);
-        setSelectedUnitId(null);
+        await deleteAskCoreEducationOrgUnit(unit.id);
+        setSelectedUnitId((current) => (current === unit.id ? null : current));
         await loadDirectory();
         message.success('组织节点已删除');
       } catch (reason) {
@@ -1286,26 +1262,42 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       URL.revokeObjectURL(url);
     };
 
-    const openUnitCreatePanel = (open: boolean) => {
+    const openUnitCreatePanel = (open: boolean, parentId: number | null = selectedUnitId) => {
       setUnitCreateOpen(open);
-      if (!open) return;
+      if (!open) {
+        setUnitActionTarget(null);
+        return;
+      }
+      setUnitEditOpen(false);
+      setUnitActionTarget(parentId ?? 'root');
+      setSelectedUnitId(parentId);
       unitCreateForm.resetFields();
       unitCreateForm.setFieldsValue({
-        parent_id: selectedUnitId ?? undefined,
+        parent_id: parentId ?? ALL_PEOPLE_TREE_VALUE,
         sort_order: 0,
       });
     };
 
-    const openUnitEditPanel = (open: boolean) => {
+    const openUnitEditPanel = (
+      open: boolean,
+      unit: AskCoreEducationOrgUnit | null = selectedUnit,
+    ) => {
       setUnitEditOpen(open);
-      if (!open || !selectedUnit) return;
+      if (!open) {
+        setUnitActionTarget(null);
+        return;
+      }
+      if (!unit) return;
+      setUnitCreateOpen(false);
+      setUnitActionTarget(unit.id);
+      setSelectedUnitId(unit.id);
       unitEditForm.setFieldsValue({
-        description: selectedUnit.description || undefined,
-        entry_year: selectedUnit.entry_year || undefined,
-        name: selectedUnit.name,
-        parent_id: selectedUnit.parent_id ?? ALL_PEOPLE_TREE_VALUE,
-        sort_order: selectedUnit.sort_order ?? 0,
-        unit_type: selectedUnit.unit_type,
+        description: unit.description || undefined,
+        entry_year: unit.entry_year || undefined,
+        name: unit.name,
+        parent_id: unit.parent_id ?? ALL_PEOPLE_TREE_VALUE,
+        sort_order: unit.sort_order ?? 0,
+        unit_type: unit.unit_type,
       });
     };
 
@@ -1607,6 +1599,71 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       );
     };
 
+    const renderTreeNodeActions = (unit: AskCoreEducationOrgUnit | null) => {
+      const targetKey = unit?.id ?? 'root';
+      const nodeName = unit?.name ?? rootNodeLabel;
+      return (
+        <div
+          className={styles.directoryTreeNodeActions}
+          data-directory-tree-actions="true"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Popover
+            content={unitFormContent('create')}
+            open={unitCreateOpen && unitActionTarget === targetKey}
+            placement="rightTop"
+            trigger="click"
+            onOpenChange={(open) => openUnitCreatePanel(open, unit?.id ?? null)}
+          >
+            <Tooltip title={`在${nodeName}下新建节点`}>
+              <Button
+                aria-label={`在${nodeName}下新建节点`}
+                icon={<Plus size={13} />}
+                size="small"
+                type="text"
+              />
+            </Tooltip>
+          </Popover>
+          {unit ? (
+            <>
+              <Popover
+                content={unitFormContent('edit')}
+                open={unitEditOpen && unitActionTarget === unit.id}
+                placement="rightTop"
+                trigger="click"
+                onOpenChange={(open) => openUnitEditPanel(open, unit)}
+              >
+                <Tooltip title={`编辑${nodeName}`}>
+                  <Button
+                    aria-label={`编辑${nodeName}`}
+                    icon={<Pencil size={13} />}
+                    size="small"
+                    type="text"
+                  />
+                </Tooltip>
+              </Popover>
+              <Popconfirm
+                okButtonProps={{ danger: true, loading: saving }}
+                okText="删除"
+                title={`确认删除“${nodeName}”？`}
+                onConfirm={() => void deleteUnit(unit)}
+              >
+                <Tooltip title={`删除${nodeName}`}>
+                  <Button
+                    danger
+                    aria-label={`删除${nodeName}`}
+                    icon={<Trash2 size={13} />}
+                    size="small"
+                    type="text"
+                  />
+                </Tooltip>
+              </Popconfirm>
+            </>
+          ) : null}
+        </div>
+      );
+    };
+
     const showIdentityReview = canManage && identityDrawerMode === 'review';
     const identityDrawerModeSwitch = canManage ? (
       <div className={styles.directoryIdentityModeSwitch}>
@@ -1842,50 +1899,13 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
             <section aria-label="组织树" className={styles.directoryPane}>
               <div className={styles.directoryTreeHeader}>
                 <div className={styles.directoryTreeHeaderTitle}>组织树</div>
-                {canManage ? (
-                  <div className={styles.directoryNodeActions}>
-                    <Popover
-                      content={unitFormContent('create')}
-                      open={unitCreateOpen}
-                      placement="bottomLeft"
-                      trigger="click"
-                      onOpenChange={openUnitCreatePanel}
-                    >
-                      <Button icon={<Plus size={14} />} size="small">
-                        新建节点
-                      </Button>
-                    </Popover>
-                    {selectedUnit ? (
-                      <>
-                        <Popover
-                          content={unitFormContent('edit')}
-                          open={unitEditOpen}
-                          placement="bottomLeft"
-                          trigger="click"
-                          onOpenChange={openUnitEditPanel}
-                        >
-                          <Button icon={<Pencil size={14} />} size="small">
-                            编辑节点
-                          </Button>
-                        </Popover>
-                        <Popconfirm
-                          okButtonProps={{ danger: true, loading: saving }}
-                          okText="删除"
-                          title="确认删除这个空节点？"
-                          onConfirm={() => void deleteUnit()}
-                        >
-                          <Button danger icon={<Trash2 size={14} />} size="small">
-                            删除节点
-                          </Button>
-                        </Popconfirm>
-                      </>
-                    ) : null}
-                  </div>
-                ) : null}
               </div>
               <UnitTree
                 activeAncestorIds={activeAncestorIds}
+                canManage={canManage}
                 peopleCountByUnitId={peopleCountByUnitId}
+                renderNodeActions={renderTreeNodeActions}
+                rootLabel={rootNodeLabel}
                 selectedUnitId={selectedUnitId}
                 totalPeopleCount={people.length}
                 units={units}
@@ -1898,27 +1918,15 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                 <div>
                   <div className={styles.directoryBreadcrumb}>{selectedPathLabel}</div>
                   <div className={styles.directoryPaneTitle}>
-                    {selectedUnit ? selectedUnit.name : '全部人员'}
+                    {selectedUnit ? selectedUnit.name : rootNodeLabel}
                   </div>
                   <div className={styles.directoryPaneMeta}>
                     <span>直属 {directPeople.length} 人</span>
-                    <span>含下级 {descendantPeopleCount} 人</span>
                     <span>邀请中 {selectedNodePendingInvites} 个</span>
                     <span>当前显示 {directoryRows.length} 人</span>
                   </div>
                 </div>
                 <div className={styles.directoryNodeActions}>
-                  {selectedUnit ? (
-                    <Segmented
-                      size="small"
-                      value={includeDescendants ? 'descendants' : 'direct'}
-                      options={[
-                        { label: '含下级', value: 'descendants' },
-                        { label: '直属', value: 'direct' },
-                      ]}
-                      onChange={(value) => setIncludeDescendants(value === 'descendants')}
-                    />
-                  ) : null}
                   {canManage && selectedUnit ? (
                     <Popover
                       content={actionHubContent('unit')}
@@ -2024,11 +2032,13 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
               </div>
             </section>
 
-            <section aria-label="人员详情" className={styles.directoryPane}>
-              <div className={styles.directoryInspectorHeader}>
-                <div className={styles.directoryPaneTitle}>人员详情</div>
-                <span>{selectedPerson ? `#${selectedPerson.id}` : ''}</span>
-              </div>
+            <Drawer
+              destroyOnClose
+              open={Boolean(selectedPerson)}
+              size="default"
+              title={selectedPerson ? `人员详情 #${selectedPerson.id}` : '人员详情'}
+              onClose={() => setSelectedPersonId(null)}
+            >
               {selectedPerson ? (
                 <div className={styles.directoryDetail}>
                   <section className={styles.directoryDetailHero}>
@@ -2182,10 +2192,8 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                     </div>
                   </section>
                 </div>
-              ) : (
-                <Empty description="请选择人员" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-              )}
-            </section>
+              ) : null}
+            </Drawer>
           </div>
         ) : (
           <Empty
