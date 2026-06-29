@@ -240,10 +240,14 @@ describe('AskCoreOrganizationRoute', () => {
     expect(within(directory).getByText('账号绑定')).toBeInTheDocument();
     expect(within(directory).getByText('定向邀请')).toBeInTheDocument();
     expect(within(directory).queryByPlaceholderText('不定向邀请位置')).not.toBeInTheDocument();
-    expect(within(directory).getByRole('button', { name: /新建人员/ })).toBeInTheDocument();
-    expect(within(directory).getByRole('button', { name: /不定向邀请/ })).toBeInTheDocument();
-    expect(within(directory).getByRole('button', { name: /批量导入/ })).toBeInTheDocument();
+    expect(within(directory).getByRole('button', { name: /添加人员/ })).toBeInTheDocument();
+    expect(within(directory).queryByRole('button', { name: /^新建人员$/ })).not.toBeInTheDocument();
+    expect(
+      within(directory).queryByRole('button', { name: /^不定向邀请$/ }),
+    ).not.toBeInTheDocument();
+    expect(within(directory).queryByRole('button', { name: /^批量导入$/ })).not.toBeInTheDocument();
     expect(within(directory).getByRole('button', { name: /导出/ })).toBeInTheDocument();
+    expect(within(directory).getByRole('button', { name: '待处理' })).toBeInTheDocument();
 
     const orgTree = within(directory).getByLabelText('组织树');
     expect(within(orgTree).getByRole('button', { name: /全部人员.*2/ })).toBeInTheDocument();
@@ -259,11 +263,13 @@ describe('AskCoreOrganizationRoute', () => {
       'true',
     );
     expect(within(directory).getAllByText('已注册').length).toBeGreaterThan(0);
-    expect(within(directory).getByRole('button', { name: /添加到当前节点/ })).toBeInTheDocument();
-    expect(within(directory).getByRole('button', { name: /当前节点邀请/ })).toBeInTheDocument();
+    expect(within(directory).getByRole('button', { name: /添加到当前范围/ })).toBeInTheDocument();
     expect(
-      within(directory).getByRole('button', { name: /批量导入到当前节点/ }),
-    ).toBeInTheDocument();
+      within(directory).queryByRole('button', { name: /当前节点邀请/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(directory).queryByRole('button', { name: /批量导入到当前节点/ }),
+    ).not.toBeInTheDocument();
   });
 
   it('lets admins create and edit organization units from the organization tree', async () => {
@@ -311,6 +317,7 @@ describe('AskCoreOrganizationRoute', () => {
     );
 
     const directory = await screen.findByLabelText('组织架构工作区');
+    await waitFor(() => expect(within(directory).getByLabelText('组织树')).toBeInTheDocument());
     const orgTree = within(directory).getByLabelText('组织树');
     fireEvent.click(within(orgTree).getByRole('button', { name: '新建节点' }));
     const createNameInput = await screen.findByPlaceholderText('输入节点名称');
@@ -403,7 +410,8 @@ describe('AskCoreOrganizationRoute', () => {
     const directory = await screen.findByLabelText('组织架构工作区');
     await waitFor(() => expect(within(directory).getByText('Seed School')).toBeInTheDocument());
 
-    fireEvent.click(within(directory).getByRole('button', { name: /新建人员/ }));
+    fireEvent.click(within(directory).getByRole('button', { name: /添加人员/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '新建人员' }));
     const nameInput = await screen.findByPlaceholderText('输入姓名');
     const panel = nameInput.closest('.ant-popover') || document.body;
     fireEvent.change(within(panel as HTMLElement).getByPlaceholderText('输入姓名'), {
@@ -411,6 +419,11 @@ describe('AskCoreOrganizationRoute', () => {
     });
     fireEvent.mouseDown(within(panel as HTMLElement).getByText('选择主位置'));
     fireEvent.click(await screen.findByTitle('全部人员'));
+    fireEvent.mouseDown(within(panel as HTMLElement).getByText('选择教育身份'));
+    fireEvent.click(await screen.findByTitle('教师'));
+    fireEvent.mouseDown(within(panel as HTMLElement).getByText('选择作用范围'));
+    const schoolOptions = await screen.findAllByText('Seed School');
+    fireEvent.click(schoolOptions.at(-1)!);
     fireEvent.click(within(panel as HTMLElement).getByRole('button', { name: '确认创建' }));
 
     await waitFor(() =>
@@ -420,8 +433,71 @@ describe('AskCoreOrganizationRoute', () => {
           body: JSON.stringify({
             display_name: '无层级人员',
             email: undefined,
+            education_org_unit_id: 1,
+            education_role: 'teacher',
             primary_org_unit_id: null,
-            roster_kind: undefined,
+            roster_kind: 'teacher',
+          }),
+          method: 'POST',
+        }),
+      ),
+    );
+  });
+
+  it('prefills class scoped person creation from the selected organization node', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/directory')) {
+        return new Response(JSON.stringify(directoryPayload), { status: 200 });
+      }
+      if (url.endsWith('/workbench/organization/people') && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            display_name: '预填学生',
+            id: 104,
+            lifecycle_status: 'active',
+            org_id: 'org-1',
+            primary_org_unit_id: 3,
+            registration_status: 'unregistered',
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    const directory = await screen.findByLabelText('组织架构工作区');
+    const orgTree = within(directory).getByLabelText('组织树');
+    fireEvent.click(within(orgTree).getByRole('button', { name: /高一 1 班/ }));
+
+    fireEvent.click(within(directory).getByRole('button', { name: /添加到当前范围/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '新建人员' }));
+    const nameInput = await screen.findByPlaceholderText('输入姓名');
+    const panel = nameInput.closest('.ant-popover') || document.body;
+    fireEvent.change(within(panel as HTMLElement).getByPlaceholderText('输入姓名'), {
+      target: { value: '预填学生' },
+    });
+    expect(within(panel as HTMLElement).getByText('学生 · 高一 1 班')).toBeInTheDocument();
+    fireEvent.click(within(panel as HTMLElement).getByRole('button', { name: '确认创建' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/askcore/workbench/organization/people',
+        expect.objectContaining({
+          body: JSON.stringify({
+            display_name: '预填学生',
+            email: undefined,
+            education_org_unit_id: 3,
+            education_role: 'student',
+            primary_org_unit_id: 3,
+            roster_kind: 'student',
           }),
           method: 'POST',
         }),

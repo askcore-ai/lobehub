@@ -3,11 +3,7 @@ export type AskCoreInviteChannel = 'email' | 'link' | 'qr';
 export type AskCoreInviteExpiry = '30m' | '1d' | '7d' | '30d';
 export type AskCoreEducationOrgUnitType = 'school' | 'cohort' | 'class' | 'department';
 export type AskCoreEducationRole =
-  | 'school_admin'
-  | 'grade_admin'
-  | 'homeroom_teacher'
-  | 'teacher'
-  | 'student';
+  'school_admin' | 'grade_admin' | 'homeroom_teacher' | 'teacher' | 'student';
 
 export interface AskCoreOrganizationSummary {
   contact?: string;
@@ -201,6 +197,8 @@ export interface AskCoreOrganizationDirectoryPayload {
 export interface AskCoreDirectoryPersonCreateInput {
   better_auth_user_id?: string | null;
   display_name: string;
+  education_org_unit_id?: number | null;
+  education_role?: AskCoreEducationRole;
   email?: string | null;
   phone?: string | null;
   primary_org_unit_id?: number | null;

@@ -1154,6 +1154,55 @@ export const styles = createStaticStyles(({ css }) => ({
       background: ${cssVar.colorBgContainer};
     }
   `,
+  directoryTodoStrip: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+
+    button {
+      cursor: pointer;
+
+      min-height: 28px;
+      padding-block: 4px;
+      padding-inline: 10px;
+      border: 1px solid #e5e6eb;
+      border-radius: 6px;
+
+      font-size: 12px;
+      font-weight: 500;
+      color: #4e5969;
+
+      background: #fff;
+
+      transition:
+        border-color 0.15s ease,
+        background 0.15s ease,
+        color 0.15s ease;
+    }
+
+    button:hover,
+    button[aria-pressed='true'] {
+      border-color: #bdd2ff;
+      color: #245bdb;
+      background: #eef5ff;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      button {
+        border-color: ${cssVar.colorBorderSecondary};
+        color: ${cssVar.colorTextSecondary};
+        background: ${cssVar.colorBgContainer};
+      }
+
+      button:hover,
+      button[aria-pressed='true'] {
+        border-color: ${cssVar.colorPrimaryBorder};
+        color: ${cssVar.colorPrimaryText};
+        background: ${cssVar.colorPrimaryBg};
+      }
+    }
+  `,
   directoryFilterGroup: css`
     display: flex;
     flex-wrap: wrap;
@@ -1223,6 +1272,24 @@ export const styles = createStaticStyles(({ css }) => ({
   directoryActionPanel: css`
     width: min(320px, calc(100vw - 48px));
   `,
+  directoryActionHub: css`
+    display: grid;
+    grid-template-columns: 126px minmax(280px, 1fr);
+    gap: 12px;
+    align-items: flex-start;
+
+    min-width: min(456px, calc(100vw - 48px));
+
+    @media (width <= 560px) {
+      grid-template-columns: 1fr;
+      min-width: min(320px, calc(100vw - 48px));
+    }
+  `,
+  directoryActionMenu: css`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  `,
   directoryActionPanelTitle: css`
     margin-block-end: 12px;
     font-size: 14px;
@@ -1231,6 +1298,25 @@ export const styles = createStaticStyles(({ css }) => ({
 
     @media (prefers-color-scheme: dark) {
       color: ${cssVar.colorText};
+    }
+  `,
+  directoryPresetSummary: css`
+    margin-block: -2px 10px;
+    padding-block: 7px;
+    padding-inline: 9px;
+    border: 1px solid #d7e3ff;
+    border-radius: 6px;
+
+    font-size: 12px;
+    font-weight: 600;
+    color: #245bdb;
+
+    background: #f2f6ff;
+
+    @media (prefers-color-scheme: dark) {
+      border-color: ${cssVar.colorPrimaryBorder};
+      color: ${cssVar.colorPrimaryText};
+      background: ${cssVar.colorPrimaryBg};
     }
   `,
   directoryActionForm: css`
