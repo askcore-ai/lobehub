@@ -17,6 +17,7 @@ import {
   createAskCoreOrganizationInvite,
   createAskCoreSchoolUnit,
   deleteAskCoreDirectoryPersonRole,
+  deleteAskCoreEducationOrgUnit,
   deleteAskCoreEducationRoleAssignment,
   fetchAskCoreEducationIdentityClaims,
   fetchAskCoreEducationOrgUnits,
@@ -30,6 +31,7 @@ import {
   unbindAskCoreDirectoryPersonAccount,
   unbindAskCoreEducationIdentity,
   updateAskCoreDirectoryPerson,
+  updateAskCoreEducationOrgUnit,
   updateAskCoreOrganizationMemberRole,
 } from './api';
 
@@ -66,6 +68,15 @@ describe('AskCoreOrganization api client', () => {
       parent_id: 1,
       unit_type: 'cohort',
     });
+    await updateAskCoreEducationOrgUnit(4, {
+      description: '负责高一年级',
+      entry_year: 2025,
+      name: '高一年级',
+      parent_id: 1,
+      sort_order: 2,
+      unit_type: 'cohort',
+    });
+    await deleteAskCoreEducationOrgUnit(4);
     await createAskCoreSchoolUnit({ name: 'Seed School' });
     await createAskCoreCohortUnit({ entryYear: 2025, parentUnitId: 3 });
     await createAskCoreClassUnit({ name: '高一 1 班', parentUnitId: 4 });
@@ -130,6 +141,8 @@ describe('AskCoreOrganization api client', () => {
       '/api/askcore/organizations/org-1/invites',
       '/api/askcore/workbench/organization/units',
       '/api/askcore/workbench/organization/units',
+      '/api/askcore/workbench/organization/units/4',
+      '/api/askcore/workbench/organization/units/4',
       '/api/askcore/workbench/organization/units',
       '/api/askcore/workbench/organization/units',
       '/api/askcore/workbench/organization/units',
@@ -167,18 +180,30 @@ describe('AskCoreOrganization api client', () => {
       method: 'POST',
     });
     expect(calls[8][1]).toMatchObject({
+      body: JSON.stringify({
+        description: '负责高一年级',
+        entry_year: 2025,
+        name: '高一年级',
+        parent_id: 1,
+        sort_order: 2,
+        unit_type: 'cohort',
+      }),
+      method: 'PATCH',
+    });
+    expect(calls[9][1]).toMatchObject({ method: 'DELETE' });
+    expect(calls[10][1]).toMatchObject({
       body: JSON.stringify({ name: 'Seed School', unit_type: 'school' }),
       method: 'POST',
     });
-    expect(calls[9][1]).toMatchObject({
+    expect(calls[11][1]).toMatchObject({
       body: JSON.stringify({ entry_year: 2025, name: '2025级', parent_id: 3, unit_type: 'cohort' }),
       method: 'POST',
     });
-    expect(calls[10][1]).toMatchObject({
+    expect(calls[12][1]).toMatchObject({
       body: JSON.stringify({ name: '高一 1 班', parent_id: 4, unit_type: 'class' }),
       method: 'POST',
     });
-    expect(calls[12][1]).toMatchObject({
+    expect(calls[14][1]).toMatchObject({
       body: JSON.stringify({
         display_name: '李老师',
         primary_org_unit_id: 4,
@@ -186,21 +211,21 @@ describe('AskCoreOrganization api client', () => {
       }),
       method: 'POST',
     });
-    expect(calls[13][1]).toMatchObject({
+    expect(calls[15][1]).toMatchObject({
       body: JSON.stringify({ primary_org_unit_id: 5 }),
       method: 'PATCH',
     });
-    expect(calls[14][1]).toMatchObject({
-      body: JSON.stringify({ org_unit_id: 4, role: 'teacher' }),
-      method: 'POST',
-    });
-    expect(calls[15][1]).toMatchObject({ method: 'DELETE' });
     expect(calls[16][1]).toMatchObject({
-      body: JSON.stringify({ better_auth_user_id: 'user-10' }),
+      body: JSON.stringify({ org_unit_id: 4, role: 'teacher' }),
       method: 'POST',
     });
     expect(calls[17][1]).toMatchObject({ method: 'DELETE' });
     expect(calls[18][1]).toMatchObject({
+      body: JSON.stringify({ better_auth_user_id: 'user-10' }),
+      method: 'POST',
+    });
+    expect(calls[19][1]).toMatchObject({ method: 'DELETE' });
+    expect(calls[20][1]).toMatchObject({
       body: JSON.stringify({
         invitation_kind: 'open',
         primary_org_unit_id: 4,
@@ -208,7 +233,7 @@ describe('AskCoreOrganization api client', () => {
       }),
       method: 'POST',
     });
-    expect(calls[19][1]).toMatchObject({
+    expect(calls[21][1]).toMatchObject({
       body: JSON.stringify({
         content_type: 'text/csv',
         filename: 'people.csv',
@@ -216,7 +241,7 @@ describe('AskCoreOrganization api client', () => {
       }),
       method: 'POST',
     });
-    expect(calls[20][1]).toMatchObject({
+    expect(calls[22][1]).toMatchObject({
       body: JSON.stringify({
         csv_ref: {
           locator: { kind: 'object_store', object_key: 'uploads/org-1/tmp/people.csv' },
@@ -230,7 +255,7 @@ describe('AskCoreOrganization api client', () => {
       }),
       method: 'POST',
     });
-    expect(calls[21][1]).toMatchObject({
+    expect(calls[23][1]).toMatchObject({
       body: JSON.stringify({
         better_auth_user_id: 'user-1',
         org_unit_id: 2,
@@ -238,7 +263,7 @@ describe('AskCoreOrganization api client', () => {
       }),
       method: 'POST',
     });
-    expect(calls[22][1]).toMatchObject({
+    expect(calls[24][1]).toMatchObject({
       body: JSON.stringify({
         better_auth_user_id: 'user-1',
         roster_id: 7001,
@@ -246,13 +271,13 @@ describe('AskCoreOrganization api client', () => {
       }),
       method: 'POST',
     });
-    expect(calls[23][1]).toMatchObject({
+    expect(calls[25][1]).toMatchObject({
       body: JSON.stringify({ roster_id: 9001, roster_kind: 'teacher' }),
       method: 'POST',
     });
-    expect(calls[25][1]).toMatchObject({ method: 'POST' });
-    expect(calls[26][1]).toMatchObject({ method: 'POST' });
-    expect(calls[27][1]).toMatchObject({ method: 'DELETE' });
+    expect(calls[27][1]).toMatchObject({ method: 'POST' });
+    expect(calls[28][1]).toMatchObject({ method: 'POST' });
     expect(calls[29][1]).toMatchObject({ method: 'DELETE' });
+    expect(calls[31][1]).toMatchObject({ method: 'DELETE' });
   });
 });

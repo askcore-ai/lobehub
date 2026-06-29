@@ -7,6 +7,8 @@ import {
   Empty,
   Form,
   Input,
+  InputNumber,
+  Popconfirm,
   Popover,
   Select,
   Space,
@@ -19,10 +21,12 @@ import {
   Download,
   Link2,
   Mail,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
   Send,
+  Trash2,
   Upload,
   UserRound,
   UserRoundPlus,
@@ -39,11 +43,14 @@ import {
   createAskCoreDirectoryPerson,
   createAskCoreDirectoryPersonRole,
   createAskCoreEducationIdentityClaim,
+  createAskCoreEducationOrgUnit,
   createAskCoreOrganizationInvite,
+  deleteAskCoreEducationOrgUnit,
   fetchAskCoreEducationIdentityClaims,
   fetchAskCoreOrganizationDirectory,
   importAskCoreDirectoryPeople,
   rejectAskCoreEducationIdentityClaim,
+  updateAskCoreEducationOrgUnit,
   uploadAskCoreCsv,
 } from '../api';
 import { ASKCORE_IDENTITY_CLAIM_OPEN_EVENT } from '../events';
@@ -106,6 +113,10 @@ const unitTypeLabels: Record<AskCoreEducationOrgUnitType, string> = {
   school: '学校',
 };
 
+const unitTypeOptions = (
+  Object.entries(unitTypeLabels) as [AskCoreEducationOrgUnitType, string][]
+).map(([value, label]) => ({ label, value }));
+
 const roleLabels: Record<AskCoreEducationRole, string> = {
   grade_admin: '届别管理者',
   homeroom_teacher: '班主任',
@@ -167,6 +178,18 @@ const roleAllowedForUnit = (
   role: AskCoreEducationRole | undefined,
   unit: AskCoreEducationOrgUnit,
 ) => !role || roleOptionsByUnitType[unit.unit_type].includes(role);
+
+const parentAllowedForUnitType = (
+  unitType: AskCoreEducationOrgUnitType | undefined,
+  parentUnit: AskCoreEducationOrgUnit | undefined,
+) => {
+  if (!unitType || !parentUnit) return true;
+  if (unitType === 'school') return false;
+  if (unitType === 'cohort') return parentUnit.unit_type === 'school';
+  if (unitType === 'class')
+    return parentUnit.unit_type === 'school' || parentUnit.unit_type === 'cohort';
+  return parentUnit.unit_type === 'school' || parentUnit.unit_type === 'department';
+};
 
 const roleTone = (role: AskCoreEducationRole): DirectoryRoleTone => {
   if (role === 'student') return 'student';
@@ -314,9 +337,13 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     const [selectedPersonId, setSelectedPersonId] = useState<number | null>(null);
     const [searchText, setSearchText] = useState('');
     const [activeFilter, setActiveFilter] = useState<DirectoryFilterKey>('all');
+    const [unitCreateOpen, setUnitCreateOpen] = useState(false);
+    const [unitEditOpen, setUnitEditOpen] = useState(false);
     const orgImportInputRef = useRef<HTMLInputElement>(null);
     const unitImportInputRef = useRef<HTMLInputElement>(null);
     const consumedIdentityActionLocationKeyRef = useRef<string | null>(null);
+    const [unitCreateForm] = Form.useForm();
+    const [unitEditForm] = Form.useForm();
     const [orgPersonForm] = Form.useForm();
     const [unitPersonForm] = Form.useForm();
     const [orgInviteForm] = Form.useForm();
@@ -326,6 +353,12 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     const [accountForm] = Form.useForm();
     const [roleForm] = Form.useForm();
     const [directInviteForm] = Form.useForm();
+    const watchedCreateUnitType = Form.useWatch('unit_type', unitCreateForm) as
+      | AskCoreEducationOrgUnitType
+      | undefined;
+    const watchedEditUnitType = Form.useWatch('unit_type', unitEditForm) as
+      | AskCoreEducationOrgUnitType
+      | undefined;
     const watchedRole = Form.useWatch('role', roleForm) as AskCoreEducationRole | undefined;
     const watchedOrgInviteRole = Form.useWatch('role', orgInviteForm) as
       | AskCoreEducationRole
@@ -642,6 +675,29 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       [childrenByParent, unitPathLabel],
     );
 
+    const buildUnitParentTreeData = useCallback(
+      (
+        unitType?: AskCoreEducationOrgUnitType,
+        excludedUnitId?: number,
+        parentId: number | null = null,
+        parentBlocked = false,
+      ): DirectoryTreeSelectNode[] =>
+        (childrenByParent.get(parentId) || []).map((unit) => {
+          const path = unitPathLabel(unit.id);
+          const typeLabel = unitTypeLabels[unit.unit_type];
+          const blocked = parentBlocked || unit.id === excludedUnitId;
+          return {
+            disabled: blocked || !parentAllowedForUnitType(unitType, unit),
+            key: unit.id,
+            label: `${path} / ${typeLabel}`,
+            title: `${path} / ${typeLabel}`,
+            value: unit.id,
+            children: buildUnitParentTreeData(unitType, excludedUnitId, unit.id, blocked),
+          };
+        }),
+      [childrenByParent, unitPathLabel],
+    );
+
     const roleScopedTreeData = useMemo(
       () => buildUnitTreeData(watchedRole),
       [buildUnitTreeData, watchedRole],
@@ -651,6 +707,32 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       [buildUnitTreeData, watchedOrgInviteRole],
     );
     const plainTreeData = useMemo(() => buildUnitTreeData(), [buildUnitTreeData]);
+    const createUnitParentTreeData = useMemo<DirectoryTreeSelectNode[]>(
+      () => [
+        {
+          disabled: false,
+          key: ALL_PEOPLE_TREE_VALUE,
+          label: '全部人员',
+          title: '全部人员',
+          value: ALL_PEOPLE_TREE_VALUE,
+        },
+        ...buildUnitParentTreeData(watchedCreateUnitType),
+      ],
+      [buildUnitParentTreeData, watchedCreateUnitType],
+    );
+    const editUnitParentTreeData = useMemo<DirectoryTreeSelectNode[]>(
+      () => [
+        {
+          disabled: false,
+          key: ALL_PEOPLE_TREE_VALUE,
+          label: '全部人员',
+          title: '全部人员',
+          value: ALL_PEOPLE_TREE_VALUE,
+        },
+        ...buildUnitParentTreeData(watchedEditUnitType, selectedUnit?.id),
+      ],
+      [buildUnitParentTreeData, selectedUnit?.id, watchedEditUnitType],
+    );
     const orgInvitePositionTreeData = useMemo<DirectoryTreeSelectNode[]>(
       () =>
         watchedOrgInviteRosterKind === 'teacher'
@@ -686,6 +768,81 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
 
     const copyInviteLink = (link: string) => {
       void navigator.clipboard?.writeText(link).catch(() => undefined);
+    };
+
+    const createUnit = async () => {
+      const values = await unitCreateForm.validateFields();
+      const createdParentId =
+        values.parent_id === ALL_PEOPLE_TREE_VALUE
+          ? null
+          : values.parent_id
+            ? Number(values.parent_id)
+            : undefined;
+      setSaving(true);
+      try {
+        const created = await createAskCoreEducationOrgUnit({
+          description: values.description || undefined,
+          entry_year: values.unit_type === 'cohort' ? values.entry_year || undefined : undefined,
+          name: values.name,
+          parent_id: createdParentId,
+          sort_order: values.sort_order ?? 0,
+          unit_type: values.unit_type,
+        });
+        setUnitCreateOpen(false);
+        unitCreateForm.resetFields();
+        setSelectedUnitId(created.id);
+        await loadDirectory();
+        message.success('组织节点已创建');
+      } catch (reason) {
+        message.error(reason instanceof Error ? reason.message : '组织节点创建失败');
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    const updateUnit = async () => {
+      if (!selectedUnit) return;
+      const values = await unitEditForm.validateFields();
+      const nextParentId =
+        values.parent_id === ALL_PEOPLE_TREE_VALUE
+          ? null
+          : values.parent_id
+            ? Number(values.parent_id)
+            : undefined;
+      setSaving(true);
+      try {
+        const updated = await updateAskCoreEducationOrgUnit(selectedUnit.id, {
+          description: values.description || undefined,
+          entry_year: values.unit_type === 'cohort' ? values.entry_year || undefined : undefined,
+          name: values.name,
+          parent_id: nextParentId,
+          sort_order: values.sort_order ?? 0,
+          unit_type: values.unit_type,
+        });
+        setUnitEditOpen(false);
+        setSelectedUnitId(updated.id);
+        await loadDirectory();
+        message.success('组织节点已更新');
+      } catch (reason) {
+        message.error(reason instanceof Error ? reason.message : '组织节点更新失败');
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    const deleteUnit = async () => {
+      if (!selectedUnit) return;
+      setSaving(true);
+      try {
+        await deleteAskCoreEducationOrgUnit(selectedUnit.id);
+        setSelectedUnitId(null);
+        await loadDirectory();
+        message.success('组织节点已删除');
+      } catch (reason) {
+        message.error(reason instanceof Error ? reason.message : '组织节点删除失败');
+      } finally {
+        setSaving(false);
+      }
     };
 
     const createPerson = async (scope: 'organization' | 'unit') => {
@@ -932,6 +1089,91 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       URL.revokeObjectURL(url);
     };
 
+    const openUnitCreatePanel = (open: boolean) => {
+      setUnitCreateOpen(open);
+      if (!open) return;
+      unitCreateForm.resetFields();
+      unitCreateForm.setFieldsValue({
+        parent_id: selectedUnitId ?? undefined,
+        sort_order: 0,
+      });
+    };
+
+    const openUnitEditPanel = (open: boolean) => {
+      setUnitEditOpen(open);
+      if (!open || !selectedUnit) return;
+      unitEditForm.setFieldsValue({
+        description: selectedUnit.description || undefined,
+        entry_year: selectedUnit.entry_year || undefined,
+        name: selectedUnit.name,
+        parent_id: selectedUnit.parent_id ?? ALL_PEOPLE_TREE_VALUE,
+        sort_order: selectedUnit.sort_order ?? 0,
+        unit_type: selectedUnit.unit_type,
+      });
+    };
+
+    const unitFormContent = (mode: 'create' | 'edit') => {
+      const form = mode === 'create' ? unitCreateForm : unitEditForm;
+      const watchedType = mode === 'create' ? watchedCreateUnitType : watchedEditUnitType;
+      const parentTreeData = mode === 'create' ? createUnitParentTreeData : editUnitParentTreeData;
+      return (
+        <div className={styles.directoryActionPanel}>
+          <div className={styles.directoryActionPanelTitle}>
+            {mode === 'create' ? '新建组织节点' : '编辑组织节点'}
+          </div>
+          <Form className={styles.directoryActionForm} form={form} layout="vertical">
+            <Form.Item
+              label="名称"
+              name="name"
+              rules={[{ message: '请输入节点名称', required: true }]}
+            >
+              <Input placeholder="输入节点名称" />
+            </Form.Item>
+            <Form.Item
+              label="节点类型"
+              name="unit_type"
+              rules={[{ message: '请选择节点类型', required: true }]}
+            >
+              <Select
+                options={unitTypeOptions}
+                placeholder="选择节点类型"
+                onChange={() => form.resetFields(['entry_year', 'parent_id'])}
+              />
+            </Form.Item>
+            <Form.Item label="上级节点" name="parent_id">
+              <TreeSelect
+                allowClear
+                showSearch
+                treeDefaultExpandAll
+                placeholder="选择上级节点"
+                treeData={parentTreeData}
+                treeNodeFilterProp="label"
+              />
+            </Form.Item>
+            {watchedType === 'cohort' ? (
+              <Form.Item label="入学年份" name="entry_year">
+                <InputNumber min={1900} placeholder="例如 2026" style={{ width: '100%' }} />
+              </Form.Item>
+            ) : null}
+            <Form.Item label="说明" name="description">
+              <Input placeholder="节点说明" />
+            </Form.Item>
+            <Form.Item label="排序" name="sort_order">
+              <InputNumber min={0} placeholder="0" style={{ width: '100%' }} />
+            </Form.Item>
+            <Button
+              block
+              loading={saving}
+              type="primary"
+              onClick={() => (mode === 'create' ? createUnit() : updateUnit())}
+            >
+              {mode === 'create' ? '确认新建' : '保存节点'}
+            </Button>
+          </Form>
+        </div>
+      );
+    };
+
     const createPersonContent = (scope: 'organization' | 'unit') => {
       const form = scope === 'organization' ? orgPersonForm : unitPersonForm;
       return (
@@ -1017,11 +1259,11 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                   showSearch
                   treeDefaultExpandAll
                   allowClear={watchedOrgInviteRosterKind !== 'student'}
+                  treeData={orgInvitePositionTreeData}
+                  treeNodeFilterProp="label"
                   placeholder={
                     watchedOrgInviteRosterKind === 'teacher' ? '默认全部人员' : '选择班级'
                   }
-                  treeData={orgInvitePositionTreeData}
-                  treeNodeFilterProp="label"
                 />
               </Form.Item>
             ) : null}
@@ -1290,7 +1532,49 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         ) : payload ? (
           <div className={styles.directoryWorkspace}>
             <section aria-label="组织树" className={styles.directoryPane}>
-              <div className={styles.directoryPaneTitle}>组织树</div>
+              <div className={styles.directoryTreeHeader}>
+                <div className={styles.directoryTreeHeaderTitle}>组织树</div>
+                {canManage ? (
+                  <div className={styles.directoryNodeActions}>
+                    <Popover
+                      content={unitFormContent('create')}
+                      open={unitCreateOpen}
+                      placement="bottomLeft"
+                      trigger="click"
+                      onOpenChange={openUnitCreatePanel}
+                    >
+                      <Button icon={<Plus size={14} />} size="small">
+                        新建节点
+                      </Button>
+                    </Popover>
+                    {selectedUnit ? (
+                      <>
+                        <Popover
+                          content={unitFormContent('edit')}
+                          open={unitEditOpen}
+                          placement="bottomLeft"
+                          trigger="click"
+                          onOpenChange={openUnitEditPanel}
+                        >
+                          <Button icon={<Pencil size={14} />} size="small">
+                            编辑节点
+                          </Button>
+                        </Popover>
+                        <Popconfirm
+                          okButtonProps={{ danger: true, loading: saving }}
+                          okText="删除"
+                          title="确认删除这个空节点？"
+                          onConfirm={() => void deleteUnit()}
+                        >
+                          <Button danger icon={<Trash2 size={14} />} size="small">
+                            删除节点
+                          </Button>
+                        </Popconfirm>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
               <UnitTree
                 activeAncestorIds={activeAncestorIds}
                 peopleCountByUnitId={peopleCountByUnitId}

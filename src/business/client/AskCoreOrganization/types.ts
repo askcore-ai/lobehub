@@ -81,6 +81,8 @@ export interface AskCoreEducationOrgUnitCreateInput {
   unit_type: AskCoreEducationOrgUnitType;
 }
 
+export type AskCoreEducationOrgUnitPatchInput = AskCoreEducationOrgUnitCreateInput;
+
 export type AskCoreEducationRoleSubject =
   | { kind: 'member'; userId: string }
   | { kind: 'teacher'; teacherId: number }

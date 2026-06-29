@@ -266,6 +266,111 @@ describe('AskCoreOrganizationRoute', () => {
     ).toBeInTheDocument();
   });
 
+  it('lets admins create and edit organization units from the organization tree', async () => {
+    let nextDirectoryPayload = directoryPayload;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/directory')) {
+        return new Response(JSON.stringify(nextDirectoryPayload), { status: 200 });
+      }
+      if (url.endsWith('/workbench/organization/units') && init?.method === 'POST') {
+        const created = {
+          id: 4,
+          name: '行政办公室',
+          org_id: 'org-1',
+          parent_id: 1,
+          sort_order: 0,
+          unit_type: 'department',
+        };
+        nextDirectoryPayload = {
+          ...nextDirectoryPayload,
+          units: [...nextDirectoryPayload.units, created],
+        };
+        return new Response(JSON.stringify(created), { status: 200 });
+      }
+      if (url.endsWith('/workbench/organization/units/2') && init?.method === 'PATCH') {
+        const updated = {
+          ...nextDirectoryPayload.units.find((unit) => unit.id === 2)!,
+          description: '负责理科教学',
+          name: '理科组',
+        };
+        nextDirectoryPayload = {
+          ...nextDirectoryPayload,
+          units: nextDirectoryPayload.units.map((unit) => (unit.id === 2 ? updated : unit)),
+        };
+        return new Response(JSON.stringify(updated), { status: 200 });
+      }
+      return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    const directory = await screen.findByLabelText('组织架构工作区');
+    const orgTree = within(directory).getByLabelText('组织树');
+    fireEvent.click(within(orgTree).getByRole('button', { name: '新建节点' }));
+    const createNameInput = await screen.findByPlaceholderText('输入节点名称');
+    const createPanel = createNameInput.closest('.ant-popover') || document.body;
+    fireEvent.change(within(createPanel as HTMLElement).getByPlaceholderText('输入节点名称'), {
+      target: { value: '行政办公室' },
+    });
+    fireEvent.mouseDown(within(createPanel as HTMLElement).getByText('选择节点类型'));
+    fireEvent.click(await screen.findByTitle('部门'));
+    fireEvent.mouseDown(within(createPanel as HTMLElement).getByText('选择上级节点'));
+    fireEvent.click(await screen.findByTitle('Seed School / 学校'));
+    fireEvent.click(within(createPanel as HTMLElement).getByRole('button', { name: '确认新建' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/askcore/workbench/organization/units',
+        expect.objectContaining({
+          body: JSON.stringify({
+            description: undefined,
+            entry_year: undefined,
+            name: '行政办公室',
+            parent_id: 1,
+            sort_order: 0,
+            unit_type: 'department',
+          }),
+          method: 'POST',
+        }),
+      ),
+    );
+    await waitFor(() => expect(within(orgTree).getByText('行政办公室')).toBeInTheDocument());
+
+    fireEvent.click(within(orgTree).getByRole('button', { name: /数学组/ }));
+    fireEvent.click(within(orgTree).getByRole('button', { name: '编辑节点' }));
+    const editNameInput = await screen.findByDisplayValue('数学组');
+    const editPanel = editNameInput.closest('.ant-popover') || document.body;
+    fireEvent.change(editNameInput, { target: { value: '理科组' } });
+    fireEvent.change(within(editPanel as HTMLElement).getByPlaceholderText('节点说明'), {
+      target: { value: '负责理科教学' },
+    });
+    fireEvent.click(within(editPanel as HTMLElement).getByRole('button', { name: '保存节点' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/askcore/workbench/organization/units/2',
+        expect.objectContaining({
+          body: JSON.stringify({
+            description: '负责理科教学',
+            entry_year: undefined,
+            name: '理科组',
+            parent_id: 1,
+            sort_order: 0,
+            unit_type: 'department',
+          }),
+          method: 'PATCH',
+        }),
+      ),
+    );
+    expect(within(orgTree).getByRole('button', { name: '删除节点' })).toBeInTheDocument();
+  });
+
   it('creates an organization-level person without a primary unit when selecting all people', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
