@@ -29,6 +29,9 @@ import {
   type AskCoreOrganizationRole,
   type AskCorePresignUploadPayload,
   type AskCorePresignUploadResult,
+  type AskCoreTeachingAssignment,
+  type AskCoreTeachingAssignmentCreateInput,
+  type AskCoreTeachingAssignmentPayload,
 } from './types';
 
 const ORGANIZATION_API_BASE = '/api/askcore/organizations';
@@ -209,11 +212,13 @@ export const createAskCoreDepartmentUnit = (input: {
   description?: string;
   name: string;
   parentUnitId?: number;
+  subjectId?: number | null;
 }) =>
   createAskCoreEducationOrgUnit({
     description: input.description,
     name: input.name,
     parent_id: input.parentUnitId,
+    subject_id: input.subjectId,
     unit_type: 'department',
   });
 
@@ -223,6 +228,20 @@ export const fetchAskCoreOrganizationDirectory = (includeArchived = false) => {
     `${EDUCATION_ORG_API_BASE}/directory${query}`,
   );
 };
+
+export const fetchAskCoreTeachingAssignments = () =>
+  requestJson<AskCoreTeachingAssignmentPayload>(
+    `${EDUCATION_ORG_API_BASE}/teaching-assignments`,
+  );
+
+export const createAskCoreTeachingAssignment = (input: AskCoreTeachingAssignmentCreateInput) =>
+  requestJson<AskCoreTeachingAssignment>(
+    `${EDUCATION_ORG_API_BASE}/teaching-assignments`,
+    {
+      body: JSON.stringify(input),
+      method: 'POST',
+    },
+  );
 
 export const createAskCoreDirectoryPerson = (input: AskCoreDirectoryPersonCreateInput) =>
   requestJson<AskCoreDirectoryPerson>(`${EDUCATION_ORG_API_BASE}/people`, {

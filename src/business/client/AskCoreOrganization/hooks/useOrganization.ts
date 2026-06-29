@@ -224,7 +224,7 @@ export const useOrganization = () => {
     setInviteLoading(true);
     try {
       setInviteResult(null);
-      message.warning('请在组织架构中使用带教师/学生名册预设的邀请');
+      message.warning('请在组织架构中使用带教师/学生身份预设的邀请');
     } finally {
       setInviteLoading(false);
     }
