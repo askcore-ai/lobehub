@@ -1606,7 +1606,9 @@ export const styles = createStaticStyles(({ css }) => ({
     display: flex;
     flex-shrink: 0;
     gap: 1px;
+    justify-content: flex-end;
 
+    width: 76px;
     padding-inline-end: 4px;
 
     opacity: 0;
@@ -1722,8 +1724,8 @@ export const styles = createStaticStyles(({ css }) => ({
 
     display: grid;
     grid-template-columns:
-      minmax(110px, 1.1fr) minmax(120px, 1.1fr) minmax(116px, 1fr)
-      58px 74px 64px;
+      minmax(104px, 1.1fr) minmax(104px, 1fr) minmax(74px, 0.7fr)
+      minmax(110px, 1fr) 56px 68px 58px;
     gap: 8px;
     align-items: center;
 
@@ -1754,8 +1756,8 @@ export const styles = createStaticStyles(({ css }) => ({
 
     display: grid;
     grid-template-columns:
-      minmax(110px, 1.1fr) minmax(120px, 1.1fr) minmax(116px, 1fr)
-      58px 74px 64px;
+      minmax(104px, 1.1fr) minmax(104px, 1fr) minmax(74px, 0.7fr)
+      minmax(110px, 1fr) 56px 68px 58px;
     gap: 8px;
     align-items: center;
 
@@ -1929,6 +1931,18 @@ export const styles = createStaticStyles(({ css }) => ({
       border-color: #d7c9ff;
       color: #6425d0;
       background: #f5f0ff;
+    }
+
+    &[data-tone='owner'] {
+      border-color: #ffd591;
+      color: #ad6800;
+      background: #fff7e6;
+    }
+
+    &[data-tone='member'] {
+      border-color: #d9dce2;
+      color: #4e5969;
+      background: #f7f8fa;
     }
 
     &[data-tone='teacher'] {

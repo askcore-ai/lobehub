@@ -185,8 +185,16 @@ export interface AskCoreDirectoryInvitation {
   token: string;
 }
 
+export interface AskCoreDirectoryMemberSummary {
+  email?: string | null;
+  member_id: string;
+  name?: string | null;
+  organization_role?: AskCoreOrganizationRole | string | null;
+}
+
 export interface AskCoreOrganizationDirectoryPayload {
   invitations: AskCoreDirectoryInvitation[];
+  member_summaries?: Record<string, AskCoreDirectoryMemberSummary>;
   org_id: string;
   people: AskCoreDirectoryPerson[];
   role_assignments: AskCoreEducationRoleAssignment[];
