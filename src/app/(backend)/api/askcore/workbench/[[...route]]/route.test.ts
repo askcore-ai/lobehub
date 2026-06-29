@@ -228,6 +228,77 @@ describe('AskCore workbench proxy route', () => {
     expect(payload.scopes).toEqual(['plugin.invoke', 'plugin.read']);
   });
 
+  it('injects Better Auth member summaries into organization directory responses', async () => {
+    vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'test-lobehub-workbench');
+    vi.stubEnv('AITUTOR_API_BASE_URL', 'http://api:8000');
+    authApi.getSession.mockResolvedValue({
+      session: { activeOrganizationId: 'org-1' },
+      user: { email: 'owner@askcore.cn', id: 'user-owner' },
+    } as any);
+    authApi.getFullOrganization.mockResolvedValue({
+      id: 'org-1',
+      members: [
+        {
+          id: 'mem-owner',
+          role: 'owner',
+          user: { email: 'owner@askcore.cn', id: 'user-owner', name: '张扬' },
+          userId: 'user-owner',
+        },
+      ],
+      name: '试点区',
+    });
+    const { GET } = await loadRoute();
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          member_summaries: {},
+          org_id: 'org-1',
+          people: [
+            {
+              better_auth_user_id: 'user-owner',
+              display_name: '张扬',
+              id: 574,
+              lifecycle_status: 'active',
+              org_id: 'org-1',
+              primary_org_unit_id: null,
+              registration_status: 'registered',
+            },
+          ],
+          role_assignments: [],
+          roster_links: [],
+          units: [],
+        }),
+        {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await GET(
+      new NextRequest('https://askcore.cn/api/askcore/workbench/organization/directory', {
+        headers: { Cookie: 'better-auth.session=test-session' },
+      }),
+      routeContext(['organization', 'directory']),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      member_summaries: {
+        'user-owner': {
+          email: 'owner@askcore.cn',
+          member_id: 'mem-owner',
+          name: '张扬',
+          organization_role: 'owner',
+        },
+      },
+    });
+    const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect((init.headers as Headers).get('Cookie')).toBeNull();
+  });
+
   it('allows the public AskCore origin when the internal workbench origin is a bind address', async () => {
     vi.stubEnv('APP_URL', 'http://0.0.0.0:3210');
     vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'test-lobehub-workbench');

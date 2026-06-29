@@ -3,7 +3,12 @@ export type AskCoreInviteChannel = 'email' | 'link' | 'qr';
 export type AskCoreInviteExpiry = '30m' | '1d' | '7d' | '30d';
 export type AskCoreEducationOrgUnitType = 'school' | 'cohort' | 'class' | 'department';
 export type AskCoreEducationRole =
-  'school_admin' | 'grade_admin' | 'homeroom_teacher' | 'teacher' | 'student';
+  | 'school_admin'
+  | 'grade_admin'
+  | 'homeroom_teacher'
+  | 'teacher'
+  | 'student'
+  | 'subject_lead';
 
 export interface AskCoreOrganizationSummary {
   contact?: string;
@@ -60,6 +65,7 @@ export interface AskCoreEducationOrgUnit {
   org_id: string;
   parent_id?: number | null;
   sort_order: number;
+  subject_id?: number | null;
   unit_type: AskCoreEducationOrgUnitType;
 }
 
@@ -74,6 +80,7 @@ export interface AskCoreEducationOrgUnitCreateInput {
   name: string;
   parent_id?: number | null;
   sort_order?: number;
+  subject_id?: number | null;
   unit_type: AskCoreEducationOrgUnitType;
 }
 
@@ -167,6 +174,29 @@ export interface AskCoreDirectoryRosterLink {
   person_id: number;
   roster_id: number;
   roster_kind: AskCoreDirectoryRosterKind;
+}
+
+export interface AskCoreTeachingAssignment {
+  class_org_unit_id: number;
+  created_at?: string | null;
+  id: number;
+  org_id: string;
+  person_id?: number | null;
+  role: string;
+  subject_id: number;
+  teacher_id: number;
+}
+
+export interface AskCoreTeachingAssignmentPayload {
+  items: AskCoreTeachingAssignment[];
+}
+
+export interface AskCoreTeachingAssignmentCreateInput {
+  class_org_unit_id: number;
+  person_id?: number | null;
+  role?: string | null;
+  subject_id: number;
+  teacher_id?: number | null;
 }
 
 export interface AskCoreDirectoryInvitation {

@@ -42,6 +42,7 @@ const roleLabels: Record<AskCoreEducationRole, string> = {
   homeroom_teacher: '班主任',
   school_admin: '学校管理者',
   student: '学生',
+  subject_lead: '学科组长',
   teacher: '教师',
 };
 
@@ -64,6 +65,7 @@ const subjectKindByRole: Record<AskCoreEducationRole, RoleSubjectKind> = {
   homeroom_teacher: 'teacher',
   school_admin: 'member',
   student: 'student',
+  subject_lead: 'teacher',
   teacher: 'teacher',
 };
 
@@ -751,7 +753,7 @@ export const EducationIdentitySection = memo<EducationIdentitySectionProps>(
               <div className={styles.identityPanelHeader}>
                 <div className={styles.rolePanelTitle}>提交身份申请</div>
                 <div className={styles.rolePanelMeta}>
-                  选择教师或学生名册身份，提交后由组织管理员审批。
+                  选择教师或学生身份，提交后由组织管理员审批。
                 </div>
               </div>
               <Form className={styles.roleAssignForm} form={identityForm} layout="vertical">
@@ -838,7 +840,7 @@ export const EducationIdentitySection = memo<EducationIdentitySectionProps>(
                 </div>
                 <div className={styles.rolePanelMeta}>
                   {canManage
-                    ? '管理员通过后，申请人会立即绑定到对应教师或学生名册。'
+                    ? '管理员通过后，申请人会立即绑定到对应教师或学生身份。'
                     : '管理员审批通过后，工作台会按你的教师或学生身份显示。'}
                 </div>
               </div>

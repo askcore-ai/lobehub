@@ -85,6 +85,12 @@ const directoryPayload = {
     },
   ],
   member_summaries: {
+    'user-owner': {
+      email: 'owner@askcore.cn',
+      member_id: 'mem-owner',
+      name: '张扬',
+      organization_role: 'owner',
+    },
     'user-student': {
       email: 'student@askcore.cn',
       member_id: 'mem-student',
@@ -112,12 +118,13 @@ const directoryPayload = {
       registration_status: 'registered',
     },
     {
-      display_name: '组织直属人员',
+      better_auth_user_id: 'user-owner',
+      display_name: '张扬',
       id: 103,
       lifecycle_status: 'active',
       org_id: 'org-1',
       primary_org_unit_id: null,
-      registration_status: 'unregistered',
+      registration_status: 'registered',
     },
   ],
   role_assignments: [
@@ -250,7 +257,9 @@ describe('AskCoreOrganizationRoute', () => {
     await waitFor(() => expect(within(directory).getByText('Seed School')).toBeInTheDocument());
     expect(within(directory).getByText('数学组')).toBeInTheDocument();
     expect(within(directory).getByText('高一 1 班')).toBeInTheDocument();
-    expect(within(directory).getAllByText('组织直属人员').length).toBeGreaterThan(0);
+    expect(within(directory).getAllByText('张扬').length).toBeGreaterThan(0);
+    expect(within(directory).getByText('归属')).toBeInTheDocument();
+    expect(within(directory).queryByText('主位置')).not.toBeInTheDocument();
     expect(within(directory).queryByText('李老师')).not.toBeInTheDocument();
     expect(within(directory).queryByText('王同学')).not.toBeInTheDocument();
     expect(within(directory).queryByText('账号绑定')).not.toBeInTheDocument();
@@ -267,6 +276,9 @@ describe('AskCoreOrganizationRoute', () => {
     expect(within(directory).queryByText(/含下级/)).not.toBeInTheDocument();
     expect(within(directory).getByText('组织身份')).toBeInTheDocument();
     expect(within(directory).getByText('教育身份')).toBeInTheDocument();
+    const rootPersonRow = within(directory).getByRole('button', { name: /张扬/ });
+    expect(within(rootPersonRow).getByText('所有者')).toBeInTheDocument();
+    expect(within(rootPersonRow).queryByText('已注册')).not.toBeInTheDocument();
 
     const orgTree = within(directory).getByLabelText('组织树');
     expect(within(orgTree).getByRole('button', { name: /Seed 的组织.*1/ })).toBeInTheDocument();
@@ -277,7 +289,8 @@ describe('AskCoreOrganizationRoute', () => {
 
     fireEvent.click(within(orgTree).getByRole('button', { name: /^数学组/ }));
     await waitFor(() => expect(within(directory).getAllByText('李老师').length).toBeGreaterThan(0));
-    expect(within(directory).getAllByText('邀请中').length).toBeGreaterThan(0);
+    const teacherRow = within(directory).getByRole('button', { name: /李老师/ });
+    expect(within(teacherRow).queryByText('邀请中')).not.toBeInTheDocument();
     expect(within(directory).getAllByText(/教师/).length).toBeGreaterThan(0);
 
     fireEvent.click(within(orgTree).getByRole('button', { name: /^高一 1 班/ }));
@@ -289,7 +302,7 @@ describe('AskCoreOrganizationRoute', () => {
       'aria-current',
       'true',
     );
-    expect(within(directory).getAllByText('已注册').length).toBeGreaterThan(0);
+    expect(within(studentRow).queryByText('已注册')).not.toBeInTheDocument();
     expect(within(directory).getByRole('button', { name: /添加到当前范围/ })).toBeInTheDocument();
     expect(
       within(directory).queryByRole('button', { name: /当前节点邀请/ }),
@@ -449,7 +462,7 @@ describe('AskCoreOrganizationRoute', () => {
     fireEvent.change(within(panel as HTMLElement).getByPlaceholderText('输入姓名'), {
       target: { value: '无层级人员' },
     });
-    fireEvent.mouseDown(within(panel as HTMLElement).getByText('选择主位置'));
+    fireEvent.mouseDown(within(panel as HTMLElement).getByText('放入组织节点'));
     const rootPositionOptions = await screen.findAllByTitle('Seed 的组织');
     fireEvent.click(rootPositionOptions.at(-1)!);
     fireEvent.mouseDown(within(panel as HTMLElement).getByText('选择教育身份'));
@@ -577,11 +590,11 @@ describe('AskCoreOrganizationRoute', () => {
       expect(within(drawer).getAllByText('提交身份申请').length).toBeGreaterThan(0),
     );
     expect(screen.getByRole('button', { name: /提交身份申请/ })).toBeInTheDocument();
-    expect(within(drawer).getByPlaceholderText('输入姓名搜索教师或学生名册')).toBeInTheDocument();
+    expect(within(drawer).getByPlaceholderText('输入姓名搜索教师或学生')).toBeInTheDocument();
     expect(within(drawer).queryByText(/审批/)).not.toBeInTheDocument();
     expect(within(drawer).queryByText('李老师')).not.toBeInTheDocument();
-    expect(within(drawer).getByText('请输入姓名搜索可申请的教师或学生名册')).toBeInTheDocument();
-    fireEvent.change(within(drawer).getByPlaceholderText('输入姓名搜索教师或学生名册'), {
+    expect(within(drawer).getByText('请输入姓名搜索可申请的教师或学生')).toBeInTheDocument();
+    fireEvent.change(within(drawer).getByPlaceholderText('输入姓名搜索教师或学生'), {
       target: { value: '李' },
     });
     await waitFor(() => expect(within(drawer).getByText('李老师')).toBeInTheDocument());
@@ -631,7 +644,7 @@ describe('AskCoreOrganizationRoute', () => {
     });
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
-    expect(screen.getByPlaceholderText('输入姓名搜索教师或学生名册')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('输入姓名搜索教师或学生')).toBeInTheDocument();
   });
 
   it('opens the application form by default for organization admins and keeps approval reachable', async () => {
@@ -676,7 +689,7 @@ describe('AskCoreOrganizationRoute', () => {
     await waitFor(() => expect(within(drawer).getByText('提交身份申请')).toBeInTheDocument());
     expect(within(drawer).getByText('提交申请')).toBeInTheDocument();
     expect(within(drawer).getByText('身份审批')).toBeInTheDocument();
-    fireEvent.change(within(drawer).getByPlaceholderText('输入姓名搜索教师或学生名册'), {
+    fireEvent.change(within(drawer).getByPlaceholderText('输入姓名搜索教师或学生'), {
       target: { value: '李' },
     });
     expect(within(drawer).getByText('李老师')).toBeInTheDocument();

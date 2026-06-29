@@ -82,6 +82,69 @@ export const buildWorkbenchAuthorityUrl = (request: NextRequest, route: string[]
 const isDeviceAgentLinkRoute = (route: string[]) =>
   route[0] === 'device-agent' && route[1] === 'link' && route[2] === 'start';
 
+const recordObject = (value: unknown): Record<string, unknown> | undefined =>
+  value && typeof value === 'object' ? (value as Record<string, unknown>) : undefined;
+
+const stringFrom = (value: unknown) => {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return text || undefined;
+};
+
+const directoryMemberSummaries = (
+  fullOrganization: AskCoreAssertionSessionRecord | undefined,
+) => {
+  const members = Array.isArray(fullOrganization?.members) ? fullOrganization.members : [];
+  const summaries: Record<
+    string,
+    {
+      email?: string | null;
+      member_id: string;
+      name?: string | null;
+      organization_role?: string | null;
+    }
+  > = {};
+
+  for (const rawMember of members) {
+    const member = recordObject(rawMember);
+    if (!member) continue;
+    const user = recordObject(member.user);
+    const userId = stringFrom(member.userId) ?? stringFrom(user?.id);
+    const memberId = stringFrom(member.id) ?? stringFrom(member.memberId) ?? stringFrom(member.member_id);
+    if (!userId || !memberId) continue;
+    summaries[userId] = {
+      email: stringFrom(member.email) ?? stringFrom(user?.email) ?? null,
+      member_id: memberId,
+      name: stringFrom(member.name) ?? stringFrom(user?.name) ?? null,
+      organization_role: stringFrom(member.role) ?? null,
+    };
+  }
+
+  return summaries;
+};
+
+const shouldDecorateDirectoryResponse = (request: NextRequest, route: string[]) =>
+  request.method === 'GET' && route.length === 2 && route[0] === 'organization' && route[1] === 'directory';
+
+const decorateDirectoryResponse = async (
+  upstream: Response,
+  fullOrganization: AskCoreAssertionSessionRecord | undefined,
+) => {
+  const contentType = upstream.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) return undefined;
+  const payload = await upstream.clone().json().catch(() => undefined);
+  if (!payload || typeof payload !== 'object') return undefined;
+  return NextResponse.json(
+    {
+      ...(payload as Record<string, unknown>),
+      member_summaries: {
+        ...(payload as { member_summaries?: Record<string, unknown> }).member_summaries,
+        ...directoryMemberSummaries(fullOrganization),
+      },
+    },
+    { status: upstream.status, statusText: upstream.statusText },
+  );
+};
+
 const forwardWorkbenchRequest = async (request: NextRequest, context: RouteContext) => {
   if (!ALLOWED_METHODS.includes(request.method)) {
     return new NextResponse(null, {
@@ -161,6 +224,14 @@ const forwardWorkbenchRequest = async (request: NextRequest, context: RouteConte
   const contentDisposition = upstream.headers.get('content-disposition');
   if (responseContentType) responseHeaders.set('content-type', responseContentType);
   if (contentDisposition) responseHeaders.set('content-disposition', contentDisposition);
+
+  if (shouldDecorateDirectoryResponse(request, route)) {
+    const decorated = await decorateDirectoryResponse(upstream, fullOrganization);
+    if (decorated) {
+      if (contentDisposition) decorated.headers.set('content-disposition', contentDisposition);
+      return decorated;
+    }
+  }
 
   return new NextResponse(upstream.body, {
     headers: responseHeaders,
