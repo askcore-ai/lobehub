@@ -21,11 +21,7 @@ export type AskCoreInviteChannel = 'email' | 'link' | 'qr';
 export type AskCoreInviteExpiry = '30m' | '1d' | '7d' | '30d';
 export type AskCoreDirectoryRosterKind = 'student' | 'teacher';
 export type AskCoreEducationRole =
-  | 'grade_admin'
-  | 'homeroom_teacher'
-  | 'school_admin'
-  | 'student'
-  | 'teacher';
+  'grade_admin' | 'homeroom_teacher' | 'school_admin' | 'student' | 'teacher';
 
 export interface AskCoreSessionRecord {
   [key: string]: unknown;
@@ -803,8 +799,9 @@ export class AskCoreOrganizationService {
     );
   }
 
-  private async postWorkbenchOrganizationJson(input: {
-    body: Record<string, unknown>;
+  private async requestWorkbenchOrganizationJson(input: {
+    body?: Record<string, unknown>;
+    method?: 'DELETE' | 'POST';
     organizationId: string;
     organizationRole: AskCoreOrganizationRole;
     path: string;
@@ -828,19 +825,99 @@ export class AskCoreOrganizationService {
       this.workbenchApiBaseUrl(),
     );
     const response = await fetch(url, {
-      body: JSON.stringify(input.body),
+      body: input.body ? JSON.stringify(input.body) : undefined,
       cache: 'no-store',
       headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(input.body ? { 'Content-Type': 'application/json' } : {}),
         [askCoreAssertionHeaderName()]: assertion,
       },
-      method: 'POST',
+      method: input.method ?? 'POST',
     });
     if (!response.ok) {
       throw new AskCoreOrganizationError(response.status, await readUpstreamErrorMessage(response));
     }
     return response.json();
+  }
+
+  private async postWorkbenchOrganizationJson(input: {
+    body: Record<string, unknown>;
+    organizationId: string;
+    organizationRole: AskCoreOrganizationRole;
+    path: string;
+    user: UserSession;
+  }) {
+    return this.requestWorkbenchOrganizationJson({ ...input, method: 'POST' });
+  }
+
+  async createDirectoryInvite(
+    session: AskCoreSessionRecord,
+    organizationId: string,
+    input: {
+      channel?: string;
+      email?: string | null;
+      expiresIn?: string;
+      invitation_kind?: string;
+      invitationKind?: string;
+      member_role?: string;
+      memberRole?: string;
+      person_id?: number | null;
+      personId?: number | null;
+      preset_roles?: unknown;
+      presetRoles?: unknown;
+      primary_org_unit_id?: number | null;
+      primaryOrgUnitId?: number | null;
+      roster_kind?: string;
+      rosterKind?: string;
+    },
+  ): Promise<AskCoreInvitePayload> {
+    const user = userFromSession(session);
+    const actor = await this.requireAdmin(user, organizationId);
+    const memberRole = normalizeInviteRole(input.member_role ?? input.memberRole);
+    const presetRoles = normalizeEducationRoles(input.preset_roles ?? input.presetRoles);
+    const primaryOrgUnitId = positiveIntegerValue(
+      input.primary_org_unit_id ?? input.primaryOrgUnitId,
+    );
+    const personId = positiveIntegerValue(input.person_id ?? input.personId);
+    const invitationKind = stringValue(input.invitation_kind ?? input.invitationKind) || 'open';
+    const directoryInvitation = (await this.postWorkbenchOrganizationJson({
+      body: {
+        email: cleanEmail(input.email) ?? null,
+        invitation_kind: invitationKind,
+        member_role: memberRole,
+        person_id: personId ?? null,
+        preset_roles: presetRoles,
+        primary_org_unit_id: primaryOrgUnitId ?? null,
+      },
+      organizationId,
+      organizationRole: actor.role,
+      path: 'directory-invitations',
+      user,
+    })) as { token?: string };
+    const token = stringValue(directoryInvitation.token);
+    if (!token) throw new AskCoreOrganizationError(502, 'Directory invitation token is missing');
+    try {
+      return await this.createInvite(session, organizationId, {
+        channel: input.channel,
+        directory_invitation_token: token,
+        email: input.email ?? undefined,
+        expiresIn: input.expiresIn,
+        person_id: personId,
+        preset_roles: presetRoles,
+        primary_org_unit_id: primaryOrgUnitId,
+        role: memberRole,
+        roster_kind: input.roster_kind ?? input.rosterKind,
+      });
+    } catch (error) {
+      await this.requestWorkbenchOrganizationJson({
+        organizationId,
+        organizationRole: actor.role,
+        path: `directory-invitations/${encodeURIComponent(token)}`,
+        method: 'DELETE',
+        user,
+      }).catch(() => undefined);
+      throw error;
+    }
   }
 
   private async createDirectoryTeacherPerson(input: {

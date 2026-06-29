@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   EMPTY_LOOKUPS,
-  RESOURCE_FILTER_FIELDS,
-  RESOURCE_FORM_FIELDS,
   fieldOptions,
   filtersFromFormState,
   fromFormState,
   hydrateLookupLabels,
   mergeResourceItems,
   resolveLookupLabel,
+  RESOURCE_FILTER_FIELDS,
+  RESOURCE_FORM_FIELDS,
   toFormState,
 } from './resourceMeta';
 
@@ -24,10 +24,7 @@ describe('AskCore workbench resource metadata', () => {
 
     expect(resolveLookupLabel(lookups, 'subjects', 7)).toBe('数学');
     expect(
-      hydrateLookupLabels(
-        { class_id: 2, subject_id: 7, teacher_id: 5 },
-        lookups,
-      ),
+      hydrateLookupLabels({ class_id: 2, subject_id: 7, teacher_id: 5 }, lookups),
     ).toMatchObject({
       class_name: '高一 2 班',
       subject_name: '数学',
@@ -63,7 +60,13 @@ describe('AskCore workbench resource metadata', () => {
     ]);
     expect(RESOURCE_FORM_FIELDS.students).toEqual(
       expect.arrayContaining([
-        { key: 'org_unit_id', kind: 'select', label: '班级', numeric: true, optionsFrom: 'classes' },
+        {
+          key: 'org_unit_id',
+          kind: 'select',
+          label: '班级',
+          numeric: true,
+          optionsFrom: 'classes',
+        },
       ]),
     );
 
@@ -74,7 +77,9 @@ describe('AskCore workbench resource metadata', () => {
     const classField = RESOURCE_FORM_FIELDS.students.find((field) => field.key === 'org_unit_id');
     expect(classField).toBeTruthy();
     expect(fieldOptions(classField!, lookups)).toEqual([{ label: '高一 1 班', value: '10003' }]);
-    expect(fromFormState('students', { name: '杨博宇', org_unit_id: '10003', student_number: '60' })).toEqual({
+    expect(
+      fromFormState('students', { name: '杨博宇', org_unit_id: '10003', student_number: '60' }),
+    ).toEqual({
       name: '杨博宇',
       org_unit_id: 10003,
       student_number: '60',

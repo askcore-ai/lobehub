@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const serviceMock = vi.hoisted(() => ({
   bootstrap: vi.fn(),
+  createDirectoryInvite: vi.fn(),
   createInvite: vi.fn(),
   createOrganization: vi.fn(),
   list: vi.fn(),
@@ -167,6 +168,33 @@ describe('AskCore organization route', () => {
       expect.any(Object),
       'org-1',
       expect.objectContaining({ channel: 'qr', expiresIn: '7d' }),
+    );
+  });
+
+  it('creates directory-backed invitations through the organization endpoint', async () => {
+    authApi.getSession.mockResolvedValue({ session: { id: 'session-1' }, user: { id: 'user-1' } });
+    serviceMock.createDirectoryInvite.mockResolvedValue({
+      link: 'https://askcore.cn/join/organization/t',
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      new NextRequest('https://askcore.cn/api/askcore/organizations/org-1/directory-invites', {
+        body: JSON.stringify({
+          invitation_kind: 'open',
+          preset_roles: ['teacher'],
+          roster_kind: 'teacher',
+        }),
+        method: 'POST',
+      }),
+      routeContext(['org-1', 'directory-invites']),
+    );
+
+    expect(response.status).toBe(200);
+    expect(serviceMock.createDirectoryInvite).toHaveBeenCalledWith(
+      expect.any(Object),
+      'org-1',
+      expect.objectContaining({ invitation_kind: 'open', roster_kind: 'teacher' }),
     );
   });
 

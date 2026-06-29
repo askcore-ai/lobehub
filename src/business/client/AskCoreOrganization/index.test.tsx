@@ -411,6 +411,11 @@ describe('AskCoreOrganizationRoute', () => {
     });
     fireEvent.mouseDown(within(panel as HTMLElement).getByText('选择主位置'));
     fireEvent.click(await screen.findByTitle('全部人员'));
+    fireEvent.mouseDown(within(panel as HTMLElement).getByText('选择教育身份'));
+    fireEvent.click(await screen.findByTitle('教师'));
+    fireEvent.mouseDown(within(panel as HTMLElement).getByText('选择作用范围'));
+    const schoolOptions = await screen.findAllByText('Seed School');
+    fireEvent.click(schoolOptions.at(-1)!);
     fireEvent.click(within(panel as HTMLElement).getByRole('button', { name: '确认创建' }));
 
     await waitFor(() =>
@@ -420,8 +425,10 @@ describe('AskCoreOrganizationRoute', () => {
           body: JSON.stringify({
             display_name: '无层级人员',
             email: undefined,
+            education_org_unit_id: 1,
+            education_role: 'teacher',
             primary_org_unit_id: null,
-            roster_kind: undefined,
+            roster_kind: 'teacher',
           }),
           method: 'POST',
         }),

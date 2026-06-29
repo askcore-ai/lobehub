@@ -153,4 +153,48 @@ describe('AskCoreOrganizationService', () => {
     );
     expect(service.removeMembershipRecord).toHaveBeenCalledWith('mem-1');
   });
+
+  it('revokes directory invitations when Better Auth invite creation fails', async () => {
+    const { AskCoreOrganizationService } = await import('./index');
+    const service = new AskCoreOrganizationService({ db: {} as never }) as any;
+    service.requireAdmin = vi.fn(async () => ({ role: 'admin' }));
+    service.postWorkbenchOrganizationJson = vi.fn(async () => ({ token: 'dir-token' }));
+    service.requestWorkbenchOrganizationJson = vi.fn(async () => ({ status: 'revoked' }));
+    service.createInvite = vi.fn(async () => {
+      throw new Error('email send failed');
+    });
+
+    await expect(
+      service.createDirectoryInvite(
+        {
+          session: { id: 'session-1' },
+          user: {
+            displayName: '管理员',
+            email: 'admin@askcore.cn',
+            id: 'user-admin',
+            role: 'workbench_user',
+          },
+        },
+        'org-1',
+        {
+          channel: 'email',
+          email: 'teacher@askcore.cn',
+          invitation_kind: 'open',
+          preset_roles: ['teacher'],
+          roster_kind: 'teacher',
+        },
+      ),
+    ).rejects.toThrow('email send failed');
+    expect(service.postWorkbenchOrganizationJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: 'directory-invitations',
+      }),
+    );
+    expect(service.requestWorkbenchOrganizationJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'DELETE',
+        path: 'directory-invitations/dir-token',
+      }),
+    );
+  });
 });

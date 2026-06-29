@@ -1,4 +1,5 @@
 import {
+  type AskCoreDirectoryBackedInviteInput,
   type AskCoreDirectoryImportInput,
   type AskCoreDirectoryImportResult,
   type AskCoreDirectoryInvitation,
@@ -257,9 +258,16 @@ export const deleteAskCoreDirectoryPersonRole = (personId: number, roleAssignmen
     { method: 'DELETE' },
   );
 
-export const bindAskCoreDirectoryPersonAccount = (personId: number, betterAuthUserId: string) =>
+export const bindAskCoreDirectoryPersonAccount = (
+  personId: number,
+  input: {
+    better_auth_user_id: string;
+    education_org_unit_id: number;
+    education_role: AskCoreEducationRole;
+  },
+) =>
   requestJson<AskCoreDirectoryPerson>(`${EDUCATION_ORG_API_BASE}/people/${personId}/bind-account`, {
-    body: JSON.stringify({ better_auth_user_id: betterAuthUserId }),
+    body: JSON.stringify(input),
     method: 'POST',
   });
 
@@ -273,6 +281,24 @@ export const createAskCoreDirectoryInvitation = (input: AskCoreDirectoryInvitati
     body: JSON.stringify(input),
     method: 'POST',
   });
+
+export const revokeAskCoreDirectoryInvitation = (token: string) =>
+  requestJson<AskCoreDirectoryInvitation>(
+    `${EDUCATION_ORG_API_BASE}/directory-invitations/${encodeURIComponent(token)}`,
+    { method: 'DELETE' },
+  );
+
+export const createAskCoreDirectoryBackedInvite = (
+  organizationId: string,
+  input: AskCoreDirectoryBackedInviteInput,
+) =>
+  requestJson<AskCoreInvitePayload>(
+    `${ORGANIZATION_API_BASE}/${organizationId}/directory-invites`,
+    {
+      body: JSON.stringify(input),
+      method: 'POST',
+    },
+  );
 
 export const presignAskCoreWorkbenchUpload = (input: AskCorePresignUploadPayload) =>
   requestJson<AskCorePresignUploadResult>(`${WORKBENCH_UPLOAD_API_BASE}/presign`, {

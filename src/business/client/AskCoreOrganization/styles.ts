@@ -1566,7 +1566,7 @@ export const styles = createStaticStyles(({ css }) => ({
     display: grid;
     grid-template-columns:
       minmax(110px, 1.1fr) minmax(120px, 1.1fr) minmax(116px, 1fr)
-      58px 74px 64px;
+      minmax(90px, 0.8fr) 74px 64px;
     gap: 8px;
     align-items: center;
 
@@ -1598,7 +1598,7 @@ export const styles = createStaticStyles(({ css }) => ({
     display: grid;
     grid-template-columns:
       minmax(110px, 1.1fr) minmax(120px, 1.1fr) minmax(116px, 1fr)
-      58px 74px 64px;
+      minmax(90px, 0.8fr) 74px 64px;
     gap: 8px;
     align-items: center;
 

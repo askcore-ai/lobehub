@@ -55,12 +55,7 @@ import { type AskCoreEducationOrgUnit } from './types';
 
 type OrganizationRosterResource = Extract<ResourceKey, 'students' | 'teachers'>;
 type TabKey =
-  | 'directory'
-  | 'hierarchy'
-  | 'identity'
-  | 'members'
-  | 'overview'
-  | OrganizationRosterResource;
+  'directory' | 'hierarchy' | 'identity' | 'members' | 'overview' | OrganizationRosterResource;
 
 const rosterResources: OrganizationRosterResource[] = ['teachers', 'students'];
 const lookupResources: LookupCollectionKey[] = ['students', 'teachers'];
@@ -981,7 +976,7 @@ export const AskCoreOrganizationRoute = memo(() => {
               )}
 
               {activeTab === 'directory' && (
-                <OrganizationDirectorySection canManage={org.canManage} />
+                <OrganizationDirectorySection canManage={org.canManage} members={org.members} />
               )}
 
               {activeTab === 'identity' && (

@@ -3,11 +3,7 @@ export type AskCoreInviteChannel = 'email' | 'link' | 'qr';
 export type AskCoreInviteExpiry = '30m' | '1d' | '7d' | '30d';
 export type AskCoreEducationOrgUnitType = 'school' | 'cohort' | 'class' | 'department';
 export type AskCoreEducationRole =
-  | 'school_admin'
-  | 'grade_admin'
-  | 'homeroom_teacher'
-  | 'teacher'
-  | 'student';
+  'school_admin' | 'grade_admin' | 'homeroom_teacher' | 'teacher' | 'student';
 
 export interface AskCoreOrganizationSummary {
   contact?: string;
@@ -189,8 +185,16 @@ export interface AskCoreDirectoryInvitation {
   token: string;
 }
 
+export interface AskCoreDirectoryMemberSummary {
+  email?: string | null;
+  member_id: string;
+  name?: string | null;
+  organization_role?: AskCoreOrganizationRole | null;
+}
+
 export interface AskCoreOrganizationDirectoryPayload {
   invitations: AskCoreDirectoryInvitation[];
+  member_summaries?: Record<string, AskCoreDirectoryMemberSummary>;
   org_id: string;
   people: AskCoreDirectoryPerson[];
   role_assignments: AskCoreEducationRoleAssignment[];
@@ -198,9 +202,23 @@ export interface AskCoreOrganizationDirectoryPayload {
   units: AskCoreEducationOrgUnit[];
 }
 
+export interface AskCoreDirectoryBackedInviteInput {
+  channel?: AskCoreInviteChannel;
+  email?: string | null;
+  expiresIn?: AskCoreInviteExpiry;
+  invitation_kind: AskCoreDirectoryInvitationKind;
+  member_role?: Extract<AskCoreOrganizationRole, 'admin' | 'member'>;
+  person_id?: number | null;
+  preset_roles?: AskCoreEducationRole[];
+  primary_org_unit_id?: number | null;
+  roster_kind: AskCoreDirectoryRosterKind;
+}
+
 export interface AskCoreDirectoryPersonCreateInput {
   better_auth_user_id?: string | null;
   display_name: string;
+  education_org_unit_id: number;
+  education_role: AskCoreEducationRole;
   email?: string | null;
   phone?: string | null;
   primary_org_unit_id?: number | null;

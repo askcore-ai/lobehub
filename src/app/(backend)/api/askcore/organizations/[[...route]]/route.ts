@@ -29,6 +29,11 @@ type AskCoreOrganizationRouteService = {
     organizationId: string,
     payload: Record<string, unknown>,
   ) => Promise<unknown>;
+  createDirectoryInvite: (
+    session: AskCoreSessionRecord,
+    organizationId: string,
+    payload: Record<string, unknown>,
+  ) => Promise<unknown>;
   createOrganization: (
     session: AskCoreSessionRecord,
     payload: Record<string, unknown>,
@@ -221,6 +226,12 @@ const handleOrganizationRequest = async (request: NextRequest, context: RouteCon
     if (route.length === 2 && subresource === 'invites' && request.method === 'POST') {
       return NextResponse.json(
         await service.createInvite(session, segment, await readJsonBody(request)),
+      );
+    }
+
+    if (route.length === 2 && subresource === 'directory-invites' && request.method === 'POST') {
+      return NextResponse.json(
+        await service.createDirectoryInvite(session, segment, await readJsonBody(request)),
       );
     }
 
