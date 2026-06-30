@@ -318,6 +318,74 @@ describe('AskCoreOrganizationRoute', () => {
     expect(within(personDrawer).getByText('定向邀请')).toBeInTheDocument();
   });
 
+  it('lets admins edit basic person information from the detail drawer', async () => {
+    let nextDirectoryPayload = {
+      ...directoryPayload,
+      people: directoryPayload.people.map((person) =>
+        person.id === 103
+          ? { ...person, email: 'old@askcore.cn', phone: '13800000000' }
+          : person,
+      ),
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/directory')) {
+        return new Response(JSON.stringify(nextDirectoryPayload), { status: 200 });
+      }
+      if (url.endsWith('/workbench/organization/people/103') && init?.method === 'PATCH') {
+        const patch = JSON.parse(String(init.body));
+        nextDirectoryPayload = {
+          ...nextDirectoryPayload,
+          people: nextDirectoryPayload.people.map((person) =>
+            person.id === 103 ? { ...person, ...patch } : person,
+          ),
+        };
+        return new Response(JSON.stringify(nextDirectoryPayload.people.find((p) => p.id === 103)), {
+          status: 200,
+        });
+      }
+      return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    const directory = await screen.findByLabelText('组织架构工作区');
+    fireEvent.click(within(directory).getByRole('button', { name: /张扬/ }));
+    const drawerTitle = await screen.findByText('人员详情 #103');
+    const drawer = (drawerTitle.closest('.ant-drawer') as HTMLElement | null) || document.body;
+
+    fireEvent.change(within(drawer).getByPlaceholderText('姓名'), {
+      target: { value: '张扬老师' },
+    });
+    fireEvent.change(within(drawer).getByPlaceholderText('邮箱'), {
+      target: { value: 'zhangyang@askcore.cn' },
+    });
+    fireEvent.change(within(drawer).getByPlaceholderText('手机号'), {
+      target: { value: '13900000000' },
+    });
+    fireEvent.click(within(drawer).getByRole('button', { name: '保存资料' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/askcore/workbench/organization/people/103',
+        expect.objectContaining({
+          body: JSON.stringify({
+            display_name: '张扬老师',
+            email: 'zhangyang@askcore.cn',
+            phone: '13900000000',
+          }),
+          method: 'PATCH',
+        }),
+      ),
+    );
+    await waitFor(() => expect(within(directory).getAllByText('张扬老师').length).toBeGreaterThan(0));
+  });
+
   it('lets admins create and edit organization units from the organization tree', async () => {
     let nextDirectoryPayload = directoryPayload;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
