@@ -8,11 +8,6 @@ import { memo } from 'react';
 import { styles } from '../styles';
 import { type AskCoreOrganizationPayload } from '../types';
 
-interface HeroStat {
-  label: string;
-  value: number;
-}
-
 interface HeroCardProps {
   canUpdateMeta: boolean;
   editing: boolean;
@@ -24,7 +19,6 @@ interface HeroCardProps {
   payload: AskCoreOrganizationPayload | null;
   savedPulse: boolean;
   saving: boolean;
-  stats: HeroStat[];
 }
 
 export const HeroCard = memo<HeroCardProps>(
@@ -39,7 +33,6 @@ export const HeroCard = memo<HeroCardProps>(
     onSave,
     savedPulse,
     saving,
-    stats,
   }) => {
     const current = payload?.current;
 
@@ -58,7 +51,20 @@ export const HeroCard = memo<HeroCardProps>(
           </div>
 
           <div className={styles.heroBody}>
-            <div className={styles.heroName}>{current?.name || '未命名组织'}</div>
+            <div className={styles.heroTitleRow}>
+              <div className={styles.heroName}>{current?.name || '未命名组织'}</div>
+              {current?.id && (
+                <Button
+                  className={styles.heroIdButton}
+                  icon={<Copy size={12} />}
+                  size="small"
+                  type="text"
+                  onClick={() => onCopyId(current.id)}
+                >
+                  {current.id}
+                </Button>
+              )}
+            </div>
             <div className={styles.heroDesc}>{current?.description || '暂无描述'}</div>
 
             <div className={styles.heroStats}>
@@ -99,15 +105,6 @@ export const HeroCard = memo<HeroCardProps>(
           )}
         </div>
 
-        <div className={styles.heroOverviewStats}>
-          {stats.map((item) => (
-            <div className={styles.heroOverviewStat} key={item.label}>
-              <strong>{item.value}</strong>
-              <span>{item.label}</span>
-            </div>
-          ))}
-        </div>
-
         {editing ? (
           <div className={styles.heroEditForm}>
             <Form form={metaForm} layout="vertical">
@@ -140,29 +137,7 @@ export const HeroCard = memo<HeroCardProps>(
               </Button>
             </div>
           </div>
-        ) : (
-          <div className={styles.heroInfoGrid}>
-            <span>组织名称</span>
-            <strong>{current?.name || '--'}</strong>
-            <span>组织简介</span>
-            <strong>{current?.description || '--'}</strong>
-            <span>联系人</span>
-            <strong>{current?.contact || '--'}</strong>
-            <span>组织 ID</span>
-            <strong className={styles.heroOrgId}>
-              {current?.id || '--'}
-              {current?.id && (
-                <Button
-                  className={styles.copyBtn}
-                  icon={<Copy size={13} />}
-                  size="small"
-                  type="text"
-                  onClick={() => onCopyId(current.id)}
-                />
-              )}
-            </strong>
-          </div>
-        )}
+        ) : null}
       </div>
     );
   },

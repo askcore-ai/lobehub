@@ -736,6 +736,8 @@ export const AskCoreOrganizationRoute = memo(() => {
   // Overview editing state
   const [editingMeta, setEditingMeta] = useState(false);
   const [savedPulse, setSavedPulse] = useState(false);
+  const currentOrganization = org.current;
+  const metaForm = org.metaForm;
 
   useEffect(() => {
     setActiveTab(normalizeTab(new URLSearchParams(location.search).get('tab')));
@@ -750,14 +752,25 @@ export const AskCoreOrganizationRoute = memo(() => {
 
   const handleCancelMeta = useCallback(() => {
     setEditingMeta(false);
-    if (org.current) {
-      org.metaForm.setFieldsValue({
-        name: org.current.name,
-        description: org.current.description,
-        contact: org.current.contact,
+    if (currentOrganization) {
+      metaForm.setFieldsValue({
+        contact: currentOrganization.contact,
+        description: currentOrganization.description,
+        name: currentOrganization.name,
       });
     }
-  }, [org]);
+  }, [currentOrganization, metaForm]);
+
+  const handleEditMeta = useCallback(() => {
+    if (currentOrganization) {
+      metaForm.setFieldsValue({
+        contact: currentOrganization.contact,
+        description: currentOrganization.description,
+        name: currentOrganization.name,
+      });
+    }
+    setEditingMeta(true);
+  }, [currentOrganization, metaForm]);
 
   const copyId = useCallback((id: string) => {
     navigator.clipboard.writeText(id).then(() => message.success('已复制'));
@@ -835,10 +848,9 @@ export const AskCoreOrganizationRoute = memo(() => {
                 payload={org.payload}
                 savedPulse={savedPulse}
                 saving={org.savingMeta}
-                stats={statCards}
                 onCancel={handleCancelMeta}
                 onCopyId={copyId}
-                onEdit={() => setEditingMeta(true)}
+                onEdit={handleEditMeta}
                 onSave={() => void handleSaveMeta()}
               />
             </div>
@@ -869,7 +881,7 @@ export const AskCoreOrganizationRoute = memo(() => {
                           className={styles.pillButton}
                           icon={<Pencil size={14} />}
                           size="small"
-                          onClick={() => setEditingMeta(true)}
+                          onClick={handleEditMeta}
                         >
                           编辑
                         </Button>

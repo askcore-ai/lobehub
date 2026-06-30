@@ -271,13 +271,17 @@ describe('AskCoreOrganizationRoute', () => {
     expect(screen.queryByRole('button', { name: '概览' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '组织架构' })).not.toBeInTheDocument();
     expect(screen.getAllByText('Seed 的组织').length).toBeGreaterThan(0);
-    expect(screen.getByText('组织 ID')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /org-1/ })).toBeInTheDocument();
+    expect(screen.queryByText('组织 ID')).not.toBeInTheDocument();
+    expect(screen.queryByText('组织名称')).not.toBeInTheDocument();
+    expect(screen.queryByText('组织简介')).not.toBeInTheDocument();
+    expect(screen.queryByText('联系人')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '成员' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '身份绑定' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '教师' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '学生' })).not.toBeInTheDocument();
     expect(screen.getByText('1 注册成员')).toBeInTheDocument();
-    expect(screen.getByText('注册成员')).toBeInTheDocument();
+    expect(screen.queryByText('注册成员')).not.toBeInTheDocument();
 
     const directory = screen.getByLabelText('组织架构工作区');
     await waitFor(() => expect(within(directory).getByText('Seed School')).toBeInTheDocument());

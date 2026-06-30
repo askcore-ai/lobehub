@@ -82,6 +82,34 @@ export const styles = createStaticStyles(({ css }) => ({
     line-height: 1.3;
     color: ${cssVar.colorText};
   `,
+  heroTitleRow: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
+  `,
+  heroIdButton: css`
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+
+    height: 22px;
+    padding-block: 0;
+    padding-inline: 6px;
+
+    font-family: monospace;
+    font-size: 12px;
+    font-weight: 500;
+    color: ${cssVar.colorTextTertiary};
+
+    background: ${cssVar.colorFillQuaternary};
+
+    &:hover {
+      color: ${cssVar.colorTextSecondary};
+      background: ${cssVar.colorFillSecondary};
+    }
+  `,
   heroDesc: css`
     overflow: hidden;
     display: -webkit-box;
@@ -101,46 +129,6 @@ export const styles = createStaticStyles(({ css }) => ({
 
     margin-block-start: 2px;
   `,
-  heroOverviewStats: css`
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 8px;
-
-    @media (width <= 760px) {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  `,
-  heroOverviewStat: css`
-    display: flex;
-    gap: 8px;
-    align-items: baseline;
-    justify-content: space-between;
-
-    min-width: 0;
-    padding-block: 8px;
-    padding-inline: 10px;
-    border: 1px solid ${cssVar.colorBorderSecondary};
-    border-radius: 8px;
-
-    background: ${cssVar.colorFillQuaternary};
-
-    strong {
-      font-size: 18px;
-      font-weight: 700;
-      font-variant-numeric: tabular-nums;
-      line-height: 1;
-      color: ${cssVar.colorText};
-    }
-
-    span {
-      overflow: hidden;
-
-      font-size: 12px;
-      color: ${cssVar.colorTextSecondary};
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-  `,
   heroEditForm: css`
     width: 100%;
     text-align: start;
@@ -152,39 +140,6 @@ export const styles = createStaticStyles(({ css }) => ({
     justify-content: flex-end;
     margin-block-start: 12px;
   `,
-  heroInfoGrid: css`
-    display: grid;
-    grid-template-columns: 72px minmax(0, 1fr);
-    gap: 8px 16px;
-
-    padding-block-start: 2px;
-
-    font-size: 13px;
-    line-height: 1.5;
-
-    span {
-      color: ${cssVar.colorTextSecondary};
-    }
-
-    strong {
-      min-width: 0;
-      font-weight: 500;
-      color: ${cssVar.colorText};
-      overflow-wrap: anywhere;
-    }
-
-    @media (width <= 700px) {
-      grid-template-columns: 1fr;
-      gap: 4px;
-    }
-  `,
-  heroOrgId: css`
-    display: inline-flex;
-    gap: 6px;
-    align-items: center;
-    font-family: monospace;
-  `,
-
   // Tab Navigation
   tabNav: css`
     display: flex;

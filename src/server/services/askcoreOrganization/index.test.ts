@@ -158,6 +158,38 @@ describe('AskCoreOrganizationService', () => {
     );
   });
 
+  it('defaults active organization contact to the organization owner', async () => {
+    const { AskCoreOrganizationService } = await import('./index');
+    const service = new AskCoreOrganizationService({ db: {} as never }) as any;
+    service.listOrganizationsForUser = vi.fn(async () => [
+      {
+        id: 'org-1',
+        isActive: false,
+        name: '试点区',
+        role: 'owner',
+        slug: 'pilot',
+      },
+    ]);
+    service.membersForOrganization = vi.fn(async () => [
+      {
+        email: 'zy@askcore.cn',
+        id: 'mem-owner',
+        name: '张扬',
+        role: 'owner',
+        userId: 'user-owner',
+      },
+    ]);
+    service.persistedActiveOrganizationId = vi.fn(async () => undefined);
+
+    const payload = await service.payloadForUser(
+      { email: 'zy@askcore.cn', id: 'user-owner' },
+      'org-1',
+    );
+
+    expect(payload.current?.contact).toBe('张扬');
+    expect(payload.organizations[0]?.contact).toBe('张扬');
+  });
+
   it('rejects organization invites without an education directory preset', async () => {
     const { AskCoreOrganizationService } = await import('./index');
     const service = new AskCoreOrganizationService({ db: {} as never }) as any;

@@ -296,6 +296,11 @@ const organizationFromRow = (row: {
   };
 };
 
+const ownerContactFromMembers = (members: AskCoreOrganizationMember[]) => {
+  const owner = members.find((item) => item.role === 'owner');
+  return stringValue(owner?.name) || stringValue(owner?.email);
+};
+
 export class AskCoreOrganizationService {
   private db: LobeChatDatabase;
   private emailService?: EmailService;
@@ -708,11 +713,20 @@ export class AskCoreOrganizationService {
     const role = current?.role;
     const canManage = this.isSuperAdmin(user) || role === 'owner' || role === 'admin';
     const members = current ? await this.membersForOrganization(current.id) : [];
+    const currentWithOwnerContact =
+      current && !stringValue(current.contact)
+        ? { ...current, contact: ownerContactFromMembers(members) || current.contact }
+        : current;
+    const organizationsWithOwnerContact = currentWithOwnerContact
+      ? withActive.map((item) =>
+          item.id === currentWithOwnerContact.id ? currentWithOwnerContact : item,
+        )
+      : withActive;
 
     return {
-      current,
+      current: currentWithOwnerContact,
       members,
-      organizations: withActive,
+      organizations: organizationsWithOwnerContact,
       permissions: {
         canInvite: canManage,
         canManageMembers: canManage,
