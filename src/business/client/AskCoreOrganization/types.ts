@@ -53,7 +53,6 @@ export interface AskCoreInvitePayload {
   presetRoles: AskCoreEducationRole[];
   primaryOrgUnitId?: number;
   role: Extract<AskCoreOrganizationRole, 'admin' | 'member'>;
-  rosterKind: AskCoreDirectoryRosterKind;
   token: string;
 }
 
@@ -88,8 +87,7 @@ export type AskCoreEducationOrgUnitPatchInput = AskCoreEducationOrgUnitCreateInp
 
 export type AskCoreEducationRoleSubject =
   | { kind: 'member'; userId: string }
-  | { kind: 'teacher'; teacherId: number }
-  | { kind: 'student'; studentId: number };
+  | { kind: 'person'; personId: number };
 
 export interface AskCoreEducationRoleAssignmentCreateInput {
   org_unit_id: number;
@@ -102,18 +100,17 @@ export interface AskCoreEducationRoleAssignment {
   id: number;
   org_id: string;
   org_unit_id: number;
-  person_id?: number | null;
+  person_id: number;
   role: AskCoreEducationRole;
-  student_id?: number | null;
+  subject_id?: number | null;
   subject_user_id: string;
-  teacher_id?: number | null;
 }
 
 export interface AskCoreEducationRoleAssignmentPayload {
   items: AskCoreEducationRoleAssignment[];
 }
 
-export type AskCoreEducationIdentityRosterKind = 'student' | 'teacher';
+export type AskCoreEducationIdentityRosterKind = 'member' | 'student' | 'teacher';
 
 export interface AskCoreEducationIdentityBindingInput {
   better_auth_user_id: string;
@@ -151,7 +148,6 @@ export interface AskCoreEducationIdentityClaimPayload {
 
 export type AskCoreDirectoryRegistrationStatus = 'invited' | 'registered' | 'unregistered';
 export type AskCoreDirectoryLifecycleStatus = 'active' | 'archived';
-export type AskCoreDirectoryRosterKind = 'student' | 'teacher';
 export type AskCoreDirectoryInvitationKind = 'directed' | 'open';
 export type AskCoreDirectoryInvitationStatus = 'accepted' | 'expired' | 'pending' | 'revoked';
 
@@ -159,21 +155,17 @@ export interface AskCoreDirectoryPerson {
   better_auth_user_id?: string | null;
   display_name: string;
   email?: string | null;
+  gender?: string | null;
   id: number;
   lifecycle_status: AskCoreDirectoryLifecycleStatus;
   org_id: string;
   phone?: string | null;
+  pinyin_name?: string | null;
   primary_org_unit_id?: number | null;
   registration_status: AskCoreDirectoryRegistrationStatus;
   source?: string | null;
-}
-
-export interface AskCoreDirectoryRosterLink {
-  id: number;
-  org_id: string;
-  person_id: number;
-  roster_id: number;
-  roster_kind: AskCoreDirectoryRosterKind;
+  staff_number?: string | null;
+  student_number?: string | null;
 }
 
 export interface AskCoreTeachingAssignment {
@@ -181,10 +173,9 @@ export interface AskCoreTeachingAssignment {
   created_at?: string | null;
   id: number;
   org_id: string;
-  person_id?: number | null;
+  person_id: number;
   role: string;
   subject_id: number;
-  teacher_id: number;
 }
 
 export interface AskCoreTeachingAssignmentPayload {
@@ -193,10 +184,9 @@ export interface AskCoreTeachingAssignmentPayload {
 
 export interface AskCoreTeachingAssignmentCreateInput {
   class_org_unit_id: number;
-  person_id?: number | null;
+  person_id: number;
   role?: string | null;
   subject_id: number;
-  teacher_id?: number | null;
 }
 
 export interface AskCoreDirectoryInvitation {
@@ -223,12 +213,11 @@ export interface AskCoreDirectoryMemberSummary {
 }
 
 export interface AskCoreOrganizationDirectoryPayload {
+  authorizations: AskCoreEducationRoleAssignment[];
   invitations: AskCoreDirectoryInvitation[];
   member_summaries?: Record<string, AskCoreDirectoryMemberSummary>;
   org_id: string;
   people: AskCoreDirectoryPerson[];
-  role_assignments: AskCoreEducationRoleAssignment[];
-  roster_links: AskCoreDirectoryRosterLink[];
   units: AskCoreEducationOrgUnit[];
 }
 
@@ -238,9 +227,11 @@ export interface AskCoreDirectoryPersonCreateInput {
   education_org_unit_id?: number | null;
   education_role?: AskCoreEducationRole;
   email?: string | null;
+  gender?: string | null;
   phone?: string | null;
+  pinyin_name?: string | null;
   primary_org_unit_id?: number | null;
-  roster_kind?: AskCoreDirectoryRosterKind | null;
+  staff_number?: string | null;
   student_number?: string | null;
   teacher_number?: string | null;
 }
@@ -293,7 +284,6 @@ export interface AskCoreDirectoryImportInput {
   };
   default_role?: AskCoreEducationRole | null;
   primary_org_unit_id?: number | null;
-  roster_kind?: AskCoreDirectoryRosterKind | null;
   scope: 'organization' | 'unit';
 }
 
