@@ -24,6 +24,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Save,
   Search,
   Send,
   Trash2,
@@ -53,6 +54,7 @@ import {
   fetchAskCoreTeachingAssignments,
   importAskCoreDirectoryPeople,
   rejectAskCoreEducationIdentityClaim,
+  updateAskCoreDirectoryPerson,
   updateAskCoreEducationOrgUnit,
   uploadAskCoreCsv,
 } from '../api';
@@ -403,6 +405,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     const [orgImportForm] = Form.useForm();
     const [unitImportForm] = Form.useForm();
     const [accountForm] = Form.useForm();
+    const [personProfileForm] = Form.useForm();
     const [roleForm] = Form.useForm();
     const [teachingAssignmentForm] = Form.useForm();
     const [directInviteForm] = Form.useForm();
@@ -825,6 +828,15 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       if (selectedPersonId && !filteredPeople.some((person) => person.id === selectedPersonId))
         setSelectedPersonId(null);
     }, [filteredPeople, selectedPersonId]);
+
+    useEffect(() => {
+      if (!selectedPerson) return;
+      personProfileForm.setFieldsValue({
+        display_name: selectedPerson.display_name,
+        email: selectedPerson.email || '',
+        phone: selectedPerson.phone || '',
+      });
+    }, [personProfileForm, selectedPerson]);
 
     const buildUnitTreeData = useCallback(
       (role?: AskCoreEducationRole, parentId: number | null = null): DirectoryTreeSelectNode[] =>
@@ -1254,6 +1266,29 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         accountForm.resetFields();
         await loadDirectory();
         message.success('账号已绑定');
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    const savePersonProfile = async () => {
+      if (!selectedPerson) return;
+      const values = await personProfileForm.validateFields(['display_name', 'email', 'phone']);
+      const normalizeOptional = (value: unknown) => {
+        const text = String(value || '').trim();
+        return text || null;
+      };
+      setSaving(true);
+      try {
+        await updateAskCoreDirectoryPerson(selectedPerson.id, {
+          display_name: String(values.display_name || '').trim(),
+          email: normalizeOptional(values.email),
+          phone: normalizeOptional(values.phone),
+        });
+        await loadDirectory();
+        message.success('人员资料已更新');
+      } catch (reason) {
+        message.error(reason instanceof Error ? reason.message : '人员资料更新失败');
       } finally {
         setSaving(false);
       }
@@ -2233,12 +2268,42 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
 
                   <section className={styles.directoryDetailSection}>
                     <div className={styles.directoryDetailTitle}>基本信息</div>
-                    <div className={styles.directoryInfoGrid}>
-                      <span>手机号</span>
-                      <strong>{selectedPerson.phone || '--'}</strong>
-                      <span>邮箱</span>
-                      <strong>{selectedPerson.email || '--'}</strong>
-                    </div>
+                    {canManage ? (
+                      <Form
+                        className={styles.directoryInlineForm}
+                        form={personProfileForm}
+                        layout="vertical"
+                      >
+                        <Form.Item
+                          label="姓名"
+                          name="display_name"
+                          rules={[{ message: '请输入姓名', required: true }]}
+                        >
+                          <Input placeholder="姓名" />
+                        </Form.Item>
+                        <Form.Item label="邮箱" name="email" rules={[{ type: 'email' }]}>
+                          <Input placeholder="邮箱" />
+                        </Form.Item>
+                        <Form.Item label="手机号" name="phone">
+                          <Input placeholder="手机号" />
+                        </Form.Item>
+                        <Button
+                          block
+                          icon={<Save size={14} />}
+                          loading={saving}
+                          onClick={savePersonProfile}
+                        >
+                          保存资料
+                        </Button>
+                      </Form>
+                    ) : (
+                      <div className={styles.directoryInfoGrid}>
+                        <span>手机号</span>
+                        <strong>{selectedPerson.phone || '--'}</strong>
+                        <span>邮箱</span>
+                        <strong>{selectedPerson.email || '--'}</strong>
+                      </div>
+                    )}
                   </section>
 
                   <section className={styles.directoryDetailSection}>
