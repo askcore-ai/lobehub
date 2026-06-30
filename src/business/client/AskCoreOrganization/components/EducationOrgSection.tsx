@@ -98,6 +98,7 @@ const identityStatusColors: Record<AskCoreEducationIdentityClaim['status'], stri
 };
 
 const rosterKindLabels: Record<AskCoreEducationIdentityRosterKind, string> = {
+  member: '人员',
   student: '学生',
   teacher: '教师',
 };
@@ -114,6 +115,7 @@ const rosterName = (
   teachers: JsonRecord[],
   students: JsonRecord[],
 ) => {
+  if (rosterKind === 'member') return `人员 #${rosterId}`;
   const rows = rosterKind === 'teacher' ? teachers : students;
   const row = rows.find(
     (item) =>
@@ -278,17 +280,11 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
     );
 
     const subjectLabel = (assignment: AskCoreEducationRoleAssignment) => {
-      if (assignment.teacher_id) {
-        const teacher = teachers.find(
-          (item) => numericId(item, ['teacher_id', 'id']) === assignment.teacher_id,
+      if (assignment.person_id) {
+        const row = [...teachers, ...students].find(
+          (item) => numericId(item, ['person_id', 'teacher_id', 'student_id', 'id']) === assignment.person_id,
         );
-        return String(teacher?.real_name || teacher?.username || teacher?.name || '未命名教师');
-      }
-      if (assignment.student_id) {
-        const student = students.find(
-          (item) => numericId(item, ['student_id', 'id']) === assignment.student_id,
-        );
-        return String(student?.name || student?.real_name || '未命名学生');
+        return String(row?.display_name || row?.real_name || row?.name || `人员 #${assignment.person_id}`);
       }
       const member = members.find((item) => item.userId === assignment.better_auth_user_id);
       return member?.email

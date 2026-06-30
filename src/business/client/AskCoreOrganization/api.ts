@@ -7,7 +7,6 @@ import {
   type AskCoreDirectoryPersonCreateInput,
   type AskCoreDirectoryPersonPatchInput,
   type AskCoreDirectoryPersonRoleInput,
-  type AskCoreDirectoryRosterKind,
   type AskCoreEducationIdentityBinding,
   type AskCoreEducationIdentityBindingInput,
   type AskCoreEducationIdentityClaim,
@@ -141,7 +140,6 @@ export const createAskCoreOrganizationInvite = (
     preset_roles: AskCoreEducationRole[];
     primary_org_unit_id?: number | null;
     role: Extract<AskCoreOrganizationRole, 'admin' | 'member'>;
-    roster_kind: AskCoreDirectoryRosterKind;
   },
 ) =>
   requestJson<AskCoreInvitePayload>(`${ORGANIZATION_API_BASE}/${organizationId}/invites`, {
@@ -337,17 +335,10 @@ const roleAssignmentBody = (input: AskCoreEducationRoleAssignmentCreateInput) =>
       role: input.role,
     };
   }
-  if (input.subject.kind === 'teacher') {
-    return {
-      org_unit_id: input.org_unit_id,
-      role: input.role,
-      teacher_id: input.subject.teacherId,
-    };
-  }
   return {
     org_unit_id: input.org_unit_id,
+    person_id: input.subject.personId,
     role: input.role,
-    student_id: input.subject.studentId,
   };
 };
 

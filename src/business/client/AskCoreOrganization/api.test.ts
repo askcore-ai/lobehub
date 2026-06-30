@@ -59,7 +59,6 @@ describe('AskCoreOrganization api client', () => {
       preset_roles: ['student'],
       primary_org_unit_id: 4,
       role: 'member',
-      roster_kind: 'student',
     });
     await fetchAskCoreEducationOrgUnits();
     await createAskCoreEducationOrgUnit({
@@ -84,7 +83,6 @@ describe('AskCoreOrganization api client', () => {
     await createAskCoreDirectoryPerson({
       display_name: '李老师',
       primary_org_unit_id: 4,
-      roster_kind: 'teacher',
     });
     await updateAskCoreDirectoryPerson(10, { primary_org_unit_id: 5 });
     await createAskCoreDirectoryPersonRole(10, { org_unit_id: 4, role: 'teacher' });
@@ -109,7 +107,6 @@ describe('AskCoreOrganization api client', () => {
       },
       default_role: 'student',
       primary_org_unit_id: 4,
-      roster_kind: 'student',
       scope: 'unit',
     });
     await assignAskCoreEducationRole({

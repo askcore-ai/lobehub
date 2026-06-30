@@ -32,6 +32,7 @@ import {
 import { ASKCORE_ORGANIZATION_CHANGED_EVENT } from '../events';
 import {
   type AskCoreEducationIdentityClaim,
+  type AskCoreEducationIdentityRosterKind,
   type AskCoreEducationOrgUnit,
   type AskCoreEducationOrgUnitPayload,
   type AskCoreEducationRoleAssignment,
@@ -334,11 +335,9 @@ export const useOrganization = () => {
         org_unit_id: values.org_unit_id,
         role: values.role,
         subject:
-          subjectKind === 'teacher'
-            ? { kind: 'teacher', teacherId: Number(subjectValue) }
-            : subjectKind === 'student'
-              ? { kind: 'student', studentId: Number(subjectValue) }
-              : { kind: 'member', userId: String(subjectValue) },
+          subjectKind === 'member'
+            ? { kind: 'member', userId: String(subjectValue) }
+            : { kind: 'person', personId: Number(subjectValue) },
       });
       orgRoleForm.resetFields(['subject_value']);
       await reloadEducationRoleAssignments();
@@ -435,7 +434,7 @@ export const useOrganization = () => {
   );
 
   const handleUnbindEducationIdentity = useCallback(
-    async (rosterKind: 'student' | 'teacher', rosterId: number) => {
+    async (rosterKind: AskCoreEducationIdentityRosterKind, rosterId: number) => {
       setBindingIdentity(true);
       try {
         await unbindAskCoreEducationIdentity(rosterKind, rosterId);
