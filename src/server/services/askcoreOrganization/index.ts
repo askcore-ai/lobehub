@@ -377,7 +377,7 @@ export class AskCoreOrganizationService {
     });
     try {
       await this.addMembership(organizationId, user.id, 'owner');
-      await this.createDirectoryTeacherPerson({
+      await this.syncOrganizationMemberSource({
         organizationId,
         organizationRole: 'owner',
         user,
@@ -395,8 +395,13 @@ export class AskCoreOrganizationService {
     organizationId: string,
   ): Promise<AskCoreOrganizationPayload> {
     const user = userFromSession(session);
-    await this.requireMembership(user, organizationId);
+    const activeMembership = await this.requireMembership(user, organizationId);
     await this.setActiveOrganizationForSession(user, organizationId);
+    await this.syncOrganizationMemberSource({
+      organizationId,
+      organizationRole: activeMembership.role,
+      user,
+    });
     return this.payloadForUser(user, organizationId);
   }
 
@@ -456,6 +461,11 @@ export class AskCoreOrganizationService {
       await this.assertMoreThanOneOwner(organizationId);
 
     await this.db.update(member).set({ role }).where(eq(member.id, memberId));
+    await this.syncOrganizationMemberSource({
+      organizationId,
+      organizationRole: actor.role,
+      user,
+    });
     return this.membersForOrganization(organizationId);
   }
 
@@ -471,6 +481,11 @@ export class AskCoreOrganizationService {
     }
 
     await this.db.delete(member).where(eq(member.id, memberId));
+    await this.syncOrganizationMemberSource({
+      organizationId,
+      organizationRole: actor.role,
+      user,
+    });
     return this.membersForOrganization(organizationId);
   }
 
@@ -590,7 +605,7 @@ export class AskCoreOrganizationService {
     });
     try {
       await this.addMembership(organizationId, user.id, 'owner');
-      await this.createDirectoryTeacherPerson({
+      await this.syncOrganizationMemberSource({
         organizationId,
         organizationRole: 'owner',
         user,
@@ -633,6 +648,11 @@ export class AskCoreOrganizationService {
       await this.acceptDirectoryInvitation({
         directoryInvitationToken,
         organizationId: invite.organizationId,
+        user,
+      });
+      await this.syncOrganizationMemberSource({
+        organizationId: invite.organizationId,
+        organizationRole: normalizeInviteRole(invite.role),
         user,
       });
     } catch (error) {
@@ -843,22 +863,33 @@ export class AskCoreOrganizationService {
     return response.json();
   }
 
-  private async createDirectoryTeacherPerson(input: {
+  private async syncOrganizationMemberSource(input: {
     organizationId: string;
     organizationRole: AskCoreOrganizationRole;
     user: UserSession;
   }) {
+    const org = await this.getOrganization(input.organizationId);
+    const members = await this.membersForOrganization(input.organizationId);
     await this.postWorkbenchOrganizationJson({
       body: {
-        better_auth_user_id: input.user.id,
-        display_name: input.user.displayName,
-        email: input.user.email,
-        primary_org_unit_id: null,
-        roster_kind: 'teacher',
+        members: members.map((item) => ({
+          created_at: item.createdAt,
+          email: item.email ?? undefined,
+          member_id: item.id,
+          name: item.name,
+          role: item.role,
+          user_id: item.userId,
+        })),
+        organization: {
+          id: org.id,
+          logo: org.logo,
+          name: org.name,
+          slug: org.slug,
+        },
       },
       organizationId: input.organizationId,
       organizationRole: input.organizationRole,
-      path: 'people',
+      path: 'member-source/sync',
       user: input.user,
     });
   }
