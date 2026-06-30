@@ -732,6 +732,10 @@ export const AskCoreOrganizationRoute = memo(() => {
     normalizeTab(new URLSearchParams(location.search).get('tab')),
   );
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferMemberId, setTransferMemberId] = useState<string | undefined>();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirmName, setDeleteConfirmName] = useState('');
 
   // Overview editing state
   const [editingMeta, setEditingMeta] = useState(false);
@@ -775,6 +779,28 @@ export const AskCoreOrganizationRoute = memo(() => {
   const copyId = useCallback((id: string) => {
     navigator.clipboard.writeText(id).then(() => message.success('已复制'));
   }, []);
+
+  const isOrganizationOwner = org.current?.role === 'owner';
+  const ownershipTransferCandidates = useMemo(
+    () => org.members.filter((member) => member.role !== 'owner'),
+    [org.members],
+  );
+  const canConfirmDelete =
+    Boolean(org.current?.name) && deleteConfirmName.trim() === org.current?.name;
+
+  const handleTransferOwnership = useCallback(async () => {
+    if (!transferMemberId) return;
+    await org.handleTransferOwnership(transferMemberId);
+    setTransferOpen(false);
+    setTransferMemberId(undefined);
+  }, [org, transferMemberId]);
+
+  const handleDeleteOrganization = useCallback(async () => {
+    if (!canConfirmDelete) return;
+    await org.handleDeleteOrganization();
+    setDeleteOpen(false);
+    setDeleteConfirmName('');
+  }, [canConfirmDelete, org]);
 
   const statCards = [
     { label: '注册成员', value: org.members.length },
@@ -848,10 +874,13 @@ export const AskCoreOrganizationRoute = memo(() => {
                 payload={org.payload}
                 savedPulse={savedPulse}
                 saving={org.savingMeta}
+                showOwnerActions={isOrganizationOwner}
                 onCancel={handleCancelMeta}
                 onCopyId={copyId}
+                onDeleteOrganization={() => setDeleteOpen(true)}
                 onEdit={handleEditMeta}
                 onSave={() => void handleSaveMeta()}
+                onTransferOwnership={() => setTransferOpen(true)}
               />
             </div>
 
@@ -1123,6 +1152,60 @@ export const AskCoreOrganizationRoute = memo(() => {
             <Input maxLength={120} />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        destroyOnHidden
+        confirmLoading={org.transferringOwnership}
+        okButtonProps={{ disabled: !transferMemberId }}
+        okText="确认移交"
+        open={transferOpen}
+        title="移交所有者"
+        onOk={() => void handleTransferOwnership()}
+        onCancel={() => {
+          setTransferOpen(false);
+          setTransferMemberId(undefined);
+        }}
+      >
+        <Form layout="vertical">
+          <Form.Item required label="新的所有者">
+            <Select
+              placeholder="选择组织成员"
+              value={transferMemberId}
+              options={ownershipTransferCandidates.map((member) => ({
+                label: `${member.name}${member.email ? `（${member.email}）` : ''}`,
+                value: member.id,
+              }))}
+              onChange={setTransferMemberId}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        destroyOnHidden
+        confirmLoading={org.deletingOrganization}
+        okButtonProps={{ danger: true, disabled: !canConfirmDelete }}
+        okText="删除组织"
+        open={deleteOpen}
+        title="删除组织"
+        onOk={() => void handleDeleteOrganization()}
+        onCancel={() => {
+          setDeleteOpen(false);
+          setDeleteConfirmName('');
+        }}
+      >
+        <Alert
+          showIcon
+          style={{ marginBottom: 12 }}
+          title="删除后，当前组织成员将无法继续访问该组织。"
+          type="warning"
+        />
+        <Input
+          placeholder={`输入“${org.current?.name || ''}”确认删除`}
+          value={deleteConfirmName}
+          onChange={(event) => setDeleteConfirmName(event.target.value)}
+        />
       </Modal>
     </div>
   );

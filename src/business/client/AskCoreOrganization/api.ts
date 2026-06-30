@@ -110,6 +110,20 @@ export const updateAskCoreOrganization = (
     method: 'PATCH',
   });
 
+export const deleteAskCoreOrganization = (organizationId: string) =>
+  requestJson<AskCoreOrganizationPayload>(`${ORGANIZATION_API_BASE}/${organizationId}`, {
+    method: 'DELETE',
+  });
+
+export const transferAskCoreOrganizationOwnership = (organizationId: string, memberId: string) =>
+  requestJson<{ members: AskCoreOrganizationPayload['members'] }>(
+    `${ORGANIZATION_API_BASE}/${organizationId}/owner-transfer`,
+    {
+      body: JSON.stringify({ member_id: memberId }),
+      method: 'POST',
+    },
+  );
+
 export const updateAskCoreOrganizationMemberRole = (
   organizationId: string,
   memberId: string,

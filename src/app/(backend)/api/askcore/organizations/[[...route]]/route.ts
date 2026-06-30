@@ -33,6 +33,10 @@ type AskCoreOrganizationRouteService = {
     session: AskCoreSessionRecord,
     payload: Record<string, unknown>,
   ) => Promise<unknown>;
+  deleteOrganization: (
+    session: AskCoreSessionRecord,
+    organizationId: string,
+  ) => Promise<unknown>;
   list: (session: AskCoreSessionRecord) => Promise<unknown>;
   listMembers: (session: AskCoreSessionRecord, organizationId: string) => Promise<unknown>;
   removeMember: (
@@ -41,6 +45,11 @@ type AskCoreOrganizationRouteService = {
     memberId: string,
   ) => Promise<unknown>;
   setActive: (session: AskCoreSessionRecord, organizationId: string) => Promise<unknown>;
+  transferOwnership: (
+    session: AskCoreSessionRecord,
+    organizationId: string,
+    memberId: string,
+  ) => Promise<unknown>;
   updateMemberRole: (
     session: AskCoreSessionRecord,
     organizationId: string,
@@ -212,6 +221,19 @@ const handleOrganizationRequest = async (request: NextRequest, context: RouteCon
       return NextResponse.json(
         await service.updateOrganization(session, segment, await readJsonBody(request)),
       );
+    }
+
+    if (route.length === 1 && request.method === 'DELETE') {
+      return NextResponse.json(await service.deleteOrganization(session, segment));
+    }
+
+    if (route.length === 2 && subresource === 'owner-transfer' && request.method === 'POST') {
+      const body = await readJsonBody(request);
+      const memberId = toString(body.member_id) ?? toString(body.memberId);
+      if (!memberId) return jsonError(400, 'member_id is required');
+      return NextResponse.json({
+        members: await service.transferOwnership(session, segment, memberId),
+      });
     }
 
     if (route.length === 2 && subresource === 'members' && request.method === 'GET') {

@@ -352,6 +352,131 @@ describe('AskCoreOrganizationService', () => {
     });
   });
 
+  it('transfers ownership to another member and downgrades the current owner to admin', async () => {
+    const { AskCoreOrganizationService } = await import('./index');
+    const updateWhere = vi.fn(async () => undefined);
+    const updateSet = vi.fn(() => ({ where: updateWhere }));
+    const db = {
+      update: vi.fn(() => ({
+        set: updateSet,
+      })),
+    };
+    const service = new AskCoreOrganizationService({ db: db as never }) as any;
+    const session = { user: { email: 'owner@askcore.cn', id: 'user-owner', name: 'Owner' } };
+    service.requireMembership = vi.fn(async () => ({
+      id: 'mem-owner',
+      role: 'owner',
+      userId: 'user-owner',
+    }));
+    service.getMember = vi.fn(async () => ({
+      id: 'mem-target',
+      role: 'member',
+      userId: 'user-target',
+    }));
+    service.membersForOrganization = vi.fn(async () => []);
+    service.syncOrganizationMemberSource = vi.fn(async () => undefined);
+
+    await service.transferOwnership(session, 'org-1', 'mem-target');
+
+    expect(updateSet).toHaveBeenNthCalledWith(1, { role: 'owner' });
+    expect(updateSet).toHaveBeenNthCalledWith(2, { role: 'admin' });
+    expect(updateWhere).toHaveBeenCalledTimes(2);
+    expect(service.syncOrganizationMemberSource).toHaveBeenCalledWith({
+      organizationId: 'org-1',
+      organizationRole: 'admin',
+      user: expect.objectContaining({ id: 'user-owner' }),
+    });
+  });
+
+  it('rejects ownership transfer from admins', async () => {
+    const { AskCoreOrganizationService } = await import('./index');
+    const db = {
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({ where: vi.fn(async () => undefined) })),
+      })),
+    };
+    const service = new AskCoreOrganizationService({ db: db as never }) as any;
+    service.requireMembership = vi.fn(async () => ({
+      id: 'mem-admin',
+      role: 'admin',
+      userId: 'user-admin',
+    }));
+
+    await expect(
+      service.transferOwnership(
+        { user: { email: 'admin@askcore.cn', id: 'user-admin', name: 'Admin' } },
+        'org-1',
+        'mem-target',
+      ),
+    ).rejects.toMatchObject({
+      message: 'Only organization owners can transfer ownership',
+      status: 403,
+    });
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it('deletes an owner-managed organization after clearing AskCore directory extension data', async () => {
+    const { AskCoreOrganizationService } = await import('./index');
+    const deleteWhere = vi.fn(async () => undefined);
+    const updateWhere = vi.fn(async () => undefined);
+    const db = {
+      delete: vi.fn(() => ({ where: deleteWhere })),
+      update: vi.fn(() => ({ set: vi.fn(() => ({ where: updateWhere })) })),
+    };
+    const service = new AskCoreOrganizationService({ db: db as never }) as any;
+    const session = { session: { id: 'session-1' }, user: { email: 'owner@askcore.cn', id: 'user-owner', name: 'Owner' } };
+    service.requireMembership = vi.fn(async () => ({
+      id: 'mem-owner',
+      role: 'owner',
+      userId: 'user-owner',
+    }));
+    service.deleteWorkbenchOrganizationDirectory = vi.fn(async () => ({}));
+    service.listOrganizationsForUser = vi.fn(async () => [
+      { id: 'org-2', isActive: false, name: 'Next Org', role: 'admin', slug: 'next' },
+    ]);
+    service.setActiveOrganizationForSession = vi.fn(async () => undefined);
+    service.payloadForUser = vi.fn(async () => ({ current: { id: 'org-2' } }));
+
+    const payload = await service.deleteOrganization(session, 'org-1');
+
+    expect(service.deleteWorkbenchOrganizationDirectory).toHaveBeenCalledWith({
+      organizationId: 'org-1',
+      organizationRole: 'owner',
+      user: expect.objectContaining({ id: 'user-owner' }),
+    });
+    expect(deleteWhere).toHaveBeenCalledTimes(1);
+    expect(updateWhere).toHaveBeenCalledTimes(1);
+    expect(service.setActiveOrganizationForSession).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'user-owner' }),
+      'org-2',
+    );
+    expect(payload.current.id).toBe('org-2');
+  });
+
+  it('rejects organization deletion from admins', async () => {
+    const { AskCoreOrganizationService } = await import('./index');
+    const db = {
+      delete: vi.fn(() => ({ where: vi.fn(async () => undefined) })),
+    };
+    const service = new AskCoreOrganizationService({ db: db as never }) as any;
+    service.requireMembership = vi.fn(async () => ({
+      id: 'mem-admin',
+      role: 'admin',
+      userId: 'user-admin',
+    }));
+
+    await expect(
+      service.deleteOrganization(
+        { user: { email: 'admin@askcore.cn', id: 'user-admin', name: 'Admin' } },
+        'org-1',
+      ),
+    ).rejects.toMatchObject({
+      message: 'Only organization owners can delete organizations',
+      status: 403,
+    });
+    expect(db.delete).not.toHaveBeenCalled();
+  });
+
   it('rejects admin removal of owner or admin members', async () => {
     const { AskCoreOrganizationService } = await import('./index');
     const db = {

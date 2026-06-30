@@ -6,10 +6,12 @@ const serviceMock = vi.hoisted(() => ({
   bootstrap: vi.fn(),
   createInvite: vi.fn(),
   createOrganization: vi.fn(),
+  deleteOrganization: vi.fn(),
   list: vi.fn(),
   listMembers: vi.fn(),
   removeMember: vi.fn(),
   setActive: vi.fn(),
+  transferOwnership: vi.fn(),
   updateMemberRole: vi.fn(),
   updateOrganization: vi.fn(),
 }));
@@ -163,6 +165,43 @@ describe('AskCore organization route', () => {
 
     expect(response.status).toBe(200);
     expect(serviceMock.removeMember).toHaveBeenCalledWith(expect.any(Object), 'org-1', 'mem-1');
+  });
+
+  it('routes organization deletion to the active organization service', async () => {
+    authApi.getSession.mockResolvedValue({ session: { id: 'session-1' }, user: { id: 'user-1' } });
+    serviceMock.deleteOrganization.mockResolvedValue({ current: null });
+    const { DELETE } = await loadRoute();
+
+    const response = await DELETE(
+      new NextRequest('https://askcore.cn/api/askcore/organizations/org-1', {
+        method: 'DELETE',
+      }),
+      routeContext(['org-1']),
+    );
+
+    expect(response.status).toBe(200);
+    expect(serviceMock.deleteOrganization).toHaveBeenCalledWith(expect.any(Object), 'org-1');
+  });
+
+  it('routes ownership transfer to the active organization service', async () => {
+    authApi.getSession.mockResolvedValue({ session: { id: 'session-1' }, user: { id: 'user-1' } });
+    serviceMock.transferOwnership.mockResolvedValue([]);
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      new NextRequest('https://askcore.cn/api/askcore/organizations/org-1/owner-transfer', {
+        body: JSON.stringify({ member_id: 'mem-2' }),
+        method: 'POST',
+      }),
+      routeContext(['org-1', 'owner-transfer']),
+    );
+
+    expect(response.status).toBe(200);
+    expect(serviceMock.transferOwnership).toHaveBeenCalledWith(
+      expect.any(Object),
+      'org-1',
+      'mem-2',
+    );
   });
 
   it('creates link, QR, and email invitations through the same endpoint', async () => {

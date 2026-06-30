@@ -497,6 +497,78 @@ export class AskCoreOrganizationService {
     return this.membersForOrganization(organizationId);
   }
 
+  async transferOwnership(
+    session: AskCoreSessionRecord,
+    organizationId: string,
+    memberId: string,
+  ) {
+    const user = userFromSession(session);
+    const actor = await this.requireMembership(user, organizationId);
+    if (!this.isSuperAdmin(user) && actor.role !== 'owner') {
+      throw new AskCoreOrganizationError(403, 'Only organization owners can transfer ownership');
+    }
+    const target = await this.getMember(memberId, organizationId);
+    if (target.role === 'owner') {
+      throw new AskCoreOrganizationError(400, 'Target member is already an owner');
+    }
+    if (target.id === actor.id || target.userId === user.id) {
+      throw new AskCoreOrganizationError(400, 'Cannot transfer ownership to yourself');
+    }
+
+    const runUpdates = async (db: Pick<LobeChatDatabase, 'update'>) => {
+      await db.update(member).set({ role: 'owner' }).where(eq(member.id, target.id));
+      if (!this.isSuperAdmin(user)) {
+        await db.update(member).set({ role: 'admin' }).where(eq(member.id, actor.id));
+      }
+    };
+    const transactionalDb = this.db as LobeChatDatabase & {
+      transaction?: (callback: (tx: Pick<LobeChatDatabase, 'update'>) => Promise<void>) => Promise<void>;
+    };
+    if (typeof transactionalDb.transaction === 'function') {
+      await transactionalDb.transaction(runUpdates);
+    } else {
+      await runUpdates(this.db);
+    }
+
+    await this.syncOrganizationMemberSource({
+      organizationId,
+      organizationRole: this.isSuperAdmin(user) ? 'owner' : 'admin',
+      user,
+    });
+    return this.membersForOrganization(organizationId);
+  }
+
+  async deleteOrganization(
+    session: AskCoreSessionRecord,
+    organizationId: string,
+  ): Promise<AskCoreOrganizationPayload> {
+    const user = userFromSession(session);
+    const actor = await this.requireMembership(user, organizationId);
+    if (!this.isSuperAdmin(user) && actor.role !== 'owner') {
+      throw new AskCoreOrganizationError(403, 'Only organization owners can delete organizations');
+    }
+
+    await this.deleteWorkbenchOrganizationDirectory({
+      organizationId,
+      organizationRole: actor.role,
+      user,
+    });
+    await this.db.delete(organization).where(eq(organization.id, organizationId));
+    await this.db
+      .update(authSession)
+      .set({ activeOrganizationId: null })
+      .where(eq(authSession.activeOrganizationId, organizationId));
+
+    const remaining = await this.listOrganizationsForUser(user.id, {
+      includeAll: this.isSuperAdmin(user),
+    });
+    const nextOrganizationId = remaining[0]?.id;
+    if (nextOrganizationId) {
+      await this.setActiveOrganizationForSession(user, nextOrganizationId);
+    }
+    return this.payloadForUser(user, nextOrganizationId);
+  }
+
   async createInvite(
     session: AskCoreSessionRecord,
     organizationId: string,
@@ -907,6 +979,22 @@ export class AskCoreOrganizationService {
       organizationId: input.organizationId,
       organizationRole: input.organizationRole,
       path: 'member-source/sync',
+      user: input.user,
+    });
+  }
+
+  private async deleteWorkbenchOrganizationDirectory(input: {
+    organizationId: string;
+    organizationRole: AskCoreOrganizationRole;
+    user: UserSession;
+  }) {
+    await this.postWorkbenchOrganizationJson({
+      body: {
+        organization_id: input.organizationId,
+      },
+      organizationId: input.organizationId,
+      organizationRole: input.organizationRole,
+      path: 'member-source/delete',
       user: input.user,
     });
   }

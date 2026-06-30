@@ -350,6 +350,57 @@ describe('AskCoreOrganizationRoute', () => {
     expect(within(personDrawer).getByText('定向邀请')).toBeInTheDocument();
   });
 
+  it('lets organization owners delete the current organization after name confirmation', async () => {
+    const deletedPayload = {
+      ...activeOrganizationPayload,
+      current: null,
+      members: [],
+      organizations: [],
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/directory')) {
+        return new Response(JSON.stringify(directoryPayload), { status: 200 });
+      }
+      if (url.endsWith('/workbench/organization/units')) {
+        return new Response(JSON.stringify({ org_id: 'org-1', units: directoryPayload.units }), {
+          status: 200,
+        });
+      }
+      if (url.includes('/workbench/organization/roles')) {
+        return new Response(JSON.stringify({ items: directoryPayload.authorizations }), {
+          status: 200,
+        });
+      }
+      if (url.endsWith('/api/askcore/organizations/org-1') && init?.method === 'DELETE') {
+        return new Response(JSON.stringify(deletedPayload), { status: 200 });
+      }
+      return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /删除组织/ }));
+    const confirmInput = await screen.findByPlaceholderText('输入“Seed 的组织”确认删除');
+    const dialog = (confirmInput.closest('.ant-modal') as HTMLElement | null) || document.body;
+    fireEvent.change(confirmInput, {
+      target: { value: 'Seed 的组织' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: '删除组织' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/askcore/organizations/org-1',
+        expect.objectContaining({ method: 'DELETE' }),
+      ),
+    );
+  });
+
   it('lets admins edit basic person information from the detail drawer', async () => {
     let nextDirectoryPayload = {
       ...directoryPayload,

@@ -1,8 +1,8 @@
 'use client';
 
-import { Button, Form, type FormInstance, Input } from 'antd';
+import { Button, Form, type FormInstance, Input, Space } from 'antd';
 import { cssVar } from 'antd-style';
-import { Check, Copy, Pencil, Save, UsersRound } from 'lucide-react';
+import { Check, Copy, Pencil, Save, Trash2, UserCog, UsersRound } from 'lucide-react';
 import { memo } from 'react';
 
 import { styles } from '../styles';
@@ -14,11 +14,14 @@ interface HeroCardProps {
   metaForm: FormInstance;
   onCancel: () => void;
   onCopyId: (id: string) => void;
+  onDeleteOrganization?: () => void;
   onEdit: () => void;
   onSave: () => void;
+  onTransferOwnership?: () => void;
   payload: AskCoreOrganizationPayload | null;
   savedPulse: boolean;
   saving: boolean;
+  showOwnerActions?: boolean;
 }
 
 export const HeroCard = memo<HeroCardProps>(
@@ -29,10 +32,13 @@ export const HeroCard = memo<HeroCardProps>(
     metaForm,
     onCancel,
     onCopyId,
+    onDeleteOrganization,
     onEdit,
     onSave,
+    onTransferOwnership,
     savedPulse,
     saving,
+    showOwnerActions,
   }) => {
     const current = payload?.current;
 
@@ -85,17 +91,46 @@ export const HeroCard = memo<HeroCardProps>(
             </div>
           </div>
 
-          {canUpdateMeta && !editing && (
-            <Button
-              className={styles.pillButton}
-              icon={<Pencil size={12} />}
-              size="small"
-              style={{ fontSize: 12, padding: '0 10px', height: 28 }}
-              type="text"
-              onClick={onEdit}
-            >
-              编辑资料
-            </Button>
+          {!editing && (
+            <Space wrap>
+              {showOwnerActions && onTransferOwnership ? (
+                <Button
+                  className={styles.pillButton}
+                  icon={<UserCog size={12} />}
+                  size="small"
+                  style={{ fontSize: 12, padding: '0 10px', height: 28 }}
+                  type="text"
+                  onClick={onTransferOwnership}
+                >
+                  移交所有者
+                </Button>
+              ) : null}
+              {showOwnerActions && onDeleteOrganization ? (
+                <Button
+                  danger
+                  className={styles.pillButton}
+                  icon={<Trash2 size={12} />}
+                  size="small"
+                  style={{ fontSize: 12, padding: '0 10px', height: 28 }}
+                  type="text"
+                  onClick={onDeleteOrganization}
+                >
+                  删除组织
+                </Button>
+              ) : null}
+              {canUpdateMeta && (
+                <Button
+                  className={styles.pillButton}
+                  icon={<Pencil size={12} />}
+                  size="small"
+                  style={{ fontSize: 12, padding: '0 10px', height: 28 }}
+                  type="text"
+                  onClick={onEdit}
+                >
+                  编辑资料
+                </Button>
+              )}
+            </Space>
           )}
         </div>
 
