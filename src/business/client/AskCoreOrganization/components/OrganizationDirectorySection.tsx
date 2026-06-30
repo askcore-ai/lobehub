@@ -54,6 +54,7 @@ import {
   fetchAskCoreTeachingAssignments,
   importAskCoreDirectoryPeople,
   rejectAskCoreEducationIdentityClaim,
+  removeAskCoreOrganizationMember,
   updateAskCoreDirectoryPerson,
   updateAskCoreEducationOrgUnit,
   uploadAskCoreCsv,
@@ -278,6 +279,11 @@ const normalizeOrganizationRole = (role?: string | null): AskCoreOrganizationRol
   return null;
 };
 
+const canRemoveOrganizationMember = (
+  actorRole: AskCoreOrganizationRole | undefined,
+  targetRole: AskCoreOrganizationRole | null,
+) => actorRole === 'owner' || (actorRole === 'admin' && targetRole === 'member');
+
 const UnitTree = memo<{
   activeAncestorIds: Set<number>;
   canManage: boolean;
@@ -398,11 +404,12 @@ UnitTree.displayName = 'UnitTree';
 
 interface OrganizationDirectorySectionProps {
   canManage: boolean;
+  currentOrganizationRole?: AskCoreOrganizationRole;
   organizationName?: string;
 }
 
 export const OrganizationDirectorySection = memo<OrganizationDirectorySectionProps>(
-  ({ canManage, organizationName }) => {
+  ({ canManage, currentOrganizationRole, organizationName }) => {
     const location = useLocation();
     const [payload, setPayload] = useState<AskCoreOrganizationDirectoryPayload | null>(null);
     const [loading, setLoading] = useState(false);
@@ -805,6 +812,24 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     const selectedPersonPendingInvites = selectedPerson
       ? pendingInvitationsByPersonId.get(selectedPerson.id) || 0
       : 0;
+    const selectedPersonUserId = String(selectedPerson?.better_auth_user_id || '').trim();
+    const selectedPersonMemberSummary = selectedPersonUserId
+      ? memberSummaries[selectedPersonUserId]
+      : undefined;
+    const selectedPersonOrganizationRole = normalizeOrganizationRole(
+      selectedPersonMemberSummary?.organization_role,
+    );
+    const selectedPersonCanRemoveOrganizationMember =
+      canManage &&
+      Boolean(selectedPersonMemberSummary?.member_id) &&
+      canRemoveOrganizationMember(currentOrganizationRole, selectedPersonOrganizationRole);
+    const selectedPersonRemoveDisabledReason = !selectedPerson?.better_auth_user_id
+      ? undefined
+      : !selectedPersonMemberSummary?.member_id
+        ? '未找到组织成员记录'
+        : !selectedPersonCanRemoveOrganizationMember
+          ? '只有所有者可以移除所有者或管理员'
+          : undefined;
     const selectedNodePendingInvites = invitations.filter((invite) => {
       if (invite.status !== 'pending') return false;
       const targetUnitId = selectedUnitId || rootUnitId;
@@ -1247,6 +1272,23 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         accountForm.resetFields();
         await loadDirectory();
         message.success('账号已绑定');
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    const removeSelectedOrganizationMember = async () => {
+      if (!payload || !selectedPerson || !selectedPersonMemberSummary?.member_id) {
+        message.error('未找到组织成员记录');
+        return;
+      }
+      setSaving(true);
+      try {
+        await removeAskCoreOrganizationMember(payload.org_id, selectedPersonMemberSummary.member_id);
+        await loadDirectory();
+        message.success('成员已移出组织');
+      } catch (reason) {
+        message.error(reason instanceof Error ? reason.message : '成员移出失败');
       } finally {
         setSaving(false);
       }
@@ -2405,6 +2447,45 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                       </Form>
                     ) : null}
                   </section>
+
+                  {canManage && selectedPerson.better_auth_user_id ? (
+                    <section className={styles.directoryDetailSection}>
+                      <div className={styles.directoryDetailTitle}>组织成员</div>
+                      <div className={styles.directoryMetaLine}>
+                        当前权限：
+                        {selectedPersonOrganizationRole
+                          ? organizationRoleLabels[selectedPersonOrganizationRole]
+                          : '未同步'}
+                      </div>
+                      <div className={styles.directoryMetaLine}>
+                        移出后该账号将失去当前组织访问权限，人员档案仍保留在目录中。
+                      </div>
+                      {selectedPersonCanRemoveOrganizationMember ? (
+                        <Popconfirm
+                          description="该操作不会删除人员档案，但会撤销账号的组织访问权。"
+                          okText="移出组织"
+                          okType="danger"
+                          title={`确认将“${selectedPerson.display_name}”移出组织？`}
+                          onConfirm={removeSelectedOrganizationMember}
+                        >
+                          <Button block danger icon={<Trash2 size={14} />} loading={saving}>
+                            移出组织
+                          </Button>
+                        </Popconfirm>
+                      ) : (
+                        <>
+                          <Button block danger disabled icon={<Trash2 size={14} />}>
+                            移出组织
+                          </Button>
+                          {selectedPersonRemoveDisabledReason ? (
+                            <div className={styles.directoryMetaLine}>
+                              {selectedPersonRemoveDisabledReason}
+                            </div>
+                          ) : null}
+                        </>
+                      )}
+                    </section>
+                  ) : null}
 
                   <section className={styles.directoryDetailSection}>
                     <div className={styles.directoryDetailTitle}>定向邀请</div>

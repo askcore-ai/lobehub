@@ -478,6 +478,9 @@ export class AskCoreOrganizationService {
     const user = userFromSession(session);
     const actor = await this.requireAdmin(user, organizationId);
     const target = await this.getMember(memberId, organizationId);
+    if (!this.isSuperAdmin(user) && actor.role !== 'owner' && target.role !== 'member') {
+      throw new AskCoreOrganizationError(403, 'Only owners can remove owner or admin membership');
+    }
     if (target.role === 'owner') {
       if (!this.isSuperAdmin(user) && actor.role !== 'owner') {
         throw new AskCoreOrganizationError(403, 'Only owners can remove owner membership');

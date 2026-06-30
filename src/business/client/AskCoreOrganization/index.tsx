@@ -990,6 +990,7 @@ export const AskCoreOrganizationRoute = memo(() => {
               {activeTab === 'directory' && (
                 <OrganizationDirectorySection
                   canManage={org.canManage}
+                  currentOrganizationRole={org.current.role}
                   organizationName={org.current.name}
                 />
               )}

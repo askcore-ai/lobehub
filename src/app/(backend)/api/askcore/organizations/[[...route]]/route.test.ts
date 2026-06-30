@@ -149,6 +149,22 @@ describe('AskCore organization route', () => {
     );
   });
 
+  it('routes member removal to the active organization service', async () => {
+    authApi.getSession.mockResolvedValue({ session: { id: 'session-1' }, user: { id: 'user-1' } });
+    serviceMock.removeMember.mockResolvedValue([]);
+    const { DELETE } = await loadRoute();
+
+    const response = await DELETE(
+      new NextRequest('https://askcore.cn/api/askcore/organizations/org-1/members/mem-1', {
+        method: 'DELETE',
+      }),
+      routeContext(['org-1', 'members', 'mem-1']),
+    );
+
+    expect(response.status).toBe(200);
+    expect(serviceMock.removeMember).toHaveBeenCalledWith(expect.any(Object), 'org-1', 'mem-1');
+  });
+
   it('creates link, QR, and email invitations through the same endpoint', async () => {
     authApi.getSession.mockResolvedValue({ session: { id: 'session-1' }, user: { id: 'user-1' } });
     serviceMock.createInvite.mockResolvedValue({ link: 'https://askcore.cn/join/organization/t' });

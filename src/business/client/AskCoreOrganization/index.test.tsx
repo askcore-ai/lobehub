@@ -899,4 +899,67 @@ describe('AskCoreOrganizationRoute', () => {
     expect(within(studentRow).queryByText('组织本级')).not.toBeInTheDocument();
     expect(within(studentRow).queryByText('学生')).not.toBeInTheDocument();
   });
+
+  it('lets owners remove bound organization members from the directory drawer', async () => {
+    const removableDirectoryPayload = {
+      ...directoryPayload,
+      people: [
+        {
+          better_auth_user_id: 'user-owner',
+          display_name: '张扬',
+          id: 103,
+          lifecycle_status: 'active',
+          org_id: 'org-1',
+          primary_org_unit_id: 10,
+          registration_status: 'registered',
+        },
+        {
+          better_auth_user_id: 'user-student',
+          display_name: '王同学',
+          id: 104,
+          lifecycle_status: 'active',
+          org_id: 'org-1',
+          primary_org_unit_id: 10,
+          registration_status: 'registered',
+        },
+      ],
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/askcore/organizations/org-1/members/mem-student')) {
+        return new Response(JSON.stringify({ members: [] }), { status: 200 });
+      }
+      if (url.endsWith('/workbench/organization/directory')) {
+        return new Response(JSON.stringify(removableDirectoryPayload), { status: 200 });
+      }
+      if (url.endsWith('/workbench/organization/identity-claims?status=all')) {
+        return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    const directory = await screen.findByLabelText('组织架构工作区');
+    const studentRow = await within(directory).findByRole('button', { name: /王同学/ });
+    fireEvent.click(studentRow);
+
+    await screen.findByText('组织成员');
+    const removeButtons = screen.getAllByRole('button', { name: '移出组织' });
+    fireEvent.click(removeButtons[0]);
+    const confirmButtons = await screen.findAllByRole('button', { name: '移出组织' });
+    fireEvent.click(confirmButtons.at(-1)!);
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/askcore/organizations/org-1/members/mem-student',
+        expect.objectContaining({ method: 'DELETE' }),
+      ),
+    );
+  });
 });

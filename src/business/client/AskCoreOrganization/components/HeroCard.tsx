@@ -1,6 +1,6 @@
 'use client';
 
-import { Avatar, Button, Form, type FormInstance, Input } from 'antd';
+import { Button, Form, type FormInstance, Input } from 'antd';
 import { cssVar } from 'antd-style';
 import { Check, Copy, Pencil, Save, UsersRound } from 'lucide-react';
 import { memo } from 'react';
@@ -44,12 +44,6 @@ export const HeroCard = memo<HeroCardProps>(
     return (
       <div className={styles.heroCard}>
         <div className={styles.heroSummary}>
-          <div className={styles.heroAvatarWrap}>
-            <Avatar className={styles.heroAvatar} size={56} src={current?.logo}>
-              {current?.name?.slice(0, 1) || '?'}
-            </Avatar>
-          </div>
-
           <div className={styles.heroBody}>
             <div className={styles.heroTitleRow}>
               <div className={styles.heroName}>{current?.name || '未命名组织'}</div>

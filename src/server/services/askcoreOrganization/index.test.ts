@@ -351,4 +351,23 @@ describe('AskCoreOrganizationService', () => {
       user: expect.objectContaining({ id: 'user-owner' }),
     });
   });
+
+  it('rejects admin removal of owner or admin members', async () => {
+    const { AskCoreOrganizationService } = await import('./index');
+    const db = {
+      delete: vi.fn(() => ({
+        where: vi.fn(async () => undefined),
+      })),
+    };
+    const service = new AskCoreOrganizationService({ db: db as never }) as any;
+    const session = { user: { email: 'admin@askcore.cn', id: 'user-admin', name: 'Admin' } };
+    service.requireAdmin = vi.fn(async () => ({ role: 'admin' }));
+    service.getMember = vi.fn(async () => ({ id: 'mem-target', role: 'admin' }));
+
+    await expect(service.removeMember(session, 'org-1', 'mem-target')).rejects.toMatchObject({
+      message: 'Only owners can remove owner or admin membership',
+      status: 403,
+    });
+    expect(db.delete).not.toHaveBeenCalled();
+  });
 });
