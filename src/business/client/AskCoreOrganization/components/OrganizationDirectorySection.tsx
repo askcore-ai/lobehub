@@ -77,7 +77,6 @@ type DirectoryActionKind = 'create' | 'import' | 'invite';
 type DirectoryRoleTone =
   'admin' | 'member' | 'owner' | 'roster' | 'student' | 'teacher' | 'unknown';
 type IdentityDrawerMode = 'claim' | 'review';
-const ALL_PEOPLE_TREE_VALUE = 0;
 
 type SubjectOption = { label: string; value: number };
 
@@ -119,12 +118,15 @@ const unitTypeLabels: Record<AskCoreEducationOrgUnitType, string> = {
   class: '班级',
   cohort: '届别',
   department: '部门',
+  organization: '组织',
   school: '学校',
 };
 
 const unitTypeOptions = (
   Object.entries(unitTypeLabels) as [AskCoreEducationOrgUnitType, string][]
-).map(([value, label]) => ({ label, value }));
+)
+  .filter(([value]) => value !== 'organization')
+  .map(([value, label]) => ({ label, value }));
 
 const unitTypeLabel = (unit: Pick<AskCoreEducationOrgUnit, 'subject_id' | 'unit_type'>) =>
   unit.unit_type === 'department' && unit.subject_id ? '学科组' : unitTypeLabels[unit.unit_type];
@@ -154,6 +156,7 @@ const roleOptionsByUnitType: Record<AskCoreEducationOrgUnitType, AskCoreEducatio
   class: ['homeroom_teacher', 'teacher', 'student'],
   cohort: ['grade_admin', 'teacher'],
   department: ['subject_lead', 'teacher'],
+  organization: ['teacher'],
   school: ['school_admin', 'teacher'],
 };
 
@@ -161,6 +164,7 @@ const defaultEducationRoleByUnitType: Record<AskCoreEducationOrgUnitType, AskCor
   class: 'student',
   cohort: 'teacher',
   department: 'teacher',
+  organization: 'teacher',
   school: 'teacher',
 };
 
@@ -200,11 +204,22 @@ const parentAllowedForUnitType = (
   parentUnit: AskCoreEducationOrgUnit | undefined,
 ) => {
   if (!unitType || !parentUnit) return true;
-  if (unitType === 'school') return false;
-  if (unitType === 'cohort') return parentUnit.unit_type === 'school';
+  if (unitType === 'organization') return false;
+  if (unitType === 'school') return parentUnit.unit_type === 'organization';
+  if (unitType === 'cohort')
+    return parentUnit.unit_type === 'organization' || parentUnit.unit_type === 'school';
   if (unitType === 'class')
-    return parentUnit.unit_type === 'school' || parentUnit.unit_type === 'cohort';
-  return parentUnit.unit_type === 'school' || parentUnit.unit_type === 'cohort';
+    return (
+      parentUnit.unit_type === 'organization' ||
+      parentUnit.unit_type === 'school' ||
+      parentUnit.unit_type === 'cohort'
+    );
+  return (
+    parentUnit.unit_type === 'organization' ||
+    parentUnit.unit_type === 'school' ||
+    parentUnit.unit_type === 'cohort' ||
+    parentUnit.unit_type === 'department'
+  );
 };
 
 const roleTone = (role: AskCoreEducationRole): DirectoryRoleTone => {
@@ -247,8 +262,12 @@ const matchesSearch = (person: AskCoreDirectoryPerson, query: string) => {
     .some((value) => String(value).toLowerCase().includes(keyword));
 };
 
-const isRootDirectPerson = (person: AskCoreDirectoryPerson) =>
-  person.primary_org_unit_id === null || person.primary_org_unit_id === undefined;
+const isRootDirectPerson = (person: AskCoreDirectoryPerson, rootUnitId: number | null) =>
+  rootUnitId
+    ? person.primary_org_unit_id === rootUnitId ||
+      person.primary_org_unit_id === null ||
+      person.primary_org_unit_id === undefined
+    : person.primary_org_unit_id === null || person.primary_org_unit_id === undefined;
 
 const normalizeOrganizationRole = (role?: string | null): AskCoreOrganizationRole | null => {
   const normalized = String(role || '')
@@ -264,9 +283,11 @@ const UnitTree = memo<{
   canManage: boolean;
   peopleCountByUnitId: Map<number, number>;
   renderNodeActions: (unit: AskCoreEducationOrgUnit | null) => ReactNode;
+  rootUnit: AskCoreEducationOrgUnit | null;
   rootLabel: string;
   selectedUnitId: number | null;
   totalPeopleCount: number;
+  unitDisplayName: (unit: AskCoreEducationOrgUnit) => string;
   units: AskCoreEducationOrgUnit[];
   onSelect: (unitId: number | null) => void;
 }>(
@@ -275,9 +296,11 @@ const UnitTree = memo<{
     canManage,
     peopleCountByUnitId,
     renderNodeActions,
+    rootUnit,
     rootLabel,
     selectedUnitId,
     totalPeopleCount,
+    unitDisplayName,
     units,
     onSelect,
   }) => {
@@ -302,7 +325,7 @@ const UnitTree = memo<{
               onClick={() => onSelect(unit.id)}
             >
               <span className={styles.directoryTreeNodeLabel}>
-                <span>{unit.name}</span>
+                <span>{unitDisplayName(unit)}</span>
                 <small>{unitTypeLabel(unit)}</small>
               </span>
               <span className={styles.directoryTreeCount}>
@@ -317,26 +340,55 @@ const UnitTree = memo<{
 
     return (
       <div className={styles.directoryTree}>
-        <div
-          className={`${styles.directoryTreeNodeRow} ${
-            selectedUnitId === null ? styles.directoryTreeNodeRowActive : ''
-          }`}
-        >
-          <button
-            aria-current={selectedUnitId === null ? 'true' : undefined}
-            className={styles.directoryTreeNode}
-            type="button"
-            onClick={() => onSelect(null)}
-          >
-            <span className={styles.directoryTreeNodeLabel}>
-              <span>{rootLabel}</span>
-              <small>组织</small>
-            </span>
-            <span className={styles.directoryTreeCount}>{totalPeopleCount}</span>
-          </button>
-          {canManage ? renderNodeActions(null) : null}
-        </div>
-        {renderBranch(null)}
+        {rootUnit ? (
+          <>
+            <div
+              className={`${styles.directoryTreeNodeRow} ${
+                selectedUnitId === rootUnit.id ? styles.directoryTreeNodeRowActive : ''
+              }`}
+            >
+              <button
+                aria-current={selectedUnitId === rootUnit.id ? 'true' : undefined}
+                className={styles.directoryTreeNode}
+                type="button"
+                onClick={() => onSelect(rootUnit.id)}
+              >
+                <span className={styles.directoryTreeNodeLabel}>
+                  <span>{rootLabel}</span>
+                  <small>组织</small>
+                </span>
+                <span className={styles.directoryTreeCount}>
+                  {peopleCountByUnitId.get(rootUnit.id) || 0}
+                </span>
+              </button>
+              {canManage ? renderNodeActions(rootUnit) : null}
+            </div>
+            {renderBranch(rootUnit.id, 1)}
+          </>
+        ) : (
+          <>
+            <div
+              className={`${styles.directoryTreeNodeRow} ${
+                selectedUnitId === null ? styles.directoryTreeNodeRowActive : ''
+              }`}
+            >
+              <button
+                aria-current={selectedUnitId === null ? 'true' : undefined}
+                className={styles.directoryTreeNode}
+                type="button"
+                onClick={() => onSelect(null)}
+              >
+                <span className={styles.directoryTreeNodeLabel}>
+                  <span>{rootLabel}</span>
+                  <small>组织</small>
+                </span>
+                <span className={styles.directoryTreeCount}>{totalPeopleCount}</span>
+              </button>
+              {canManage ? renderNodeActions(null) : null}
+            </div>
+            {renderBranch(null)}
+          </>
+        )}
       </div>
     );
   },
@@ -497,7 +549,15 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
 
     const units = useMemo(() => payload?.units ?? [], [payload?.units]);
     const people = useMemo(() => payload?.people ?? [], [payload?.people]);
-    const rootNodeLabel = organizationName || '当前组织';
+    const organizationRootUnit = useMemo(
+      () =>
+        units.find((unit) => unit.unit_type === 'organization' && !unit.parent_id) ||
+        units.find((unit) => unit.unit_type === 'organization') ||
+        null,
+      [units],
+    );
+    const rootUnitId = organizationRootUnit?.id ?? null;
+    const rootNodeLabel = organizationName || organizationRootUnit?.name || '当前组织';
     const roleAssignments = useMemo(
       () => payload?.authorizations ?? [],
       [payload?.authorizations],
@@ -512,6 +572,11 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       [people],
     );
     const unitById = useMemo(() => new Map(units.map((unit) => [unit.id, unit])), [units]);
+    const unitDisplayName = useCallback(
+      (unit: AskCoreEducationOrgUnit) =>
+        unit.unit_type === 'organization' && unit.id === rootUnitId ? rootNodeLabel : unit.name,
+      [rootNodeLabel, rootUnitId],
+    );
     const subjectNameById = useMemo(
       () => new Map(subjectOptions.map((subject) => [subject.value, subject.label])),
       [subjectOptions],
@@ -526,13 +591,23 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       () => new Set(selectedPath.map((unit) => unit.id)),
       [selectedPath],
     );
+    useEffect(() => {
+      if (!payload) return;
+      if (rootUnitId && (selectedUnitId === null || !unitById.has(selectedUnitId))) {
+        setSelectedUnitId(rootUnitId);
+        return;
+      }
+      if (!rootUnitId && selectedUnitId && !unitById.has(selectedUnitId)) {
+        setSelectedUnitId(null);
+      }
+    }, [payload, rootUnitId, selectedUnitId, unitById]);
     const unitPathLabel = useCallback(
       (unitId?: number | null) => {
-        if (unitId === null || unitId === undefined) return '组织本级';
+        if (unitId === null || unitId === undefined) return rootNodeLabel;
         const path = makeUnitPath(unitId, unitById);
-        return path.length ? path.map((unit) => unit.name).join(' / ') : '组织本级';
+        return path.length ? path.map((unit) => unitDisplayName(unit)).join(' / ') : rootNodeLabel;
       },
-      [unitById],
+      [rootNodeLabel, unitById, unitDisplayName],
     );
     const selectedPathLabel = selectedUnit ? unitPathLabel(selectedUnit.id) : rootNodeLabel;
     const classUnitOptions = useMemo(
@@ -542,24 +617,32 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
           .map((unit) => ({ label: unitPathLabel(unit.id), value: unit.id })),
       [unitPathLabel, units],
     );
-    const rootPeople = useMemo(() => people.filter(isRootDirectPerson), [people]);
+    const rootPeople = useMemo(
+      () => people.filter((person) => isRootDirectPerson(person, rootUnitId)),
+      [people, rootUnitId],
+    );
     const directPeople = useMemo(
       () =>
         selectedUnitId
-          ? people.filter((person) => person.primary_org_unit_id === selectedUnitId)
+          ? people.filter(
+              (person) =>
+                person.primary_org_unit_id === selectedUnitId ||
+                (selectedUnitId === rootUnitId && isRootDirectPerson(person, rootUnitId)),
+            )
           : rootPeople,
-      [people, rootPeople, selectedUnitId],
+      [people, rootPeople, rootUnitId, selectedUnitId],
     );
     const basePeople = directPeople;
     const peopleCountByUnitId = useMemo(() => {
       const map = new Map<number, number>();
       for (const person of people) {
-        if (person.primary_org_unit_id) {
-          map.set(person.primary_org_unit_id, (map.get(person.primary_org_unit_id) || 0) + 1);
+        const unitId = person.primary_org_unit_id || rootUnitId;
+        if (unitId) {
+          map.set(unitId, (map.get(unitId) || 0) + 1);
         }
       }
       return map;
-    }, [people]);
+    }, [people, rootUnitId]);
     const rolesByPersonId = useMemo(() => {
       const map = new Map<number, typeof roleAssignments>();
       for (const role of roleAssignments) {
@@ -724,19 +807,22 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       : 0;
     const selectedNodePendingInvites = invitations.filter((invite) => {
       if (invite.status !== 'pending') return false;
-      if (!selectedUnitId) {
+      const targetUnitId = selectedUnitId || rootUnitId;
+      if (!targetUnitId) {
         if (invite.primary_org_unit_id !== null && invite.primary_org_unit_id !== undefined)
           return false;
         if (!invite.person_id) return invite.invitation_kind === 'open';
         const invitedPerson = personById.get(invite.person_id);
-        return invitedPerson ? isRootDirectPerson(invitedPerson) : false;
+        return invitedPerson ? isRootDirectPerson(invitedPerson, rootUnitId) : false;
       }
-      if (invite.primary_org_unit_id === selectedUnitId) return true;
+      if (invite.primary_org_unit_id === targetUnitId) return true;
+      if (targetUnitId === rootUnitId && invite.primary_org_unit_id == null) return true;
       if (!invite.person_id) return false;
-      return (
-        people.find((person) => person.id === invite.person_id)?.primary_org_unit_id ===
-        selectedUnitId
-      );
+      const invitedPerson = people.find((person) => person.id === invite.person_id);
+      return invitedPerson
+        ? invitedPerson.primary_org_unit_id === targetUnitId ||
+            (targetUnitId === rootUnitId && isRootDirectPerson(invitedPerson, rootUnitId))
+        : false;
     }).length;
     const directoryRows = useMemo<DirectoryPersonRowModel[]>(
       () =>
@@ -840,47 +926,20 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     );
     const plainTreeData = useMemo(() => buildUnitTreeData(), [buildUnitTreeData]);
     const createUnitParentTreeData = useMemo<DirectoryTreeSelectNode[]>(
-      () => [
-        {
-          disabled: false,
-          key: ALL_PEOPLE_TREE_VALUE,
-          label: rootNodeLabel,
-          title: rootNodeLabel,
-          value: ALL_PEOPLE_TREE_VALUE,
-        },
-        ...buildUnitParentTreeData(watchedCreateUnitType),
-      ],
-      [buildUnitParentTreeData, rootNodeLabel, watchedCreateUnitType],
+      () => buildUnitParentTreeData(watchedCreateUnitType),
+      [buildUnitParentTreeData, watchedCreateUnitType],
     );
     const editUnitParentTreeData = useMemo<DirectoryTreeSelectNode[]>(
-      () => [
-        {
-          disabled: false,
-          key: ALL_PEOPLE_TREE_VALUE,
-          label: rootNodeLabel,
-          title: rootNodeLabel,
-          value: ALL_PEOPLE_TREE_VALUE,
-        },
-        ...buildUnitParentTreeData(watchedEditUnitType, selectedUnit?.id),
-      ],
-      [buildUnitParentTreeData, rootNodeLabel, selectedUnit?.id, watchedEditUnitType],
+      () => buildUnitParentTreeData(watchedEditUnitType, selectedUnit?.id),
+      [buildUnitParentTreeData, selectedUnit?.id, watchedEditUnitType],
     );
     const orgInvitePositionTreeData = useMemo<DirectoryTreeSelectNode[]>(
       () => orgInviteTreeData,
       [orgInviteTreeData],
     );
     const personPrimaryUnitTreeData = useMemo<DirectoryTreeSelectNode[]>(
-      () => [
-        {
-          disabled: false,
-          key: ALL_PEOPLE_TREE_VALUE,
-          label: rootNodeLabel,
-          title: rootNodeLabel,
-          value: ALL_PEOPLE_TREE_VALUE,
-        },
-        ...plainTreeData,
-      ],
-      [plainTreeData, rootNodeLabel],
+      () => plainTreeData,
+      [plainTreeData],
     );
     const selectedUnitRoleOptions = (
       selectedUnit
@@ -894,14 +953,26 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       : undefined;
     const selectedUnitPresetLabel =
       selectedUnit && selectedUnitDefaultRole
-        ? `${roleLabels[selectedUnitDefaultRole]} · ${selectedUnit.name}`
+        ? `${roleLabels[selectedUnitDefaultRole]} · ${unitDisplayName(selectedUnit)}`
         : undefined;
+
+    const rootTeacherDefaults = () =>
+      rootUnitId && organizationRootUnit
+        ? {
+            education_org_unit_id: rootUnitId,
+            education_role: 'teacher',
+            primary_org_unit_id: rootUnitId,
+          }
+        : {};
 
     const applyActionDefaults = (scope: 'organization' | 'unit', action: DirectoryActionKind) => {
       const isUnitScope = scope === 'unit' && selectedUnit && selectedUnitDefaultRole;
       if (action === 'create') {
         const form = scope === 'organization' ? orgPersonForm : unitPersonForm;
         form.resetFields();
+        if (scope === 'organization') {
+          form.setFieldsValue(rootTeacherDefaults());
+        }
         if (isUnitScope) {
           form.setFieldsValue({
             education_role: selectedUnitDefaultRole,
@@ -912,6 +983,12 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       if (action === 'invite') {
         const form = scope === 'organization' ? orgInviteForm : unitInviteForm;
         form.resetFields();
+        if (scope === 'organization' && rootUnitId) {
+          form.setFieldsValue({
+            primary_org_unit_id: rootUnitId,
+            role: 'teacher',
+          });
+        }
         if (isUnitScope) {
           form.setFieldsValue({
             role: selectedUnitDefaultRole,
@@ -921,6 +998,12 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       }
       const form = scope === 'organization' ? orgImportForm : unitImportForm;
       form.resetFields();
+      if (scope === 'organization' && rootUnitId) {
+        form.setFieldsValue({
+          default_role: 'teacher',
+          primary_org_unit_id: rootUnitId,
+        });
+      }
       if (isUnitScope) {
         form.setFieldsValue({
           default_role: selectedUnitDefaultRole,
@@ -950,16 +1033,16 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       unitId: number | null | undefined,
     ) => {
       if (!role) {
-        message.error('请选择教育授权');
+        message.error('请选择角色');
         return null;
       }
       if (!unitId) {
-        message.error('教育授权必须选择授权范围');
+        message.error('角色必须选择范围');
         return null;
       }
       const targetUnit = unitById.get(unitId);
       if (!targetUnit) {
-        message.error('请选择有效的授权范围');
+        message.error('请选择有效的角色范围');
         return null;
       }
       if (!roleAllowedForUnit(role, targetUnit)) {
@@ -971,12 +1054,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
 
     const createUnit = async () => {
       const values = await unitCreateForm.validateFields();
-      const createdParentId =
-        values.parent_id === ALL_PEOPLE_TREE_VALUE
-          ? null
-          : values.parent_id
-            ? Number(values.parent_id)
-            : undefined;
+      const createdParentId = values.parent_id ? Number(values.parent_id) : rootUnitId || undefined;
       setSaving(true);
       try {
         const created = await createAskCoreEducationOrgUnit({
@@ -1007,11 +1085,11 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       if (!selectedUnit) return;
       const values = await unitEditForm.validateFields();
       const nextParentId =
-        values.parent_id === ALL_PEOPLE_TREE_VALUE
+        selectedUnit.unit_type === 'organization'
           ? null
           : values.parent_id
             ? Number(values.parent_id)
-            : undefined;
+            : rootUnitId || undefined;
       setSaving(true);
       try {
         const updated = await updateAskCoreEducationOrgUnit(selectedUnit.id, {
@@ -1042,7 +1120,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       setSaving(true);
       try {
         await deleteAskCoreEducationOrgUnit(unit.id);
-        setSelectedUnitId((current) => (current === unit.id ? null : current));
+        setSelectedUnitId((current) => (current === unit.id ? rootUnitId : current));
         await loadDirectory();
         message.success('组织节点已删除');
       } catch (reason) {
@@ -1063,7 +1141,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
           ? selectedUnitId
           : values.education_org_unit_id
             ? Number(values.education_org_unit_id)
-            : null;
+            : rootUnitId;
       if (!validateEducationScope(educationRole, roleScopeId)) return;
       setSaving(true);
       try {
@@ -1074,10 +1152,10 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
           education_role: educationRole,
           primary_org_unit_id:
             scope === 'unit'
-              ? selectedUnitId || undefined
-              : values.primary_org_unit_id === ALL_PEOPLE_TREE_VALUE
-                ? null
-                : values.primary_org_unit_id || undefined,
+              ? selectedUnitId || rootUnitId || undefined
+              : values.primary_org_unit_id
+                ? Number(values.primary_org_unit_id)
+                : rootUnitId || undefined,
         });
         form.resetFields();
         await loadDirectory();
@@ -1092,12 +1170,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       const form = scope === 'organization' ? orgInviteForm : unitInviteForm;
       const values = await form.validateFields();
       const rawPrimaryOrgUnitId = scope === 'unit' ? selectedUnitId : values.primary_org_unit_id;
-      const primaryOrgUnitId =
-        rawPrimaryOrgUnitId === ALL_PEOPLE_TREE_VALUE
-          ? null
-          : rawPrimaryOrgUnitId
-            ? Number(rawPrimaryOrgUnitId)
-            : null;
+      const primaryOrgUnitId = rawPrimaryOrgUnitId ? Number(rawPrimaryOrgUnitId) : rootUnitId;
       const presetRole =
         (values.role as AskCoreEducationRole | undefined) ||
         (scope === 'unit' ? selectedUnitDefaultRole : undefined);
@@ -1142,7 +1215,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
           ? selectedUnitId
           : values.primary_org_unit_id
             ? Number(values.primary_org_unit_id)
-            : null;
+            : rootUnitId;
       if (!validateEducationScope(defaultRole, roleScopeId)) return;
       setSaving(true);
       try {
@@ -1223,7 +1296,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       if (!payload || !selectedPerson) return;
       const selectedRoles = rolesByPersonId.get(selectedPerson.id) || [];
       if (!selectedRoles.length) {
-        message.error('请先为此人员分配教育授权');
+        message.error('请先为此人员分配角色');
         return;
       }
       const values = await directInviteForm.validateFields();
@@ -1297,7 +1370,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
 
     const createTeachingAssignment = async () => {
       if (!selectedPerson || !selectedPersonCanTeach) {
-        message.error('请选择具备教师授权的人员');
+        message.error('请选择具备教师角色的人员');
         return;
       }
       const values = await teachingAssignmentForm.validateFields();
@@ -1330,7 +1403,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
 
     const exportDirectory = () => {
       if (!payload) return;
-      const header = ['姓名', '归属', '组织身份', '教育授权', '账号'];
+      const header = ['姓名', '归属', '权限', '角色', '账号'];
       const rows = people.map((person) => [
         person.display_name,
         unitPathLabel(person.primary_org_unit_id),
@@ -1360,11 +1433,12 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         return;
       }
       setUnitEditOpen(false);
-      setUnitActionTarget(parentId ?? 'root');
-      setSelectedUnitId(parentId);
+      const resolvedParentId = parentId ?? rootUnitId;
+      setUnitActionTarget(resolvedParentId ?? 'root');
+      setSelectedUnitId(resolvedParentId);
       unitCreateForm.resetFields();
       unitCreateForm.setFieldsValue({
-        parent_id: parentId ?? ALL_PEOPLE_TREE_VALUE,
+        parent_id: resolvedParentId || undefined,
         sort_order: 0,
       });
     };
@@ -1386,7 +1460,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         description: unit.description || undefined,
         entry_year: unit.entry_year || undefined,
         name: unit.name,
-        parent_id: unit.parent_id ?? ALL_PEOPLE_TREE_VALUE,
+        parent_id: unit.parent_id ?? rootUnitId ?? undefined,
         sort_order: unit.sort_order ?? 0,
         subject_id: unit.subject_id || undefined,
         unit_type: unit.unit_type,
@@ -1491,30 +1565,39 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
               </Form.Item>
             ) : null}
             <Form.Item
-              label="教育授权"
+              label="角色"
               name="education_role"
-              rules={[{ message: '请选择教育授权', required: true }]}
+              rules={[{ message: '请选择角色', required: true }]}
             >
               <Select
                 options={scope === 'unit' ? selectedUnitRoleOptions : allRoleOptions}
-                placeholder="选择教育授权"
-                onChange={() => {
-                  if (scope === 'organization')
-                    orgPersonForm.resetFields(['education_org_unit_id']);
+                placeholder="选择角色"
+                onChange={(nextRole: AskCoreEducationRole) => {
+                  if (scope === 'organization') {
+                    if (
+                      rootUnitId &&
+                      organizationRootUnit &&
+                      roleAllowedForUnit(nextRole, organizationRootUnit)
+                    ) {
+                      orgPersonForm.setFieldsValue({ education_org_unit_id: rootUnitId });
+                    } else {
+                      orgPersonForm.resetFields(['education_org_unit_id']);
+                    }
+                  }
                 }}
               />
             </Form.Item>
             {scope === 'organization' ? (
               <Form.Item
-                extra="决定这个授权在哪个学校、届别、班级或部门生效。"
-                label="教育授权范围"
+                extra="决定这个角色在哪个学校、届别、班级或部门生效。"
+                label="角色范围"
                 name="education_org_unit_id"
-                rules={[{ message: '请选择教育授权范围', required: true }]}
+                rules={[{ message: '请选择角色范围', required: true }]}
               >
                 <TreeSelect
                   showSearch
                   treeDefaultExpandAll
-                  placeholder="选择授权范围"
+                  placeholder="选择角色范围"
                   treeData={orgPersonRoleScopedTreeData}
                   treeNodeFilterProp="label"
                 />
@@ -1537,15 +1620,25 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
           </div>
           <Form className={styles.directoryActionForm} form={form} layout="vertical">
             <Form.Item
-              label="教育授权"
+              label="角色"
               name="role"
-              rules={[{ message: '请选择教育授权', required: true }]}
+              rules={[{ message: '请选择角色', required: true }]}
             >
               <Select
                 options={scope === 'unit' ? selectedUnitRoleOptions : allRoleOptions}
-                placeholder="选择教育授权"
-                onChange={() => {
-                  if (scope === 'organization') orgInviteForm.resetFields(['primary_org_unit_id']);
+                placeholder="选择角色"
+                onChange={(nextRole: AskCoreEducationRole) => {
+                  if (scope === 'organization') {
+                    if (
+                      rootUnitId &&
+                      organizationRootUnit &&
+                      roleAllowedForUnit(nextRole, organizationRootUnit)
+                    ) {
+                      orgInviteForm.setFieldsValue({ primary_org_unit_id: rootUnitId });
+                    } else {
+                      orgInviteForm.resetFields(['primary_org_unit_id']);
+                    }
+                  }
                 }}
               />
             </Form.Item>
@@ -1555,7 +1648,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                 name="primary_org_unit_id"
                 rules={[
                   {
-                    message: '请选择教育授权范围',
+                    message: '请选择角色范围',
                     required: true,
                   },
                 ]}
@@ -1563,7 +1656,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                 <TreeSelect
                   showSearch
                   treeDefaultExpandAll
-                  placeholder="选择教育授权范围"
+                  placeholder="选择角色范围"
                   treeData={orgInvitePositionTreeData}
                   treeNodeFilterProp="label"
                 />
@@ -1595,28 +1688,38 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
           </div>
           <Form className={styles.directoryActionForm} form={form} layout="vertical">
             <Form.Item
-              label="默认教育授权"
+              label="默认角色"
               name="default_role"
-              rules={[{ message: '请选择默认教育授权', required: true }]}
+              rules={[{ message: '请选择默认角色', required: true }]}
             >
               <Select
                 options={roleOptions}
-                placeholder="选择默认教育授权"
-                onChange={() => {
-                  if (scope === 'organization') orgImportForm.resetFields(['primary_org_unit_id']);
+                placeholder="选择默认角色"
+                onChange={(nextRole: AskCoreEducationRole) => {
+                  if (scope === 'organization') {
+                    if (
+                      rootUnitId &&
+                      organizationRootUnit &&
+                      roleAllowedForUnit(nextRole, organizationRootUnit)
+                    ) {
+                      orgImportForm.setFieldsValue({ primary_org_unit_id: rootUnitId });
+                    } else {
+                      orgImportForm.resetFields(['primary_org_unit_id']);
+                    }
+                  }
                 }}
               />
             </Form.Item>
             {scope === 'organization' ? (
               <Form.Item
-                label="默认授权范围"
+                label="默认角色范围"
                 name="primary_org_unit_id"
-                rules={[{ message: '请选择默认授权范围', required: true }]}
+                rules={[{ message: '请选择默认角色范围', required: true }]}
               >
                 <TreeSelect
                   showSearch
                   treeDefaultExpandAll
-                  placeholder="选择默认授权范围"
+                  placeholder="选择默认角色范围"
                   treeData={orgImportRoleScopedTreeData}
                   treeNodeFilterProp="label"
                 />
@@ -1675,7 +1778,8 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
 
     const renderTreeNodeActions = (unit: AskCoreEducationOrgUnit | null) => {
       const targetKey = unit?.id ?? 'root';
-      const nodeName = unit?.name ?? rootNodeLabel;
+      const nodeName = unit ? unitDisplayName(unit) : rootNodeLabel;
+      const isOrganizationRoot = unit?.unit_type === 'organization';
       return (
         <div
           className={styles.directoryTreeNodeActions}
@@ -1698,7 +1802,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
               />
             </Tooltip>
           </Popover>
-          {unit ? (
+          {unit && !isOrganizationRoot ? (
             <>
               <Popover
                 content={unitFormContent('edit')}
@@ -1961,8 +2065,10 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                 peopleCountByUnitId={peopleCountByUnitId}
                 renderNodeActions={renderTreeNodeActions}
                 rootLabel={rootNodeLabel}
+                rootUnit={organizationRootUnit}
                 selectedUnitId={selectedUnitId}
                 totalPeopleCount={rootPeople.length}
+                unitDisplayName={unitDisplayName}
                 units={units}
                 onSelect={setSelectedUnitId}
               />
@@ -1973,7 +2079,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                 <div>
                   <div className={styles.directoryBreadcrumb}>{selectedPathLabel}</div>
                   <div className={styles.directoryPaneTitle}>
-                    {selectedUnit ? selectedUnit.name : rootNodeLabel}
+                    {selectedUnit ? unitDisplayName(selectedUnit) : rootNodeLabel}
                   </div>
                   <div className={styles.directoryPaneMeta}>
                     <span>直属 {directPeople.length} 人</span>
@@ -2000,8 +2106,8 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                 <div className={styles.directoryPeopleHeader}>
                   <span>姓名</span>
                   <span>归属</span>
-                  <span>组织身份</span>
-                  <span>教育授权</span>
+                  <span>权限</span>
+                  <span>角色</span>
                   <span>账号</span>
                 </div>
                 {directoryRows.length ? (
@@ -2046,7 +2152,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                             </Tooltip>
                           ))
                         ) : (
-                          <Tag className={styles.directoryRoleTag}>暂无教育授权</Tag>
+                          <Tag className={styles.directoryRoleTag}>待指定</Tag>
                         )}
                       </span>
                       <span className={styles.directoryCellText}>{row.accountLabel}</span>
@@ -2167,7 +2273,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                   </section>
 
                   <section className={styles.directoryDetailSection}>
-                    <div className={styles.directoryDetailTitle}>教育授权</div>
+                    <div className={styles.directoryDetailTitle}>角色</div>
                     <div className={styles.directoryInspectorTags}>
                       {roleBadgesForPerson(selectedPerson.id).length ? (
                         roleBadgesForPerson(selectedPerson.id).map((badge) => (
@@ -2180,7 +2286,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                           </Tag>
                         ))
                       ) : (
-                        <Tag className={styles.directoryRoleTag}>暂无教育授权</Tag>
+                        <Tag className={styles.directoryRoleTag}>待指定</Tag>
                       )}
                     </div>
                     {canManage ? (
@@ -2198,12 +2304,12 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                         </Form.Item>
                         <Form.Item
                           name="org_unit_id"
-                          rules={[{ message: '请选择授权范围', required: true }]}
+                          rules={[{ message: '请选择角色范围', required: true }]}
                         >
                           <TreeSelect
                             showSearch
                             treeDefaultExpandAll
-                            placeholder="授权范围"
+                            placeholder="角色范围"
                             treeData={roleScopedTreeData}
                             treeNodeFilterProp="label"
                           />

@@ -22,6 +22,7 @@ const unitTypeIcons: Record<AskCoreEducationOrgUnitType, React.ReactNode> = {
   class: <UsersRound size={14} />,
   cohort: <GitBranch size={14} />,
   department: <Landmark size={14} />,
+  organization: <Building2 size={14} />,
   school: <Building2 size={14} />,
 };
 
@@ -29,6 +30,7 @@ const unitTypeLabels: Record<AskCoreEducationOrgUnitType, string> = {
   class: '班级',
   cohort: '届别',
   department: '部门',
+  organization: '组织',
   school: '学校',
 };
 

@@ -1,7 +1,12 @@
 export type AskCoreOrganizationRole = 'owner' | 'admin' | 'member';
 export type AskCoreInviteChannel = 'email' | 'link' | 'qr';
 export type AskCoreInviteExpiry = '30m' | '1d' | '7d' | '30d';
-export type AskCoreEducationOrgUnitType = 'school' | 'cohort' | 'class' | 'department';
+export type AskCoreEducationOrgUnitType =
+  | 'organization'
+  | 'school'
+  | 'cohort'
+  | 'class'
+  | 'department';
 export type AskCoreEducationRole =
   | 'school_admin'
   | 'grade_admin'

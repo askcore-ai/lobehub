@@ -34,6 +34,7 @@ const unitTypeLabels = {
   class: '班级',
   cohort: '届别',
   department: '部门',
+  organization: '组织',
   school: '学校',
 };
 
@@ -57,6 +58,7 @@ const roleOptionsByUnitType: Record<AskCoreEducationOrgUnitType, AskCoreEducatio
   class: ['homeroom_teacher', 'teacher', 'student'],
   cohort: ['grade_admin', 'teacher'],
   department: ['teacher'],
+  organization: ['teacher'],
   school: ['school_admin', 'teacher'],
 };
 
