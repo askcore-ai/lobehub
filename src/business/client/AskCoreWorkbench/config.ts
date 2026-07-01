@@ -74,7 +74,7 @@ export const askCoreWorkbenchTabsForProfile = (
 ): AskCoreWorkbenchTabConfig[] => {
   if (profile?.workbench_mode === 'student_restricted') {
     return ASKCORE_WORKBENCH_TABS.filter((tab) =>
-      new Set<AskCoreWorkbenchTab>(['assignments', 'submissions']).has(tab.key),
+      new Set<AskCoreWorkbenchTab>(['overview', 'assignments', 'submissions']).has(tab.key),
     ).map((tab) =>
       tab.key === 'submissions'
         ? { ...tab, label: '我的提交', newLabel: '提交作业' }

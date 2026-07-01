@@ -540,6 +540,12 @@ const styles = createStaticStyles(({ css }) => ({
     flex-direction: column;
     gap: 12px;
   `,
+  studentOverviewActions: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  `,
   statGrid: css`
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
@@ -7442,32 +7448,37 @@ const AskCoreWorkbenchPage = memo(() => {
               />
             ) : null}
             {isRestrictedStudent ? (
-              <Alert
-                showIcon
-                description="当前组织同时存在教师和学生，你可以查看分配给自己的作业并提交作业，创建作业和题库管理由教师完成。"
-                message="学生工作台"
-                type="info"
-              />
-            ) : null}
-            <div className={styles.statGrid}>
-              {stats.map((item) => (
-                <div className={styles.statItem} key={item.key}>
-                  <div className={styles.statTitle}>{item.label}</div>
-                  <div className={styles.statValue}>{item.value}</div>
+              <div className={styles.studentOverviewActions}>
+                <Button className={styles.primary} onClick={() => navigateToTab('assignments')}>
+                  查看我的作业
+                </Button>
+                <Button className={styles.secondary} onClick={() => navigateToTab('submissions')}>
+                  查看我的提交
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div className={styles.statGrid}>
+                  {stats.map((item) => (
+                    <div className={styles.statItem} key={item.key}>
+                      <div className={styles.statTitle}>{item.label}</div>
+                      <div className={styles.statValue}>{item.value}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <div className={styles.table}>
-              <Table
-                columns={invocationColumns}
-                dataSource={recent}
-                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
-                pagination={false}
-                rowKey={(record) => String(record.invocation_id || record.run_id)}
-                scroll={{ x: 1150 }}
-                size="middle"
-              />
-            </div>
+                <div className={styles.table}>
+                  <Table
+                    columns={invocationColumns}
+                    dataSource={recent}
+                    locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+                    pagination={false}
+                    rowKey={(record) => String(record.invocation_id || record.run_id)}
+                    scroll={{ x: 1150 }}
+                    size="middle"
+                  />
+                </div>
+              </>
+            )}
           </>
         )}
       </div>

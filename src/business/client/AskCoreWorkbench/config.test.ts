@@ -30,7 +30,7 @@ describe('AskCoreWorkbench config', () => {
       workbench_mode: 'student_restricted',
     });
 
-    expect(tabs.map((tab) => tab.key)).toEqual(['assignments', 'submissions']);
+    expect(tabs.map((tab) => tab.key)).toEqual(['overview', 'assignments', 'submissions']);
     expect(tabs.find((tab) => tab.key === 'assignments')?.label).toBe('我的作业');
     expect(tabs.find((tab) => tab.key === 'submissions')?.newLabel).toBe('提交作业');
   });

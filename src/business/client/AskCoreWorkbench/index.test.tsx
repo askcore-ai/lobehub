@@ -380,7 +380,7 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
     );
   });
 
-  it('routes restricted students to their assignment list without the teacher dashboard summary', async () => {
+  it('keeps a restricted student overview focused on the active organization', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/askcore/workbench/me') {
@@ -437,14 +437,16 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(screen.getAllByText('函数作业').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getByText('AskCore School')).toBeInTheDocument());
 
+    expect(screen.getByText('总览')).toBeInTheDocument();
     expect(screen.getByText('我的作业')).toBeInTheDocument();
     expect(screen.getByText('我的提交')).toBeInTheDocument();
-    expect(screen.queryByText('总览')).not.toBeInTheDocument();
+    expect(screen.queryByText('函数作业')).not.toBeInTheDocument();
     expect(screen.queryByText('学生工作台')).not.toBeInTheDocument();
     expect(screen.queryByText('题目')).not.toBeInTheDocument();
     expect(screen.queryByText('1662')).not.toBeInTheDocument();
+    expect(screen.queryByText('16')).not.toBeInTheDocument();
     expect(screen.queryByText('555')).not.toBeInTheDocument();
     expect(screen.queryByText('批量导入学生提交')).not.toBeInTheDocument();
   });
