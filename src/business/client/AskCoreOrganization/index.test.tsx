@@ -950,6 +950,109 @@ describe('AskCoreOrganizationRoute', () => {
     expect(within(studentRow).queryByText('学生')).not.toBeInTheDocument();
   });
 
+  it('lets admins remove a stale person role from the detail drawer', async () => {
+    let nextDirectoryPayload = {
+      ...directoryPayload,
+      authorizations: [
+        {
+          better_auth_user_id: 'user-owner',
+          id: 910,
+          org_id: 'org-1',
+          org_unit_id: 10,
+          person_id: 103,
+          role: 'teacher',
+          subject_user_id: 'user:user-owner',
+        },
+        {
+          better_auth_user_id: 'user-owner',
+          id: 911,
+          org_id: 'org-1',
+          org_unit_id: 3,
+          person_id: 103,
+          role: 'student',
+          subject_user_id: 'user:user-owner',
+        },
+      ],
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/directory')) {
+        return new Response(JSON.stringify(nextDirectoryPayload), { status: 200 });
+      }
+      if (url.endsWith('/workbench/organization/people/103/roles/910') && init?.method === 'DELETE') {
+        const removed = nextDirectoryPayload.authorizations.find((role) => role.id === 910)!;
+        nextDirectoryPayload = {
+          ...nextDirectoryPayload,
+          authorizations: nextDirectoryPayload.authorizations.filter((role) => role.id !== 910),
+        };
+        return new Response(JSON.stringify(removed), { status: 200 });
+      }
+      return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    const directory = await screen.findByLabelText('组织架构工作区');
+    await waitFor(() => expect(within(directory).getByText('张扬')).toBeInTheDocument());
+    fireEvent.click(within(directory).getByRole('button', { name: /张扬/ }));
+    const drawerTitle = await screen.findByText('人员详情 #103');
+    const drawer = (drawerTitle.closest('.ant-drawer') as HTMLElement | null) || document.body;
+
+    expect(within(drawer).getByText('教师 / Seed 的组织')).toBeInTheDocument();
+    expect(within(drawer).getByText('学生 / Seed 的组织 / Seed School / 高一 1 班')).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole('button', { name: '删除教师角色' }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认删除' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/askcore/workbench/organization/people/103/roles/910',
+        expect.objectContaining({ method: 'DELETE' }),
+      ),
+    );
+    await waitFor(() =>
+      expect(within(drawer).queryByText('教师 / Seed 的组织')).not.toBeInTheDocument(),
+    );
+    expect(within(drawer).getByText('学生 / Seed 的组织 / Seed School / 高一 1 班')).toBeInTheDocument();
+  });
+
+  it('prevents admins from removing a person’s last role', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/directory')) {
+        return new Response(JSON.stringify(directoryPayload), { status: 200 });
+      }
+      if (url.includes('/workbench/organization/people/103/roles/') && init?.method === 'DELETE') {
+        return new Response(JSON.stringify({ message: 'unexpected delete' }), { status: 500 });
+      }
+      return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    const directory = await screen.findByLabelText('组织架构工作区');
+    await waitFor(() => expect(within(directory).getByText('张扬')).toBeInTheDocument());
+    fireEvent.click(within(directory).getByRole('button', { name: /张扬/ }));
+    const drawerTitle = await screen.findByText('人员详情 #103');
+    const drawer = (drawerTitle.closest('.ant-drawer') as HTMLElement | null) || document.body;
+
+    expect(within(drawer).getByText('教师 / Seed 的组织')).toBeInTheDocument();
+    expect(within(drawer).getByRole('button', { name: '删除教师角色' })).toBeDisabled();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining('/workbench/organization/people/103/roles/'),
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+  });
+
   it('lets owners remove bound organization members from the directory drawer', async () => {
     const removableDirectoryPayload = {
       ...directoryPayload,

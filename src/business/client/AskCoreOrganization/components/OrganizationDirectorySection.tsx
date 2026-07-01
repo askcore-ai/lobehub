@@ -48,6 +48,7 @@ import {
   createAskCoreEducationOrgUnit,
   createAskCoreOrganizationInvite,
   createAskCoreTeachingAssignment,
+  deleteAskCoreDirectoryPersonRole,
   deleteAskCoreEducationOrgUnit,
   fetchAskCoreEducationIdentityClaims,
   fetchAskCoreOrganizationDirectory,
@@ -82,9 +83,11 @@ type IdentityDrawerMode = 'claim' | 'review';
 type SubjectOption = { label: string; value: number };
 
 interface DirectoryRoleBadgeModel {
+  assignmentId?: number;
   key: string;
   label: string;
   path?: string;
+  role?: AskCoreEducationRole;
   tone: DirectoryRoleTone;
 }
 
@@ -757,9 +760,11 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         const personRoles = rolesByPersonId.get(personId) || [];
         if (personRoles.length) {
           return personRoles.map((role) => ({
+            assignmentId: role.id,
             key: `role-${role.id}`,
             label: roleLabels[role.role],
             path: unitPathLabel(role.org_unit_id),
+            role: role.role,
             tone: roleTone(role.role),
           }));
         }
@@ -1327,6 +1332,21 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         roleForm.resetFields();
         await loadDirectory();
         message.success('角色已分配');
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    const deleteRole = async (assignmentId: number) => {
+      if (!selectedPerson) return;
+      setSaving(true);
+      try {
+        await deleteAskCoreDirectoryPersonRole(selectedPerson.id, assignmentId);
+        await loadDirectory();
+        message.success('角色已删除');
+      } catch (reason) {
+        const reasonMessage = reason instanceof Error ? reason.message : '';
+        message.error(reasonMessage.includes('at least one role') ? '至少保留一个角色' : reasonMessage || '角色删除失败');
       } finally {
         setSaving(false);
       }
@@ -1986,6 +2006,9 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       </div>
     );
 
+    const selectedPersonRoleBadges = selectedPerson ? roleBadgesForPerson(selectedPerson.id) : [];
+    const selectedPersonCanDeleteRole = selectedPersonRoleBadges.length > 1;
+
     return (
       <section aria-label="组织架构工作区" className={styles.directorySurface}>
         <input
@@ -2306,14 +2329,32 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                   <section className={styles.directoryDetailSection}>
                     <div className={styles.directoryDetailTitle}>角色</div>
                     <div className={styles.directoryInspectorTags}>
-                      {roleBadgesForPerson(selectedPerson.id).length ? (
-                        roleBadgesForPerson(selectedPerson.id).map((badge) => (
+                      {selectedPersonRoleBadges.length ? (
+                        selectedPersonRoleBadges.map((badge) => (
                           <Tag
                             className={styles.directoryRoleTag}
                             data-tone={badge.tone}
                             key={badge.key}
                           >
                             {badge.path ? `${badge.label} / ${badge.path}` : badge.label}
+                            {canManage && badge.assignmentId ? (
+                              <Popconfirm
+                                okText="确认删除"
+                                title={`删除${badge.label}角色？`}
+                                onConfirm={() => deleteRole(badge.assignmentId!)}
+                              >
+                                <Button
+                                  danger
+                                  aria-label={`删除${badge.label}角色`}
+                                  className={styles.directoryTagAction}
+                                  disabled={saving || !selectedPersonCanDeleteRole}
+                                  icon={<Trash2 size={12} />}
+                                  size="small"
+                                  title={selectedPersonCanDeleteRole ? undefined : '至少保留一个角色'}
+                                  type="text"
+                                />
+                              </Popconfirm>
+                            ) : null}
                           </Tag>
                         ))
                       ) : (

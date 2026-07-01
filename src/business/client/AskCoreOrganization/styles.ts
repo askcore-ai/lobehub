@@ -1867,6 +1867,7 @@ export const styles = createStaticStyles(({ css }) => ({
   directoryRoleTag: css`
     display: inline-flex;
     align-items: center;
+    gap: 4px;
 
     max-width: 100%;
     height: 22px;
@@ -1928,6 +1929,15 @@ export const styles = createStaticStyles(({ css }) => ({
         background: ${cssVar.colorBgElevated};
       }
     }
+  `,
+  directoryTagAction: css`
+    width: 16px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    line-height: 16px;
   `,
   directoryFileInput: css`
     display: none;
