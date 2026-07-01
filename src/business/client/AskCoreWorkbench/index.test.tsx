@@ -379,6 +379,75 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
       '/organization?action=identity-claim',
     );
   });
+
+  it('routes restricted students to their assignment list without the teacher dashboard summary', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/askcore/workbench/me') {
+        return new Response(
+          JSON.stringify({
+            active_persona: { id: 7, label: '张扬', role: 'student' },
+            capabilities: {
+              can_create_assignment: false,
+              can_create_question: false,
+              can_run_teacher_submission_ocr: false,
+              can_submit_own_work: true,
+            },
+            default_persona: { id: 7, label: '张扬', role: 'student' },
+            education_identities: [{ id: 7, label: '张扬', role: 'student' }],
+            org_composition: { student_count: 1, teacher_count: 1 },
+            workbench_mode: 'student_restricted',
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 200 },
+        );
+      }
+      if (url === '/api/askcore/organizations') return activeOrganizationResponse();
+      if (url.startsWith('/api/askcore/workbench/assignments?')) {
+        return new Response(
+          JSON.stringify({
+            ...emptyListResponse,
+            items: [{ assignment_id: 501, subject_name: '数学', title: '函数作业' }],
+            resource: 'assignments',
+            total: 1,
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 200 },
+        );
+      }
+      if (url === '/api/askcore/workbench/dashboard') {
+        return new Response(
+          JSON.stringify({
+            active_invocations: [],
+            counts: { assignments: 16, questions: 555, submissions: 1662 },
+            drafts: [],
+            recent_invocations: [runningInvocation],
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 200 },
+        );
+      }
+      return new Response(JSON.stringify(emptyListResponse), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=overview']}>
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getAllByText('函数作业').length).toBeGreaterThan(0));
+
+    expect(screen.getByText('我的作业')).toBeInTheDocument();
+    expect(screen.getByText('我的提交')).toBeInTheDocument();
+    expect(screen.queryByText('总览')).not.toBeInTheDocument();
+    expect(screen.queryByText('学生工作台')).not.toBeInTheDocument();
+    expect(screen.queryByText('题目')).not.toBeInTheDocument();
+    expect(screen.queryByText('1662')).not.toBeInTheDocument();
+    expect(screen.queryByText('555')).not.toBeInTheDocument();
+    expect(screen.queryByText('批量导入学生提交')).not.toBeInTheDocument();
+  });
 });
 
 describe('AskCoreWorkbenchRoute assignment detail', () => {
