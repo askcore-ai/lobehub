@@ -495,7 +495,6 @@ describe('AskCoreOrganizationRoute', () => {
       if (url.endsWith('/workbench/organization/units/2') && init?.method === 'PATCH') {
         const updated = {
           ...nextDirectoryPayload.units.find((unit) => unit.id === 2)!,
-          description: '负责理科教学',
           name: '理科组',
         };
         nextDirectoryPayload = {
@@ -517,9 +516,14 @@ describe('AskCoreOrganizationRoute', () => {
     const directory = await screen.findByLabelText('组织架构工作区');
     await waitFor(() => expect(within(directory).getByLabelText('组织树')).toBeInTheDocument());
     const orgTree = within(directory).getByLabelText('组织树');
+    await waitFor(() => expect(within(orgTree).getByText('高一 1 班')).toBeInTheDocument());
+    const initialTreeText = orgTree.textContent || '';
+    expect(initialTreeText.indexOf('高一 1 班')).toBeLessThan(initialTreeText.indexOf('数学组'));
     fireEvent.click(within(orgTree).getByRole('button', { name: '在Seed 的组织下新建节点' }));
     const createNameInput = await screen.findByPlaceholderText('输入节点名称');
     const createPanel = createNameInput.closest('.ant-popover') || document.body;
+    expect(within(createPanel as HTMLElement).queryByPlaceholderText('节点说明')).not.toBeInTheDocument();
+    expect(within(createPanel as HTMLElement).queryByText('排序')).not.toBeInTheDocument();
     fireEvent.change(within(createPanel as HTMLElement).getByPlaceholderText('输入节点名称'), {
       target: { value: '行政办公室' },
     });
@@ -534,11 +538,9 @@ describe('AskCoreOrganizationRoute', () => {
         '/api/askcore/workbench/organization/units',
         expect.objectContaining({
           body: JSON.stringify({
-            description: undefined,
             entry_year: undefined,
             name: '行政办公室',
             parent_id: 1,
-            sort_order: 0,
             unit_type: 'department',
           }),
           method: 'POST',
@@ -550,10 +552,9 @@ describe('AskCoreOrganizationRoute', () => {
     fireEvent.click(within(orgTree).getByRole('button', { name: '编辑数学组' }));
     const editNameInput = await screen.findByDisplayValue('数学组');
     const editPanel = editNameInput.closest('.ant-popover') || document.body;
+    expect(within(editPanel as HTMLElement).queryByPlaceholderText('节点说明')).not.toBeInTheDocument();
+    expect(within(editPanel as HTMLElement).queryByText('排序')).not.toBeInTheDocument();
     fireEvent.change(editNameInput, { target: { value: '理科组' } });
-    fireEvent.change(within(editPanel as HTMLElement).getByPlaceholderText('节点说明'), {
-      target: { value: '负责理科教学' },
-    });
     fireEvent.click(within(editPanel as HTMLElement).getByRole('button', { name: '保存节点' }));
 
     await waitFor(() =>
@@ -561,11 +562,9 @@ describe('AskCoreOrganizationRoute', () => {
         '/api/askcore/workbench/organization/units/2',
         expect.objectContaining({
           body: JSON.stringify({
-            description: '负责理科教学',
             entry_year: undefined,
             name: '理科组',
             parent_id: 1,
-            sort_order: 0,
             unit_type: 'department',
           }),
           method: 'PATCH',

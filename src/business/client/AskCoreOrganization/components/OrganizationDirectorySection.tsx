@@ -189,7 +189,9 @@ const allRoleOptions = (Object.keys(roleLabels) as AskCoreEducationRole[]).map((
 }));
 
 const sortUnits = (units: AskCoreEducationOrgUnit[]) =>
-  [...units].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0) || a.id - b.id);
+  [...units].sort(
+    (a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true }) || a.id - b.id,
+  );
 
 const roleAllowedForUnit = (
   role: AskCoreEducationRole | undefined,
@@ -1083,11 +1085,9 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       setSaving(true);
       try {
         const created = await createAskCoreEducationOrgUnit({
-          description: values.description || undefined,
           entry_year: values.unit_type === 'cohort' ? values.entry_year || undefined : undefined,
           name: values.name,
           parent_id: createdParentId,
-          sort_order: values.sort_order ?? 0,
           subject_id:
             values.unit_type === 'department' && values.subject_id
               ? Number(values.subject_id)
@@ -1118,11 +1118,9 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       setSaving(true);
       try {
         const updated = await updateAskCoreEducationOrgUnit(selectedUnit.id, {
-          description: values.description || undefined,
           entry_year: values.unit_type === 'cohort' ? values.entry_year || undefined : undefined,
           name: values.name,
           parent_id: nextParentId,
-          sort_order: values.sort_order ?? 0,
           subject_id:
             values.unit_type === 'department' && values.subject_id
               ? Number(values.subject_id)
@@ -1481,7 +1479,6 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       unitCreateForm.resetFields();
       unitCreateForm.setFieldsValue({
         parent_id: resolvedParentId || undefined,
-        sort_order: 0,
       });
     };
 
@@ -1499,11 +1496,9 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       setUnitActionTarget(unit.id);
       setSelectedUnitId(unit.id);
       unitEditForm.setFieldsValue({
-        description: unit.description || undefined,
         entry_year: unit.entry_year || undefined,
         name: unit.name,
         parent_id: unit.parent_id ?? rootUnitId ?? undefined,
-        sort_order: unit.sort_order ?? 0,
         subject_id: unit.subject_id || undefined,
         unit_type: unit.unit_type,
       });
@@ -1557,12 +1552,6 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                 <Select allowClear showSearch options={subjectOptions} placeholder="选择学科" />
               </Form.Item>
             ) : null}
-            <Form.Item label="说明" name="description">
-              <Input placeholder="节点说明" />
-            </Form.Item>
-            <Form.Item label="排序" name="sort_order">
-              <InputNumber min={0} placeholder="0" style={{ width: '100%' }} />
-            </Form.Item>
             <Button
               block
               loading={saving}
