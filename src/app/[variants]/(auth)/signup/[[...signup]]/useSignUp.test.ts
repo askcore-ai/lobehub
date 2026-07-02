@@ -127,6 +127,24 @@ describe('useSignUp', () => {
       expect(mockPush).toHaveBeenCalledWith('/dashboard');
     });
 
+    it('should route organization invites from the client after signup', async () => {
+      mockSearchParamsGet.mockImplementation((key: string) =>
+        key === 'callbackUrl' ? '/join/organization/invite-token' : null,
+      );
+      mockSignUpEmail.mockResolvedValue({ error: null });
+
+      const { result } = renderHook(() => useSignUp());
+
+      await act(async () => {
+        await result.current.onSubmit(validValues);
+      });
+
+      expect(mockSignUpEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ callbackURL: '/' }),
+      );
+      expect(mockPush).toHaveBeenCalledWith('/join/organization/invite-token');
+    });
+
     it('should redirect to verify-email when email verification is enabled', async () => {
       mockEnableEmailVerification = true;
       mockSignUpEmail.mockResolvedValue({ error: null });

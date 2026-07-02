@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   EMPTY_LOOKUPS,
-  RESOURCE_FILTER_FIELDS,
-  RESOURCE_FORM_FIELDS,
   fieldOptions,
   filtersFromFormState,
   fromFormState,
   hydrateLookupLabels,
   mergeResourceItems,
   resolveLookupLabel,
+  RESOURCE_FILTER_FIELDS,
+  RESOURCE_FORM_FIELDS,
   toFormState,
 } from './resourceMeta';
 
@@ -55,6 +55,14 @@ describe('AskCore workbench resource metadata', () => {
       grade_id: 3,
       query: '期中',
     });
+  });
+
+  it('uses localized submission status filter placeholder text', () => {
+    expect(RESOURCE_FILTER_FIELDS.submissions.find((field) => field.key === 'status')).toMatchObject(
+      {
+        placeholder: '已提交 / 已批改 / 待绑定',
+      },
+    );
   });
 
   it('uses org_unit_id as the student class membership field', () => {

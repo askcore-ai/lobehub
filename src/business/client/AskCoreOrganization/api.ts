@@ -154,6 +154,7 @@ export const createAskCoreOrganizationInvite = (
     preset_roles: AskCoreEducationRole[];
     primary_org_unit_id?: number | null;
     role: Extract<AskCoreOrganizationRole, 'admin' | 'member'>;
+    roster_kind: Exclude<AskCoreEducationIdentityRosterKind, 'member'>;
   },
 ) =>
   requestJson<AskCoreInvitePayload>(`${ORGANIZATION_API_BASE}/${organizationId}/invites`, {

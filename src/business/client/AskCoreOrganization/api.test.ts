@@ -59,6 +59,7 @@ describe('AskCoreOrganization api client', () => {
       preset_roles: ['student'],
       primary_org_unit_id: 4,
       role: 'member',
+      roster_kind: 'student',
     });
     await fetchAskCoreEducationOrgUnits();
     await createAskCoreEducationOrgUnit({
@@ -82,6 +83,7 @@ describe('AskCoreOrganization api client', () => {
     await fetchAskCoreOrganizationDirectory();
     await createAskCoreDirectoryPerson({
       display_name: '李老师',
+      education_role: 'teacher',
       primary_org_unit_id: 4,
     });
     await updateAskCoreDirectoryPerson(10, { primary_org_unit_id: 5 });
@@ -172,6 +174,18 @@ describe('AskCoreOrganization api client', () => {
       body: JSON.stringify({ role: 'admin' }),
       method: 'PATCH',
     });
+    expect(calls[5][1]).toMatchObject({
+      body: JSON.stringify({
+        channel: 'qr',
+        directory_invitation_token: 'dir-token',
+        expiresIn: '7d',
+        preset_roles: ['student'],
+        primary_org_unit_id: 4,
+        role: 'member',
+        roster_kind: 'student',
+      }),
+      method: 'POST',
+    });
     expect(calls[7][1]).toMatchObject({
       body: JSON.stringify({ entry_year: 2025, name: '2025级', parent_id: 1, unit_type: 'cohort' }),
       method: 'POST',
@@ -203,8 +217,8 @@ describe('AskCoreOrganization api client', () => {
     expect(calls[14][1]).toMatchObject({
       body: JSON.stringify({
         display_name: '李老师',
+        education_role: 'teacher',
         primary_org_unit_id: 4,
-        roster_kind: 'teacher',
       }),
       method: 'POST',
     });
@@ -247,7 +261,6 @@ describe('AskCoreOrganization api client', () => {
         },
         default_role: 'student',
         primary_org_unit_id: 4,
-        roster_kind: 'student',
         scope: 'unit',
       }),
       method: 'POST',

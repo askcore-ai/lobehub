@@ -191,6 +191,11 @@ const allRoleOptions = (Object.keys(roleLabels) as AskCoreEducationRole[]).map((
   value: role,
 }));
 
+const invitationRosterKindForRoles = (
+  roles: AskCoreEducationRole[],
+): Exclude<AskCoreEducationIdentityRosterKind, 'member'> =>
+  roles.includes('student') ? 'student' : 'teacher';
+
 const sortUnits = (units: AskCoreEducationOrgUnit[]) =>
   [...units].sort(
     (a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true }) || a.id - b.id,
@@ -1220,6 +1225,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
           preset_roles: [presetRole],
           primary_org_unit_id: primaryOrgUnitId,
           role: 'member',
+          roster_kind: invitationRosterKindForRoles([presetRole]),
         });
         copyInviteLink(invite.link);
         form.resetFields();
@@ -1361,6 +1367,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       }
       const values = await directInviteForm.validateFields();
       const email = values.email || selectedPerson.email || undefined;
+      const presetRoles = selectedRoles.map((role) => role.role);
       setSaving(true);
       try {
         const directoryInvitation = await createAskCoreDirectoryInvitation({
@@ -1374,9 +1381,10 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
           email,
           expiresIn: '7d',
           person_id: selectedPerson.id,
-          preset_roles: selectedRoles.map((role) => role.role),
+          preset_roles: presetRoles,
           primary_org_unit_id: selectedPerson.primary_org_unit_id ?? null,
           role: 'member',
+          roster_kind: invitationRosterKindForRoles(presetRoles),
         });
         copyInviteLink(invite.link);
         directInviteForm.resetFields();
