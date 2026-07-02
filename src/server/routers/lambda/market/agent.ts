@@ -12,6 +12,12 @@ import type { AgentForkBatchResult, AgentForkResponse } from '@/types/discover';
 
 const MARKET_BASE_URL = process.env.MARKET_BASE_URL || 'https://market.lobehub.com';
 
+const marketApiUrl = (path: string) => {
+  const normalizedBase = MARKET_BASE_URL.replace(/\/$/, '');
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return new URL(`${normalizedBase}${normalizedPath}`);
+};
+
 interface MarketUserInfo {
   accountId: number;
   sub: string;
@@ -459,7 +465,7 @@ export const agentRouter = router({
   getOnboardingFull: agentProcedure
     .input(z.object({ locale: z.string().optional() }).optional().default({}))
     .query(async ({ input, ctx }) => {
-      const url = new URL('/api/v1/agents/onboarding-full', MARKET_BASE_URL);
+      const url = marketApiUrl('/api/v1/agents/onboarding-full');
       url.searchParams.set('_ts', String(Date.now()));
       url.searchParams.set('locale', normalizeLocale(input.locale));
 
