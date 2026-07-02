@@ -12,6 +12,7 @@ import {
   RESOURCE_LIST_LAYOUT,
   SUBMISSION_OCR_LAYOUT_BREAKPOINTS,
 } from './index';
+import type { AskCoreEducationPersona } from './types';
 
 const activeOrganizationResponse = () =>
   new Response(
@@ -449,6 +450,190 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
     expect(screen.queryByText('16')).not.toBeInTheDocument();
     expect(screen.queryByText('555')).not.toBeInTheDocument();
     expect(screen.queryByText('批量导入学生提交')).not.toBeInTheDocument();
+  });
+});
+
+describe('AskCoreWorkbenchRoute student submission OCR', () => {
+  afterEach(() => {
+    message.destroy();
+    Modal.destroyAll();
+    vi.unstubAllGlobals();
+  });
+
+  it('uses assignment recipients and assignment_recipient_id for student upload', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/askcore/workbench/me') {
+        return new Response(
+          JSON.stringify({
+            active_persona: { id: 7, label: '张扬', role: 'student' },
+            capabilities: {
+              can_create_assignment: false,
+              can_create_question: false,
+              can_run_teacher_submission_ocr: false,
+              can_submit_own_work: true,
+            },
+            default_persona: { id: 7, label: '张扬', role: 'student' },
+            education_identities: [{ id: 7, label: '张扬', role: 'student' }],
+            org_composition: { student_count: 1, teacher_count: 1 },
+            workbench_mode: 'student_restricted',
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 200 },
+        );
+      }
+      if (url === '/api/askcore/organizations') return activeOrganizationResponse();
+      if (
+        url.startsWith('/api/askcore/workbench/assignment-recipients?') ||
+        url.startsWith('/api/askcore/workbench/assignment-students?')
+      ) {
+        return new Response(
+          JSON.stringify({
+            has_more: false,
+            items: [
+              {
+                assignment_id: 501,
+                assignment_recipient_id: 847,
+                assignment_student_id: 847,
+                assignment_title: '函数作业',
+                due_date: '2026-07-05T00:00:00Z',
+                grade_name: '高一',
+                status: 'assigned',
+                subject_name: '数学',
+              },
+            ],
+            next_after_id: null,
+            page: 1,
+            page_size: 100,
+            resource: 'assignment-recipients',
+            total: 1,
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 200 },
+        );
+      }
+      if (url === '/api/askcore/workbench/uploads/presign' && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            object_key: 'uploads/org-test/student-answer.jpg',
+            required_headers: {},
+            upload_url: 'https://upload.test/student-answer.jpg',
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 200 },
+        );
+      }
+      if (url === 'https://upload.test/student-answer.jpg' && init?.method === 'PUT') {
+        return new Response('', { status: 200 });
+      }
+      if (
+        url === '/api/askcore/workbench/actions/submission.student_upload_from_ocr' &&
+        init?.method === 'POST'
+      ) {
+        return new Response(
+          JSON.stringify({
+            action_id: 'submission.student_upload_from_ocr',
+            invocation_id: 'inv-student-upload-1',
+            plugin_id: 'aitutor-suite',
+            run_id: 3001,
+            status: 'starting',
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 201 },
+        );
+      }
+      if (url === '/api/askcore/workbench/invocations/inv-student-upload-1') {
+        return new Response(
+          JSON.stringify({
+            action_id: 'submission.student_upload_from_ocr',
+            artifact_count: 0,
+            invocation_id: 'inv-student-upload-1',
+            plugin_id: 'aitutor-suite',
+            run_id: 3001,
+            state: 'succeeded',
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 200 },
+        );
+      }
+      if (url === '/api/askcore/workbench/invocations/inv-student-upload-1/artifacts') {
+        return new Response(JSON.stringify({ artifacts: [] }), {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          has_more: false,
+          items: [],
+          next_after_id: null,
+          page: 1,
+          page_size: 100,
+          total: 0,
+        }),
+        { headers: { 'content-type': 'application/json' }, status: 200 },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          '/askcore/workbench?tab=submissions&route=%2Fsubmissions%2Fnew%2Fstudent-ocr',
+        ]}
+      >
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText('提交作业')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('当前可提交 1 条作业。')).toBeInTheDocument());
+
+    fireEvent.mouseDown(screen.getByText('选择要提交的作业'));
+    const option = await screen.findByText('函数作业');
+    fireEvent.click(option);
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(fileInput).toBeTruthy();
+    fireEvent.change(fileInput as HTMLInputElement, {
+      target: {
+        files: [new File(['answer'], 'student-answer.jpg', { type: 'image/jpeg' })],
+      },
+    });
+
+    await waitFor(() => expect(screen.getAllByText('student-answer.jpg').length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole('button', { name: '提交并自动批改' }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([calledUrl]) =>
+          String(calledUrl).startsWith('/api/askcore/workbench/assignment-recipients?'),
+        ),
+      ).toBe(true),
+    );
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/askcore/workbench/actions/submission.student_upload_from_ocr',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+    const actionCall = fetchMock.mock.calls.find(
+      ([calledUrl]) =>
+        String(calledUrl) === '/api/askcore/workbench/actions/submission.student_upload_from_ocr',
+    );
+    const body = JSON.parse(String((actionCall?.[1] as RequestInit).body || '{}'));
+    expect(body.params.assignment_recipient_id).toBe(847);
+    expect(body.params.assignment_student_id).toBeUndefined();
+  }, 15_000);
+});
+
+describe('AskCoreWorkbenchRoute education persona contracts', () => {
+  it('accepts subject_lead as an education persona role', () => {
+    const subjectLeadPersona: AskCoreEducationPersona = {
+      better_auth_user_id: 'subject-lead-user',
+      display_name: '学科组长',
+      org_unit_id: 7,
+      role: 'subject_lead',
+      roster_id: 99,
+      roster_kind: 'member',
+    };
+
+    expect(subjectLeadPersona.role).toBe('subject_lead');
   });
 });
 

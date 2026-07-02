@@ -1463,7 +1463,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
 
     const exportDirectory = () => {
       if (!payload) return;
-      const header = ['姓名', '归属', '权限', '角色', '账号'];
+      const header = ['姓名', '归属', '组织权限', '教育身份', '账号'];
       const rows = people.map((person) => [
         person.display_name,
         unitPathLabel(person.primary_org_unit_id),
@@ -2160,8 +2160,8 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                 <div className={styles.directoryPeopleHeader}>
                   <span>姓名</span>
                   <span>归属</span>
-                  <span>权限</span>
-                  <span>角色</span>
+                  <span>组织权限</span>
+                  <span>教育身份</span>
                   <span>账号</span>
                 </div>
                 {directoryRows.length ? (

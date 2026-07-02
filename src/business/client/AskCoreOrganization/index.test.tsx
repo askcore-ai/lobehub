@@ -304,8 +304,10 @@ describe('AskCoreOrganizationRoute', () => {
     expect(within(directory).getByRole('button', { name: /导出/ })).toBeInTheDocument();
     expect(within(directory).queryByRole('button', { name: /^待处理/ })).not.toBeInTheDocument();
     expect(within(directory).queryByText(/含下级/)).not.toBeInTheDocument();
-    expect(within(directory).getByText('权限')).toBeInTheDocument();
-    expect(within(directory).getByText('角色')).toBeInTheDocument();
+    expect(within(directory).getByText('组织权限')).toBeInTheDocument();
+    expect(within(directory).getByText('教育身份')).toBeInTheDocument();
+    expect(within(directory).queryByText(/^权限$/)).not.toBeInTheDocument();
+    expect(within(directory).queryByText(/^角色$/)).not.toBeInTheDocument();
     const rootPersonRow = within(directory).getByRole('button', { name: /张扬/ });
     expect(within(rootPersonRow).getByText('所有者')).toBeInTheDocument();
     expect(within(rootPersonRow).getByText('Seed 的组织')).toBeInTheDocument();
@@ -928,11 +930,12 @@ describe('AskCoreOrganizationRoute', () => {
     const directory = await screen.findByLabelText('组织架构工作区');
     await waitFor(() => expect(within(directory).getByText('张扬')).toBeInTheDocument());
 
-    expect(within(directory).getByText('权限')).toBeInTheDocument();
-    expect(within(directory).getByText('角色')).toBeInTheDocument();
+    expect(within(directory).getByText('组织权限')).toBeInTheDocument();
+    expect(within(directory).getByText('教育身份')).toBeInTheDocument();
+    expect(within(directory).queryByText(/^权限$/)).not.toBeInTheDocument();
+    expect(within(directory).queryByText(/^角色$/)).not.toBeInTheDocument();
     expect(within(directory).queryByText('组织身份')).not.toBeInTheDocument();
     expect(within(directory).queryByText('教育授权')).not.toBeInTheDocument();
-    expect(within(directory).queryByText('教育身份')).not.toBeInTheDocument();
     expect(within(directory).queryByRole('button', { name: /^待处理/ })).not.toBeInTheDocument();
     expect(within(directory).queryByText(/^身份待审/)).not.toBeInTheDocument();
     expect(within(directory).getByRole('button', { name: /^筛选待补全身份/ })).toBeInTheDocument();

@@ -1896,6 +1896,12 @@ const getRecordTitle = (resource: ResourceKey, record: JsonRecord) =>
       RESOURCE_LABELS[resource].singular,
   );
 
+const assignmentRecipientIdFromRecord = (record: JsonRecord) =>
+  Number(record.assignment_recipient_id || record.assignment_student_id || record.id || 0) || 0;
+
+const assignmentRecipientRowKey = (record: JsonRecord) =>
+  String(record.assignment_recipient_id || record.assignment_student_id || record.id || record.student_id);
+
 const normalizeRoutePath = (route?: string | null) => {
   const normalized = String(route || '')
     .trim()
@@ -3860,14 +3866,14 @@ const AssignmentDetailView = ({
           message.info('没有新的发布对象可添加');
           return;
         }
-        const result = await client.createAssignmentDetailResource('assignment-students', {
+        const result = await client.createAssignmentDetailResource('assignment-recipients', {
           assignment_id: assignmentId,
           student_id: studentId,
         });
         setRecipientItems((items) => [...items, result.item]);
         message.success('已新增 1 个发布对象');
       } else {
-        const result = await client.createAssignmentDetailResource('assignment-students', {
+        const result = await client.createAssignmentDetailResource('assignment-recipients', {
           assignment_id: assignmentId,
           org_unit_id: positiveId(selectedClassId),
         });
@@ -3895,14 +3901,14 @@ const AssignmentDetailView = ({
     try {
       for (const id of ids) {
         try {
-          await client.deleteAssignmentDetailResource('assignment-students', id);
+          await client.deleteAssignmentDetailResource('assignment-recipients', id);
           removed.add(id);
         } catch (reason) {
           failures.push(`ID ${id}: ${asError(reason)}`);
         }
       }
       setRecipientItems((items) =>
-        items.filter((row) => !removed.has(Number(row.assignment_student_id || row.id || 0) || 0)),
+        items.filter((row) => !removed.has(assignmentRecipientIdFromRecord(row))),
       );
       setRecipientSelectedIds((current) => current.filter((id) => !removed.has(id)));
       if (failures.length) {
@@ -4265,7 +4271,7 @@ const AssignmentDetailView = ({
             className={styles.tightTable}
             dataSource={recipientItems}
             pagination={false}
-            rowKey={(row) => String(row.assignment_student_id || row.id || row.student_id)}
+            rowKey={assignmentRecipientRowKey}
             size="small"
             columns={[
               ...(canManage
@@ -4273,7 +4279,7 @@ const AssignmentDetailView = ({
                     {
                       key: 'select',
                       render: (_: unknown, row: JsonRecord) => {
-                        const id = Number(row.assignment_student_id || row.id || 0) || 0;
+                        const id = assignmentRecipientIdFromRecord(row);
                         return (
                           <Checkbox
                             checked={recipientSelectedIdSet.has(id)}
@@ -4319,7 +4325,7 @@ const AssignmentDetailView = ({
                     {
                       key: 'actions',
                       render: (_: unknown, row: JsonRecord) => {
-                        const id = Number(row.assignment_student_id || row.id || 0) || 0;
+                        const id = assignmentRecipientIdFromRecord(row);
                         return (
                           <Popconfirm
                             title="移除该发布对象？"
@@ -6649,7 +6655,9 @@ type StudentSubmissionAssignmentOption = {
 const buildStudentSubmissionAssignmentOption = (
   item: JsonRecord,
 ): StudentSubmissionAssignmentOption => {
-  const assignmentStudentId = positiveId(item.assignment_student_id || item.id);
+  const assignmentStudentId = positiveId(
+    item.assignment_recipient_id || item.assignment_student_id || item.id,
+  );
   const assignmentId = positiveId(item.assignment_id);
   const assignmentTitle = scopeText(
     item.assignment_title || item.title || assignmentId,
@@ -6704,11 +6712,13 @@ const StudentSubmissionOcrCreateView = ({
     setAssignmentRowsLoading(true);
     setAssignmentRowsError(null);
     client
-      .listAllResource('assignment-students')
+      .listAllResource('assignment-recipients')
       .then((items) => {
         if (cancelled) return;
         setAssignmentRows(
-          items.filter((item) => positiveId(item.assignment_student_id || item.id) > 0),
+          items.filter(
+            (item) => positiveId(item.assignment_recipient_id || item.assignment_student_id || item.id) > 0,
+          ),
         );
         setAssignmentRowsLoading(false);
       })
@@ -6727,7 +6737,9 @@ const StudentSubmissionOcrCreateView = ({
   const selectedAssignmentRow = useMemo(
     () =>
       assignmentRows.find(
-        (row) => positiveId(row.assignment_student_id || row.id) === selectedAssignmentStudentId,
+        (row) =>
+          positiveId(row.assignment_recipient_id || row.assignment_student_id || row.id) ===
+          selectedAssignmentStudentId,
       ) || null,
     [assignmentRows, selectedAssignmentStudentId],
   );
@@ -6767,7 +6779,7 @@ const StudentSubmissionOcrCreateView = ({
           })),
       });
       const result = await client.invokeAction('submission.student_upload_from_ocr', {
-        assignment_student_id: selectedAssignmentStudentId,
+        assignment_recipient_id: selectedAssignmentStudentId,
         input_type: 'upload',
         scan_refs: scanRefs,
       });

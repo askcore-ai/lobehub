@@ -20,7 +20,8 @@ export type ResourceKey =
   | 'submissions'
   | 'submission-questions';
 
-export type AnyResourceKey = ResourceKey | 'assignment-questions' | 'assignment-students';
+export type AssignmentDetailResourceKey = 'assignment-questions' | 'assignment-recipients';
+export type AnyResourceKey = ResourceKey | AssignmentDetailResourceKey;
 
 export interface AskCoreWorkbenchColumn {
   dataIndex: string;
@@ -64,7 +65,13 @@ export type AskCoreEducationPersona = {
   better_auth_user_id: string;
   display_name?: string | null;
   org_unit_id?: number | null;
-  role: 'grade_admin' | 'homeroom_teacher' | 'school_admin' | 'student' | 'teacher';
+  role:
+    | 'grade_admin'
+    | 'homeroom_teacher'
+    | 'school_admin'
+    | 'student'
+    | 'subject_lead'
+    | 'teacher';
   roster_id?: number | null;
   roster_kind: 'member' | 'student' | 'teacher';
 };

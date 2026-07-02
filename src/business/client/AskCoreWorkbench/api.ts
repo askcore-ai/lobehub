@@ -6,6 +6,7 @@ import {
   type AskCoreOrganizationState,
   type AskCoreWorkbenchDashboardPayload,
   type AskCoreWorkbenchListPayload,
+  type AssignmentDetailResourceKey,
   type AssignmentDetailResponse,
   type JsonRecord,
   type PluginArtifact,
@@ -381,7 +382,7 @@ export class AskCoreWorkbenchApiClient {
   }
 
   createAssignmentDetailResource(
-    resource: 'assignment-questions' | 'assignment-students',
+    resource: AssignmentDetailResourceKey,
     payload: JsonRecord,
   ) {
     return this.requestJson<ResourceMutationResponse>(`/${resource}`, {
@@ -392,7 +393,7 @@ export class AskCoreWorkbenchApiClient {
   }
 
   updateAssignmentDetailResource(
-    resource: 'assignment-questions' | 'assignment-students',
+    resource: AssignmentDetailResourceKey,
     entityId: number,
     patch: JsonRecord,
   ) {
@@ -404,7 +405,7 @@ export class AskCoreWorkbenchApiClient {
   }
 
   deleteAssignmentDetailResource(
-    resource: 'assignment-questions' | 'assignment-students',
+    resource: AssignmentDetailResourceKey,
     entityId: number,
   ) {
     return this.requestJson<ResourceMutationResponse>(`/${resource}/${entityId}`, {
