@@ -8,6 +8,7 @@ interface CustomNextConfig {
   outputFileTracingExcludes?: NextConfig['outputFileTracingExcludes'];
   outputFileTracingIncludes?: NextConfig['outputFileTracingIncludes'];
   redirects?: Redirect[];
+  rewrites?: NextConfig['rewrites'];
   serverExternalPackages?: NextConfig['serverExternalPackages'];
   staticPageGenerationTimeout?: NextConfig['staticPageGenerationTimeout'];
   turbopack?: NextConfig['turbopack'];
@@ -58,6 +59,20 @@ export function defineConfig(config: CustomNextConfig) {
   };
 
   const assetPrefix = process.env.NEXT_PUBLIC_ASSET_PREFIX;
+  const spaStaticAssetRewrites = [
+    {
+      destination: '/favicon.ico',
+      source: '/_spa/favicon.ico',
+    },
+    {
+      destination: '/favicon-32x32.ico',
+      source: '/_spa/favicon-32x32.ico',
+    },
+    {
+      destination: '/apple-touch-icon.png',
+      source: '/_spa/apple-touch-icon.png',
+    },
+  ];
 
   const nextConfig: NextConfig = {
     ...(isStandaloneMode ? standaloneConfig : {}),
@@ -351,6 +366,20 @@ export function defineConfig(config: CustomNextConfig) {
       },
       ...(config.redirects ?? []),
     ],
+    rewrites: async () => {
+      const customRewrites =
+        typeof config.rewrites === 'function' ? await config.rewrites() : await config.rewrites;
+
+      if (Array.isArray(customRewrites)) {
+        return [...spaStaticAssetRewrites, ...customRewrites];
+      }
+
+      return {
+        afterFiles: customRewrites?.afterFiles ?? [],
+        beforeFiles: [...spaStaticAssetRewrites, ...(customRewrites?.beforeFiles ?? [])],
+        fallback: customRewrites?.fallback ?? [],
+      };
+    },
     // when external packages in dev mode with turbopack, this config will lead to bundle error
     // @napi-rs/canvas is a native module that can't be bundled by Turbopack
     // pdfjs-dist uses @napi-rs/canvas for DOMMatrix polyfill in Node.js environment

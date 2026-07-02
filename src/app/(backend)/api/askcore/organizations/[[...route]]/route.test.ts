@@ -129,6 +129,31 @@ describe('AskCore organization route', () => {
     );
   });
 
+  it('allows same-origin writes through a local forwarded host', async () => {
+    authApi.getSession.mockResolvedValue({ session: { id: 'session-1' }, user: { id: 'user-1' } });
+    serviceMock.bootstrap.mockResolvedValue({ current: { id: 'org-1' } });
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      new NextRequest('http://0.0.0.0:3210/api/askcore/organizations/bootstrap', {
+        body: JSON.stringify({}),
+        headers: {
+          host: '127.0.0.1:18080',
+          origin: 'http://127.0.0.1:18080',
+          'sec-fetch-site': 'same-origin',
+        },
+        method: 'POST',
+      }),
+      routeContext(['bootstrap']),
+    );
+
+    expect(response.status).toBe(200);
+    expect(serviceMock.bootstrap).toHaveBeenCalledWith(
+      expect.objectContaining({ user: { id: 'user-1' } }),
+      undefined,
+    );
+  });
+
   it('routes member role updates to the active organization service', async () => {
     authApi.getSession.mockResolvedValue({ session: { id: 'session-1' }, user: { id: 'user-1' } });
     serviceMock.updateMemberRole.mockResolvedValue([]);
