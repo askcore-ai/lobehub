@@ -76,7 +76,6 @@ import {
 
 type DirectoryFilterKey = 'all' | 'identity_required' | 'invited' | 'student' | 'teacher';
 type DirectoryActionKind = 'create' | 'import' | 'invite';
-type DirectoryActionAnchor = 'empty' | 'toolbar';
 type DirectoryRoleTone =
   'admin' | 'member' | 'owner' | 'roster' | 'student' | 'teacher' | 'unknown';
 type IdentityDrawerMode = 'claim' | 'review';
@@ -444,8 +443,6 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     const [unitActionTarget, setUnitActionTarget] = useState<'root' | number | null>(null);
     const [orgActionOpen, setOrgActionOpen] = useState(false);
     const [unitActionOpen, setUnitActionOpen] = useState(false);
-    const [orgActionAnchor, setOrgActionAnchor] = useState<DirectoryActionAnchor | null>(null);
-    const [unitActionAnchor, setUnitActionAnchor] = useState<DirectoryActionAnchor | null>(null);
     const [activeOrgAction, setActiveOrgAction] = useState<DirectoryActionKind>('create');
     const [activeUnitAction, setActiveUnitAction] = useState<DirectoryActionKind>('create');
     const [subjectOptions, setSubjectOptions] = useState<SubjectOption[]>([]);
@@ -1062,18 +1059,9 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       applyActionDefaults(scope, action);
     };
 
-    const openActionPopover = (
-      scope: 'organization' | 'unit',
-      anchor: DirectoryActionAnchor,
-      open: boolean,
-    ) => {
-      if (scope === 'organization') {
-        setOrgActionAnchor(open ? anchor : null);
-        setOrgActionOpen(open);
-      } else {
-        setUnitActionAnchor(open ? anchor : null);
-        setUnitActionOpen(open);
-      }
+    const openActionPopover = (scope: 'organization' | 'unit', open: boolean) => {
+      if (scope === 'organization') setOrgActionOpen(open);
+      else setUnitActionOpen(open);
       if (open) {
         applyActionDefaults(scope, scope === 'organization' ? activeOrgAction : activeUnitAction);
       }
@@ -2087,10 +2075,10 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
             {canManage ? (
               <Popover
                 content={actionHubContent('organization')}
-                open={orgActionOpen && orgActionAnchor === 'toolbar'}
+                open={orgActionOpen}
                 placement="bottomRight"
                 trigger="click"
-                onOpenChange={(open) => openActionPopover('organization', 'toolbar', open)}
+                onOpenChange={(open) => openActionPopover('organization', open)}
               >
                 <Button icon={<UserRoundPlus size={14} />} type="primary">
                   添加人员
@@ -2180,10 +2168,10 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                   {canManage && selectedUnit ? (
                     <Popover
                       content={actionHubContent('unit')}
-                      open={unitActionOpen && unitActionAnchor === 'toolbar'}
+                      open={unitActionOpen}
                       placement="bottomRight"
                       trigger="click"
-                      onOpenChange={(open) => openActionPopover('unit', 'toolbar', open)}
+                      onOpenChange={(open) => openActionPopover('unit', open)}
                     >
                       <Button icon={<Plus size={14} />}>添加到当前范围</Button>
                     </Popover>
@@ -2268,29 +2256,6 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                         >
                           清除筛选
                         </Button>
-                      ) : null}
-                      {canManage ? (
-                        <Popover
-                          content={actionHubContent(selectedUnit ? 'unit' : 'organization')}
-                          placement="bottomRight"
-                          trigger="click"
-                          open={
-                            selectedUnit
-                              ? unitActionOpen && unitActionAnchor === 'empty'
-                              : orgActionOpen && orgActionAnchor === 'empty'
-                          }
-                          onOpenChange={(open) =>
-                            openActionPopover(
-                              selectedUnit ? 'unit' : 'organization',
-                              'empty',
-                              open,
-                            )
-                          }
-                        >
-                          <Button icon={<UserRoundPlus size={14} />} type="primary">
-                            {selectedUnit ? '在当前范围添加人员' : '添加人员'}
-                          </Button>
-                        </Popover>
                       ) : null}
                     </Space>
                   </Empty>

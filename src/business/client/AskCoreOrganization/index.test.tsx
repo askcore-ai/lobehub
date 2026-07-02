@@ -667,6 +667,9 @@ describe('AskCoreOrganizationRoute', () => {
     await waitFor(() => expect(within(directory).getByLabelText('组织树')).toBeInTheDocument());
     const orgTree = within(directory).getByLabelText('组织树');
     fireEvent.click(within(orgTree).getByRole('button', { name: /^高一 1 班/ }));
+    expect(
+      within(directory).queryByRole('button', { name: '在当前范围添加人员' }),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(within(directory).getByRole('button', { name: /添加到当前范围/ }));
     fireEvent.click(await screen.findByRole('button', { name: '新建人员' }));
