@@ -13,10 +13,18 @@ const resolveMarketplaceLocale = () =>
   normalizeLocale(i18next.resolvedLanguage || i18next.language || globalThis.navigator?.language);
 
 export const fetchOnboardingAgentTemplates: AgentTemplateFetcher = async (options) => {
-  const data = await lambdaClient.market.agent.getOnboardingFull.query(
-    { locale: resolveMarketplaceLocale() },
-    { signal: options?.signal },
-  );
+  let data: unknown;
+
+  try {
+    data = await lambdaClient.market.agent.getOnboardingFull.query(
+      { locale: resolveMarketplaceLocale() },
+      { signal: options?.signal },
+    );
+  } catch (error) {
+    console.warn('[AgentMarketplace] failed to load onboarding templates', error);
+    return [];
+  }
+
   if (!data || typeof data !== 'object') return [];
 
   const templates: AgentTemplate[] = [];
