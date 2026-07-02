@@ -450,6 +450,22 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
     expect(screen.queryByText('16')).not.toBeInTheDocument();
     expect(screen.queryByText('555')).not.toBeInTheDocument();
     expect(screen.queryByText('批量导入学生提交')).not.toBeInTheDocument();
+    await waitFor(() => {
+      const requestedUrls = fetchMock.mock.calls.map(([input]) => String(input));
+      expect(requestedUrls).toContain(
+        '/api/askcore/workbench/grades?include_total=true&page=1&page_size=100',
+      );
+      expect(requestedUrls).toContain(
+        '/api/askcore/workbench/subjects?include_total=true&page=1&page_size=100',
+      );
+    });
+    const requestedUrls = fetchMock.mock.calls.map(([input]) => String(input));
+    expect(
+      requestedUrls.some((url) => url.startsWith('/api/askcore/workbench/students?')),
+    ).toBe(false);
+    expect(
+      requestedUrls.some((url) => url === '/api/askcore/workbench/organization/units'),
+    ).toBe(false);
   });
 });
 

@@ -7048,8 +7048,12 @@ const AskCoreWorkbenchPage = memo(() => {
   }, [activeConfig.resource, activeTab, currentRoute, navigate]);
 
   const loadLookups = useCallback(async () => {
+    if (educationProfileLoading) return;
+    const visibleLookupResources = isRestrictedStudent
+      ? (['grades', 'subjects'] satisfies Array<keyof LookupCollections>)
+      : lookupResources;
     const entries = await Promise.all(
-      lookupResources.map(async (resource) => {
+      visibleLookupResources.map(async (resource) => {
         try {
           return [resource, await askCoreWorkbenchClient.listAllResource(resource)] as const;
         } catch {
@@ -7060,41 +7064,46 @@ const AskCoreWorkbenchPage = memo(() => {
 
     let schools: JsonRecord[];
     let classes: JsonRecord[];
-    try {
-      const { units } = await askCoreWorkbenchClient.getOrganizationUnits();
-      const unitById = new Map<number, JsonRecord>(
-        units
-          .map((unit): [number, JsonRecord] => [positiveId(unit.id), unit])
-          .filter(([id]) => id > 0),
-      );
-      const schoolIdFor = (unit: JsonRecord) => {
-        const seen = new Set<number>();
-        let current: JsonRecord | undefined = unit;
-        while (current) {
-          const id = positiveId(current.id);
-          if (!id || seen.has(id)) break;
-          seen.add(id);
-          if (current.unit_type === 'school') return id;
-          current = unitById.get(positiveId(current.parent_id));
-        }
-        return null;
-      };
-
-      schools = units
-        .filter((unit) => unit.unit_type === 'school')
-        .map((unit) => {
-          const id = positiveId(unit.id);
-          return { ...unit, id, school_id: id };
-        });
-      classes = units
-        .filter((unit) => unit.unit_type === 'class')
-        .map((unit) => {
-          const id = positiveId(unit.id);
-          return { ...unit, class_id: id, id, school_id: schoolIdFor(unit) };
-        });
-    } catch {
+    if (isRestrictedStudent) {
       schools = [];
       classes = [];
+    } else {
+      try {
+        const { units } = await askCoreWorkbenchClient.getOrganizationUnits();
+        const unitById = new Map<number, JsonRecord>(
+          units
+            .map((unit): [number, JsonRecord] => [positiveId(unit.id), unit])
+            .filter(([id]) => id > 0),
+        );
+        const schoolIdFor = (unit: JsonRecord) => {
+          const seen = new Set<number>();
+          let current: JsonRecord | undefined = unit;
+          while (current) {
+            const id = positiveId(current.id);
+            if (!id || seen.has(id)) break;
+            seen.add(id);
+            if (current.unit_type === 'school') return id;
+            current = unitById.get(positiveId(current.parent_id));
+          }
+          return null;
+        };
+
+        schools = units
+          .filter((unit) => unit.unit_type === 'school')
+          .map((unit) => {
+            const id = positiveId(unit.id);
+            return { ...unit, id, school_id: id };
+          });
+        classes = units
+          .filter((unit) => unit.unit_type === 'class')
+          .map((unit) => {
+            const id = positiveId(unit.id);
+            return { ...unit, class_id: id, id, school_id: schoolIdFor(unit) };
+          });
+      } catch {
+        schools = [];
+        classes = [];
+      }
     }
 
     setLookups({
@@ -7103,7 +7112,7 @@ const AskCoreWorkbenchPage = memo(() => {
       classes,
       schools,
     } as LookupCollections);
-  }, []);
+  }, [educationProfileLoading, isRestrictedStudent]);
 
   const loadOrganizationState = useCallback(async () => {
     setOrganizationLoading(true);
