@@ -9,6 +9,7 @@ interface CustomNextConfig {
   outputFileTracingIncludes?: NextConfig['outputFileTracingIncludes'];
   redirects?: Redirect[];
   serverExternalPackages?: NextConfig['serverExternalPackages'];
+  staticPageGenerationTimeout?: NextConfig['staticPageGenerationTimeout'];
   turbopack?: NextConfig['turbopack'];
 }
 
@@ -66,6 +67,7 @@ export function defineConfig(config: CustomNextConfig) {
       emotion: true,
     },
     compress: isProd,
+    staticPageGenerationTimeout: config.staticPageGenerationTimeout ?? 180,
     experimental: {
       optimizePackageImports: [
         'emoji-mart',
