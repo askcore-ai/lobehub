@@ -695,6 +695,81 @@ describe('AskCoreOrganizationRoute', () => {
     );
   });
 
+  it('creates class scoped student invitations with a roster kind for organization acceptance', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/directory')) {
+        return new Response(JSON.stringify(directoryPayload), { status: 200 });
+      }
+      if (url.endsWith('/workbench/organization/directory-invitations') && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            id: 502,
+            invitation_kind: 'open',
+            org_id: 'org-1',
+            preset_roles: ['student'],
+            primary_org_unit_id: 3,
+            status: 'pending',
+            token: 'directory-token-student',
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith('/api/askcore/organizations/org-1/invites') && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            channel: 'link',
+            directoryInvitationToken: 'directory-token-student',
+            expiresIn: '7d',
+            link: 'https://askcore.cn/join/organization/org-token-student',
+            presetRoles: ['student'],
+            primaryOrgUnitId: 3,
+            role: 'member',
+            rosterKind: 'student',
+            token: 'org-token-student',
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    const directory = await screen.findByLabelText('组织架构工作区');
+    await waitFor(() => expect(within(directory).getByLabelText('组织树')).toBeInTheDocument());
+    const orgTree = within(directory).getByLabelText('组织树');
+    fireEvent.click(within(orgTree).getByRole('button', { name: /^高一 1 班/ }));
+
+    fireEvent.click(within(directory).getByRole('button', { name: /添加到当前范围/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '邀请加入' }));
+    fireEvent.click(await screen.findByRole('button', { name: '创建邀请' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/askcore/organizations/org-1/invites',
+        expect.objectContaining({
+          body: JSON.stringify({
+            channel: 'link',
+            directory_invitation_token: 'directory-token-student',
+            email: undefined,
+            expiresIn: '7d',
+            preset_roles: ['student'],
+            primary_org_unit_id: 3,
+            role: 'member',
+            roster_kind: 'student',
+          }),
+          method: 'POST',
+        }),
+      ),
+    );
+  });
+
   it('opens identity claim drawer from the organization action query', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

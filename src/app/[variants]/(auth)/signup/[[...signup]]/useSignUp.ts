@@ -51,12 +51,14 @@ export const useSignUp = () => {
       }
 
       const callbackUrl = searchParams.get('callbackUrl') || '/';
+      const isOrganizationInviteCallback = callbackUrl.startsWith('/join/organization/');
+      const authCallbackUrl = isOrganizationInviteCallback ? '/' : callbackUrl;
       const username = values.email.split('@')[0];
       const fetchOptions = await getFetchOptions();
 
       const submit = async (nextFetchOptions?: AuthFetchOptions) =>
         signUp.email({
-          callbackURL: callbackUrl,
+          callbackURL: authCallbackUrl,
           email: values.email,
           fetchOptions: nextFetchOptions,
           name: username,

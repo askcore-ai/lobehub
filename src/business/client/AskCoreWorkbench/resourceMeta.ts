@@ -233,7 +233,7 @@ export const RESOURCE_FILTER_FIELDS: Record<ResourceKey, FieldDefinition[]> = {
       key: 'status',
       kind: 'text',
       label: '状态',
-      placeholder: 'submitted / graded / needs_binding',
+      placeholder: '已提交 / 已批改 / 待绑定',
     },
   ],
   'teachers': [
