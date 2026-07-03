@@ -80,6 +80,18 @@ const mergeRuntimeOptions = (
   };
 };
 
+const mergePayloadMetadata = (payload: unknown, metadata: Record<string, unknown>) => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+  const existing = (payload as Record<string, unknown>).metadata;
+  return {
+    ...(payload as Record<string, unknown>),
+    metadata: {
+      ...(existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {}),
+      ...metadata,
+    },
+  };
+};
+
 const preflightAskCoreUsage = async (
   options: AskCoreBillingRuntimeOptions,
   actionId: string,
@@ -132,7 +144,12 @@ export function wrapAskCoreBillingRuntime<T extends RuntimeLike>(
     ) => {
       const metadata = askCoreBillingMetadata(options, methodName, payload);
       await preflightAskCoreUsage(options, methodName, payload, metadata);
-      return original.call(runtime, payload, mergeRuntimeOptions(runtimeOptions, metadata), ...rest);
+      return original.call(
+        runtime,
+        mergePayloadMetadata(payload, metadata),
+        mergeRuntimeOptions(runtimeOptions, metadata),
+        ...rest,
+      );
     };
   }
   return runtime;
