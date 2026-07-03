@@ -114,7 +114,7 @@ describe('AskCore billing runtime wrapper', () => {
       askcore_user_id: 'user-1',
       source: 'chat',
     });
-    expect(chatMock.mock.calls[0][0].metadata).toMatchObject({
+    expect(chatMock.mock.calls[0][0].litellm_metadata).toMatchObject({
       askcore_action_id: 'chat',
       askcore_billing_context_type: 'user',
       askcore_surface: 'lobehub:model-runtime',
@@ -125,7 +125,7 @@ describe('AskCore billing runtime wrapper', () => {
       askcore_user_id: 'user-1',
       source: 'json',
     });
-    expect(generateObjectMock.mock.calls[0][0].metadata).toMatchObject({
+    expect(generateObjectMock.mock.calls[0][0].litellm_metadata).toMatchObject({
       askcore_action_id: 'generateObject',
       askcore_user_id: 'user-1',
     });

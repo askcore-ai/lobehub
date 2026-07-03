@@ -82,10 +82,10 @@ const mergeRuntimeOptions = (
 
 const mergePayloadMetadata = (payload: unknown, metadata: Record<string, unknown>) => {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
-  const existing = (payload as Record<string, unknown>).metadata;
+  const existing = (payload as Record<string, unknown>).litellm_metadata;
   return {
     ...(payload as Record<string, unknown>),
-    metadata: {
+    litellm_metadata: {
       ...(existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {}),
       ...metadata,
     },
