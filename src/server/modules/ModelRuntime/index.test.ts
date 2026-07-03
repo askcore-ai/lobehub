@@ -108,6 +108,13 @@ describe('AskCore billing runtime wrapper', () => {
       }),
     );
     expect(chatMock.mock.calls[0][1].metadata).toEqual({ source: 'chat' });
+    expect(chatMock.mock.calls[0][0].additional_drop_params).toContain('metadata');
+    expect(chatMock.mock.calls[0][0].metadata).toMatchObject({
+      askcore_action_id: 'chat',
+      askcore_billing_context_type: 'user',
+      askcore_surface: 'lobehub:model-runtime',
+      askcore_user_id: 'user-1',
+    });
     expect(chatMock.mock.calls[0][0].litellm_metadata).toMatchObject({
       askcore_action_id: 'chat',
       askcore_billing_context_type: 'user',

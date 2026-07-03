@@ -67,9 +67,20 @@ const askCoreBillingMetadata = (
 
 const mergePayloadMetadata = (payload: unknown, metadata: Record<string, unknown>) => {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+  const existingMetadata = (payload as Record<string, unknown>).metadata;
   const existing = (payload as Record<string, unknown>).litellm_metadata;
+  const dropParams = (payload as Record<string, unknown>).additional_drop_params;
   return {
     ...(payload as Record<string, unknown>),
+    additional_drop_params: [
+      ...new Set([...(Array.isArray(dropParams) ? dropParams : []), 'metadata']),
+    ],
+    metadata: {
+      ...(existingMetadata && typeof existingMetadata === 'object' && !Array.isArray(existingMetadata)
+        ? existingMetadata
+        : {}),
+      ...metadata,
+    },
     litellm_metadata: {
       ...(existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {}),
       ...metadata,
