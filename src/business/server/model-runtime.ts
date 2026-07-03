@@ -65,21 +65,6 @@ const askCoreBillingMetadata = (
     model: modelFromPayload(payload),
   });
 
-const mergeRuntimeOptions = (
-  runtimeOptions: unknown,
-  metadata: Record<string, unknown>,
-): Record<string, unknown> => {
-  const options = runtimeOptions && typeof runtimeOptions === 'object' ? { ...(runtimeOptions as any) } : {};
-  const existing = options.metadata && typeof options.metadata === 'object' ? options.metadata : {};
-  return {
-    ...options,
-    metadata: {
-      ...existing,
-      ...metadata,
-    },
-  };
-};
-
 const mergePayloadMetadata = (payload: unknown, metadata: Record<string, unknown>) => {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
   const existing = (payload as Record<string, unknown>).litellm_metadata;
@@ -147,7 +132,7 @@ export function wrapAskCoreBillingRuntime<T extends RuntimeLike>(
       return original.call(
         runtime,
         mergePayloadMetadata(payload, metadata),
-        mergeRuntimeOptions(runtimeOptions, metadata),
+        runtimeOptions,
         ...rest,
       );
     };

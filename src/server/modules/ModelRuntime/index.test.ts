@@ -107,43 +107,21 @@ describe('AskCore billing runtime wrapper', () => {
         method: 'POST',
       }),
     );
-    expect(chatMock.mock.calls[0][1].metadata).toMatchObject({
-      askcore_action_id: 'chat',
-      askcore_billing_context_type: 'user',
-      askcore_surface: 'lobehub:model-runtime',
-      askcore_user_id: 'user-1',
-      source: 'chat',
-    });
+    expect(chatMock.mock.calls[0][1].metadata).toEqual({ source: 'chat' });
     expect(chatMock.mock.calls[0][0].litellm_metadata).toMatchObject({
       askcore_action_id: 'chat',
       askcore_billing_context_type: 'user',
       askcore_surface: 'lobehub:model-runtime',
       askcore_user_id: 'user-1',
     });
-    expect(generateObjectMock.mock.calls[0][1].metadata).toMatchObject({
-      askcore_action_id: 'generateObject',
-      askcore_user_id: 'user-1',
-      source: 'json',
-    });
+    expect(generateObjectMock.mock.calls[0][1].metadata).toEqual({ source: 'json' });
     expect(generateObjectMock.mock.calls[0][0].litellm_metadata).toMatchObject({
       askcore_action_id: 'generateObject',
       askcore_user_id: 'user-1',
     });
-    expect(embeddingsMock.mock.calls[0][1].metadata).toMatchObject({
-      askcore_action_id: 'embeddings',
-      askcore_user_id: 'user-1',
-      source: 'kb',
-    });
-    expect(createImageMock.mock.calls[0][1].metadata).toMatchObject({
-      askcore_action_id: 'createImage',
-      askcore_user_id: 'user-1',
-      source: 'image',
-    });
-    expect(createVideoMock.mock.calls[0][1].metadata).toMatchObject({
-      askcore_action_id: 'createVideo',
-      askcore_user_id: 'user-1',
-      source: 'video',
-    });
+    expect(embeddingsMock.mock.calls[0][1].metadata).toEqual({ source: 'kb' });
+    expect(createImageMock.mock.calls[0][1].metadata).toEqual({ source: 'image' });
+    expect(createVideoMock.mock.calls[0][1].metadata).toEqual({ source: 'video' });
   });
 
   it('returns a quota error before calling the provider when billing preflight fails', async () => {
