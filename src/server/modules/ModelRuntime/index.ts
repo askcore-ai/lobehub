@@ -18,7 +18,10 @@ import {
 import { safeParseJSON } from '@lobechat/utils';
 import { ModelProvider } from 'model-bank';
 
-import { getBusinessModelRuntimeHooks } from '@/business/server/model-runtime';
+import {
+  getBusinessModelRuntimeHooks,
+  wrapAskCoreBillingRuntime,
+} from '@/business/server/model-runtime';
 import { AiProviderModel } from '@/database/models/aiProvider';
 import { type LobeChatDatabase } from '@/database/type';
 import { getLLMConfig } from '@/envs/llm';
@@ -432,6 +435,8 @@ export const initModelRuntimeFromDB = async (
   const tracingHooks = createLLMGenerationTracingHook(userId, provider);
   const hooks = mergeModelRuntimeHooks(businessHooks, tracingHooks);
 
-  // 6. Initialize ModelRuntime with the payload and hooks
-  return initModelRuntimeWithUserPayload(provider, payload, { userId }, hooks);
+  // 6. Initialize ModelRuntime with the payload and hooks, then wrap every model method
+  //    with AskCore billing preflight/metadata. Hooks do not cover image/video paths.
+  const runtime = initModelRuntimeWithUserPayload(provider, payload, { userId }, hooks);
+  return wrapAskCoreBillingRuntime(runtime, { provider, userId });
 };
