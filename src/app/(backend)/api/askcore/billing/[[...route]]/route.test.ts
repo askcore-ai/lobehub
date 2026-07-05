@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { auth } from '@/auth';
 
-import { GET, POST } from './route';
+import { GET, POST, PUT } from './route';
 
 vi.mock('@/auth', () => ({
   auth: {
@@ -214,6 +214,47 @@ describe('AskCore billing proxy route', () => {
     expect(init.body).toBe(request.body);
     expect(init.duplex).toBe('half');
     expect((init.headers as Headers).get('content-type')).toBe('application/json');
+  });
+
+  it('forwards auto top-up saves with PUT', async () => {
+    vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'test-lobehub-billing');
+    vi.stubEnv('AITUTOR_API_BASE_URL', 'http://api:8000');
+    authApi.getSession.mockResolvedValue({
+      session: { activeOrganizationId: 'org-1' },
+      user: { email: 'seednov@outlook.com', id: 'user-1' },
+    } as any);
+    authApi.getFullOrganization.mockResolvedValue({
+      id: 'org-1',
+      members: [{ role: 'owner', userId: 'user-1' }],
+      name: 'Seednov',
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ enabled: false }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const request = new NextRequest(
+      'https://askcore.cn/api/askcore/billing/credits/auto-topup',
+      {
+        body: JSON.stringify({ enabled: false, monthly_limit_cny: 0 }),
+        headers: { 'content-type': 'application/json', origin: 'https://askcore.cn' },
+        method: 'PUT',
+      },
+    );
+
+    const response = await PUT(request, routeContext(['credits', 'auto-topup']));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ enabled: false });
+    const [target, init] = fetchMock.mock.calls[0] as [URL, RequestInit & { duplex?: string }];
+    expect(target.toString()).toBe('http://api:8000/api/billing/v1/credits/auto-topup');
+    expect(init.method).toBe('PUT');
+    expect(init.body).toBe(request.body);
+    expect(init.duplex).toBe('half');
   });
 
   it('falls back to the only organization when the session has no active organization', async () => {

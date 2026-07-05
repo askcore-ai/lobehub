@@ -15,7 +15,7 @@ type RouteContext = {
 };
 
 const DEFAULT_API_BASE_URL = 'http://api:8000';
-const ALLOWED_METHODS = ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'];
+const ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
 
 const jsonError = (status: number, detail: string) => NextResponse.json({ detail }, { status });
 
@@ -103,6 +103,8 @@ const forwardBillingRequest = async (request: NextRequest, context: RouteContext
 export const GET = (request: NextRequest, context: RouteContext) =>
   forwardBillingRequest(request, context);
 export const POST = (request: NextRequest, context: RouteContext) =>
+  forwardBillingRequest(request, context);
+export const PUT = (request: NextRequest, context: RouteContext) =>
   forwardBillingRequest(request, context);
 export const PATCH = (request: NextRequest, context: RouteContext) =>
   forwardBillingRequest(request, context);
