@@ -10,6 +10,7 @@ const mockSearchParamsGet = vi.hoisted(() => vi.fn().mockReturnValue(null));
 const mockMessageError = vi.hoisted(() => vi.fn());
 const mockSignUpEmail = vi.hoisted(() => vi.fn());
 const mockGetCaptchaTokenOnError = vi.hoisted(() => vi.fn());
+const mockFetch = vi.hoisted(() => vi.fn());
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
@@ -57,6 +58,8 @@ describe('useSignUp', () => {
     mockSearchParamsGet.mockReturnValue(null);
     mockGetCaptchaTokenOnError.mockResolvedValue(undefined);
     mockEnableEmailVerification = false;
+    vi.stubGlobal('fetch', mockFetch);
+    mockFetch.mockResolvedValue({ ok: true });
   });
 
   afterEach(() => {
@@ -106,6 +109,28 @@ describe('useSignUp', () => {
         await result.current.onSubmit(validValues);
       });
 
+      expect(mockPush).toHaveBeenCalledWith('/');
+    });
+
+    it('binds referral code from signup URL after successful sign up', async () => {
+      mockSearchParamsGet.mockImplementation((key: string) =>
+        key === 'referral' ? 'ASK33' : null,
+      );
+      mockSignUpEmail.mockResolvedValue({ error: null });
+
+      const { result } = renderHook(() => useSignUp());
+
+      await act(async () => {
+        await result.current.onSubmit(validValues);
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/askcore/billing/referrals/backfill',
+        expect.objectContaining({
+          body: JSON.stringify({ referral_code: 'ASK33' }),
+          method: 'POST',
+        }),
+      );
       expect(mockPush).toHaveBeenCalledWith('/');
     });
 

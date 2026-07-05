@@ -186,14 +186,26 @@ describe('AskCore billing embed helpers', () => {
     expect(formatBillingStatus('pending_reward', zhCopy)).toBe('审核中');
 
     const rules = localizeReferralRules(
-      { registration: 'registration', reward: 'reward', rewardDelay: 'rewardDelay' },
-      1_000_000,
+      {
+        expiry_days: 100,
+        registration: 'registration',
+        reward: 'reward',
+        reward_delay_hours: 6,
+        valid_action: 'first_billable_usage',
+      },
+      100,
       zhCopy,
     );
 
-    expect(rules.map((item) => item.text).join('\n')).toContain('注册方式');
-    expect(rules.map((item) => item.text).join('\n')).toContain('奖励');
-    expect(rules.map((item) => item.text).join('\n')).not.toContain('registration');
-    expect(rules.map((item) => item.text).join('\n')).not.toContain('rewardDelay');
+    const text = rules.map((item) => item.text).join('\n');
+
+    expect(text).toContain('注册方式');
+    expect(text).toContain('100 积分');
+    expect(text).toContain('6 小时');
+    expect(text).toContain('100 天');
+    expect(text).toContain('首次产生可计费用量');
+    expect(text).not.toContain('0M');
+    expect(text).not.toContain('registration');
+    expect(text).not.toContain('first_billable_usage');
   });
 });
