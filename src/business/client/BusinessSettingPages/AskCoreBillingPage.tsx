@@ -755,9 +755,7 @@ type BillingCopy = typeof enCopy;
 
 type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
 
-const REFERRAL_REWARD_TEMPLATE_TOKEN = '__ASKCORE_REFERRAL_REWARD__';
 const REFERRAL_DAYS_TEMPLATE_TOKEN = '__ASKCORE_REFERRAL_DAYS__';
-const REFERRAL_HOURS_TEMPLATE_TOKEN = '__ASKCORE_REFERRAL_HOURS__';
 const REFERRAL_ACTION_TEMPLATE_TOKEN = '__ASKCORE_REFERRAL_ACTION__';
 
 export const getBillingCopy = (language?: string): BillingCopy =>
@@ -770,7 +768,10 @@ const translatedCopy = (
   options: Record<string, unknown> = {},
 ) => t(key, { ...options, defaultValue });
 
-const createLocalizedBillingCopy = (language: string | undefined, t: TranslateFn): BillingCopy => {
+export const createLocalizedBillingCopy = (
+  language: string | undefined,
+  t: TranslateFn,
+): BillingCopy => {
   const base = getBillingCopy(language);
   const shortInterval =
     isChineseLanguage(language) || language?.toLowerCase().startsWith('en') || !language;
@@ -816,15 +817,8 @@ const createLocalizedBillingCopy = (language: string | undefined, t: TranslateFn
           'referral.rules.registration',
           base.referral.rules.registration,
         ),
-        reward: translatedCopy(t, 'referral.rules.reward', base.referral.rules.reward, {
-          reward: REFERRAL_REWARD_TEMPLATE_TOKEN,
-        }).replaceAll(REFERRAL_REWARD_TEMPLATE_TOKEN, '{{reward}}'),
-        rewardDelay: translatedCopy(
-          t,
-          'referral.rules.rewardDelay',
-          base.referral.rules.rewardDelay,
-          { hours: REFERRAL_HOURS_TEMPLATE_TOKEN },
-        ).replaceAll(REFERRAL_HOURS_TEMPLATE_TOKEN, '{{hours}}'),
+        reward: base.referral.rules.reward,
+        rewardDelay: base.referral.rules.rewardDelay,
         validAction: translatedCopy(
           t,
           'referral.rules.validAction',

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ASKCORE_BILLING_OPEN_URL_MESSAGE,
   buildAskCoreBillingEmbedUrl,
+  createLocalizedBillingCopy,
   formatBillingInterval,
   formatBillingStatus,
   getBillingCopy,
@@ -207,5 +208,21 @@ describe('AskCore billing embed helpers', () => {
     expect(text).not.toContain('0M');
     expect(text).not.toContain('registration');
     expect(text).not.toContain('first_billable_usage');
+  });
+
+  it('ignores stale referral reward i18n templates that still append million-credit suffixes', () => {
+    const copy = createLocalizedBillingCopy('zh-CN', (key, options) => {
+      if (key === 'referral.rules.reward') {
+        return '奖励：邀请人和被邀请人各获得 {{reward}}M 积分';
+      }
+      return String(options?.defaultValue || '');
+    });
+
+    const text = localizeReferralRules({ reward: 'reward' }, 100, copy)
+      .map((item) => item.text)
+      .join('\n');
+
+    expect(text).toContain('100 积分');
+    expect(text).not.toContain('M 积分');
   });
 });
