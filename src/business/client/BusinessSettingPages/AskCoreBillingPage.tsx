@@ -45,6 +45,7 @@ import { useParams } from 'react-router-dom';
 import { ProductLogo } from '@/components/Branding';
 
 export const ASKCORE_BILLING_OPEN_URL_MESSAGE = 'askcore-billing:open-url';
+export const ASKCORE_BILLING_CLEAR_REFERRAL_QUERY_MESSAGE = 'askcore-billing:clear-referral-query';
 
 export const ASKCORE_BILLING_PAGE_KEYS = [
   'billing',
@@ -65,7 +66,10 @@ export interface AskCoreBillingPlan {
   benefits?: {
     advanced?: Record<string, boolean>;
     cloud?: Record<string, boolean>;
-    credits?: { examples?: { messages?: number; model: string }[]; monthly_credits?: number };
+    credits?: {
+      examples?: { messages?: number; model: string }[];
+      monthly_credits?: number;
+    };
     knowledge_base?: {
       enabled?: boolean;
       file_storage_gb?: number;
@@ -881,10 +885,7 @@ export const formatBillingStatus = (
 const applyCopyTemplate = (template: string, values: Record<string, string>) =>
   template.replaceAll(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => values[key] || '');
 
-const formatReferralValidAction = (
-  value: string | number | undefined,
-  copy: BillingCopy,
-) => {
+const formatReferralValidAction = (value: string | number | undefined, copy: BillingCopy) => {
   const normalized = String(value || '').trim();
   if (normalized === 'first_billable_usage') {
     return copy.referral.rules.validActions.firstBillableUsage;
@@ -1094,7 +1095,9 @@ const billingJson = async <T,>(
 };
 
 const useBillingJson = <T,>(path: string | null, publicEndpoint = false, refreshKey = 0) => {
-  const [state, setState] = useState<ResourceState<T>>({ loading: Boolean(path) });
+  const [state, setState] = useState<ResourceState<T>>({
+    loading: Boolean(path),
+  });
 
   useEffect(() => {
     if (!path) {
@@ -1144,13 +1147,7 @@ export const isWechatQrCheckout = (checkout?: CheckoutResponse | null) =>
   checkout.checkout_type === 'qrcode' &&
   Boolean(checkout.code_url);
 
-const terminalPaymentStatuses = new Set([
-  'closed',
-  'failed',
-  'refunded',
-  'shadow',
-  'succeeded',
-]);
+const terminalPaymentStatuses = new Set(['closed', 'failed', 'refunded', 'shadow', 'succeeded']);
 
 const isTerminalPaymentStatus = (status: string | null | undefined) =>
   terminalPaymentStatuses.has(String(status || '').toLowerCase());
@@ -1160,11 +1157,15 @@ export const buildAskCoreBillingEmbedUrl = ({
   origin,
   page,
   checkoutId,
+  referralCallbackUrl,
+  referralCode,
 }: {
   checkoutId?: string;
   language?: string;
   origin: string;
   page: AskCoreBillingPageKey;
+  referralCallbackUrl?: string;
+  referralCode?: string;
 }) => {
   const rawBase = process.env.NEXT_PUBLIC_ASKCORE_BILLING_EMBED_URL?.trim();
   const base = rawBase ? new URL(rawBase, origin) : new URL(origin);
@@ -1178,6 +1179,9 @@ export const buildAskCoreBillingEmbedUrl = ({
   base.hash = '';
   if (language) base.searchParams.set('hl', language);
   if (checkoutId) base.searchParams.set('p33_checkout', checkoutId);
+  if (page === 'referral' && referralCode) base.searchParams.set('referral', referralCode);
+  if (page === 'referral' && referralCallbackUrl)
+    base.searchParams.set('callbackUrl', referralCallbackUrl);
   return base.toString();
 };
 
@@ -1213,6 +1217,16 @@ const requestParentOpenUrl = (url: string) => {
     return;
   }
   window.open(url, '_blank', 'noopener,noreferrer');
+};
+
+const requestParentClearReferralQuery = () => {
+  if (typeof window === 'undefined') return;
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage(
+      { type: ASKCORE_BILLING_CLEAR_REFERRAL_QUERY_MESSAGE },
+      window.location.origin,
+    );
+  }
 };
 
 const WECHAT_PAYMENT_POLL_INTERVAL_MS = 2500;
@@ -1260,10 +1274,7 @@ const WechatCheckoutModal = memo<{
         if (closed) return;
         setPollError(null);
         setStatus(next.status);
-        if (
-          next.status === 'succeeded' &&
-          reportedSuccessRef.current !== checkout.checkout_id
-        ) {
+        if (next.status === 'succeeded' && reportedSuccessRef.current !== checkout.checkout_id) {
           reportedSuccessRef.current = checkout.checkout_id;
           message.success(copy.payment.succeeded);
           onSuccess();
@@ -1300,7 +1311,10 @@ const WechatCheckoutModal = memo<{
       open={open}
       title={copy.payment.title}
       footer={
-        <Button type={isTerminalPaymentStatus(status) ? 'primary' : 'default'} onClick={handleClose}>
+        <Button
+          type={isTerminalPaymentStatus(status) ? 'primary' : 'default'}
+          onClick={handleClose}
+        >
           {copy.payment.close}
         </Button>
       }
@@ -1319,7 +1333,9 @@ const WechatCheckoutModal = memo<{
             {copy.payment.expiresAt}: {formatDate(checkout.expires_at)}
           </Text>
         )}
-        {pollError && <Alert showIcon message={pollError || copy.payment.pollFailed} type="warning" />}
+        {pollError && (
+          <Alert showIcon message={pollError || copy.payment.pollFailed} type="warning" />
+        )}
       </Flexbox>
     </Modal>
   );
@@ -1687,7 +1703,9 @@ const PlansView = memo<{
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [wechatCheckout, setWechatCheckout] = useState<CheckoutResponse | null>(null);
   const currentPlanId = account?.personal?.plan_id || 'free';
-  const provider = resolveDefaultProvider(plansPayload?.providers, { isChinese });
+  const provider = resolveDefaultProvider(plansPayload?.providers, {
+    isChinese,
+  });
   const handleBrowsePlans = useCallback(() => {
     if (typeof document === 'undefined') return;
     document
@@ -1993,7 +2011,11 @@ const UsageView = memo<{
   const plan = plansPayload?.plans.find((item) => item.id === account?.personal.plan_id);
   const columns: ColumnsType<AskCoreUsageRow> = useMemo(
     () => [
-      { dataIndex: 'created_at', render: formatDate, title: copy.tables.createdAt },
+      {
+        dataIndex: 'created_at',
+        render: formatDate,
+        title: copy.tables.createdAt,
+      },
       { dataIndex: 'type', title: copy.tables.type },
       { dataIndex: 'trigger', title: copy.tables.trigger },
       { dataIndex: 'model', title: copy.tables.model },
@@ -2113,7 +2135,9 @@ const CreditsView = memo<{
   const [wechatCheckout, setWechatCheckout] = useState<CheckoutResponse | null>(null);
   const [savingAutoTopup, setSavingAutoTopup] = useState(false);
   const [form] = Form.useForm<AskCoreAutoTopupPayload>();
-  const provider = resolveDefaultProvider(plansPayload?.providers, { isChinese });
+  const provider = resolveDefaultProvider(plansPayload?.providers, {
+    isChinese,
+  });
   const account = accountState.data;
   const plan = plansPayload?.plans.find((item) => item.id === account?.personal.plan_id);
   const isPaid = account?.personal.plan_id && account.personal.plan_id !== 'free';
@@ -2185,14 +2209,22 @@ const CreditsView = memo<{
     : plansPayload?.credit_packs || [];
 
   const packageColumns: ColumnsType<AskCoreCreditPackageRow> = [
-    { dataIndex: 'purchased_at', render: formatDate, title: copy.credits.purchasedOn },
+    {
+      dataIndex: 'purchased_at',
+      render: formatDate,
+      title: copy.credits.purchasedOn,
+    },
     { dataIndex: 'source', title: copy.credits.source },
     {
       dataIndex: 'remaining_credits',
       render: (value: number) => formatCredits(value, copy),
       title: copy.credits.balance,
     },
-    { dataIndex: 'expires_at', render: formatDate, title: copy.credits.expiresAt },
+    {
+      dataIndex: 'expires_at',
+      render: formatDate,
+      title: copy.credits.expiresAt,
+    },
     {
       dataIndex: 'status',
       render: (value: string) => (
@@ -2316,7 +2348,9 @@ const CreditsView = memo<{
         <Table
           columns={packageColumns}
           dataSource={creditState.data?.items || []}
-          locale={{ emptyText: <Empty description={copy.credits.noPackages} /> }}
+          locale={{
+            emptyText: <Empty description={copy.credits.noPackages} />,
+          }}
           pagination={false}
           rowKey="id"
           scroll={{ x: true }}
@@ -2353,7 +2387,11 @@ const BillingView = memo<{
         moneyFormatter.format(moneyValue(row.amount_paid_usd, row.amount_paid_cny, isChinese)),
       title: copy.billing.amount,
     },
-    { dataIndex: 'created_at', render: formatDate, title: copy.billing.paymentDate },
+    {
+      dataIndex: 'created_at',
+      render: formatDate,
+      title: copy.billing.paymentDate,
+    },
     {
       dataIndex: 'status',
       render: (value: string) => (
@@ -2428,7 +2466,9 @@ const BillingView = memo<{
         <Table
           columns={columns}
           dataSource={historyState.data?.items || []}
-          locale={{ emptyText: <Empty description={copy.billing.billingHistory} /> }}
+          locale={{
+            emptyText: <Empty description={copy.billing.billingHistory} />,
+          }}
           pagination={false}
           rowKey={'id'}
           scroll={{ x: true }}
@@ -2446,11 +2486,67 @@ const ReferralView = memo<{ copy: BillingCopy }>(({ copy }) => {
   const [editForm] = Form.useForm<{ referral_code: string }>();
   const [backfillForm] = Form.useForm<{ referral_code: string }>();
   const [saving, setSaving] = useState(false);
+  const [autoBackfillAttempted, setAutoBackfillAttempted] = useState(false);
+  const autoBackfillReferralCode = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('referral')?.trim() || '';
+  }, []);
 
   useEffect(() => {
     if (state.data?.referral_code)
       editForm.setFieldsValue({ referral_code: state.data.referral_code });
   }, [editForm, state.data?.referral_code]);
+
+  useEffect(() => {
+    if (
+      autoBackfillAttempted ||
+      !autoBackfillReferralCode ||
+      state.loading ||
+      !state.data?.enabled
+    ) {
+      return;
+    }
+
+    setAutoBackfillAttempted(true);
+    if (state.data.referral_code === autoBackfillReferralCode) {
+      requestParentClearReferralQuery();
+      return;
+    }
+
+    let closed = false;
+    setSaving(true);
+
+    const bindReferral = async () => {
+      try {
+        await billingJson('/referrals/backfill', {
+          body: JSON.stringify({ referral_code: autoBackfillReferralCode }),
+          method: 'POST',
+        });
+        if (closed) return;
+        message.success(copy.messages.bindSuccess);
+        setRefreshKey((key) => key + 1);
+        requestParentClearReferralQuery();
+      } catch (error) {
+        if (!closed) message.error(error instanceof Error ? error.message : copy.errors.bindFailed);
+      } finally {
+        if (!closed) setSaving(false);
+      }
+    };
+
+    void bindReferral();
+
+    return () => {
+      closed = true;
+    };
+  }, [
+    autoBackfillAttempted,
+    autoBackfillReferralCode,
+    copy.errors.bindFailed,
+    copy.messages.bindSuccess,
+    state.data?.enabled,
+    state.data?.referral_code,
+    state.loading,
+  ]);
 
   const copyText = useCallback(
     async (value?: string) => {
@@ -2504,7 +2600,11 @@ const ReferralView = memo<{ copy: BillingCopy }>(({ copy }) => {
 
   const data = state.data;
   const columns: ColumnsType<AskCoreReferralPayload['items'][number]> = [
-    { dataIndex: 'created_at', render: formatDate, title: copy.referral.registrationTime },
+    {
+      dataIndex: 'created_at',
+      render: formatDate,
+      title: copy.referral.registrationTime,
+    },
     { dataIndex: 'invitee_email', title: copy.referral.inviteeEmail },
     {
       dataIndex: 'reward_credits',
@@ -2610,7 +2710,9 @@ const ReferralView = memo<{ copy: BillingCopy }>(({ copy }) => {
         <Table
           columns={columns}
           dataSource={data.items}
-          locale={{ emptyText: <Empty description={copy.referral.noHistory} /> }}
+          locale={{
+            emptyText: <Empty description={copy.referral.noHistory} />,
+          }}
           pagination={false}
           rowKey={(row) => row.invitee_user_id}
           scroll={{ x: true }}

@@ -38,6 +38,21 @@ const referralCodeFromValue = (value?: string | null) => {
   }
 };
 
+const referralVerificationCallbackUrl = ({
+  callbackUrl,
+  referralCode,
+}: {
+  callbackUrl: string;
+  referralCode?: string;
+}) => {
+  if (!referralCode) return callbackUrl;
+
+  const params = new URLSearchParams({ referral: referralCode });
+  if (callbackUrl && callbackUrl !== '/') params.set('callbackUrl', callbackUrl);
+
+  return `/settings/referral?${params.toString()}`;
+};
+
 export const useSignUp = () => {
   const { t } = useTranslation(['auth', 'authError']);
   const router = useRouter();
@@ -63,8 +78,19 @@ export const useSignUp = () => {
       }
 
       const callbackUrl = searchParams.get('callbackUrl') || '/';
+      const referralCode = referralCodeFromValue(
+        values.referral_code || searchParams.get('referral'),
+      );
+      const verificationCallbackUrl = referralVerificationCallbackUrl({
+        callbackUrl,
+        referralCode,
+      });
       const isOrganizationInviteCallback = callbackUrl.startsWith('/join/organization/');
-      const authCallbackUrl = isOrganizationInviteCallback ? '/' : callbackUrl;
+      const authCallbackUrl = isOrganizationInviteCallback
+        ? '/'
+        : enableEmailVerification
+          ? verificationCallbackUrl
+          : callbackUrl;
       const username = values.email.split('@')[0];
       const fetchOptions = await getFetchOptions();
 
@@ -110,10 +136,7 @@ export const useSignUp = () => {
         return;
       }
 
-      const referralCode = referralCodeFromValue(
-        values.referral_code || searchParams.get('referral'),
-      );
-      if (referralCode) {
+      if (referralCode && !enableEmailVerification) {
         try {
           const response = await fetch('/api/askcore/billing/referrals/backfill', {
             body: JSON.stringify({ referral_code: referralCode }),
@@ -133,7 +156,7 @@ export const useSignUp = () => {
 
       if (enableEmailVerification) {
         router.push(
-          `/verify-email?email=${encodeURIComponent(values.email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`,
+          `/verify-email?email=${encodeURIComponent(values.email)}&callbackUrl=${encodeURIComponent(verificationCallbackUrl)}`,
         );
       } else {
         router.push(callbackUrl);

@@ -58,6 +58,28 @@ describe('AskCore billing embed helpers', () => {
     );
   });
 
+  it('carries pending referral binding params only into the referral embed URL', () => {
+    const referralUrl = buildAskCoreBillingEmbedUrl({
+      language: 'zh-CN',
+      origin: 'https://askcore.cn',
+      page: 'referral',
+      referralCallbackUrl: '/dashboard',
+      referralCode: 'ASK33',
+    });
+    const plansUrl = buildAskCoreBillingEmbedUrl({
+      language: 'zh-CN',
+      origin: 'https://askcore.cn',
+      page: 'plans',
+      referralCallbackUrl: '/dashboard',
+      referralCode: 'ASK33',
+    });
+
+    expect(referralUrl).toBe(
+      'https://askcore.cn/embed/subscription/referral?hl=zh-CN&referral=ASK33&callbackUrl=%2Fdashboard',
+    );
+    expect(plansUrl).toBe('https://askcore.cn/embed/subscription/plans?hl=zh-CN');
+  });
+
   it('keeps plan data backend-driven and resolves enabled providers', () => {
     const payload = normalizePlansPayload({
       billing_periods: [{ id: 'yearly', label: 'Yearly' }],
@@ -77,10 +99,19 @@ describe('AskCore billing embed helpers', () => {
     expect(payload.plans.map((plan) => plan.id)).toEqual(['hobby']);
     expect(payload.creditPacks).toHaveLength(1);
     expect(payload.billingPeriods).toEqual([{ id: 'yearly', label: 'Yearly' }]);
-    expect(resolveDefaultProvider({ alipay: { enabled: true }, stripe: { enabled: false } })).toBeNull();
+    expect(
+      resolveDefaultProvider({
+        alipay: { enabled: true },
+        stripe: { enabled: false },
+      }),
+    ).toBeNull();
     expect(
       resolveDefaultProvider(
-        { alipay: { enabled: true }, stripe: { enabled: true }, wechat: { enabled: true } },
+        {
+          alipay: { enabled: true },
+          stripe: { enabled: true },
+          wechat: { enabled: true },
+        },
         { isChinese: true },
       ),
     ).toBe('alipay');
@@ -96,7 +127,11 @@ describe('AskCore billing embed helpers', () => {
     ).toBe('wechat');
     expect(
       resolveDefaultProvider(
-        { alipay: { enabled: true }, stripe: { enabled: true }, wechat: { enabled: true } },
+        {
+          alipay: { enabled: true },
+          stripe: { enabled: true },
+          wechat: { enabled: true },
+        },
         { isChinese: false },
       ),
     ).toBe('stripe');

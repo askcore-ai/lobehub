@@ -164,9 +164,7 @@ describe('useSignUp', () => {
         await result.current.onSubmit(validValues);
       });
 
-      expect(mockSignUpEmail).toHaveBeenCalledWith(
-        expect.objectContaining({ callbackURL: '/' }),
-      );
+      expect(mockSignUpEmail).toHaveBeenCalledWith(expect.objectContaining({ callbackURL: '/' }));
       expect(mockPush).toHaveBeenCalledWith('/join/organization/invite-token');
     });
 
@@ -185,13 +183,42 @@ describe('useSignUp', () => {
       );
     });
 
+    it('carries referral code through email verification callback instead of binding before session exists', async () => {
+      mockEnableEmailVerification = true;
+      mockSearchParamsGet.mockImplementation((key: string) => {
+        if (key === 'callbackUrl') return '/dashboard';
+        if (key === 'referral') return 'ASK33';
+        return null;
+      });
+      mockSignUpEmail.mockResolvedValue({ error: null });
+
+      const { result } = renderHook(() => useSignUp());
+
+      await act(async () => {
+        await result.current.onSubmit(validValues);
+      });
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockSignUpEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          callbackURL: '/settings/referral?referral=ASK33&callbackUrl=%2Fdashboard',
+        }),
+      );
+      expect(mockPush).toHaveBeenCalledWith(
+        '/verify-email?email=new%40example.com&callbackUrl=%2Fsettings%2Freferral%3Freferral%3DASK33%26callbackUrl%3D%252Fdashboard',
+      );
+    });
+
     it('should derive username from email prefix', async () => {
       mockSignUpEmail.mockResolvedValue({ error: null });
 
       const { result } = renderHook(() => useSignUp());
 
       await act(async () => {
-        await result.current.onSubmit({ ...validValues, email: 'john.doe@gmail.com' });
+        await result.current.onSubmit({
+          ...validValues,
+          email: 'john.doe@gmail.com',
+        });
       });
 
       expect(mockSignUpEmail).toHaveBeenCalledWith(expect.objectContaining({ name: 'john.doe' }));
@@ -249,7 +276,10 @@ describe('useSignUp', () => {
       mockGetCaptchaTokenOnError.mockResolvedValue('captcha-token');
       mockSignUpEmail
         .mockResolvedValueOnce({
-          error: { code: 'CAPTCHA_REQUIRED', message: 'Missing CAPTCHA response' },
+          error: {
+            code: 'CAPTCHA_REQUIRED',
+            message: 'Missing CAPTCHA response',
+          },
         })
         .mockResolvedValueOnce({ error: null });
 
@@ -272,7 +302,10 @@ describe('useSignUp', () => {
     it('should stop sign up when captcha modal is cancelled', async () => {
       mockGetCaptchaTokenOnError.mockResolvedValue(null);
       mockSignUpEmail.mockResolvedValue({
-        error: { code: 'CAPTCHA_REQUIRED', message: 'Missing CAPTCHA response' },
+        error: {
+          code: 'CAPTCHA_REQUIRED',
+          message: 'Missing CAPTCHA response',
+        },
       });
 
       const { result } = renderHook(() => useSignUp());

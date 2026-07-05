@@ -12,6 +12,7 @@ import { useServerConfigStore } from '@/store/serverConfig';
 import { serverConfigSelectors } from '@/store/serverConfig/selectors';
 
 import {
+  ASKCORE_BILLING_CLEAR_REFERRAL_QUERY_MESSAGE,
   ASKCORE_BILLING_OPEN_URL_MESSAGE,
   type AskCoreBillingPageKey,
   buildAskCoreBillingEmbedUrl,
@@ -24,12 +25,32 @@ interface SubscriptionIframeWrapperProps {
   page: AskCoreBillingPageKey;
 }
 
-const currentOrigin = () => (typeof window === 'undefined' ? 'https://askcore.cn' : window.location.origin);
+const currentOrigin = () =>
+  typeof window === 'undefined' ? 'https://askcore.cn' : window.location.origin;
 
 const currentPaymentCheckoutId = () =>
   typeof window === 'undefined'
     ? undefined
     : new URLSearchParams(window.location.search).get('p33_checkout') || undefined;
+
+const currentReferralParams = () => {
+  if (typeof window === 'undefined') return {};
+
+  const search = new URLSearchParams(window.location.search);
+  return {
+    referralCallbackUrl: search.get('callbackUrl') || undefined,
+    referralCode: search.get('referral') || undefined,
+  };
+};
+
+const clearReferralQuery = () => {
+  if (typeof window === 'undefined') return;
+
+  const url = new URL(window.location.href);
+  url.searchParams.delete('referral');
+  url.searchParams.delete('callbackUrl');
+  window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+};
 
 export const SubscriptionIframeWrapper = memo<SubscriptionIframeWrapperProps>(({ page }) => {
   const [sessionReady, setSessionReady] = useState(!isDesktop);
@@ -38,22 +59,27 @@ export const SubscriptionIframeWrapper = memo<SubscriptionIframeWrapperProps>(({
   const { i18n } = useTranslation();
   const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
 
-  const iframeUrl = useMemo(
-    () =>
-      buildAskCoreBillingEmbedUrl({
-        checkoutId: currentPaymentCheckoutId(),
-        language: i18n.language,
-        origin: currentOrigin(),
-        page,
-      }),
-    [i18n.language, page],
-  );
+  const iframeUrl = useMemo(() => {
+    const referralParams = currentReferralParams();
+    return buildAskCoreBillingEmbedUrl({
+      checkoutId: currentPaymentCheckoutId(),
+      language: i18n.language,
+      origin: currentOrigin(),
+      page,
+      ...referralParams,
+    });
+  }, [i18n.language, page]);
 
   const embedOrigin = useMemo(() => new URL(iframeUrl, currentOrigin()).origin, [iframeUrl]);
 
   const openExternalUrl = useCallback(
     (url: string) => {
-      if (!isAllowedBillingExternalUrl(url, { appOrigin: currentOrigin(), embedOrigin })) {
+      if (
+        !isAllowedBillingExternalUrl(url, {
+          appOrigin: currentOrigin(),
+          embedOrigin,
+        })
+      ) {
         console.warn('[AskCoreBilling] Blocked external billing URL:', url);
         return;
       }
@@ -95,6 +121,9 @@ export const SubscriptionIframeWrapper = memo<SubscriptionIframeWrapperProps>(({
       const data = event.data as { type?: string; url?: string } | undefined;
       if (data?.type === ASKCORE_BILLING_OPEN_URL_MESSAGE && data.url) {
         openExternalUrl(data.url);
+      }
+      if (data?.type === ASKCORE_BILLING_CLEAR_REFERRAL_QUERY_MESSAGE) {
+        clearReferralQuery();
       }
     };
 
