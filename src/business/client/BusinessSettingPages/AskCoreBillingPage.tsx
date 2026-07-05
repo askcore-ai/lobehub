@@ -478,11 +478,18 @@ const enCopy = {
     programRules: 'Program Rules',
     registrationTime: 'Registration Time',
     rules: {
+      expiry: 'Credit validity: Referral credits expire after {{days}} days.',
+      priority:
+        'Deduction priority: free credits, subscription credits, referral credits, then top-up credits.',
       registration:
         'Registration method: Invited users register via referral link or enter referral code on registration page',
-      reward: 'Reward: Referrer and invitee each receive {{reward}}M credits',
+      reward: 'Reward: referrer and invitee each receive {{reward}}.',
       rewardDelay:
-        'Reward processing: Credits will be distributed after verification, which may take up to 6 hours',
+        'Reward processing: credits are issued after verification, within {{hours}} hours.',
+      validAction: 'Valid action: {{action}}.',
+      validActions: {
+        firstBillableUsage: 'first billable usage',
+      },
     },
     status: 'Status',
     totalInvites: 'Total Invites',
@@ -678,9 +685,15 @@ const zhCopy: typeof enCopy = {
     programRules: '计划规则',
     registrationTime: '注册时间',
     rules: {
+      expiry: '积分有效期：推荐奖励积分将在 {{days}} 天后过期。',
+      priority: '扣减优先级：免费积分、订阅积分、推荐奖励积分、充值积分。',
       registration: '注册方式：被邀请用户通过推荐链接注册或在注册页输入推荐码',
-      reward: '奖励：邀请人和被邀请人各获得 {{reward}}M 积分',
-      rewardDelay: '奖励处理：积分将在审核通过后发放，审核最多需要 6 小时',
+      reward: '奖励：邀请人和被邀请人各获得 {{reward}}',
+      rewardDelay: '奖励处理：积分将在审核通过后发放，最多需要 {{hours}} 小时',
+      validAction: '有效动作：{{action}}',
+      validActions: {
+        firstBillableUsage: '首次产生可计费用量',
+      },
     },
     status: '状态',
     totalInvites: '邀请总数',
@@ -743,6 +756,9 @@ type BillingCopy = typeof enCopy;
 type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
 
 const REFERRAL_REWARD_TEMPLATE_TOKEN = '__ASKCORE_REFERRAL_REWARD__';
+const REFERRAL_DAYS_TEMPLATE_TOKEN = '__ASKCORE_REFERRAL_DAYS__';
+const REFERRAL_HOURS_TEMPLATE_TOKEN = '__ASKCORE_REFERRAL_HOURS__';
+const REFERRAL_ACTION_TEMPLATE_TOKEN = '__ASKCORE_REFERRAL_ACTION__';
 
 export const getBillingCopy = (language?: string): BillingCopy =>
   isChineseLanguage(language) ? zhCopy : enCopy;
@@ -790,6 +806,11 @@ const createLocalizedBillingCopy = (language: string | undefined, t: TranslateFn
       ...base.referral,
       programRules: translatedCopy(t, 'referral.rules.title', base.referral.programRules),
       rules: {
+        ...base.referral.rules,
+        expiry: translatedCopy(t, 'referral.rules.expiry', base.referral.rules.expiry, {
+          days: REFERRAL_DAYS_TEMPLATE_TOKEN,
+        }).replaceAll(REFERRAL_DAYS_TEMPLATE_TOKEN, '{{days}}'),
+        priority: translatedCopy(t, 'referral.rules.priority', base.referral.rules.priority),
         registration: translatedCopy(
           t,
           'referral.rules.registration',
@@ -802,7 +823,22 @@ const createLocalizedBillingCopy = (language: string | undefined, t: TranslateFn
           t,
           'referral.rules.rewardDelay',
           base.referral.rules.rewardDelay,
-        ),
+          { hours: REFERRAL_HOURS_TEMPLATE_TOKEN },
+        ).replaceAll(REFERRAL_HOURS_TEMPLATE_TOKEN, '{{hours}}'),
+        validAction: translatedCopy(
+          t,
+          'referral.rules.validAction',
+          base.referral.rules.validAction,
+          { action: REFERRAL_ACTION_TEMPLATE_TOKEN },
+        ).replaceAll(REFERRAL_ACTION_TEMPLATE_TOKEN, '{{action}}'),
+        validActions: {
+          ...base.referral.rules.validActions,
+          firstBillableUsage: translatedCopy(
+            t,
+            'referral.rules.validActions.firstBillableUsage',
+            base.referral.rules.validActions.firstBillableUsage,
+          ),
+        },
       },
     },
     statuses: {
@@ -851,9 +887,15 @@ export const formatBillingStatus = (
 const applyCopyTemplate = (template: string, values: Record<string, string>) =>
   template.replaceAll(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => values[key] || '');
 
-const formatReferralRewardMillions = (credits: number | null | undefined) => {
-  const value = Number(credits || 0) / 1_000_000;
-  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value);
+const formatReferralValidAction = (
+  value: string | number | undefined,
+  copy: BillingCopy,
+) => {
+  const normalized = String(value || '').trim();
+  if (normalized === 'first_billable_usage') {
+    return copy.referral.rules.validActions.firstBillableUsage;
+  }
+  return normalized || '-';
 };
 
 export const localizeReferralRules = (
@@ -862,18 +904,41 @@ export const localizeReferralRules = (
   copy: BillingCopy,
 ) => {
   const knownRules = new Set<string>();
+  const rawEntries = Object.entries(rules || {});
+  const normalizedRuleValue = (id: string) => {
+    const entry = rawEntries.find(([key]) => key.toLowerCase().replaceAll(/[\s_-]/g, '') === id);
+    if (entry) knownRules.add(entry[0]);
+    return entry?.[1];
+  };
+
   const localized = [
     { id: 'registration', text: copy.referral.rules.registration },
     {
       id: 'reward',
       text: applyCopyTemplate(copy.referral.rules.reward, {
-        reward: formatReferralRewardMillions(rewardCredits),
+        reward: formatCredits(rewardCredits, copy),
       }),
     },
-    { id: 'rewardDelay', text: copy.referral.rules.rewardDelay },
+    {
+      id: 'rewarddelayhours',
+      text: applyCopyTemplate(copy.referral.rules.rewardDelay, {
+        hours: String(normalizedRuleValue('rewarddelayhours') || 6),
+      }),
+    },
+    {
+      id: 'expirydays',
+      text: applyCopyTemplate(copy.referral.rules.expiry, {
+        days: String(normalizedRuleValue('expirydays') || 0),
+      }),
+    },
+    { id: 'priority', text: copy.referral.rules.priority },
+    {
+      id: 'validaction',
+      text: applyCopyTemplate(copy.referral.rules.validAction, {
+        action: formatReferralValidAction(normalizedRuleValue('validaction'), copy),
+      }),
+    },
   ];
-
-  const rawEntries = Object.entries(rules || {});
   const result = localized.filter((item) => {
     const hasRule =
       rawEntries.length === 0 ||
@@ -889,7 +954,9 @@ export const localizeReferralRules = (
   });
 
   for (const [key, value] of rawEntries) {
-    if (!knownRules.has(key)) result.push({ id: key, text: String(value) });
+    if (!knownRules.has(key) && key.startsWith('rule_')) {
+      result.push({ id: key, text: String(value) });
+    }
   }
 
   return result;
