@@ -110,11 +110,14 @@ interface DirectoryTreeSelectNode {
 }
 
 interface IdentityClaimTarget {
+  action: 'assign_role' | 'claim';
+  buttonLabel: string;
   disabledReason?: string;
   key: string;
   person: AskCoreDirectoryPerson;
   rosterId: number;
   rosterKind: AskCoreEducationIdentityRosterKind;
+  statusText?: string;
   unitPath: string;
 }
 
@@ -468,6 +471,8 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     const watchedEditUnitType = Form.useWatch('unit_type', unitEditForm) as
       AskCoreEducationOrgUnitType | undefined;
     const watchedRole = Form.useWatch('role', roleForm) as AskCoreEducationRole | undefined;
+    const watchedAccountRole = Form.useWatch('education_role', accountForm) as
+      AskCoreEducationRole | undefined;
     const watchedOrgImportRole = Form.useWatch('default_role', orgImportForm) as
       AskCoreEducationRole | undefined;
     const watchedOrgPersonRole = Form.useWatch('education_role', orgPersonForm) as
@@ -695,23 +700,32 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       () =>
         people.map((person) => {
           const key = `member:${person.id}`;
-          const disabledReason = person.better_auth_user_id
-            ? '已绑定账号'
-            : pendingIdentityClaimKeys.has(key)
-              ? canManage
-                ? '已提交待审批'
-                : '申请处理中'
-              : undefined;
+          const hasBoundAccount = Boolean(person.better_auth_user_id);
+          const needsEducationIdentity = personNeedsEducationIdentity(person);
+          const canAssignRole = canManage && hasBoundAccount && needsEducationIdentity;
+          const pendingReason = pendingIdentityClaimKeys.has(key)
+            ? canManage
+              ? '已提交待审批'
+              : '申请处理中'
+            : undefined;
+          const disabledReason = canAssignRole
+            ? undefined
+            : hasBoundAccount
+              ? '已绑定账号'
+              : pendingReason;
           return {
+            action: canAssignRole ? 'assign_role' : 'claim',
+            buttonLabel: canAssignRole ? '指定身份' : '申请绑定',
             disabledReason,
             key,
             person,
             rosterId: person.id,
             rosterKind: 'member',
+            statusText: canAssignRole ? '已绑定账号，待指定教育身份' : disabledReason,
             unitPath: unitPathLabel(person.primary_org_unit_id),
           };
         }),
-      [canManage, pendingIdentityClaimKeys, people, unitPathLabel],
+      [canManage, pendingIdentityClaimKeys, people, personNeedsEducationIdentity, unitPathLabel],
     );
     const identityClaimSearchKeyword = identityClaimSearchText.trim().toLowerCase();
     const searchedIdentityClaimTargets = useMemo(() => {
@@ -842,6 +856,13 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         : !selectedPersonCanRemoveOrganizationMember
           ? '只有所有者可以移除所有者或管理员'
           : undefined;
+    const selectedPersonPrimaryRoleUnit =
+      selectedPerson && selectedPerson.primary_org_unit_id
+        ? unitById.get(selectedPerson.primary_org_unit_id)
+        : organizationRootUnit || undefined;
+    const selectedPersonDefaultRole = selectedPersonPrimaryRoleUnit
+      ? defaultEducationRoleByUnitType[selectedPersonPrimaryRoleUnit.unit_type]
+      : 'teacher';
     const selectedNodePendingInvites = invitations.filter((invite) => {
       if (invite.status !== 'pending') return false;
       const targetUnitId = selectedUnitId || rootUnitId;
@@ -948,6 +969,10 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     const roleScopedTreeData = useMemo(
       () => buildUnitTreeData(watchedRole),
       [buildUnitTreeData, watchedRole],
+    );
+    const accountRoleScopedTreeData = useMemo(
+      () => buildUnitTreeData(watchedAccountRole),
+      [buildUnitTreeData, watchedAccountRole],
     );
     const orgInviteTreeData = useMemo(
       () => buildUnitTreeData(watchedOrgInviteRole),
@@ -1281,9 +1306,15 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     const bindAccount = async () => {
       if (!selectedPerson) return;
       const values = await accountForm.validateFields();
+      const targetUnit = validateEducationScope(values.education_role, values.education_org_unit_id);
+      if (!targetUnit) return;
       setSaving(true);
       try {
-        await bindAskCoreDirectoryPersonAccount(selectedPerson.id, values.better_auth_user_id);
+        await bindAskCoreDirectoryPersonAccount(selectedPerson.id, {
+          better_auth_user_id: values.better_auth_user_id,
+          education_org_unit_id: targetUnit.id,
+          education_role: values.education_role,
+        });
         accountForm.resetFields();
         await loadDirectory();
         message.success('账号已绑定');
@@ -1420,6 +1451,25 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         message.success('身份申请已提交');
       } finally {
         setSubmittingIdentityClaimKey(null);
+      }
+    };
+
+    const openRoleAssignmentForTarget = (target: IdentityClaimTarget) => {
+      const targetUnitId = target.person.primary_org_unit_id || rootUnitId || undefined;
+      const targetUnit = targetUnitId ? unitById.get(targetUnitId) : undefined;
+      const defaultRole = targetUnit ? defaultEducationRoleByUnitType[targetUnit.unit_type] : undefined;
+      setIdentityDrawerOpen(false);
+      setIdentityClaimSearchText('');
+      setSearchText('');
+      setActiveFilter('identity_required');
+      setSelectedUnitId(targetUnitId || null);
+      setSelectedPersonId(target.person.id);
+      roleForm.resetFields();
+      if (targetUnit && defaultRole && roleAllowedForUnit(defaultRole, targetUnit)) {
+        roleForm.setFieldsValue({
+          org_unit_id: targetUnit.id,
+          role: defaultRole,
+        });
       }
     };
 
@@ -2011,15 +2061,19 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                 <span>
                   {identityTargetKindLabels[target.rosterKind] || '人员'} · {target.unitPath}
                 </span>
-                {target.disabledReason ? <small>{target.disabledReason}</small> : null}
+                {target.statusText ? <small>{target.statusText}</small> : null}
               </div>
               <Button
                 disabled={Boolean(target.disabledReason)}
                 loading={submittingIdentityClaimKey === target.key}
                 type="primary"
-                onClick={() => submitIdentityClaim(target)}
+                onClick={() =>
+                  target.action === 'assign_role'
+                    ? openRoleAssignmentForTarget(target)
+                    : submitIdentityClaim(target)
+                }
               >
-                申请绑定
+                {target.buttonLabel}
               </Button>
             </div>
           ))
@@ -2466,13 +2520,38 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                       <Form
                         className={styles.directoryInlineForm}
                         form={accountForm}
+                        key={`account-${selectedPerson.id}-${selectedPersonPrimaryRoleUnit?.id || 'none'}`}
                         layout="vertical"
+                        initialValues={{
+                          education_org_unit_id: selectedPersonPrimaryRoleUnit?.id,
+                          education_role: selectedPersonDefaultRole,
+                        }}
                       >
                         <Form.Item
                           name="better_auth_user_id"
                           rules={[{ message: '请输入 Better Auth 用户 ID', required: true }]}
                         >
                           <Input placeholder="Better Auth 用户 ID" />
+                        </Form.Item>
+                        <Form.Item
+                          name="education_role"
+                          rules={[{ message: '请选择教育身份', required: true }]}
+                        >
+                          <Select
+                            options={allRoleOptions}
+                            placeholder="教育身份"
+                            onChange={() => accountForm.resetFields(['education_org_unit_id'])}
+                          />
+                        </Form.Item>
+                        <Form.Item
+                          name="education_org_unit_id"
+                          rules={[{ message: '请选择身份范围', required: true }]}
+                        >
+                          <TreeSelect
+                            allowClear
+                            placeholder="身份范围"
+                            treeData={accountRoleScopedTreeData}
+                          />
                         </Form.Item>
                         <Button
                           block

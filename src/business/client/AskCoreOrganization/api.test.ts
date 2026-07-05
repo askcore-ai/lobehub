@@ -89,7 +89,11 @@ describe('AskCoreOrganization api client', () => {
     await updateAskCoreDirectoryPerson(10, { primary_org_unit_id: 5 });
     await createAskCoreDirectoryPersonRole(10, { org_unit_id: 4, role: 'teacher' });
     await deleteAskCoreDirectoryPersonRole(10, 99);
-    await bindAskCoreDirectoryPersonAccount(10, 'user-10');
+    await bindAskCoreDirectoryPersonAccount(10, {
+      better_auth_user_id: 'user-10',
+      education_org_unit_id: 4,
+      education_role: 'teacher',
+    });
     await unbindAskCoreDirectoryPersonAccount(10);
     await createAskCoreDirectoryInvitation({
       invitation_kind: 'open',
@@ -232,7 +236,11 @@ describe('AskCoreOrganization api client', () => {
     });
     expect(calls[17][1]).toMatchObject({ method: 'DELETE' });
     expect(calls[18][1]).toMatchObject({
-      body: JSON.stringify({ better_auth_user_id: 'user-10' }),
+      body: JSON.stringify({
+        better_auth_user_id: 'user-10',
+        education_org_unit_id: 4,
+        education_role: 'teacher',
+      }),
       method: 'POST',
     });
     expect(calls[19][1]).toMatchObject({ method: 'DELETE' });

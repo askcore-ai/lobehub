@@ -289,9 +289,16 @@ export const deleteAskCoreDirectoryPersonRole = (personId: number, roleAssignmen
     { method: 'DELETE' },
   );
 
-export const bindAskCoreDirectoryPersonAccount = (personId: number, betterAuthUserId: string) =>
+export const bindAskCoreDirectoryPersonAccount = (
+  personId: number,
+  input: {
+    better_auth_user_id: string;
+    education_org_unit_id: number;
+    education_role: AskCoreEducationRole;
+  },
+) =>
   requestJson<AskCoreDirectoryPerson>(`${EDUCATION_ORG_API_BASE}/people/${personId}/bind-account`, {
-    body: JSON.stringify({ better_auth_user_id: betterAuthUserId }),
+    body: JSON.stringify(input),
     method: 'POST',
   });
 

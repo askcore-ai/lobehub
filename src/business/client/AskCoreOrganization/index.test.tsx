@@ -837,6 +837,45 @@ describe('AskCoreOrganizationRoute', () => {
     );
   });
 
+  it('routes admins from bound missing-identity search results to role assignment', async () => {
+    const missingIdentityPayload = {
+      ...directoryPayload,
+      authorizations: directoryPayload.authorizations.filter((role) => role.person_id !== 103),
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/directory')) {
+        return new Response(JSON.stringify(missingIdentityPayload), { status: 200 });
+      }
+      if (url.endsWith('/workbench/organization/identity-claims?status=all')) {
+        return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/organization?action=identity-claim']}>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    const drawer = await screen.findByRole('dialog');
+    fireEvent.change(within(drawer).getByPlaceholderText('输入姓名搜索人员'), {
+      target: { value: '张扬' },
+    });
+
+    await waitFor(() => expect(within(drawer).getByText('张扬')).toBeInTheDocument());
+    expect(within(drawer).getByText('已绑定账号，待指定教育身份')).toBeInTheDocument();
+
+    fireEvent.click(within(drawer).getByRole('button', { name: '指定身份' }));
+
+    const detailTitle = await screen.findByText('人员详情 #103');
+    const detailDrawer = (detailTitle.closest('.ant-drawer') as HTMLElement | null) || document.body;
+    expect(within(detailDrawer).getByText('待指定')).toBeInTheDocument();
+    expect(within(detailDrawer).getByRole('button', { name: '分配角色' })).toBeInTheDocument();
+  });
+
   it('reopens identity claim drawer when the identity application entry is triggered on the same route', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
