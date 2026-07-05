@@ -192,11 +192,6 @@ const trustedAskCoreWriteOrigins = (request: SameOriginRequest) => {
   [
     normalizeHttpOrigin(process.env.APP_URL),
     requestOriginFromForwardedHost(
-      request.headers.get('x-forwarded-host'),
-      request.headers.get('x-forwarded-proto'),
-      requestProtocol,
-    ),
-    requestOriginFromForwardedHost(
       request.headers.get('host'),
       request.headers.get('x-forwarded-proto'),
       requestProtocol,

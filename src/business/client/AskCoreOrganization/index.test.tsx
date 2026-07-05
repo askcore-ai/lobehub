@@ -84,76 +84,102 @@ const directoryPayload = {
       token: 'invite-token',
     },
   ],
-  member_summaries: {
-    'user-owner': {
-      email: 'owner@askcore.cn',
-      member_id: 'mem-owner',
-      name: '张扬',
-      organization_role: 'owner',
-    },
-    'user-student': {
-      email: 'student@askcore.cn',
-      member_id: 'mem-student',
-      name: '王同学',
-      organization_role: 'member',
-    },
-  },
+  member_summaries: {},
   org_id: 'org-1',
-  people: [
+  person_profiles: [
     {
-      display_name: '李老师',
-      id: 101,
-      lifecycle_status: 'active',
-      org_id: 'org-1',
-      primary_org_unit_id: 2,
-      registration_status: 'invited',
+      account: null,
+      education: {
+        roles: [
+          {
+            authorization_id: 900,
+            org_unit_id: 3,
+            role: 'teacher',
+          },
+        ],
+        status: 'assigned',
+      },
+      invitation: {
+        pending_directed_count: 1,
+        pending_open_count: 0,
+        statuses: ['pending'],
+      },
+      person: {
+        display_name: '李老师',
+        id: 101,
+        lifecycle_status: 'active',
+        org_id: 'org-1',
+        primary_org_unit_id: 2,
+        source: 'manual',
+      },
     },
     {
-      better_auth_user_id: 'user-student',
-      display_name: '王同学',
-      id: 102,
-      lifecycle_status: 'active',
-      org_id: 'org-1',
-      primary_org_unit_id: 3,
-      registration_status: 'registered',
+      account: {
+        email: 'student@askcore.cn',
+        member_id: 'mem-student',
+        name: '王同学',
+        organization_role: 'member',
+        user_id: 'user-student',
+      },
+      education: {
+        roles: [
+          {
+            authorization_id: 901,
+            org_unit_id: 3,
+            role: 'student',
+          },
+        ],
+        status: 'assigned',
+      },
+      invitation: {
+        pending_directed_count: 0,
+        pending_open_count: 0,
+        statuses: [],
+      },
+      person: {
+        display_name: '王同学',
+        id: 102,
+        lifecycle_status: 'active',
+        org_id: 'org-1',
+        primary_org_unit_id: 3,
+        source: 'membership_backfill',
+      },
     },
     {
-      better_auth_user_id: 'user-owner',
-      display_name: '张扬',
-      id: 103,
-      lifecycle_status: 'active',
-      org_id: 'org-1',
-      primary_org_unit_id: 10,
-      registration_status: 'registered',
+      account: {
+        email: 'owner@askcore.cn',
+        member_id: 'mem-owner',
+        name: '张扬',
+        organization_role: 'owner',
+        user_id: 'user-owner',
+      },
+      education: {
+        roles: [
+          {
+            authorization_id: 902,
+            org_unit_id: 10,
+            role: 'teacher',
+          },
+        ],
+        status: 'assigned',
+      },
+      invitation: {
+        pending_directed_count: 0,
+        pending_open_count: 0,
+        statuses: [],
+      },
+      person: {
+        display_name: '张扬',
+        id: 103,
+        lifecycle_status: 'active',
+        org_id: 'org-1',
+        primary_org_unit_id: 10,
+        source: 'membership_backfill',
+      },
     },
   ],
-  authorizations: [
-    {
-      id: 900,
-      org_id: 'org-1',
-      org_unit_id: 3,
-      person_id: 101,
-      role: 'teacher',
-      subject_user_id: 'user:directory-person-101',
-    },
-    {
-      id: 901,
-      org_id: 'org-1',
-      org_unit_id: 3,
-      person_id: 102,
-      role: 'student',
-      subject_user_id: 'user:directory-person-102',
-    },
-    {
-      better_auth_user_id: 'user-owner',
-      id: 902,
-      org_id: 'org-1',
-      org_unit_id: 10,
-      person_id: 103,
-      role: 'teacher',
-      subject_user_id: 'user:user-owner',
-    },
-  ],
+  people: [],
+  authorizations: [],
   units: [
     {
       id: 10,
@@ -406,10 +432,13 @@ describe('AskCoreOrganizationRoute', () => {
   it('lets admins edit basic person information from the detail drawer', async () => {
     let nextDirectoryPayload = {
       ...directoryPayload,
-      people: directoryPayload.people.map((person) =>
-        person.id === 103
-          ? { ...person, email: 'old@askcore.cn', phone: '13800000000' }
-          : person,
+      person_profiles: directoryPayload.person_profiles.map((profile) =>
+        profile.person.id === 103
+          ? {
+              ...profile,
+              person: { ...profile.person, email: 'old@askcore.cn', phone: '13800000000' },
+            }
+          : profile,
       ),
     };
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -421,13 +450,19 @@ describe('AskCoreOrganizationRoute', () => {
         const patch = JSON.parse(String(init.body));
         nextDirectoryPayload = {
           ...nextDirectoryPayload,
-          people: nextDirectoryPayload.people.map((person) =>
-            person.id === 103 ? { ...person, ...patch } : person,
+          person_profiles: nextDirectoryPayload.person_profiles.map((profile) =>
+            profile.person.id === 103
+              ? { ...profile, person: { ...profile.person, ...patch } }
+              : profile,
           ),
         };
-        return new Response(JSON.stringify(nextDirectoryPayload.people.find((p) => p.id === 103)), {
-          status: 200,
-        });
+        return new Response(
+          JSON.stringify(
+            nextDirectoryPayload.person_profiles.find((profile) => profile.person.id === 103)
+              ?.person,
+          ),
+          { status: 200 },
+        );
       }
       return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
     });
@@ -840,7 +875,12 @@ describe('AskCoreOrganizationRoute', () => {
   it('routes admins from bound missing-identity search results to role assignment', async () => {
     const missingIdentityPayload = {
       ...directoryPayload,
-      authorizations: directoryPayload.authorizations.filter((role) => role.person_id !== 103),
+      authorizations: [],
+      person_profiles: directoryPayload.person_profiles.map((profile) =>
+        profile.person.id === 103
+          ? { ...profile, education: { roles: [], status: 'unassigned' } }
+          : profile,
+      ),
     };
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -992,37 +1032,57 @@ describe('AskCoreOrganizationRoute', () => {
   it('renders P50 person authorizations without todo aggregation or roster fallback', async () => {
     const p50DirectoryPayload = {
       ...directoryPayload,
-      authorizations: [
+      authorizations: [],
+      person_profiles: [
         {
-          better_auth_user_id: 'user-owner',
-          id: 910,
-          org_id: 'org-1',
-          org_unit_id: 10,
-          person_id: 103,
-          role: 'teacher',
-          subject_user_id: 'user:user-owner',
+          account: {
+            email: 'owner@askcore.cn',
+            member_id: 'mem-owner',
+            name: '张扬',
+            organization_role: 'owner',
+            user_id: 'user-owner',
+          },
+          education: {
+            roles: [
+              {
+                authorization_id: 910,
+                org_unit_id: 10,
+                role: 'teacher',
+              },
+            ],
+            status: 'assigned',
+          },
+          invitation: { pending_directed_count: 0, pending_open_count: 0, statuses: [] },
+          person: {
+            display_name: '张扬',
+            id: 103,
+            lifecycle_status: 'active',
+            org_id: 'org-1',
+            primary_org_unit_id: 10,
+            source: 'membership_backfill',
+          },
+        },
+        {
+          account: {
+            email: 'student@askcore.cn',
+            member_id: 'mem-student',
+            name: '王同学',
+            organization_role: 'member',
+            user_id: 'user-student',
+          },
+          education: { roles: [], status: 'unassigned' },
+          invitation: { pending_directed_count: 0, pending_open_count: 0, statuses: [] },
+          person: {
+            display_name: '王同学',
+            id: 104,
+            lifecycle_status: 'active',
+            org_id: 'org-1',
+            primary_org_unit_id: 10,
+            source: 'membership_backfill',
+          },
         },
       ],
-      people: [
-        {
-          better_auth_user_id: 'user-owner',
-          display_name: '张扬',
-          id: 103,
-          lifecycle_status: 'active',
-          org_id: 'org-1',
-          primary_org_unit_id: 10,
-          registration_status: 'registered',
-        },
-        {
-          better_auth_user_id: 'user-student',
-          display_name: '王同学',
-          id: 104,
-          lifecycle_status: 'active',
-          org_id: 'org-1',
-          primary_org_unit_id: 10,
-          registration_status: 'registered',
-        },
-      ],
+      people: [],
     };
     vi.stubGlobal(
       'fetch',
@@ -1073,26 +1133,20 @@ describe('AskCoreOrganizationRoute', () => {
   it('lets admins remove a stale person role from the detail drawer', async () => {
     let nextDirectoryPayload = {
       ...directoryPayload,
-      authorizations: [
-        {
-          better_auth_user_id: 'user-owner',
-          id: 910,
-          org_id: 'org-1',
-          org_unit_id: 10,
-          person_id: 103,
-          role: 'teacher',
-          subject_user_id: 'user:user-owner',
-        },
-        {
-          better_auth_user_id: 'user-owner',
-          id: 911,
-          org_id: 'org-1',
-          org_unit_id: 3,
-          person_id: 103,
-          role: 'student',
-          subject_user_id: 'user:user-owner',
-        },
-      ],
+      person_profiles: directoryPayload.person_profiles.map((profile) =>
+        profile.person.id === 103
+          ? {
+              ...profile,
+              education: {
+                roles: [
+                  { authorization_id: 910, org_unit_id: 10, role: 'teacher' },
+                  { authorization_id: 911, org_unit_id: 3, role: 'student' },
+                ],
+                status: 'assigned',
+              },
+            }
+          : profile,
+      ),
     };
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -1100,10 +1154,24 @@ describe('AskCoreOrganizationRoute', () => {
         return new Response(JSON.stringify(nextDirectoryPayload), { status: 200 });
       }
       if (url.endsWith('/workbench/organization/people/103/roles/910') && init?.method === 'DELETE') {
-        const removed = nextDirectoryPayload.authorizations.find((role) => role.id === 910)!;
+        const removed = nextDirectoryPayload.person_profiles
+          .find((profile) => profile.person.id === 103)!
+          .education.roles.find((role) => role.authorization_id === 910)!;
         nextDirectoryPayload = {
           ...nextDirectoryPayload,
-          authorizations: nextDirectoryPayload.authorizations.filter((role) => role.id !== 910),
+          person_profiles: nextDirectoryPayload.person_profiles.map((profile) =>
+            profile.person.id === 103
+              ? {
+                  ...profile,
+                  education: {
+                    ...profile.education,
+                    roles: profile.education.roles.filter(
+                      (role) => role.authorization_id !== 910,
+                    ),
+                  },
+                }
+              : profile,
+          ),
         };
         return new Response(JSON.stringify(removed), { status: 200 });
       }
@@ -1176,26 +1244,56 @@ describe('AskCoreOrganizationRoute', () => {
   it('lets owners remove bound organization members from the directory drawer', async () => {
     const removableDirectoryPayload = {
       ...directoryPayload,
-      people: [
+      person_profiles: [
         {
-          better_auth_user_id: 'user-owner',
-          display_name: '张扬',
-          id: 103,
-          lifecycle_status: 'active',
-          org_id: 'org-1',
-          primary_org_unit_id: 10,
-          registration_status: 'registered',
+          account: {
+            email: 'owner@askcore.cn',
+            member_id: 'mem-owner',
+            name: '张扬',
+            organization_role: 'owner',
+            user_id: 'user-owner',
+          },
+          education: {
+            roles: [
+              {
+                authorization_id: 902,
+                org_unit_id: 10,
+                role: 'teacher',
+              },
+            ],
+            status: 'assigned',
+          },
+          invitation: { pending_directed_count: 0, pending_open_count: 0, statuses: [] },
+          person: {
+            display_name: '张扬',
+            id: 103,
+            lifecycle_status: 'active',
+            org_id: 'org-1',
+            primary_org_unit_id: 10,
+            source: 'membership_backfill',
+          },
         },
         {
-          better_auth_user_id: 'user-student',
-          display_name: '王同学',
-          id: 104,
-          lifecycle_status: 'active',
-          org_id: 'org-1',
-          primary_org_unit_id: 10,
-          registration_status: 'registered',
+          account: {
+            email: 'student@askcore.cn',
+            member_id: 'mem-student',
+            name: '王同学',
+            organization_role: 'member',
+            user_id: 'user-student',
+          },
+          education: { roles: [], status: 'unassigned' },
+          invitation: { pending_directed_count: 0, pending_open_count: 0, statuses: [] },
+          person: {
+            display_name: '王同学',
+            id: 104,
+            lifecycle_status: 'active',
+            org_id: 'org-1',
+            primary_org_unit_id: 10,
+            source: 'membership_backfill',
+          },
         },
       ],
+      people: [],
     };
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

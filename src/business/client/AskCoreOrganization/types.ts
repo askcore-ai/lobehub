@@ -217,17 +217,67 @@ export interface AskCoreDirectoryMemberSummary {
   organization_role?: AskCoreOrganizationRole | string | null;
 }
 
+export interface AskCoreOrganizationPersonProfilePerson {
+  display_name: string;
+  email?: string | null;
+  gender?: string | null;
+  id: number;
+  lifecycle_status: string;
+  org_id: string;
+  phone?: string | null;
+  pinyin_name?: string | null;
+  primary_org_unit_id?: number | null;
+  source: string;
+  staff_number?: string | null;
+  student_number?: string | null;
+}
+
+export interface AskCoreOrganizationPersonProfileAccount {
+  email?: string | null;
+  member_id?: string | null;
+  name?: string | null;
+  organization_role?: AskCoreOrganizationRole | string | null;
+  phone?: string | null;
+  user_id: string;
+}
+
+export interface AskCoreOrganizationPersonProfileEducationRole {
+  authorization_id: number;
+  org_unit_id: number;
+  role: AskCoreEducationRole;
+  subject_id?: number | null;
+}
+
+export interface AskCoreOrganizationPersonProfileEducation {
+  roles: AskCoreOrganizationPersonProfileEducationRole[];
+  status: 'assigned' | 'unassigned';
+}
+
+export interface AskCoreOrganizationPersonProfileInvitation {
+  pending_directed_count: number;
+  pending_open_count: number;
+  statuses: string[];
+}
+
+export interface AskCoreOrganizationPersonProfile {
+  account: AskCoreOrganizationPersonProfileAccount | null;
+  education: AskCoreOrganizationPersonProfileEducation;
+  invitation: AskCoreOrganizationPersonProfileInvitation;
+  person: AskCoreOrganizationPersonProfilePerson;
+}
+
 export interface AskCoreOrganizationDirectoryPayload {
   authorizations: AskCoreEducationRoleAssignment[];
   invitations: AskCoreDirectoryInvitation[];
   member_summaries?: Record<string, AskCoreDirectoryMemberSummary>;
   org_id: string;
   people: AskCoreDirectoryPerson[];
+  person_profiles: AskCoreOrganizationPersonProfile[];
   units: AskCoreEducationOrgUnit[];
 }
 
 export interface AskCoreDirectoryPersonCreateInput {
-  better_auth_user_id?: string | null;
+  account_user_id?: string | null;
   display_name: string;
   education_org_unit_id?: number | null;
   education_role?: AskCoreEducationRole;

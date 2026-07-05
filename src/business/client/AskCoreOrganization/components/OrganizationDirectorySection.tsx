@@ -70,6 +70,7 @@ import {
   type AskCoreEducationOrgUnitType,
   type AskCoreEducationRole,
   type AskCoreOrganizationDirectoryPayload,
+  type AskCoreOrganizationPersonProfile,
   type AskCoreOrganizationRole,
   type AskCoreTeachingAssignment,
 } from '../types';
@@ -268,10 +269,21 @@ const makeUnitPath = (
   return path;
 };
 
-const matchesSearch = (person: AskCoreDirectoryPerson, query: string) => {
+const matchesSearch = (
+  person: AskCoreDirectoryPerson,
+  profile: AskCoreOrganizationPersonProfile | undefined,
+  query: string,
+) => {
   const keyword = query.trim().toLowerCase();
   if (!keyword) return true;
-  return [person.display_name, person.email, person.phone, person.better_auth_user_id]
+  return [
+    person.display_name,
+    person.email,
+    person.phone,
+    profile?.account?.user_id,
+    profile?.account?.email,
+    profile?.account?.name,
+  ]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes(keyword));
 };
@@ -296,6 +308,32 @@ const canRemoveOrganizationMember = (
   actorRole: AskCoreOrganizationRole | undefined,
   targetRole: AskCoreOrganizationRole | null,
 ) => actorRole === 'owner' || (actorRole === 'admin' && targetRole === 'member');
+
+const pendingInviteCountForProfile = (profile: AskCoreOrganizationPersonProfile) =>
+  profile.invitation.pending_directed_count + profile.invitation.pending_open_count;
+
+const directoryPersonFromProfile = (
+  profile: AskCoreOrganizationPersonProfile,
+): AskCoreDirectoryPerson => ({
+  better_auth_user_id: profile.account?.user_id ?? null,
+  display_name: profile.person.display_name,
+  email: profile.person.email ?? profile.account?.email ?? null,
+  gender: profile.person.gender ?? null,
+  id: profile.person.id,
+  lifecycle_status: profile.person.lifecycle_status === 'archived' ? 'archived' : 'active',
+  org_id: profile.person.org_id,
+  phone: profile.person.phone ?? profile.account?.phone ?? null,
+  pinyin_name: profile.person.pinyin_name ?? null,
+  primary_org_unit_id: profile.person.primary_org_unit_id ?? null,
+  registration_status: profile.account
+    ? 'registered'
+    : pendingInviteCountForProfile(profile) > 0 || profile.invitation.statuses.includes('pending')
+      ? 'invited'
+      : 'unregistered',
+  source: profile.person.source ?? null,
+  staff_number: profile.person.staff_number ?? null,
+  student_number: profile.person.student_number ?? null,
+});
 
 const UnitTree = memo<{
   activeAncestorIds: Set<number>;
@@ -570,7 +608,18 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     );
 
     const units = useMemo(() => payload?.units ?? [], [payload?.units]);
-    const people = useMemo(() => payload?.people ?? [], [payload?.people]);
+    const personProfiles = useMemo(
+      () => payload?.person_profiles ?? [],
+      [payload?.person_profiles],
+    );
+    const people = useMemo(
+      () => personProfiles.map((profile) => directoryPersonFromProfile(profile)),
+      [personProfiles],
+    );
+    const profileByPersonId = useMemo(
+      () => new Map(personProfiles.map((profile) => [profile.person.id, profile])),
+      [personProfiles],
+    );
     const organizationRootUnit = useMemo(
       () =>
         units.find((unit) => unit.unit_type === 'organization' && !unit.parent_id) ||
@@ -580,15 +629,25 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     );
     const rootUnitId = organizationRootUnit?.id ?? null;
     const rootNodeLabel = organizationName || organizationRootUnit?.name || '当前组织';
-    const roleAssignments = useMemo(
-      () => payload?.authorizations ?? [],
-      [payload?.authorizations],
+    const roleAssignments = useMemo<AskCoreOrganizationDirectoryPayload['authorizations']>(
+      () =>
+        personProfiles.flatMap((profile) =>
+          profile.education.roles.map((role) => ({
+            better_auth_user_id: profile.account?.user_id ?? null,
+            id: role.authorization_id,
+            org_id: payload?.org_id || profile.person.org_id,
+            org_unit_id: role.org_unit_id,
+            person_id: profile.person.id,
+            role: role.role,
+            subject_id: role.subject_id ?? null,
+            subject_user_id: profile.account?.user_id
+              ? `user:${profile.account.user_id}`
+              : `user:directory-person-${profile.person.id}`,
+          })),
+        ),
+      [payload?.org_id, personProfiles],
     );
     const invitations = useMemo(() => payload?.invitations ?? [], [payload?.invitations]);
-    const memberSummaries = useMemo(
-      () => payload?.member_summaries ?? {},
-      [payload?.member_summaries],
-    );
     const personById = useMemo(
       () => new Map(people.map((person) => [person.id, person])),
       [people],
@@ -682,11 +741,11 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       return map;
     }, [invitations]);
     const personNeedsEducationIdentity = useCallback(
-      (person: AskCoreDirectoryPerson) =>
-        person.registration_status === 'registered' &&
-        Boolean(person.better_auth_user_id) &&
-        (rolesByPersonId.get(person.id) || []).length === 0,
-      [rolesByPersonId],
+      (person: AskCoreDirectoryPerson) => {
+        const profile = profileByPersonId.get(person.id);
+        return Boolean(profile?.account) && profile?.education.status === 'unassigned';
+      },
+      [profileByPersonId],
     );
     const pendingIdentityClaimKeys = useMemo(() => {
       const keys = new Set<string>();
@@ -700,7 +759,8 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       () =>
         people.map((person) => {
           const key = `member:${person.id}`;
-          const hasBoundAccount = Boolean(person.better_auth_user_id);
+          const profile = profileByPersonId.get(person.id);
+          const hasBoundAccount = Boolean(profile?.account);
           const needsEducationIdentity = personNeedsEducationIdentity(person);
           const canAssignRole = canManage && hasBoundAccount && needsEducationIdentity;
           const pendingReason = pendingIdentityClaimKeys.has(key)
@@ -725,7 +785,14 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
             unitPath: unitPathLabel(person.primary_org_unit_id),
           };
         }),
-      [canManage, pendingIdentityClaimKeys, people, personNeedsEducationIdentity, unitPathLabel],
+      [
+        canManage,
+        pendingIdentityClaimKeys,
+        people,
+        personNeedsEducationIdentity,
+        profileByPersonId,
+        unitPathLabel,
+      ],
     );
     const identityClaimSearchKeyword = identityClaimSearchText.trim().toLowerCase();
     const searchedIdentityClaimTargets = useMemo(() => {
@@ -745,16 +812,15 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
 
     const organizationRoleBadgeForPerson = useCallback(
       (person: AskCoreDirectoryPerson): DirectoryRoleBadgeModel => {
-        const userId = String(person.better_auth_user_id || '').trim();
-        if (!userId) {
+        const account = profileByPersonId.get(person.id)?.account;
+        if (!account) {
           return {
             key: `organization-role-none-${person.id}`,
             label: '未加入组织',
             tone: 'unknown',
           };
         }
-        const memberSummary = memberSummaries[userId];
-        const organizationRole = normalizeOrganizationRole(memberSummary?.organization_role);
+        const organizationRole = normalizeOrganizationRole(account.organization_role);
         if (!organizationRole) {
           return {
             key: `organization-role-unsynced-${person.id}`,
@@ -763,7 +829,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
             tone: 'unknown',
           };
         }
-        const memberLabel = [memberSummary?.name, memberSummary?.email].filter(Boolean).join(' · ');
+        const memberLabel = [account.name, account.email].filter(Boolean).join(' · ');
         return {
           key: `organization-role-${person.id}`,
           label: organizationRoleLabels[organizationRole],
@@ -771,16 +837,16 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
           tone: organizationRole,
         };
       },
-      [memberSummaries],
+      [profileByPersonId],
     );
 
     const roleBadgesForPerson = useCallback(
       (personId: number): DirectoryRoleBadgeModel[] => {
-        const personRoles = rolesByPersonId.get(personId) || [];
+        const personRoles = profileByPersonId.get(personId)?.education.roles || [];
         if (personRoles.length) {
           return personRoles.map((role) => ({
-            assignmentId: role.id,
-            key: `role-${role.id}`,
+            assignmentId: role.authorization_id,
+            key: `role-${role.authorization_id}`,
             label: roleLabels[role.role],
             path: unitPathLabel(role.org_unit_id),
             role: role.role,
@@ -789,15 +855,31 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         }
         return [];
       },
+      [profileByPersonId, unitPathLabel],
+    );
+
+    const editableRoleBadgesForPerson = useCallback(
+      (personId: number): DirectoryRoleBadgeModel[] =>
+        (rolesByPersonId.get(personId) || []).map((role) => ({
+          assignmentId: role.id,
+          key: `editable-role-${role.id}`,
+          label: roleLabels[role.role],
+          path: unitPathLabel(role.org_unit_id),
+          role: role.role,
+          tone: roleTone(role.role),
+        })),
       [rolesByPersonId, unitPathLabel],
     );
 
     const filteredPeople = useMemo(
       () =>
         basePeople.filter((person) => {
-          if (!matchesSearch(person, searchText)) return false;
+          const profile = profileByPersonId.get(person.id);
+          if (!matchesSearch(person, profile, searchText)) return false;
           const badges = roleBadgesForPerson(person.id);
-          const pendingInvites = pendingInvitationsByPersonId.get(person.id) || 0;
+          const pendingInvites = profile
+            ? profile.invitation.pending_directed_count + profile.invitation.pending_open_count
+            : pendingInvitationsByPersonId.get(person.id) || 0;
           if (activeFilter === 'all') return true;
           if (activeFilter === 'identity_required') return personNeedsEducationIdentity(person);
           if (activeFilter === 'invited')
@@ -815,6 +897,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         basePeople,
         pendingInvitationsByPersonId,
         personNeedsEducationIdentity,
+        profileByPersonId,
         roleBadgesForPerson,
         searchText,
       ],
@@ -836,22 +919,22 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         )
       : false;
     const selectedPersonPendingInvites = selectedPerson
-      ? pendingInvitationsByPersonId.get(selectedPerson.id) || 0
+      ? (profileByPersonId.get(selectedPerson.id)?.invitation.pending_directed_count || 0) +
+        (profileByPersonId.get(selectedPerson.id)?.invitation.pending_open_count || 0)
       : 0;
-    const selectedPersonUserId = String(selectedPerson?.better_auth_user_id || '').trim();
-    const selectedPersonMemberSummary = selectedPersonUserId
-      ? memberSummaries[selectedPersonUserId]
-      : undefined;
+    const selectedPersonAccount = selectedPerson
+      ? profileByPersonId.get(selectedPerson.id)?.account
+      : null;
     const selectedPersonOrganizationRole = normalizeOrganizationRole(
-      selectedPersonMemberSummary?.organization_role,
+      selectedPersonAccount?.organization_role,
     );
     const selectedPersonCanRemoveOrganizationMember =
       canManage &&
-      Boolean(selectedPersonMemberSummary?.member_id) &&
+      Boolean(selectedPersonAccount?.member_id) &&
       canRemoveOrganizationMember(currentOrganizationRole, selectedPersonOrganizationRole);
-    const selectedPersonRemoveDisabledReason = !selectedPerson?.better_auth_user_id
+    const selectedPersonRemoveDisabledReason = !selectedPersonAccount
       ? undefined
-      : !selectedPersonMemberSummary?.member_id
+      : !selectedPersonAccount.member_id
         ? '未找到组织成员记录'
         : !selectedPersonCanRemoveOrganizationMember
           ? '只有所有者可以移除所有者或管理员'
@@ -885,9 +968,19 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     const directoryRows = useMemo<DirectoryPersonRowModel[]>(
       () =>
         filteredPeople.map((person) => {
-          const pendingInvites = pendingInvitationsByPersonId.get(person.id) || 0;
+          const profile = profileByPersonId.get(person.id);
+          const hasAccount = Boolean(profile?.account);
+          const needsEducationIdentity =
+            hasAccount && profile?.education.status === 'unassigned';
+          const pendingInvites = profile
+            ? profile.invitation.pending_directed_count + profile.invitation.pending_open_count
+            : pendingInvitationsByPersonId.get(person.id) || 0;
           return {
-            accountLabel: person.better_auth_user_id ? '已绑定' : '未绑定',
+            accountLabel: hasAccount
+              ? needsEducationIdentity
+                ? '待指定教育身份'
+                : '已绑定'
+              : '未绑定',
             organizationRoleBadge: organizationRoleBadgeForPerson(person),
             pendingInvites,
             person,
@@ -899,6 +992,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         filteredPeople,
         organizationRoleBadgeForPerson,
         pendingInvitationsByPersonId,
+        profileByPersonId,
         roleBadgesForPerson,
         unitPathLabel,
       ],
@@ -1311,7 +1405,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       setSaving(true);
       try {
         await bindAskCoreDirectoryPersonAccount(selectedPerson.id, {
-          better_auth_user_id: values.better_auth_user_id,
+          account_user_id: values.account_user_id,
           education_org_unit_id: targetUnit.id,
           education_role: values.education_role,
         });
@@ -1324,13 +1418,13 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
     };
 
     const removeSelectedOrganizationMember = async () => {
-      if (!payload || !selectedPerson || !selectedPersonMemberSummary?.member_id) {
+      if (!payload || !selectedPerson || !selectedPersonAccount?.member_id) {
         message.error('未找到组织成员记录');
         return;
       }
       setSaving(true);
       try {
-        await removeAskCoreOrganizationMember(payload.org_id, selectedPersonMemberSummary.member_id);
+        await removeAskCoreOrganizationMember(payload.org_id, selectedPersonAccount.member_id);
         await loadDirectory();
         message.success('成员已移出组织');
       } catch (reason) {
@@ -1532,10 +1626,14 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
         person.display_name,
         unitPathLabel(person.primary_org_unit_id),
         organizationRoleBadgeForPerson(person).label,
-        (rolesByPersonId.get(person.id) || [])
+        (profileByPersonId.get(person.id)?.education.roles || [])
           .map((role) => `${roleLabels[role.role]}@${unitPathLabel(role.org_unit_id)}`)
           .join(';'),
-        person.better_auth_user_id ? '已绑定' : '未绑定',
+        profileByPersonId.get(person.id)?.account
+          ? profileByPersonId.get(person.id)?.education.status === 'unassigned'
+            ? '待指定教育身份'
+            : '已绑定'
+          : '未绑定',
       ]);
       const csv = [header, ...rows]
         .map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(','))
@@ -2083,7 +2181,9 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
       </div>
     );
 
-    const selectedPersonRoleBadges = selectedPerson ? roleBadgesForPerson(selectedPerson.id) : [];
+    const selectedPersonRoleBadges = selectedPerson
+      ? editableRoleBadgesForPerson(selectedPerson.id)
+      : [];
     const selectedPersonCanDeleteRole = selectedPersonRoleBadges.length > 1;
 
     return (
@@ -2514,7 +2614,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                   <section className={styles.directoryDetailSection}>
                     <div className={styles.directoryDetailTitle}>账号绑定</div>
                     <div className={styles.directoryMetaLine}>
-                      {selectedPerson.better_auth_user_id || '未绑定 AskCore 账号'}
+                      {selectedPersonAccount?.user_id || '未绑定 AskCore 账号'}
                     </div>
                     {canManage ? (
                       <Form
@@ -2528,7 +2628,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                         }}
                       >
                         <Form.Item
-                          name="better_auth_user_id"
+                          name="account_user_id"
                           rules={[{ message: '请输入 Better Auth 用户 ID', required: true }]}
                         >
                           <Input placeholder="Better Auth 用户 ID" />
@@ -2565,7 +2665,7 @@ export const OrganizationDirectorySection = memo<OrganizationDirectorySectionPro
                     ) : null}
                   </section>
 
-                  {canManage && selectedPerson.better_auth_user_id ? (
+                  {canManage && selectedPersonAccount ? (
                     <section className={styles.directoryDetailSection}>
                       <div className={styles.directoryDetailTitle}>组织成员</div>
                       <div className={styles.directoryMetaLine}>

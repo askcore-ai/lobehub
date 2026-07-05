@@ -292,7 +292,7 @@ export const deleteAskCoreDirectoryPersonRole = (personId: number, roleAssignmen
 export const bindAskCoreDirectoryPersonAccount = (
   personId: number,
   input: {
-    better_auth_user_id: string;
+    account_user_id: string;
     education_org_unit_id: number;
     education_role: AskCoreEducationRole;
   },

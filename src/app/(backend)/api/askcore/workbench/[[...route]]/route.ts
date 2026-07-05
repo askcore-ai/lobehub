@@ -122,6 +122,40 @@ const directoryMemberSummaries = (
   return summaries;
 };
 
+const decoratePersonProfiles = (
+  payload: Record<string, unknown>,
+  memberSummaries: Record<
+    string,
+    {
+      email?: string | null;
+      member_id: string;
+      name?: string | null;
+      organization_role?: string | null;
+    }
+  >,
+) => {
+  const profiles = Array.isArray(payload.person_profiles) ? payload.person_profiles : [];
+  return profiles.map((rawProfile) => {
+    const profile = recordObject(rawProfile);
+    if (!profile) return rawProfile;
+    const account = recordObject(profile.account);
+    const userId = stringFrom(account?.user_id);
+    if (!account || !userId) return rawProfile;
+    const summary = memberSummaries[userId];
+    if (!summary) return rawProfile;
+    return {
+      ...profile,
+      account: {
+        ...account,
+        email: summary.email ?? account.email ?? null,
+        member_id: summary.member_id ?? account.member_id ?? null,
+        name: summary.name ?? account.name ?? null,
+        organization_role: summary.organization_role ?? account.organization_role ?? null,
+      },
+    };
+  });
+};
+
 const shouldDecorateDirectoryResponse = (request: NextRequest, route: string[]) =>
   request.method === 'GET' && route.length === 2 && route[0] === 'organization' && route[1] === 'directory';
 
@@ -133,13 +167,16 @@ const decorateDirectoryResponse = async (
   if (!contentType.includes('application/json')) return undefined;
   const payload = await upstream.clone().json().catch(() => undefined);
   if (!payload || typeof payload !== 'object') return undefined;
+  const payloadRecord = payload as Record<string, unknown>;
+  const memberSummaries = directoryMemberSummaries(fullOrganization);
   return NextResponse.json(
     {
-      ...(payload as Record<string, unknown>),
+      ...payloadRecord,
       member_summaries: {
         ...(payload as { member_summaries?: Record<string, unknown> }).member_summaries,
-        ...directoryMemberSummaries(fullOrganization),
+        ...memberSummaries,
       },
+      person_profiles: decoratePersonProfiles(payloadRecord, memberSummaries),
     },
     { status: upstream.status, statusText: upstream.statusText },
   );

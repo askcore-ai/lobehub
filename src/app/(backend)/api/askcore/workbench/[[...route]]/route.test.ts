@@ -254,6 +254,28 @@ describe('AskCore workbench proxy route', () => {
         JSON.stringify({
           member_summaries: {},
           org_id: 'org-1',
+          person_profiles: [
+            {
+              account: {
+                email: null,
+                member_id: null,
+                name: '张扬',
+                organization_role: null,
+                phone: null,
+                user_id: 'user-owner',
+              },
+              education: { roles: [], status: 'unassigned' },
+              invitation: { pending_directed_count: 0, pending_open_count: 0, statuses: [] },
+              person: {
+                display_name: '张扬',
+                id: 574,
+                lifecycle_status: 'active',
+                org_id: 'org-1',
+                primary_org_unit_id: null,
+                source: 'membership_backfill',
+              },
+            },
+          ],
           people: [
             {
               better_auth_user_id: 'user-owner',
@@ -294,6 +316,17 @@ describe('AskCore workbench proxy route', () => {
           organization_role: 'owner',
         },
       },
+      person_profiles: [
+        {
+          account: {
+            email: 'owner@askcore.cn',
+            member_id: 'mem-owner',
+            name: '张扬',
+            organization_role: 'owner',
+            user_id: 'user-owner',
+          },
+        },
+      ],
     });
     const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
     expect((init.headers as Headers).get('Cookie')).toBeNull();
