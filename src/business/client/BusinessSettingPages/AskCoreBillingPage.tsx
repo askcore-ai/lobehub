@@ -503,7 +503,6 @@ const enCopy = {
     active: 'Active',
     canceled: 'Canceled',
     cancelled: 'Canceled',
-    canary: 'Canary',
     enforce: 'Enforce',
     free: 'Free',
     paid: 'Paid',
@@ -707,7 +706,6 @@ const zhCopy: typeof enCopy = {
     active: '有效',
     canceled: '已取消',
     cancelled: '已取消',
-    canary: '灰度模式',
     enforce: '正式模式',
     free: '免费版',
     paid: '已支付',
@@ -1409,13 +1407,13 @@ const PaymentReturnAlert = memo<{
   return (
     <Alert
       showIcon
+      message={copy.payment.returnTitle}
+      type={paymentAlertType(checkout?.status)}
       description={
         checkout?.amount?.display
           ? `${paymentStatusText(checkout.status, copy)} · ${checkout.amount.display}`
           : paymentStatusText(checkout?.status, copy)
       }
-      message={copy.payment.returnTitle}
-      type={paymentAlertType(checkout?.status)}
     />
   );
 });
@@ -2348,12 +2346,12 @@ const CreditsView = memo<{
         <Table
           columns={packageColumns}
           dataSource={creditState.data?.items || []}
-          locale={{
-            emptyText: <Empty description={copy.credits.noPackages} />,
-          }}
           pagination={false}
           rowKey="id"
           scroll={{ x: true }}
+          locale={{
+            emptyText: <Empty description={copy.credits.noPackages} />,
+          }}
         />
       </Card>
     </Flexbox>
@@ -2466,12 +2464,12 @@ const BillingView = memo<{
         <Table
           columns={columns}
           dataSource={historyState.data?.items || []}
-          locale={{
-            emptyText: <Empty description={copy.billing.billingHistory} />,
-          }}
           pagination={false}
           rowKey={'id'}
           scroll={{ x: true }}
+          locale={{
+            emptyText: <Empty description={copy.billing.billingHistory} />,
+          }}
         />
       </Card>
     </Flexbox>
@@ -2710,12 +2708,12 @@ const ReferralView = memo<{ copy: BillingCopy }>(({ copy }) => {
         <Table
           columns={columns}
           dataSource={data.items}
-          locale={{
-            emptyText: <Empty description={copy.referral.noHistory} />,
-          }}
           pagination={false}
           rowKey={(row) => row.invitee_user_id}
           scroll={{ x: true }}
+          locale={{
+            emptyText: <Empty description={copy.referral.noHistory} />,
+          }}
         />
       </Card>
     </Flexbox>

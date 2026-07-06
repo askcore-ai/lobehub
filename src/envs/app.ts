@@ -48,8 +48,6 @@ export const getAppConfig = () => {
       PLUGINS_INDEX_URL: z.string().url(),
       PLUGIN_SETTINGS: z.string().optional(),
 
-      ASKCORE_BILLING_ENABLED_EMAILS: z.string().optional(),
-      ASKCORE_BILLING_ENABLED_USER_IDS: z.string().optional(),
       ASKCORE_ICP_RECORD_TEXT: z.string().optional(),
       ASKCORE_PUBLIC_SECURITY_RECORD_TEXT: z.string().optional(),
       ASKCORE_PUBLIC_SECURITY_RECORD_URL: z.string().optional(),
@@ -109,8 +107,6 @@ export const getAppConfig = () => {
 
       PLUGIN_SETTINGS: process.env.PLUGIN_SETTINGS,
 
-      ASKCORE_BILLING_ENABLED_EMAILS: process.env.ASKCORE_BILLING_ENABLED_EMAILS,
-      ASKCORE_BILLING_ENABLED_USER_IDS: process.env.ASKCORE_BILLING_ENABLED_USER_IDS,
       ASKCORE_ICP_RECORD_TEXT: process.env.ASKCORE_ICP_RECORD_TEXT,
       ASKCORE_PUBLIC_SECURITY_RECORD_TEXT: process.env.ASKCORE_PUBLIC_SECURITY_RECORD_TEXT,
       ASKCORE_PUBLIC_SECURITY_RECORD_URL: process.env.ASKCORE_PUBLIC_SECURITY_RECORD_URL,
