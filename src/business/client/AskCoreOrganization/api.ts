@@ -26,6 +26,8 @@ import {
   type AskCoreInviteChannel,
   type AskCoreInviteExpiry,
   type AskCoreInvitePayload,
+  type AskCoreMoodleGibbonLiveProbeInput,
+  type AskCoreMoodleGibbonLiveProbePayload,
   type AskCoreMoodleGibbonPilotActivationInput,
   type AskCoreMoodleGibbonPilotActivationPayload,
   type AskCoreOrganizationDirectoryPayload,
@@ -40,6 +42,8 @@ const EDUCATION_ORG_API_BASE = '/api/askcore/workbench/organization';
 const INTEGRATION_OPERATIONS_API_PATH = '/api/askcore/workbench/integrations/operations/status';
 const MOODLE_GIBBON_PILOT_ACTIVATION_API_PATH =
   '/api/askcore/workbench/integrations/pilot/moodle-gibbon/activation';
+const MOODLE_GIBBON_LIVE_PROBE_API_PATH =
+  '/api/askcore/workbench/integrations/pilot/moodle-gibbon/live-probe';
 const WORKBENCH_UPLOAD_API_BASE = '/api/askcore/workbench/uploads';
 
 export class AskCoreOrganizationApiError extends Error {
@@ -103,6 +107,12 @@ export const runAskCoreMoodleGibbonPilotActivation = (
       method: 'POST',
     },
   );
+
+export const runAskCoreMoodleGibbonLiveProbe = (input: AskCoreMoodleGibbonLiveProbeInput) =>
+  requestJson<AskCoreMoodleGibbonLiveProbePayload>(MOODLE_GIBBON_LIVE_PROBE_API_PATH, {
+    body: JSON.stringify(input),
+    method: 'POST',
+  });
 
 export const createAskCoreOrganization = (input: {
   contact?: string;

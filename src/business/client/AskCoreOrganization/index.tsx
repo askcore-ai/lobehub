@@ -43,6 +43,7 @@ import {
 import { type JsonRecord, type ResourceKey } from '../AskCoreWorkbench/types';
 import {
   fetchAskCoreIntegrationOperationsStatus,
+  runAskCoreMoodleGibbonLiveProbe,
   runAskCoreMoodleGibbonPilotActivation,
 } from './api';
 import {
@@ -58,6 +59,8 @@ import { styles } from './styles';
 import {
   type AskCoreEducationOrgUnit,
   type AskCoreIntegrationOperationsStatusPayload,
+  type AskCoreMoodleGibbonLiveProbeAction,
+  type AskCoreMoodleGibbonLiveProbePayload,
   type AskCoreMoodleGibbonPilotActivationAction,
   type AskCoreMoodleGibbonPilotActivationPayload,
 } from './types';
@@ -162,6 +165,7 @@ const statusLabel = (value?: string | boolean | null) => {
   const normalized = String(value || '').trim();
   return (
     {
+      blocked: '已阻止',
       configured: '已配置',
       failed: '失败',
       incomplete: '未完成',
@@ -834,8 +838,14 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
       useState<AskCoreMoodleGibbonPilotActivationPayload | null>(null);
     const [activationLoading, setActivationLoading] =
       useState<AskCoreMoodleGibbonPilotActivationAction | null>(null);
+    const [probeError, setProbeError] = useState<string | null>(null);
+    const [probeResult, setProbeResult] =
+      useState<AskCoreMoodleGibbonLiveProbePayload | null>(null);
+    const [probeLoading, setProbeLoading] =
+      useState<AskCoreMoodleGibbonLiveProbeAction | null>(null);
     const subsystemStatuses = Object.entries(status?.diagnostics?.subsystem_statuses || {});
     const liveConnection = status?.live_pilot_connection;
+    const liveProbeGate = probeResult?.probe_gate || status?.live_probe_gate;
     const liveComponentStatuses = Object.entries(liveConnection?.components || {});
     const runbookOwners = status?.diagnostics?.runbook_owners || {};
     const safe = Boolean(status?.safe && status.redaction_passed);
@@ -850,6 +860,10 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
       {
         label: '只读连接',
         value: statusLabel(liveConnection?.connection_status),
+      },
+      {
+        label: '探测门禁',
+        value: statusLabel(liveProbeGate?.gate_status),
       },
       {
         label: '运行状态',
@@ -893,6 +907,21 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
         setActivationError(reason instanceof Error ? reason.message : '操作失败');
       } finally {
         setActivationLoading(null);
+      }
+    };
+
+    const runLiveProbe = async (action: AskCoreMoodleGibbonLiveProbeAction) => {
+      setProbeLoading(action);
+      setProbeError(null);
+      try {
+        const result = await runAskCoreMoodleGibbonLiveProbe({ action });
+        setProbeResult(result);
+        if (result.operations_status) onActivationStatus(result.operations_status);
+        message.success(action === 'probe_live' ? '只读探测完成' : '探测门禁已刷新');
+      } catch (reason) {
+        setProbeError(reason instanceof Error ? reason.message : '探测失败');
+      } finally {
+        setProbeLoading(null);
       }
     };
 
@@ -1000,9 +1029,30 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
                     </span>
                   </div>
                   <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>探测门禁</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {statusLabel(liveProbeGate?.gate_status)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>探测次数</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {displayValue(liveProbeGate?.probe_attempts)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>探测外部调用</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {displayValue(liveProbeGate?.external_calls)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
                     <span className={styles.settingsLabel}>成绩镜像</span>
                     <span style={{ fontSize: 14, color: cssVar.colorText }}>
-                      {displayValue(liveConnection?.gradebook_mirror_rows)}
+                      {displayValue(
+                        liveProbeGate?.gradebook_mirror_rows ??
+                          liveConnection?.gradebook_mirror_rows,
+                      )}
                     </span>
                   </div>
                   <div className={styles.settingsRow}>
@@ -1017,7 +1067,77 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
                       {liveConnection?.contract || '--'}
                     </span>
                   </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>探测契约</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {liveProbeGate?.contract || '--'}
+                    </span>
+                  </div>
                 </div>
+                <Space wrap>
+                  <Button
+                    icon={<RefreshCw size={14} />}
+                    loading={probeLoading === 'read_only'}
+                    size="small"
+                    onClick={() => void runLiveProbe('read_only')}
+                  >
+                    刷新门禁
+                  </Button>
+                  <Button
+                    icon={<Check size={14} />}
+                    loading={probeLoading === 'probe_live'}
+                    size="small"
+                    onClick={() => void runLiveProbe('probe_live')}
+                  >
+                    只读探测
+                  </Button>
+                </Space>
+                {probeError && <Alert showIcon title={probeError} type="warning" />}
+                {probeResult && (
+                  <div
+                    aria-label="探测结果"
+                    style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
+                  >
+                    <div
+                      style={{
+                        display: 'grid',
+                        gap: 10,
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                      }}
+                    >
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>动作</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {probeResult.action === 'probe_live' ? '只读探测' : '刷新门禁'}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>门禁状态</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {statusLabel(probeResult.probe_gate?.gate_status)}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>外部调用</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {displayValue(probeResult.external_calls)}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>安全输出</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {probeResult.redaction_passed ? '已确认' : '需复核'}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>契约</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {probeResult.frontend_contract_version}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {liveComponentStatuses.length > 0 && (
                   <Space wrap size={[8, 8]}>
                     {liveComponentStatuses.map(([key, value]) => (

@@ -188,6 +188,27 @@ const integrationOperationsStatusPayload = {
     roster_projection_rows: 0,
     school_fact_snapshot_rows: 0,
   },
+  live_probe_gate: {
+    components: {
+      caliper: 'not_run',
+      moodle_lti: 'not_run',
+      oneroster: 'not_run',
+      sql_views: 'not_run',
+    },
+    contract: 'moodle_gibbon_live_probe_gate@v1',
+    external_calls: 0,
+    failed_probes: 0,
+    gate_status: 'not_run',
+    gradebook_mirror_rows: 0,
+    probe_attempts: 0,
+    probe_blocked_reason: 'default_read_only_mode',
+    probe_status: 'not_run',
+    redaction_passed: true,
+    roster_projection_rows: 0,
+    school_fact_snapshot_rows: 0,
+    successful_probes: 0,
+    validation_issue_count: 0,
+  },
   phase: 'P115',
   pilot_registry: {
     pilot_registry_ready: false,
@@ -225,6 +246,23 @@ const activationConsolePayload = {
   external_calls: 0,
   frontend_contract_version: 'moodle_gibbon_pilot_activation@v1',
   operations_status: integrationOperationsStatusPayload,
+  redaction_passed: true,
+  roster_projection_rows: 0,
+};
+
+const liveProbePayload = {
+  action: 'probe_live',
+  external_calls: 0,
+  frontend_contract_version: 'moodle_gibbon_live_probe_gate@v1',
+  operations_status: integrationOperationsStatusPayload,
+  probe_gate: {
+    ...integrationOperationsStatusPayload.live_probe_gate,
+    gate_status: 'blocked',
+    phase: 'P123',
+    probe_blocked_reason: 'out_of_band_credentials',
+    probe_status: 'blocked',
+    status: 'succeeded',
+  },
   redaction_passed: true,
   roster_projection_rows: 0,
 };
@@ -379,6 +417,12 @@ describe('AskCoreOrganizationRoute', () => {
       ) {
         return new Response(JSON.stringify(activationConsolePayload), { status: 200 });
       }
+      if (
+        url.endsWith('/workbench/integrations/pilot/moodle-gibbon/live-probe') &&
+        init?.method === 'POST'
+      ) {
+        return new Response(JSON.stringify(liveProbePayload), { status: 200 });
+      }
       return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -400,6 +444,11 @@ describe('AskCoreOrganizationRoute', () => {
     expect(within(panel).getByText('只读连接')).toBeInTheDocument();
     expect(within(panel).getByText('连接组件')).toBeInTheDocument();
     expect(within(panel).getByText('连接探测')).toBeInTheDocument();
+    expect(within(panel).getAllByText('探测门禁').length).toBeGreaterThan(0);
+    expect(within(panel).getByText('探测次数')).toBeInTheDocument();
+    expect(within(panel).getByText('探测外部调用')).toBeInTheDocument();
+    expect(within(panel).getByText('探测契约')).toBeInTheDocument();
+    expect(within(panel).getByText('moodle_gibbon_live_probe_gate@v1')).toBeInTheDocument();
     expect(within(panel).getByText('成绩镜像')).toBeInTheDocument();
     expect(within(panel).getByText('Moodle LTI：已就绪')).toBeInTheDocument();
     expect(within(panel).getByText('OneRoster：已就绪')).toBeInTheDocument();
@@ -410,6 +459,20 @@ describe('AskCoreOrganizationRoute', () => {
     );
     expect(within(panel).queryByText('moodle.example.edu')).not.toBeInTheDocument();
     expect(within(panel).queryByText('gibbon.example.edu')).not.toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole('button', { name: /只读探测/ }));
+    const probeResult = await screen.findByLabelText('探测结果');
+    expect(within(probeResult).getByText('moodle_gibbon_live_probe_gate@v1')).toBeInTheDocument();
+    expect(within(probeResult).getByText('只读探测')).toBeInTheDocument();
+    expect(within(probeResult).getByText('已阻止')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/workbench/integrations/pilot/moodle-gibbon/live-probe',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'probe_live' }),
+        credentials: 'include',
+        method: 'POST',
+      }),
+    );
 
     const activationBundle = { phase: 'P113', target_lms: 'moodle', target_sis: 'gibbon' };
     fireEvent.change(within(panel).getByLabelText('激活包 JSON'), {
@@ -459,6 +522,11 @@ describe('AskCoreOrganizationRoute', () => {
     expect(
       fetchMock.mock.calls.some(([input]) =>
         String(input).endsWith('/workbench/integrations/pilot/moodle-gibbon/activation'),
+      ),
+    ).toBe(false);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith('/workbench/integrations/pilot/moodle-gibbon/live-probe'),
       ),
     ).toBe(false);
   });

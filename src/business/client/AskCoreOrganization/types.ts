@@ -63,6 +63,22 @@ export interface AskCoreIntegrationOperationsStatusPayload {
     roster_projection_rows?: number;
     school_fact_snapshot_rows?: number;
   };
+  live_probe_gate?: {
+    components?: Record<string, string>;
+    contract?: 'moodle_gibbon_live_probe_gate@v1';
+    external_calls?: number;
+    failed_probes?: number;
+    gate_status?: string;
+    gradebook_mirror_rows?: number;
+    probe_attempts?: number;
+    probe_blocked_reason?: string | null;
+    probe_status?: string;
+    redaction_passed?: boolean;
+    roster_projection_rows?: number;
+    school_fact_snapshot_rows?: number;
+    successful_probes?: number;
+    validation_issue_count?: number;
+  };
   operations?: Record<string, unknown>;
   phase: string;
   pilot_registry?: {
@@ -103,6 +119,25 @@ export interface AskCoreMoodleGibbonPilotActivationPayload {
   external_calls?: number;
   frontend_contract_version: 'moodle_gibbon_pilot_activation@v1';
   operations_status?: AskCoreIntegrationOperationsStatusPayload;
+  redaction_passed?: boolean;
+  roster_projection_rows?: number;
+}
+
+export type AskCoreMoodleGibbonLiveProbeAction = 'read_only' | 'probe_live';
+
+export interface AskCoreMoodleGibbonLiveProbeInput {
+  action: AskCoreMoodleGibbonLiveProbeAction;
+}
+
+export interface AskCoreMoodleGibbonLiveProbePayload {
+  action: AskCoreMoodleGibbonLiveProbeAction;
+  external_calls?: number;
+  frontend_contract_version: 'moodle_gibbon_live_probe_gate@v1';
+  operations_status?: AskCoreIntegrationOperationsStatusPayload;
+  probe_gate?: AskCoreIntegrationOperationsStatusPayload['live_probe_gate'] & {
+    phase?: string;
+    status?: string;
+  };
   redaction_passed?: boolean;
   roster_projection_rows?: number;
 }
