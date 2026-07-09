@@ -1,12 +1,14 @@
 'use client';
 
 import {
+  type ActivityDetailResponse,
   type AnyResourceKey,
   type AskCoreEducationProfile,
   type AskCoreOrganizationState,
   type AskCoreWorkbenchDashboardPayload,
   type AskCoreWorkbenchListPayload,
   type AssignmentDetailResponse,
+  type AttemptDetailResponse,
   type JsonRecord,
   type PluginArtifact,
   type PluginInvocation,
@@ -430,8 +432,16 @@ export class AskCoreWorkbenchApiClient {
     return this.requestJson<AssignmentDetailResponse>(`/assignments/${assignmentId}/detail`);
   }
 
+  getActivityDetail(activityId: number) {
+    return this.requestJson<ActivityDetailResponse>(`/activities/${activityId}/detail`);
+  }
+
   getSubmissionDetail(submissionId: number) {
     return this.requestJson<SubmissionDetailResponse>(`/submissions/${submissionId}/detail`);
+  }
+
+  getAttemptDetail(attemptId: number) {
+    return this.requestJson<AttemptDetailResponse>(`/attempts/${attemptId}/detail`);
   }
 
   getStudentDetail(studentId: number) {

@@ -108,6 +108,7 @@ import {
   toFormState,
 } from './resourceMeta';
 import {
+  type ActivityDetailResponse,
   type AskCoreEducationProfile,
   type AskCoreOrganizationState,
   type AskCoreWorkbenchColumn,
@@ -116,6 +117,7 @@ import {
   type AskCoreWorkbenchRecord,
   type AskCoreWorkbenchTab,
   type AssignmentDetailResponse,
+  type AttemptDetailResponse,
   type FileDescriptor,
   type JsonRecord,
   type PluginArtifact,
@@ -862,6 +864,8 @@ type WorkbenchRoute =
   | { kind: 'student-submission-ocr'; path: string };
 
 type DetailState =
+  | { detail: ActivityDetailResponse; item: JsonRecord; kind: 'activity' }
+  | { detail: AttemptDetailResponse; item: JsonRecord; kind: 'attempt' }
   | { item: JsonRecord; kind: 'generic' }
   | { detail: AssignmentDetailResponse; item: JsonRecord; kind: 'assignment' }
   | { detail: SubmissionDetailResponse; item: JsonRecord; kind: 'submission' }
@@ -3661,6 +3665,7 @@ const AssignmentDetailView = ({
   onBack,
   onEdit,
   onReload,
+  protocolNotice,
 }: {
   canManage: boolean;
   client: AskCoreWorkbenchApiClient;
@@ -3669,6 +3674,7 @@ const AssignmentDetailView = ({
   onBack: () => void;
   onEdit: () => void;
   onReload: () => Promise<void> | void;
+  protocolNotice?: ReactNode;
 }) => {
   const assignment = hydrateLookupLabels(detail.assignment, lookups);
   const assignmentId = Number(assignment.assignment_id || assignment.id || 0) || 0;
@@ -4201,6 +4207,7 @@ const AssignmentDetailView = ({
         }
         onBack={onBack}
       />
+      {protocolNotice}
 
       <div className={styles.panel}>
         <h3 className={styles.panelTitle}>基础信息</h3>
@@ -4564,6 +4571,7 @@ const SubmissionSubResultPreview = ({
 };
 
 const SubmissionDetailView = ({
+  canEdit = true,
   canManage,
   client,
   detail,
@@ -4571,7 +4579,9 @@ const SubmissionDetailView = ({
   onBack,
   onEdit,
   onReload,
+  protocolNotice,
 }: {
+  canEdit?: boolean;
   canManage: boolean;
   client: AskCoreWorkbenchApiClient;
   detail: SubmissionDetailResponse;
@@ -4579,6 +4589,7 @@ const SubmissionDetailView = ({
   onBack: () => void;
   onEdit: () => void;
   onReload: () => Promise<void> | void;
+  protocolNotice?: ReactNode;
 }) => {
   const submission = hydrateLookupLabels(detail.submission, lookups);
   const submissionId = Number(submission.submission_id || submission.id || 0) || 0;
@@ -5182,9 +5193,11 @@ const SubmissionDetailView = ({
         actions={
           canManage ? (
             <>
-              <Button className={styles.secondary} icon={<Pencil size={14} />} onClick={onEdit}>
-                编辑提交
-              </Button>
+              {canEdit ? (
+                <Button className={styles.secondary} icon={<Pencil size={14} />} onClick={onEdit}>
+                  编辑提交
+                </Button>
+              ) : null}
               <Popconfirm
                 description="会使用当前上传图片覆盖题目结果，并按本次 OCR 重新识别学生归属。"
                 disabled={busy || !submissionId || !hasSubmissionImages}
@@ -5211,6 +5224,7 @@ const SubmissionDetailView = ({
         }
         onBack={onBack}
       />
+      {protocolNotice}
 
       <div className={styles.panel}>
         <h3 className={styles.panelTitle}>提交信息</h3>
@@ -7248,12 +7262,26 @@ const AskCoreWorkbenchPage = memo(() => {
           item: hydrateLookupLabels(payload.assignment, lookups),
           kind: 'assignment',
         });
+      } else if (currentRoute.resource === 'activities') {
+        const payload = await askCoreWorkbenchClient.getActivityDetail(currentRoute.entityId);
+        setDetail({
+          detail: payload,
+          item: hydrateLookupLabels(payload.item || payload.activity, lookups),
+          kind: 'activity',
+        });
       } else if (currentRoute.resource === 'submissions') {
         const payload = await askCoreWorkbenchClient.getSubmissionDetail(currentRoute.entityId);
         setDetail({
           detail: payload,
           item: hydrateLookupLabels(payload.submission, lookups),
           kind: 'submission',
+        });
+      } else if (currentRoute.resource === 'attempts') {
+        const payload = await askCoreWorkbenchClient.getAttemptDetail(currentRoute.entityId);
+        setDetail({
+          detail: payload,
+          item: hydrateLookupLabels(payload.item || payload.attempt, lookups),
+          kind: 'attempt',
         });
       } else if (currentRoute.resource === 'students') {
         const payload = await askCoreWorkbenchClient.getStudentDetail(currentRoute.entityId);
@@ -8327,6 +8355,77 @@ const AskCoreWorkbenchPage = memo(() => {
     }
     if (currentRoute.kind === 'edit') return renderEditOrCreate(currentRoute.resource, 'edit');
     const editRoute = buildResourceEntityPath(currentRoute.resource, currentRoute.entityId, 'edit');
+    if (detail.kind === 'activity') {
+      const assignmentDetail = detail.detail.assignment_detail;
+      const protocolNotice = (
+        <Alert
+          showIcon
+          description={`活动 ID ${detail.detail.activity.activity_id || detail.detail.activity.id || currentRoute.entityId}`}
+          title="活动运行记录"
+          type="info"
+        />
+      );
+      if (assignmentDetail) {
+        return (
+          <AssignmentDetailView
+            canManage={false}
+            client={askCoreWorkbenchClient}
+            detail={assignmentDetail}
+            lookups={lookups}
+            protocolNotice={protocolNotice}
+            onBack={backToList}
+            onEdit={() => undefined}
+            onReload={reloadDetail}
+          />
+        );
+      }
+      return (
+        <GenericDetailView
+          readOnly
+          item={hydrateLookupLabels(detail.detail.activity || detail.item, lookups)}
+          resource="activities"
+          onBack={backToList}
+          onDelete={async () => undefined}
+          onEdit={() => undefined}
+        />
+      );
+    }
+    if (detail.kind === 'attempt') {
+      const submissionDetail = detail.detail.submission_detail;
+      const protocolNotice = (
+        <Alert
+          showIcon
+          description={`提交记录 ID ${detail.detail.attempt.attempt_id || detail.detail.attempt.id || currentRoute.entityId}`}
+          title="提交运行记录"
+          type="info"
+        />
+      );
+      if (submissionDetail) {
+        return (
+          <SubmissionDetailView
+            canEdit={false}
+            canManage={canRunTeacherSubmissionOcr}
+            client={askCoreWorkbenchClient}
+            detail={submissionDetail}
+            lookups={lookups}
+            protocolNotice={protocolNotice}
+            onBack={backToList}
+            onEdit={() => undefined}
+            onReload={reloadDetail}
+          />
+        );
+      }
+      return (
+        <GenericDetailView
+          readOnly
+          item={hydrateLookupLabels(detail.detail.attempt || detail.item, lookups)}
+          resource="attempts"
+          onBack={backToList}
+          onDelete={async () => undefined}
+          onEdit={() => undefined}
+        />
+      );
+    }
     if (detail.kind === 'assignment') {
       return (
         <AssignmentDetailView

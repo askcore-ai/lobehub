@@ -155,6 +155,58 @@ describe('AskCoreWorkbench API', () => {
     });
   });
 
+  it('loads protocol detail endpoints through activity and attempt ids', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/askcore/workbench/activities/12101/detail') {
+        return new Response(
+          JSON.stringify({
+            activity: { activity_id: 12101, title: '活动详情' },
+            detail_kind: 'protocol_activity',
+            item: { activity_id: 12101, title: '活动详情' },
+            resource: 'activities',
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 200 },
+        );
+      }
+      if (url === '/api/askcore/workbench/attempts/12103/detail') {
+        return new Response(
+          JSON.stringify({
+            attempt: { attempt_id: 12103, status: 'graded' },
+            detail_kind: 'protocol_attempt',
+            item: { attempt_id: 12103, status: 'graded' },
+            resource: 'attempts',
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), {
+        headers: { 'content-type': 'application/json' },
+        status: 404,
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new AskCoreWorkbenchApiClient();
+    await expect(client.getActivityDetail(12101)).resolves.toMatchObject({
+      activity: { activity_id: 12101 },
+      resource: 'activities',
+    });
+    await expect(client.getAttemptDetail(12103)).resolves.toMatchObject({
+      attempt: { attempt_id: 12103 },
+      resource: 'attempts',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/workbench/activities/12101/detail',
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/workbench/attempts/12103/detail',
+      expect.any(Object),
+    );
+  });
+
   it('builds first-party action, invocation, preview, and report requests', async () => {
     const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

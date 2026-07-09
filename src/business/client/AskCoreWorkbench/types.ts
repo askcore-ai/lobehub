@@ -131,6 +131,15 @@ export type AssignmentDetailResponse = {
   subject: JsonRecord | null;
 };
 
+export type ActivityDetailResponse = {
+  activity: JsonRecord;
+  assignment_detail?: AssignmentDetailResponse | null;
+  detail_kind: 'legacy_assignment' | 'protocol_activity';
+  item: JsonRecord;
+  legacy_assignment_id?: number | null;
+  resource: 'activities';
+};
+
 export type SubmissionDetailResponse = {
   assignment: JsonRecord | null;
   assignment_questions: JsonRecord[];
@@ -144,6 +153,15 @@ export type SubmissionDetailResponse = {
   students: JsonRecord[];
   subject: JsonRecord | null;
   submission: JsonRecord;
+};
+
+export type AttemptDetailResponse = {
+  attempt: JsonRecord;
+  detail_kind: 'legacy_submission' | 'protocol_attempt';
+  item: JsonRecord;
+  legacy_submission_id?: number | null;
+  resource: 'attempts';
+  submission_detail?: SubmissionDetailResponse | null;
 };
 
 export type StudentWrongQuestion = {
