@@ -43,6 +43,7 @@ import {
 import { type JsonRecord, type ResourceKey } from '../AskCoreWorkbench/types';
 import {
   fetchAskCoreIntegrationOperationsStatus,
+  runAskCoreMoodleGibbonLiveAcceptance,
   runAskCoreMoodleGibbonLiveProbe,
   runAskCoreMoodleGibbonPilotActivation,
 } from './api';
@@ -59,6 +60,8 @@ import { styles } from './styles';
 import {
   type AskCoreEducationOrgUnit,
   type AskCoreIntegrationOperationsStatusPayload,
+  type AskCoreMoodleGibbonLiveAcceptanceAction,
+  type AskCoreMoodleGibbonLiveAcceptancePayload,
   type AskCoreMoodleGibbonLiveProbeAction,
   type AskCoreMoodleGibbonLiveProbePayload,
   type AskCoreMoodleGibbonPilotActivationAction,
@@ -165,6 +168,7 @@ const statusLabel = (value?: string | boolean | null) => {
   const normalized = String(value || '').trim();
   return (
     {
+      accepted: '已通过',
       blocked: '已阻止',
       configured: '已配置',
       failed: '失败',
@@ -201,6 +205,12 @@ const activationActionLabel = (action?: string) =>
     apply: '应用',
     dry_run: '试运行',
     validate: '校验',
+  })[String(action || '')] || '--';
+
+const acceptanceActionLabel = (action?: string) =>
+  ({
+    accept_live: '验收试点',
+    read_only: '刷新准入',
   })[String(action || '')] || '--';
 
 const activationIssueLabel = (code: string) =>
@@ -843,9 +853,16 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
       useState<AskCoreMoodleGibbonLiveProbePayload | null>(null);
     const [probeLoading, setProbeLoading] =
       useState<AskCoreMoodleGibbonLiveProbeAction | null>(null);
+    const [acceptanceError, setAcceptanceError] = useState<string | null>(null);
+    const [acceptanceResult, setAcceptanceResult] =
+      useState<AskCoreMoodleGibbonLiveAcceptancePayload | null>(null);
+    const [acceptanceLoading, setAcceptanceLoading] =
+      useState<AskCoreMoodleGibbonLiveAcceptanceAction | null>(null);
     const subsystemStatuses = Object.entries(status?.diagnostics?.subsystem_statuses || {});
     const liveConnection = status?.live_pilot_connection;
     const liveProbeGate = probeResult?.probe_gate || status?.live_probe_gate;
+    const liveAcceptance = acceptanceResult?.acceptance || status?.live_pilot_acceptance;
+    const liveAcceptanceBlockingReasons = liveAcceptance?.blocking_reasons || [];
     const liveComponentStatuses = Object.entries(liveConnection?.components || {});
     const runbookOwners = status?.diagnostics?.runbook_owners || {};
     const safe = Boolean(status?.safe && status.redaction_passed);
@@ -864,6 +881,10 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
       {
         label: '探测门禁',
         value: statusLabel(liveProbeGate?.gate_status),
+      },
+      {
+        label: '试点准入',
+        value: statusLabel(liveAcceptance?.acceptance_status),
       },
       {
         label: '运行状态',
@@ -922,6 +943,21 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
         setProbeError(reason instanceof Error ? reason.message : '探测失败');
       } finally {
         setProbeLoading(null);
+      }
+    };
+
+    const runLiveAcceptance = async (action: AskCoreMoodleGibbonLiveAcceptanceAction) => {
+      setAcceptanceLoading(action);
+      setAcceptanceError(null);
+      try {
+        const result = await runAskCoreMoodleGibbonLiveAcceptance({ action });
+        setAcceptanceResult(result);
+        if (result.operations_status) onActivationStatus(result.operations_status);
+        message.success(action === 'accept_live' ? '试点验收完成' : '准入状态已刷新');
+      } catch (reason) {
+        setAcceptanceError(reason instanceof Error ? reason.message : '准入检查失败');
+      } finally {
+        setAcceptanceLoading(null);
       }
     };
 
@@ -1073,6 +1109,30 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
                       {liveProbeGate?.contract || '--'}
                     </span>
                   </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>准入状态</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {statusLabel(liveAcceptance?.acceptance_status)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>阻塞项</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {displayValue(liveAcceptance?.validation_issue_count)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>事实快照</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {displayValue(liveAcceptance?.school_fact_snapshot_rows)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>准入契约</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {liveAcceptance?.contract || '--'}
+                    </span>
+                  </div>
                 </div>
                 <Space wrap>
                   <Button
@@ -1090,6 +1150,22 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
                     onClick={() => void runLiveProbe('probe_live')}
                   >
                     只读探测
+                  </Button>
+                  <Button
+                    icon={<RefreshCw size={14} />}
+                    loading={acceptanceLoading === 'read_only'}
+                    size="small"
+                    onClick={() => void runLiveAcceptance('read_only')}
+                  >
+                    刷新准入
+                  </Button>
+                  <Button
+                    icon={<Check size={14} />}
+                    loading={acceptanceLoading === 'accept_live'}
+                    size="small"
+                    onClick={() => void runLiveAcceptance('accept_live')}
+                  >
+                    验收试点
                   </Button>
                 </Space>
                 {probeError && <Alert showIcon title={probeError} type="warning" />}
@@ -1138,11 +1214,75 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
                     </div>
                   </div>
                 )}
+                {acceptanceError && <Alert showIcon title={acceptanceError} type="warning" />}
+                {acceptanceResult && (
+                  <div
+                    aria-label="准入结果"
+                    style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
+                  >
+                    <div
+                      style={{
+                        display: 'grid',
+                        gap: 10,
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                      }}
+                    >
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>动作</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {acceptanceActionLabel(acceptanceResult.action)}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>准入状态</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {statusLabel(acceptanceResult.acceptance?.acceptance_status)}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>外部调用</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {displayValue(acceptanceResult.external_calls)}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>安全输出</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {acceptanceResult.redaction_passed ? '已确认' : '需复核'}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>契约</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {acceptanceResult.frontend_contract_version}
+                        </span>
+                      </div>
+                    </div>
+                    {acceptanceResult.acceptance?.blocking_reasons?.length ? (
+                      <Space wrap size={[8, 8]}>
+                        {acceptanceResult.acceptance.blocking_reasons.map((reason) => (
+                          <span className={styles.settingsValue} key={reason}>
+                            {reason}
+                          </span>
+                        ))}
+                      </Space>
+                    ) : null}
+                  </div>
+                )}
                 {liveComponentStatuses.length > 0 && (
                   <Space wrap size={[8, 8]}>
                     {liveComponentStatuses.map(([key, value]) => (
                       <span className={styles.settingsValue} key={key}>
                         {subsystemLabel(key)}：{statusLabel(value)}
+                      </span>
+                    ))}
+                  </Space>
+                )}
+                {liveAcceptanceBlockingReasons.length > 0 && (
+                  <Space wrap size={[8, 8]}>
+                    {liveAcceptanceBlockingReasons.map((reason) => (
+                      <span className={styles.settingsValue} key={reason}>
+                        {reason}
                       </span>
                     ))}
                   </Space>

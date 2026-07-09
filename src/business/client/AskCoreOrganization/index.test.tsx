@@ -209,6 +209,32 @@ const integrationOperationsStatusPayload = {
     successful_probes: 0,
     validation_issue_count: 0,
   },
+  live_pilot_acceptance: {
+    acceptance: {
+      connection_ready: true,
+      live_mode_requested: false,
+      no_gradebook_mirror: true,
+      no_roster_projection: true,
+      no_school_fact_snapshot: true,
+      operations_ready: true,
+      probe_passed: false,
+      redaction_safe: true,
+      registry_ready: true,
+    },
+    acceptance_status: 'blocked',
+    blocking_reason_counts: {
+      live_probe_out_of_band_credentials: 1,
+    },
+    blocking_reasons: ['live_probe_out_of_band_credentials'],
+    contract: 'moodle_gibbon_live_pilot_acceptance@v1',
+    external_calls: 0,
+    gradebook_mirror_rows: 0,
+    phase: 'P124',
+    redaction_passed: true,
+    roster_projection_rows: 0,
+    school_fact_snapshot_rows: 0,
+    validation_issue_count: 1,
+  },
   phase: 'P115',
   pilot_registry: {
     pilot_registry_ready: false,
@@ -263,6 +289,22 @@ const liveProbePayload = {
     probe_status: 'blocked',
     status: 'succeeded',
   },
+  redaction_passed: true,
+  roster_projection_rows: 0,
+};
+
+const liveAcceptancePayload = {
+  acceptance: {
+    ...integrationOperationsStatusPayload.live_pilot_acceptance,
+    acceptance_status: 'blocked',
+    blocking_reasons: ['live_probe_out_of_band_credentials'],
+    phase: 'P124',
+    status: 'succeeded',
+  },
+  action: 'accept_live',
+  external_calls: 0,
+  frontend_contract_version: 'moodle_gibbon_live_pilot_acceptance@v1',
+  operations_status: integrationOperationsStatusPayload,
   redaction_passed: true,
   roster_projection_rows: 0,
 };
@@ -423,6 +465,12 @@ describe('AskCoreOrganizationRoute', () => {
       ) {
         return new Response(JSON.stringify(liveProbePayload), { status: 200 });
       }
+      if (
+        url.endsWith('/workbench/integrations/pilot/moodle-gibbon/live-acceptance') &&
+        init?.method === 'POST'
+      ) {
+        return new Response(JSON.stringify(liveAcceptancePayload), { status: 200 });
+      }
       return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -449,6 +497,13 @@ describe('AskCoreOrganizationRoute', () => {
     expect(within(panel).getByText('探测外部调用')).toBeInTheDocument();
     expect(within(panel).getByText('探测契约')).toBeInTheDocument();
     expect(within(panel).getByText('moodle_gibbon_live_probe_gate@v1')).toBeInTheDocument();
+    expect(within(panel).getAllByText('试点准入').length).toBeGreaterThan(0);
+    expect(within(panel).getAllByText('准入状态').length).toBeGreaterThan(0);
+    expect(within(panel).getByText('阻塞项')).toBeInTheDocument();
+    expect(within(panel).getByText('事实快照')).toBeInTheDocument();
+    expect(within(panel).getByText('准入契约')).toBeInTheDocument();
+    expect(within(panel).getByText('moodle_gibbon_live_pilot_acceptance@v1')).toBeInTheDocument();
+    expect(within(panel).getByText('live_probe_out_of_band_credentials')).toBeInTheDocument();
     expect(within(panel).getByText('成绩镜像')).toBeInTheDocument();
     expect(within(panel).getByText('Moodle LTI：已就绪')).toBeInTheDocument();
     expect(within(panel).getByText('OneRoster：已就绪')).toBeInTheDocument();
@@ -469,6 +524,20 @@ describe('AskCoreOrganizationRoute', () => {
       '/api/askcore/workbench/integrations/pilot/moodle-gibbon/live-probe',
       expect.objectContaining({
         body: JSON.stringify({ action: 'probe_live' }),
+        credentials: 'include',
+        method: 'POST',
+      }),
+    );
+
+    fireEvent.click(within(panel).getByRole('button', { name: /验收试点/ }));
+    const acceptanceResult = await screen.findByLabelText('准入结果');
+    expect(within(acceptanceResult).getByText('moodle_gibbon_live_pilot_acceptance@v1')).toBeInTheDocument();
+    expect(within(acceptanceResult).getByText('验收试点')).toBeInTheDocument();
+    expect(within(acceptanceResult).getByText('已阻止')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/workbench/integrations/pilot/moodle-gibbon/live-acceptance',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'accept_live' }),
         credentials: 'include',
         method: 'POST',
       }),
@@ -527,6 +596,11 @@ describe('AskCoreOrganizationRoute', () => {
     expect(
       fetchMock.mock.calls.some(([input]) =>
         String(input).endsWith('/workbench/integrations/pilot/moodle-gibbon/live-probe'),
+      ),
+    ).toBe(false);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith('/workbench/integrations/pilot/moodle-gibbon/live-acceptance'),
       ),
     ).toBe(false);
   });

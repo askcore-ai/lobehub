@@ -48,6 +48,30 @@ export interface AskCoreIntegrationOperationsStatusPayload {
   external_calls?: number;
   frontend_contract_version: 'integration_operations_status@v1';
   generated_at?: string;
+  live_pilot_acceptance?: {
+    acceptance?: {
+      connection_ready?: boolean;
+      live_mode_requested?: boolean;
+      no_gradebook_mirror?: boolean;
+      no_roster_projection?: boolean;
+      no_school_fact_snapshot?: boolean;
+      operations_ready?: boolean;
+      probe_passed?: boolean;
+      redaction_safe?: boolean;
+      registry_ready?: boolean;
+    };
+    acceptance_status?: string;
+    blocking_reason_counts?: Record<string, number>;
+    blocking_reasons?: string[];
+    contract?: 'moodle_gibbon_live_pilot_acceptance@v1';
+    external_calls?: number;
+    gradebook_mirror_rows?: number;
+    phase?: string;
+    redaction_passed?: boolean;
+    roster_projection_rows?: number;
+    school_fact_snapshot_rows?: number;
+    validation_issue_count?: number;
+  };
   live_pilot_connection?: {
     component_count?: number;
     components?: Record<string, string>;
@@ -138,6 +162,24 @@ export interface AskCoreMoodleGibbonLiveProbePayload {
     phase?: string;
     status?: string;
   };
+  redaction_passed?: boolean;
+  roster_projection_rows?: number;
+}
+
+export type AskCoreMoodleGibbonLiveAcceptanceAction = 'read_only' | 'accept_live';
+
+export interface AskCoreMoodleGibbonLiveAcceptanceInput {
+  action: AskCoreMoodleGibbonLiveAcceptanceAction;
+}
+
+export interface AskCoreMoodleGibbonLiveAcceptancePayload {
+  acceptance?: AskCoreIntegrationOperationsStatusPayload['live_pilot_acceptance'] & {
+    status?: string;
+  };
+  action: AskCoreMoodleGibbonLiveAcceptanceAction;
+  external_calls?: number;
+  frontend_contract_version: 'moodle_gibbon_live_pilot_acceptance@v1';
+  operations_status?: AskCoreIntegrationOperationsStatusPayload;
   redaction_passed?: boolean;
   roster_projection_rows?: number;
 }
