@@ -48,6 +48,32 @@ export interface AskCoreOrganizationPayload {
   };
 }
 
+export interface AskCoreIntegrationOperationsStatusPayload {
+  diagnostics?: {
+    diagnostic_count?: number;
+    overall_severity?: string;
+    runbook_owners?: Record<string, string>;
+    subsystem_statuses?: Record<string, string>;
+  };
+  external_calls?: number;
+  frontend_contract_version: 'integration_operations_status@v1';
+  generated_at?: string;
+  operations?: Record<string, unknown>;
+  phase: string;
+  pilot_registry?: {
+    pilot_registry_ready?: boolean;
+    pilot_registry_status?: string;
+  };
+  production_preflight?: {
+    preflight_required?: boolean;
+    preflight_status?: string;
+  };
+  redaction_passed?: boolean;
+  roster_projection_rows?: number;
+  safe?: boolean;
+  status: string;
+}
+
 export interface AskCoreInvitePayload {
   channel: AskCoreInviteChannel;
   directoryInvitationToken: string;

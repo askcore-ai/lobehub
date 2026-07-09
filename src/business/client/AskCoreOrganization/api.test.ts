@@ -22,6 +22,7 @@ import {
   fetchAskCoreEducationIdentityClaims,
   fetchAskCoreEducationOrgUnits,
   fetchAskCoreEducationRoleAssignments,
+  fetchAskCoreIntegrationOperationsStatus,
   fetchAskCoreOrganizationDirectory,
   fetchAskCoreOrganizations,
   importAskCoreDirectoryPeople,
@@ -132,6 +133,7 @@ describe('AskCoreOrganization api client', () => {
     await unbindAskCoreEducationIdentity('student', 7001);
     await fetchAskCoreEducationRoleAssignments(2);
     await deleteAskCoreEducationRoleAssignment(9);
+    await fetchAskCoreIntegrationOperationsStatus();
 
     const calls = fetchMock.mock.calls as [RequestInfo | URL, RequestInit?][];
 
@@ -168,6 +170,7 @@ describe('AskCoreOrganization api client', () => {
       '/api/askcore/workbench/organization/identity-bindings/student/7001',
       '/api/askcore/workbench/organization/roles?org_unit_id=2',
       '/api/askcore/workbench/organization/roles/9',
+      '/api/askcore/workbench/integrations/operations/status',
     ]);
     expect(calls[1][1]).toMatchObject({
       body: JSON.stringify({ invite_token: 'token-1' }),

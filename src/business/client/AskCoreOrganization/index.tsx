@@ -41,6 +41,7 @@ import {
   toFormState,
 } from '../AskCoreWorkbench/resourceMeta';
 import { type JsonRecord, type ResourceKey } from '../AskCoreWorkbench/types';
+import { fetchAskCoreIntegrationOperationsStatus } from './api';
 import {
   EducationIdentitySection,
   EducationOrgSection,
@@ -51,7 +52,10 @@ import {
 } from './components';
 import { useOrganization } from './hooks/useOrganization';
 import { styles } from './styles';
-import { type AskCoreEducationOrgUnit } from './types';
+import {
+  type AskCoreEducationOrgUnit,
+  type AskCoreIntegrationOperationsStatusPayload,
+} from './types';
 
 type OrganizationRosterResource = Extract<ResourceKey, 'students' | 'teachers'>;
 type TabKey =
@@ -145,6 +149,53 @@ const displayValue = (value: unknown) => {
     return /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 19).replace('T', ' ') : value;
   if (typeof value === 'number') return value;
   return JSON.stringify(value);
+};
+
+const statusLabel = (value?: string | boolean | null) => {
+  if (value === true) return '已就绪';
+  if (value === false) return '未就绪';
+  const normalized = String(value || '').trim();
+  return (
+    {
+      configured: '已配置',
+      failed: '失败',
+      incomplete: '未完成',
+      no_jobs: '无待处理任务',
+      not_configured: '未配置',
+      not_required: '无需处理',
+      ok: '正常',
+      ready: '已就绪',
+      succeeded: '正常',
+      warning: '需关注',
+    }[normalized] ||
+    normalized ||
+    '--'
+  );
+};
+
+const subsystemLabel = (key: string) =>
+  ({
+    ags: '成绩回传',
+    billing_reservations: '用量预留',
+    caliper: '学习事件',
+    lti_registry: '连接注册',
+    school_fact_gateway: '数据访问',
+  })[key] || key;
+
+const summarizeOperations = (status?: AskCoreIntegrationOperationsStatusPayload | null) => {
+  const values = Object.entries(status?.operations || {})
+    .filter(([key]) => key.endsWith('_status'))
+    .map(([, value]) => String(value || '').trim())
+    .filter(Boolean);
+  if (values.length === 0) return '--';
+  if (
+    values.some((value) =>
+      ['blocked', 'denied', 'failed', 'incomplete', 'not_configured', 'warning'].includes(value),
+    )
+  ) {
+    return '需关注';
+  }
+  return '正常';
 };
 
 const rosterColumnsByResource: Record<OrganizationRosterResource, string[]> = {
@@ -725,6 +776,158 @@ const OrganizationRosterSection = memo<{
 
 OrganizationRosterSection.displayName = 'OrganizationRosterSection';
 
+interface IntegrationOperationsPanelProps {
+  error: string | null;
+  loading: boolean;
+  onRefresh: () => void;
+  status: AskCoreIntegrationOperationsStatusPayload | null;
+}
+
+const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
+  ({ error, loading, status, onRefresh }) => {
+    const subsystemStatuses = Object.entries(status?.diagnostics?.subsystem_statuses || {});
+    const runbookOwners = status?.diagnostics?.runbook_owners || {};
+    const safe = Boolean(status?.safe && status.redaction_passed);
+    const summaryItems = [
+      {
+        label: '连接准备',
+        value: statusLabel(status?.pilot_registry?.pilot_registry_ready),
+      },
+      {
+        label: '运行状态',
+        value: summarizeOperations(status),
+      },
+      {
+        label: '诊断',
+        value: statusLabel(status?.diagnostics?.overall_severity),
+      },
+      {
+        label: '上线检查',
+        value: statusLabel(status?.production_preflight?.preflight_status),
+      },
+      {
+        label: '安全输出',
+        value: safe ? '已确认' : status ? '需复核' : '--',
+      },
+    ];
+
+    return (
+      <div className={styles.staggerItem} style={{ animationDelay: '0.06s' }}>
+        <div aria-label="集成运维状态" className={styles.sectionCard}>
+          <div className={styles.sectionHeader}>
+            <div className={styles.sectionHeaderLeft}>
+              <span className={styles.sectionTitle}>集成运维</span>
+              <span className={styles.sectionSubtitle}>
+                学校连接、数据访问、诊断与上线前检查
+              </span>
+            </div>
+            <Button
+              className={styles.pillButton}
+              icon={<RefreshCw size={14} />}
+              loading={loading}
+              size="small"
+              onClick={onRefresh}
+            >
+              刷新
+            </Button>
+          </div>
+          <div className={styles.sectionBody}>
+            {error && (
+              <Alert
+                showIcon
+                style={{ marginBottom: 12 }}
+                title={error}
+                type="warning"
+              />
+            )}
+            {loading && !status ? (
+              <Skeleton active paragraph={{ rows: 3 }} />
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gap: 10,
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                  }}
+                >
+                  {summaryItems.map((item) => (
+                    <div className={styles.settingsRow} key={item.label}>
+                      <span className={styles.settingsLabel}>{item.label}</span>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: cssVar.colorText }}>
+                        {item.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gap: 10,
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  }}
+                >
+                  {subsystemStatuses.map(([key, value]) => (
+                    <div className={styles.settingsRow} key={key}>
+                      <span className={styles.settingsLabel}>{subsystemLabel(key)}</span>
+                      <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                        {statusLabel(value)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gap: 10,
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  }}
+                >
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>诊断项</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {displayValue(status?.diagnostics?.diagnostic_count)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>外部调用</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {displayValue(status?.external_calls)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>名册投影</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {displayValue(status?.roster_projection_rows)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>契约</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {status?.frontend_contract_version || '--'}
+                    </span>
+                  </div>
+                </div>
+                {subsystemStatuses.length > 0 && (
+                  <Space wrap size={[8, 8]}>
+                    {subsystemStatuses.map(([key]) => (
+                      <span className={styles.settingsValue} key={key}>
+                        {subsystemLabel(key)}：{runbookOwners[key] || 'AskCore 管理员'}
+                      </span>
+                    ))}
+                  </Space>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  },
+);
+
+IntegrationOperationsPanel.displayName = 'IntegrationOperationsPanel';
+
 export const AskCoreOrganizationRoute = memo(() => {
   const location = useLocation();
   const org = useOrganization();
@@ -742,10 +945,40 @@ export const AskCoreOrganizationRoute = memo(() => {
   const [savedPulse, setSavedPulse] = useState(false);
   const currentOrganization = org.current;
   const metaForm = org.metaForm;
+  const [integrationStatus, setIntegrationStatus] =
+    useState<AskCoreIntegrationOperationsStatusPayload | null>(null);
+  const [integrationStatusError, setIntegrationStatusError] = useState<string | null>(null);
+  const [integrationStatusLoading, setIntegrationStatusLoading] = useState(false);
+
+  const canViewIntegrationOperations = Boolean(org.current && org.canUpdateMeta);
 
   useEffect(() => {
     setActiveTab(normalizeTab(new URLSearchParams(location.search).get('tab')));
   }, [location.search]);
+
+  const loadIntegrationStatus = useCallback(async () => {
+    if (!canViewIntegrationOperations) return;
+    setIntegrationStatusLoading(true);
+    setIntegrationStatusError(null);
+    try {
+      const payload = await fetchAskCoreIntegrationOperationsStatus();
+      setIntegrationStatus(payload);
+    } catch (error) {
+      setIntegrationStatusError(error instanceof Error ? error.message : '集成状态暂不可用');
+    } finally {
+      setIntegrationStatusLoading(false);
+    }
+  }, [canViewIntegrationOperations]);
+
+  useEffect(() => {
+    if (!canViewIntegrationOperations) {
+      setIntegrationStatus(null);
+      setIntegrationStatusError(null);
+      setIntegrationStatusLoading(false);
+      return;
+    }
+    void loadIntegrationStatus();
+  }, [canViewIntegrationOperations, loadIntegrationStatus]);
 
   const handleSaveMeta = useCallback(async () => {
     await org.handleSaveMeta();
@@ -883,6 +1116,15 @@ export const AskCoreOrganizationRoute = memo(() => {
                 onTransferOwnership={() => setTransferOpen(true)}
               />
             </div>
+
+            {canViewIntegrationOperations && (
+              <IntegrationOperationsPanel
+                error={integrationStatusError}
+                loading={integrationStatusLoading}
+                status={integrationStatus}
+                onRefresh={() => void loadIntegrationStatus()}
+              />
+            )}
 
             {/* Tab Content */}
             <div className={styles.tabContent} key={activeTab}>
