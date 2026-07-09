@@ -209,7 +209,14 @@ const findFullOrganizationMember = (
   userId: string,
 ) => {
   const members = Array.isArray(fullOrganization?.members) ? fullOrganization.members : [];
-  return members.map(recordValue).find((member) => stringValue(member?.userId) === userId);
+  return members.map(recordValue).find((member) => {
+    const memberUser = recordValue(member?.user);
+    return (
+      stringValue(member?.userId) === userId ||
+      stringValue(member?.user_id) === userId ||
+      stringValue(memberUser?.id) === userId
+    );
+  });
 };
 
 const getFullOrganization = async (
