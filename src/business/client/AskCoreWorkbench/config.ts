@@ -13,18 +13,17 @@ export const ASKCORE_WORKBENCH_TABS: AskCoreWorkbenchTabConfig[] = [
   { key: 'overview', label: '总览' },
   {
     columns: [
-      { dataIndex: 'title', title: '作业', width: 240 },
+      { dataIndex: 'title', title: '活动', width: 240 },
       { dataIndex: 'subject_id', displayIndex: 'subject_name', title: '学科', width: 140 },
       { dataIndex: 'grade_id', displayIndex: 'grade_name', title: '年级', width: 140 },
-      { dataIndex: 'creation_type', isStatus: true, title: '来源', width: 120 },
-      { dataIndex: 'assign_date', title: '布置日期', width: 150 },
-      { dataIndex: 'due_date', title: '截止日期', width: 150 },
+      { dataIndex: 'source_kind', isStatus: true, title: '来源', width: 140 },
+      { dataIndex: 'status', isStatus: true, title: '状态', width: 120 },
+      { dataIndex: 'created_at', title: '创建时间', width: 180 },
     ],
-    key: 'assignments',
-    label: '作业',
-    newLabel: '新建作业',
-    resource: 'assignments',
-    searchPlaceholder: '搜索作业、学科',
+    key: 'activities',
+    label: '活动',
+    resource: 'activities',
+    searchPlaceholder: '搜索活动、学科',
   },
   {
     columns: [
@@ -43,18 +42,17 @@ export const ASKCORE_WORKBENCH_TABS: AskCoreWorkbenchTabConfig[] = [
   },
   {
     columns: [
-      { dataIndex: 'name', title: '提交', width: 240 },
-      { dataIndex: 'assignment_id', displayIndex: 'assignment_title', title: '作业', width: 180 },
-      { dataIndex: 'student_id', displayIndex: 'student_name', title: '学生', width: 140 },
+      { dataIndex: 'activity_title', title: '活动', width: 220 },
+      { dataIndex: 'source_kind', isStatus: true, title: '来源', width: 140 },
       { dataIndex: 'status', isStatus: true, title: '状态', width: 120 },
       { dataIndex: 'score', title: '得分', width: 120 },
+      { dataIndex: 'total_score', title: '总分', width: 120 },
       { dataIndex: 'submitted_at', title: '提交时间', width: 180 },
     ],
-    key: 'submissions',
-    label: '提交',
-    newLabel: '导入提交',
-    resource: 'submissions',
-    searchPlaceholder: '搜索提交、学生',
+    key: 'attempts',
+    label: '提交记录',
+    resource: 'attempts',
+    searchPlaceholder: '搜索提交记录、状态',
   },
 ];
 
@@ -74,12 +72,12 @@ export const askCoreWorkbenchTabsForProfile = (
 ): AskCoreWorkbenchTabConfig[] => {
   if (profile?.workbench_mode === 'student_restricted') {
     return ASKCORE_WORKBENCH_TABS.filter((tab) =>
-      new Set<AskCoreWorkbenchTab>(['overview', 'assignments', 'submissions']).has(tab.key),
+      new Set<AskCoreWorkbenchTab>(['overview', 'activities', 'attempts']).has(tab.key),
     ).map((tab) =>
-      tab.key === 'submissions'
-        ? { ...tab, label: '我的提交', newLabel: '提交作业' }
-        : tab.key === 'assignments'
-          ? { ...tab, label: '我的作业', newLabel: undefined }
+      tab.key === 'attempts'
+        ? { ...tab, label: '我的提交记录', newLabel: '提交作业' }
+        : tab.key === 'activities'
+          ? { ...tab, label: '我的活动', newLabel: undefined }
           : tab,
     );
   }
@@ -93,7 +91,9 @@ export const askCoreWorkbenchTabOptionsForProfile = (profile: AskCoreEducationPr
   tabOptionsFromConfigs(askCoreWorkbenchTabsForProfile(profile));
 
 export const ASKCORE_WORKBENCH_COUNT_LABELS: Record<string, string> = {
+  activities: '活动',
   assignments: '作业',
+  attempts: '提交记录',
   questions: '题目',
   submissions: '提交',
 };

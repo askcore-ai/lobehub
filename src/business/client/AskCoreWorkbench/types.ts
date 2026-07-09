@@ -1,6 +1,6 @@
 'use client';
 
-export type AskCoreWorkbenchTab = 'overview' | 'assignments' | 'questions' | 'submissions';
+export type AskCoreWorkbenchTab = 'overview' | 'activities' | 'questions' | 'attempts';
 
 export type JsonPrimitive = boolean | number | string | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | JsonRecord;
@@ -9,6 +9,8 @@ export interface JsonRecord {
 }
 
 export type ResourceKey =
+  | 'activities'
+  | 'attempts'
   | 'schools'
   | 'teachers'
   | 'classes'

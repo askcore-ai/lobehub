@@ -1050,7 +1050,7 @@ describe('AskCoreWorkbenchRoute submission list batch actions', () => {
   const renderSubmissionList = async (fetchMock = makeFetch()) => {
     vi.stubGlobal('fetch', fetchMock);
     render(
-      <MemoryRouter initialEntries={['/askcore/workbench?tab=submissions']}>
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=attempts&route=%2Fsubmissions']}>
         <AskCoreWorkbenchRoute />
       </MemoryRouter>,
     );
@@ -1338,22 +1338,22 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     expect(document.body.textContent || '').not.toContain('[object Object]');
   });
 
-  it('hides submission rows while an assignment tab request is still loading', async () => {
-    const assignmentResponse = deferredResponse();
+  it('hides attempt rows while an activity tab request is still loading', async () => {
+    const activityResponse = deferredResponse();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
 
-      if (url.startsWith('/api/askcore/workbench/submissions?')) {
+      if (url.startsWith('/api/askcore/workbench/attempts?')) {
         return jsonResponse(
-          listResponse('submissions', [
-            { status: 'graded', student_name: '张三', submission_id: 1109 },
-            { status: 'graded', student_name: '李四', submission_id: 1110 },
+          listResponse('attempts', [
+            { activity_title: '函数提交记录', attempt_id: 1109, status: 'graded' },
+            { activity_title: '几何提交记录', attempt_id: 1110, status: 'submitted' },
           ]),
         );
       }
 
-      if (url.startsWith('/api/askcore/workbench/assignments?')) {
-        return assignmentResponse.promise;
+      if (url.startsWith('/api/askcore/workbench/activities?')) {
+        return activityResponse.promise;
       }
 
       return emptyLookupFetch(url);
@@ -1361,51 +1361,51 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(
-      <MemoryRouter initialEntries={['/askcore/workbench?tab=submissions']}>
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=attempts']}>
         <AskCoreWorkbenchRoute />
       </MemoryRouter>,
     );
 
-    await screen.findAllByText('张三');
+    await screen.findAllByText('函数提交记录');
     expect(
       fetchMock.mock.calls.some(([input]) => {
         const url = String(input);
         return (
-          url.startsWith('/api/askcore/workbench/submissions?') && url.includes('page_size=100')
+          url.startsWith('/api/askcore/workbench/attempts?') && url.includes('page_size=100')
         );
       }),
     ).toBe(true);
 
-    fireEvent.click(screen.getAllByText('作业')[0]);
+    fireEvent.click(screen.getAllByText('活动')[0]);
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(([input]) =>
-          String(input).startsWith('/api/askcore/workbench/assignments?'),
+          String(input).startsWith('/api/askcore/workbench/activities?'),
         ),
       ).toBe(true),
     );
 
-    expect(screen.queryAllByText('张三')).toHaveLength(0);
-    expect(screen.queryAllByText('李四')).toHaveLength(0);
+    expect(screen.queryAllByText('函数提交记录')).toHaveLength(0);
+    expect(screen.queryAllByText('几何提交记录')).toHaveLength(0);
     expect(screen.getByText('正在加载…')).toBeInTheDocument();
 
-    assignmentResponse.resolve(
-      jsonResponse(listResponse('assignments', [{ assignment_id: 501, title: '期中练习' }])),
+    activityResponse.resolve(
+      jsonResponse(listResponse('activities', [{ activity_id: 501, title: '期中练习' }])),
     );
 
     expect(await screen.findAllByText('期中练习')).toHaveLength(2);
     expect(screen.queryByText('正在加载…')).not.toBeInTheDocument();
   });
 
-  it('hides assignment rows while a question tab request is still loading', async () => {
+  it('hides activity rows while a question tab request is still loading', async () => {
     const questionResponse = deferredResponse();
-    let assignmentCalls = 0;
+    let activityCalls = 0;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
 
-      if (url.startsWith('/api/askcore/workbench/assignments?')) {
-        assignmentCalls += 1;
-        return jsonResponse(listResponse('assignments', [{ assignment_id: 501, title: '旧作业' }]));
+      if (url.startsWith('/api/askcore/workbench/activities?')) {
+        activityCalls += 1;
+        return jsonResponse(listResponse('activities', [{ activity_id: 501, title: '旧活动' }]));
       }
 
       if (url.startsWith('/api/askcore/workbench/questions?')) {
@@ -1417,13 +1417,13 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(
-      <MemoryRouter initialEntries={['/askcore/workbench?tab=assignments']}>
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=activities']}>
         <AskCoreWorkbenchRoute />
       </MemoryRouter>,
     );
 
-    await screen.findAllByText('旧作业');
-    await waitFor(() => expect(assignmentCalls).toBeGreaterThanOrEqual(1));
+    await screen.findAllByText('旧活动');
+    await waitFor(() => expect(activityCalls).toBeGreaterThanOrEqual(1));
 
     fireEvent.click(screen.getByRole('radio', { name: '题目' }));
     await waitFor(() =>
@@ -1434,7 +1434,7 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
       ).toBe(true),
     );
 
-    expect(screen.queryAllByText('旧作业')).toHaveLength(0);
+    expect(screen.queryAllByText('旧活动')).toHaveLength(0);
     expect(screen.getByText('正在加载…')).toBeInTheDocument();
 
     questionResponse.resolve(
@@ -1449,17 +1449,17 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     expect(screen.queryByText('正在加载…')).not.toBeInTheDocument();
   });
 
-  it('hides existing assignment rows while the current list is refreshing', async () => {
+  it('hides existing activity rows while the current list is refreshing', async () => {
     const refreshResponse = deferredResponse();
-    let assignmentCalls = 0;
+    let activityCalls = 0;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
 
-      if (url.startsWith('/api/askcore/workbench/assignments?')) {
-        assignmentCalls += 1;
-        if (assignmentCalls <= 2) {
+      if (url.startsWith('/api/askcore/workbench/activities?')) {
+        activityCalls += 1;
+        if (activityCalls <= 2) {
           return jsonResponse(
-            listResponse('assignments', [{ assignment_id: 501, title: '旧作业' }]),
+            listResponse('activities', [{ activity_id: 501, title: '旧活动' }]),
           );
         }
         return refreshResponse.promise;
@@ -1470,27 +1470,85 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(
-      <MemoryRouter initialEntries={['/askcore/workbench?tab=assignments']}>
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=activities']}>
         <AskCoreWorkbenchRoute />
       </MemoryRouter>,
     );
 
-    await screen.findAllByText('旧作业');
+    await screen.findAllByText('旧活动');
 
-    const callsBeforeRefresh = assignmentCalls;
+    const callsBeforeRefresh = activityCalls;
     fireEvent.click(screen.getByRole('button', { name: /筛\s*选/ }));
-    await waitFor(() => expect(assignmentCalls).toBeGreaterThan(callsBeforeRefresh));
+    await waitFor(() => expect(activityCalls).toBeGreaterThan(callsBeforeRefresh));
 
-    expect(screen.queryAllByText('旧作业')).toHaveLength(0);
+    expect(screen.queryAllByText('旧活动')).toHaveLength(0);
     expect(screen.getByText('正在加载…')).toBeInTheDocument();
 
     refreshResponse.resolve(
-      jsonResponse(listResponse('assignments', [{ assignment_id: 502, title: '新作业' }])),
+      jsonResponse(listResponse('activities', [{ activity_id: 502, title: '新活动' }])),
     );
 
-    expect(await screen.findAllByText('新作业')).toHaveLength(2);
-    expect(screen.queryAllByText('旧作业')).toHaveLength(0);
+    expect(await screen.findAllByText('新活动')).toHaveLength(2);
+    expect(screen.queryAllByText('旧活动')).toHaveLength(0);
   }, 15_000);
+
+  it('renders protocol activities as a read-only list resource', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.startsWith('/api/askcore/workbench/activities?')) {
+        return jsonResponse(
+          listResponse('activities', [{ activity_id: 12101, status: 'active', title: 'P121 活动' }]),
+        );
+      }
+
+      return emptyLookupFetch(url);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=activities']}>
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findAllByText('P121 活动')).toHaveLength(2);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).startsWith('/api/askcore/workbench/activities?'),
+      ),
+    ).toBe(true);
+    expect(screen.queryByText('新建活动')).not.toBeInTheDocument();
+    expect(screen.queryByText('批量删除')).not.toBeInTheDocument();
+  });
+
+  it('renders protocol attempt detail without edit or delete actions', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === '/api/askcore/workbench/attempts/12103') {
+        return jsonResponse({
+          activity: { id: 12101, title: 'P121 活动' },
+          attempt_id: 12103,
+          status: 'graded',
+        });
+      }
+
+      return emptyLookupFetch(url);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=attempts&route=%2Fattempts%2F12103']}>
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('只读协议资源')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith('/api/askcore/workbench/attempts/12103', expect.any(Object));
+    expect(screen.queryByRole('button', { name: '编辑' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument();
+  });
 });
 
 describe('AskCoreWorkbenchRoute submission OCR run summary', () => {

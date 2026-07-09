@@ -6,6 +6,7 @@ import {
   filtersFromFormState,
   fromFormState,
   hydrateLookupLabels,
+  isEditableResource,
   mergeResourceItems,
   resolveLookupLabel,
   RESOURCE_FILTER_FIELDS,
@@ -52,6 +53,22 @@ describe('AskCore workbench resource metadata', () => {
       grade_id: 3,
       query: '期中',
     });
+    expect(filtersFromFormState('attempts', { activity_id: '8', status: 'graded' })).toEqual({
+      activity_id: 8,
+      status: 'graded',
+    });
+  });
+
+  it('treats protocol activity and attempt resources as read-only UI resources', () => {
+    expect(isEditableResource('activities')).toBe(false);
+    expect(isEditableResource('attempts')).toBe(false);
+    expect(isEditableResource('questions')).toBe(true);
+    expect(RESOURCE_FILTER_FIELDS.activities).toEqual([
+      { key: 'subject_id', kind: 'select', label: '科目', numeric: true, optionsFrom: 'subjects' },
+      { key: 'grade_id', kind: 'select', label: '教学年级', numeric: true, optionsFrom: 'grades' },
+    ]);
+    expect(RESOURCE_FORM_FIELDS).not.toHaveProperty('activities');
+    expect(RESOURCE_FORM_FIELDS).not.toHaveProperty('attempts');
   });
 
   it('uses org_unit_id as the student class membership field', () => {
@@ -94,10 +111,10 @@ describe('AskCore workbench resource metadata', () => {
   it('deduplicates cursor-loaded resource items by resource id', () => {
     expect(
       mergeResourceItems(
-        'submissions',
-        [{ submission_id: 1 }, { submission_id: 2 }],
-        [{ submission_id: 2 }, { submission_id: 3 }],
+        'attempts',
+        [{ attempt_id: 1 }, { attempt_id: 2 }],
+        [{ attempt_id: 2 }, { attempt_id: 3 }],
       ),
-    ).toEqual([{ submission_id: 1 }, { submission_id: 2 }, { submission_id: 3 }]);
+    ).toEqual([{ attempt_id: 1 }, { attempt_id: 2 }, { attempt_id: 3 }]);
   });
 });

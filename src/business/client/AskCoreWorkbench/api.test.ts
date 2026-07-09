@@ -22,6 +22,12 @@ describe('AskCoreWorkbench API', () => {
     expect(askCoreWorkbenchResourceUrl('schools', 2, 20)).toBe(
       '/api/askcore/workbench/schools?include_total=true&page=2&page_size=20',
     );
+    expect(askCoreWorkbenchResourceUrl('activities', 1, 100)).toBe(
+      '/api/askcore/workbench/activities?include_total=true&page=1&page_size=100',
+    );
+    expect(askCoreWorkbenchItemUrl('attempts', 301)).toBe(
+      '/api/askcore/workbench/attempts/301',
+    );
     expect(askCoreWorkbenchItemUrl('students', 201)).toBe('/api/askcore/workbench/students/201');
   });
 
@@ -125,7 +131,7 @@ describe('AskCoreWorkbench API', () => {
   it('defaults resource list requests to 100 items per refresh', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       expect(String(input)).toBe(
-        '/api/askcore/workbench/assignments?include_total=true&page=1&page_size=100',
+        '/api/askcore/workbench/activities?include_total=true&page=1&page_size=100',
       );
       return new Response(
         JSON.stringify({
@@ -142,7 +148,7 @@ describe('AskCoreWorkbench API', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const client = new AskCoreWorkbenchApiClient();
-    await expect(client.listResource('assignments')).resolves.toMatchObject({
+    await expect(client.listResource('activities')).resolves.toMatchObject({
       has_more: false,
       items: [],
       next_after_id: null,

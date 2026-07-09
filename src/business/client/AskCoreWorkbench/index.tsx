@@ -99,6 +99,7 @@ import {
   fromFormState,
   getResourceIdKey,
   hydrateLookupLabels,
+  isEditableResource,
   type LookupCollections,
   mergeResourceItems,
   RESOURCE_FILTER_FIELDS,
@@ -867,12 +868,55 @@ type DetailState =
   | { detail: StudentDetailResponse; item: JsonRecord; kind: 'student' };
 
 const routeResourceAliases: Record<string, ResourceKey> = {
+  activities: 'activities',
+  activity: 'activities',
   assignment: 'assignments',
   assignments: 'assignments',
+  attempt: 'attempts',
+  attempts: 'attempts',
   question: 'questions',
   questions: 'questions',
   submission: 'submissions',
   submissions: 'submissions',
+};
+
+type ResourceListConfig = {
+  columns?: AskCoreWorkbenchColumn[];
+  label: string;
+  newLabel?: string;
+  resource: ResourceKey;
+  searchPlaceholder?: string;
+};
+
+const LEGACY_RESOURCE_LIST_CONFIGS: Partial<Record<ResourceKey, ResourceListConfig>> = {
+  assignments: {
+    columns: [
+      { dataIndex: 'title', title: '作业', width: 240 },
+      { dataIndex: 'subject_id', displayIndex: 'subject_name', title: '学科', width: 140 },
+      { dataIndex: 'grade_id', displayIndex: 'grade_name', title: '年级', width: 140 },
+      { dataIndex: 'creation_type', isStatus: true, title: '来源', width: 120 },
+      { dataIndex: 'assign_date', title: '布置日期', width: 150 },
+      { dataIndex: 'due_date', title: '截止日期', width: 150 },
+    ],
+    label: '作业',
+    newLabel: '新建作业',
+    resource: 'assignments',
+    searchPlaceholder: '搜索作业、学科',
+  },
+  submissions: {
+    columns: [
+      { dataIndex: 'name', title: '提交', width: 240 },
+      { dataIndex: 'assignment_id', displayIndex: 'assignment_title', title: '作业', width: 180 },
+      { dataIndex: 'student_id', displayIndex: 'student_name', title: '学生', width: 140 },
+      { dataIndex: 'status', isStatus: true, title: '状态', width: 120 },
+      { dataIndex: 'score', title: '得分', width: 120 },
+      { dataIndex: 'submitted_at', title: '提交时间', width: 180 },
+    ],
+    label: '提交',
+    newLabel: '导入提交',
+    resource: 'submissions',
+    searchPlaceholder: '搜索提交、学生',
+  },
 };
 
 const statusLabelMap: Record<string, string> = {
@@ -5421,12 +5465,14 @@ const GenericDetailView = ({
   onBack,
   onDelete,
   onEdit,
+  readOnly = false,
   resource,
 }: {
   item: JsonRecord;
   onBack: () => void;
   onDelete: () => void;
   onEdit: () => void;
+  readOnly?: boolean;
   resource: ResourceKey;
 }) => (
   <div className={styles.view}>
@@ -5434,16 +5480,20 @@ const GenericDetailView = ({
       subtitle={`${RESOURCE_LABELS[resource].singular} ID ${getRecordId(resource, item) || '--'}`}
       title={getRecordTitle(resource, item)}
       actions={
-        <>
-          <Button className={styles.secondary} icon={<Pencil size={14} />} onClick={onEdit}>
-            编辑
-          </Button>
-          <Popconfirm title={`删除该${RESOURCE_LABELS[resource].singular}？`} onConfirm={onDelete}>
-            <Button danger icon={<Trash2 size={14} />}>
-              删除
+        readOnly ? (
+          <Tag>只读协议资源</Tag>
+        ) : (
+          <>
+            <Button className={styles.secondary} icon={<Pencil size={14} />} onClick={onEdit}>
+              编辑
             </Button>
-          </Popconfirm>
-        </>
+            <Popconfirm title={`删除该${RESOURCE_LABELS[resource].singular}？`} onConfirm={onDelete}>
+              <Button danger icon={<Trash2 size={14} />}>
+                删除
+              </Button>
+            </Popconfirm>
+          </>
+        )
       }
       onBack={onBack}
     />
@@ -7399,8 +7449,8 @@ const AskCoreWorkbenchPage = memo(() => {
       navigate(routeFor('overview', `/invocations/${encodeURIComponent(invocationId)}`));
     });
     const stats = [
-      { key: 'submissions', label: '提交', value: counts.submissions || 0 },
-      { key: 'assignments', label: '作业', value: counts.assignments || 0 },
+      { key: 'attempts', label: '提交记录', value: counts.attempts || counts.submissions || 0 },
+      { key: 'activities', label: '活动', value: counts.activities || counts.assignments || 0 },
       { key: 'questions', label: '题目', value: counts.questions || 0 },
     ];
 
@@ -7475,9 +7525,15 @@ const AskCoreWorkbenchPage = memo(() => {
   };
 
   const renderResourceList = (resource: ResourceKey) => {
+    const resourceEditable = isEditableResource(resource);
     const config =
       availableTabs.find((tab) => tab.resource === resource) ||
-      ASKCORE_WORKBENCH_TABS.find((tab) => tab.resource === resource)!;
+      ASKCORE_WORKBENCH_TABS.find((tab) => tab.resource === resource) ||
+      LEGACY_RESOURCE_LIST_CONFIGS[resource] || {
+        label: RESOURCE_LABELS[resource].label,
+        resource,
+        searchPlaceholder: '搜索',
+      };
     const filters = RESOURCE_FILTER_FIELDS[resource] || [];
     const listPending = loading && !loadingMore;
     const displayedItems = listPending ? [] : filteredItems;
@@ -7913,7 +7969,7 @@ const AskCoreWorkbenchPage = memo(() => {
                   </Button>
                 ) : null}
               </>
-            ) : !isRestrictedStudent && !isIdentityRequired ? (
+            ) : resourceEditable && !isRestrictedStudent && !isIdentityRequired ? (
               <Button
                 className={styles.primary}
                 icon={<Plus size={14} />}
@@ -7934,7 +7990,7 @@ const AskCoreWorkbenchPage = memo(() => {
 
         <div className={styles.actionBar}>
           <Space wrap>
-            {!isRestrictedStudent && !isIdentityRequired ? (
+            {resourceEditable && !isRestrictedStudent && !isIdentityRequired ? (
               <Popconfirm
                 disabled={!selectedIds.length || submissionBatchBusy}
                 title={`批量删除 ${selectedIds.length} 条记录？`}
@@ -8228,6 +8284,8 @@ const AskCoreWorkbenchPage = memo(() => {
       />
       {mode === 'edit' && detailLoading ? (
         <Skeleton active />
+      ) : !isEditableResource(resource) ? (
+        <Empty description="该协议资源为只读，不能新建或编辑" image={Empty.PRESENTED_IMAGE_SIMPLE} />
       ) : (
         <ResourceForm
           initial={mode === 'edit' ? detail?.item || null : null}
@@ -8307,6 +8365,7 @@ const AskCoreWorkbenchPage = memo(() => {
     return (
       <GenericDetailView
         item={detail.item}
+        readOnly={!isEditableResource(currentRoute.resource)}
         resource={currentRoute.resource}
         onBack={backToList}
         onEdit={() => navigate(routeFor(currentRoute.resource as AskCoreWorkbenchTab, editRoute))}
