@@ -227,6 +227,12 @@ describe('AskCoreWorkbench API', () => {
           status: 200,
         });
       }
+      if (url.includes('/attempts/reports/download')) {
+        return new Response(new Blob(['attempt-zip']), {
+          headers: { 'content-type': 'application/zip' },
+          status: 200,
+        });
+      }
       return new Response(
         JSON.stringify({
           action_id: 'submission.report.generate',
@@ -247,10 +253,15 @@ describe('AskCoreWorkbench API', () => {
     await client.invokeAction('submission.report.generate', { submission_id: 12 });
     await client.fetchPreviewBlob('uploads/org/report.pdf');
     await client.downloadSubmissionReportsZip([12, 13]);
+    await client.downloadAttemptReportsZip([12103, 12104]);
 
     expect(String(calls[0][0])).toBe('/api/askcore/workbench/actions/submission.report.generate');
     expect(String(calls[1][0])).toContain('/api/askcore/workbench/files/preview?object_key=');
     expect(String(calls[2][0])).toBe('/api/askcore/workbench/submissions/reports/download');
+    expect(String(calls[3][0])).toBe('/api/askcore/workbench/attempts/reports/download');
+    expect(JSON.parse(String(calls[3][1]?.body || '{}'))).toEqual({
+      attempt_ids: [12103, 12104],
+    });
     expect(client.getInvocationStreamUrl('inv-1')).toBe(
       '/api/askcore/workbench/invocations/inv-1/stream',
     );
@@ -289,6 +300,32 @@ describe('AskCoreWorkbench API', () => {
 
     const client = new AskCoreWorkbenchApiClient();
     await client.downloadSubmissionReportsZip([12, 13], {
+      onProgress: (item) =>
+        progress.push({ loaded: item.loaded, percent: item.percent, phase: item.phase }),
+    });
+
+    expect(progress[0]).toEqual({ loaded: 0, percent: 0, phase: 'downloading' });
+    expect(progress.at(-1)).toEqual({ loaded: 3, percent: 100, phase: 'completed' });
+  });
+
+  it('reports progress while downloading attempt report ZIPs when content length is known', async () => {
+    const progress: Array<{ loaded: number; percent: number | null; phase: string }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response('zip', {
+            headers: {
+              'content-length': '3',
+              'content-type': 'application/zip',
+            },
+            status: 200,
+          }),
+      ),
+    );
+
+    const client = new AskCoreWorkbenchApiClient();
+    await client.downloadAttemptReportsZip([12103, 12104], {
       onProgress: (item) =>
         progress.push({ loaded: item.loaded, percent: item.percent, phase: item.phase }),
     });

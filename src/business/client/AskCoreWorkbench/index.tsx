@@ -4579,6 +4579,7 @@ const SubmissionDetailView = ({
   onBack,
   onEdit,
   onReload,
+  protocolAttemptId,
   protocolNotice,
 }: {
   canEdit?: boolean;
@@ -4589,10 +4590,17 @@ const SubmissionDetailView = ({
   onBack: () => void;
   onEdit: () => void;
   onReload: () => Promise<void> | void;
+  protocolAttemptId?: number | null;
   protocolNotice?: ReactNode;
 }) => {
   const submission = hydrateLookupLabels(detail.submission, lookups);
   const submissionId = Number(submission.submission_id || submission.id || 0) || 0;
+  const runtimeAttemptId = positiveId(protocolAttemptId);
+  const runtimeTargetId = runtimeAttemptId || submissionId;
+  const runtimeActionParams = (extra: JsonRecord = {}) =>
+    runtimeAttemptId
+      ? ({ ...extra, attempt_id: runtimeAttemptId } as JsonRecord)
+      : ({ ...extra, submission_id: submissionId } as JsonRecord);
   const assignmentQuestions = useMemo(
     () => readRecordArray(detail.assignment_questions),
     [detail.assignment_questions],
@@ -4710,12 +4718,12 @@ const SubmissionDetailView = ({
   };
 
   const rerunSubmissionOcr = async () => {
-    if (!submissionId || !hasSubmissionImages) return;
+    if (!runtimeTargetId || !hasSubmissionImages) return;
     setBusy(true);
     try {
       await client.invokeAction(
         'submission.ocr.rerun',
-        { submission_id: submissionId },
+        runtimeActionParams(),
         createConfirmationId(),
       );
       message.success('重新 OCR 任务已提交');
@@ -5200,13 +5208,13 @@ const SubmissionDetailView = ({
               ) : null}
               <Popconfirm
                 description="会使用当前上传图片覆盖题目结果，并按本次 OCR 重新识别学生归属。"
-                disabled={busy || !submissionId || !hasSubmissionImages}
+                disabled={busy || !runtimeTargetId || !hasSubmissionImages}
                 title="重新 OCR 并批改该提交？"
                 onConfirm={rerunSubmissionOcr}
               >
                 <Button
                   className={styles.secondary}
-                  disabled={busy || !submissionId || !hasSubmissionImages}
+                  disabled={busy || !runtimeTargetId || !hasSubmissionImages}
                   icon={<RefreshCw size={14} />}
                 >
                   重新 OCR 并批改
@@ -5214,8 +5222,8 @@ const SubmissionDetailView = ({
               </Popconfirm>
               <Button
                 className={styles.secondary}
-                disabled={busy || !submissionId}
-                onClick={() => runAction('submission.grade.run', { submission_id: submissionId })}
+                disabled={busy || !runtimeTargetId}
+                onClick={() => runAction('submission.grade.run', runtimeActionParams())}
               >
                 批改/讲解
               </Button>
@@ -5324,23 +5332,18 @@ const SubmissionDetailView = ({
               <>
                 <Button
                   className={styles.secondary}
-                  disabled={!submissionId || busy}
+                  disabled={!runtimeTargetId || busy}
                   onClick={() =>
-                    runAction('submission.report.generate', {
-                      force: true,
-                      submission_id: submissionId,
-                    })
+                    runAction('submission.report.generate', runtimeActionParams({ force: true }))
                   }
                 >
                   生成报告
                 </Button>
                 <Button
                   className={styles.secondary}
-                  disabled={!submissionId || busy}
+                  disabled={!runtimeTargetId || busy}
                   icon={<Printer size={14} />}
-                  onClick={() =>
-                    runAction('submission.report.print', { submission_id: submissionId })
-                  }
+                  onClick={() => runAction('submission.report.print', runtimeActionParams())}
                 >
                   打印报告
                 </Button>
@@ -7578,6 +7581,25 @@ const AskCoreWorkbenchPage = memo(() => {
     const allVisibleSelected =
       visibleIds.size > 0 && [...visibleIds].every((id) => selectedKeySet.has(id));
     const submissionBatchBusy = Boolean(submissionListBatchStatus?.busy);
+    const isProtocolAttemptResource = resource === 'attempts';
+    const isSubmissionRuntimeResource = resource === 'submissions' || isProtocolAttemptResource;
+    const submissionRuntimeLabel = isProtocolAttemptResource ? '提交记录' : '提交';
+    const submissionRuntimeParamsForId = (id: number, extra: JsonRecord = {}) =>
+      isProtocolAttemptResource
+        ? ({ ...extra, attempt_id: id } as JsonRecord)
+        : ({ ...extra, submission_id: id } as JsonRecord);
+    const submissionRuntimeBatchParamsForIds = (ids: number[], extra: JsonRecord = {}) =>
+      isProtocolAttemptResource
+        ? ({ ...extra, attempt_ids: ids } as JsonRecord)
+        : ({ ...extra, submission_ids: ids } as JsonRecord);
+    const loadSubmissionRuntimeDetail = async (id: number) => {
+      if (!isProtocolAttemptResource) return askCoreWorkbenchClient.getSubmissionDetail(id);
+      const payload = await askCoreWorkbenchClient.getAttemptDetail(id);
+      if (!payload.submission_detail) {
+        throw new Error('该提交记录暂未绑定旧提交流水线');
+      }
+      return payload.submission_detail;
+    };
     const updateSubmissionBatchProgress = (
       updater: (current: SubmissionListBatchStatus) => SubmissionListBatchStatus,
     ) => {
@@ -7612,8 +7634,8 @@ const AskCoreWorkbenchPage = memo(() => {
       action: string;
       confirmation?: boolean;
       concurrency: number;
-      paramsForId: (submissionId: number) => JsonRecord;
-      prepare?: (submissionId: number) => Promise<void>;
+      paramsForId: (id: number) => JsonRecord;
+      prepare?: (id: number) => Promise<void>;
       title: string;
     }) => {
       const targets = [...selectedIds];
@@ -7627,18 +7649,18 @@ const AskCoreWorkbenchPage = memo(() => {
         }),
       );
 
-      await runWithLimitedConcurrency(targets, concurrency, async (submissionId, index) => {
-        const label = `提交 ${submissionId}`;
+      await runWithLimitedConcurrency(targets, concurrency, async (targetId, index) => {
+        const label = `${submissionRuntimeLabel} ${targetId}`;
         updateSubmissionBatchProgress((current) => ({
           ...current,
           current: `${label} (${index + 1}/${targets.length})`,
           phase: '正在准备',
         }));
         try {
-          await prepare?.(submissionId);
+          await prepare?.(targetId);
           const result = await askCoreWorkbenchClient.invokeAction(
             action,
-            paramsForId(submissionId),
+            paramsForId(targetId),
             confirmation ? createConfirmationId() : undefined,
           );
           const finalRun = await waitForInvocation({
@@ -7693,9 +7715,9 @@ const AskCoreWorkbenchPage = memo(() => {
         action: 'submission.ocr.rerun',
         concurrency: 1,
         confirmation: true,
-        paramsForId: (submissionId) => ({ submission_id: submissionId }),
-        prepare: async (submissionId) => {
-          const payload = await askCoreWorkbenchClient.getSubmissionDetail(submissionId);
+        paramsForId: (id) => submissionRuntimeParamsForId(id),
+        prepare: async (id) => {
+          const payload = await loadSubmissionRuntimeDetail(id);
           if (!payload.files.some(isImageFile)) throw new Error('该提交没有可用于 OCR 的上传图片');
         },
         title: '批量重新 OCR 并批改',
@@ -7704,14 +7726,14 @@ const AskCoreWorkbenchPage = memo(() => {
       runSubmissionDurableBatch({
         action: 'submission.grade.run',
         concurrency: 2,
-        paramsForId: (submissionId) => ({ submission_id: submissionId }),
+        paramsForId: (id) => submissionRuntimeParamsForId(id),
         title: '批量批改/讲解',
       });
     const runSubmissionReportGenerateBatch = () =>
       runSubmissionDurableBatch({
         action: 'submission.report.generate',
         concurrency: 2,
-        paramsForId: (submissionId) => ({ force: true, submission_id: submissionId }),
+        paramsForId: (id) => submissionRuntimeParamsForId(id, { force: true }),
         title: '批量生成报告',
       });
     const runSubmissionReportDownloadBatch = async () => {
@@ -7725,24 +7747,49 @@ const AskCoreWorkbenchPage = memo(() => {
         }),
       );
       try {
-        const result = await askCoreWorkbenchClient.downloadSubmissionReportsZip(targets, {
-          onProgress: (progress) => {
-            setSubmissionListBatchStatus((current) =>
-              current
-                ? {
-                    ...current,
-                    completed: progress.phase === 'completed' ? targets.length : current.completed,
-                    phase:
-                      progress.phase === 'completed'
-                        ? '下载完成'
-                        : formatDownloadProgressLabel(progress),
-                    percent:
-                      progress.phase === 'completed' ? 100 : (progress.percent ?? current.percent),
-                  }
-                : current,
-            );
-          },
-        });
+        const result = await (isProtocolAttemptResource
+          ? askCoreWorkbenchClient.downloadAttemptReportsZip(targets, {
+              onProgress: (progress) => {
+                setSubmissionListBatchStatus((current) =>
+                  current
+                    ? {
+                        ...current,
+                        completed:
+                          progress.phase === 'completed' ? targets.length : current.completed,
+                        phase:
+                          progress.phase === 'completed'
+                            ? '下载完成'
+                            : formatDownloadProgressLabel(progress),
+                        percent:
+                          progress.phase === 'completed'
+                            ? 100
+                            : (progress.percent ?? current.percent),
+                      }
+                    : current,
+                );
+              },
+            })
+          : askCoreWorkbenchClient.downloadSubmissionReportsZip(targets, {
+              onProgress: (progress) => {
+                setSubmissionListBatchStatus((current) =>
+                  current
+                    ? {
+                        ...current,
+                        completed:
+                          progress.phase === 'completed' ? targets.length : current.completed,
+                        phase:
+                          progress.phase === 'completed'
+                            ? '下载完成'
+                            : formatDownloadProgressLabel(progress),
+                        percent:
+                          progress.phase === 'completed'
+                            ? 100
+                            : (progress.percent ?? current.percent),
+                      }
+                    : current,
+                );
+              },
+            }));
         downloadBlob(result.blob, result.filename || 'submission-reports.zip');
         setSubmissionListBatchStatus((current) =>
           current
@@ -7833,10 +7880,11 @@ const AskCoreWorkbenchPage = memo(() => {
       );
       try {
         const result = await askCoreWorkbenchClient.invokeAction('submission.report.print_batch', {
-          duplex: true,
-          media: 'iso_a4_210x297mm',
-          printer_id: printer.printer_id,
-          submission_ids: targets,
+          ...submissionRuntimeBatchParamsForIds(targets, {
+            duplex: true,
+            media: 'iso_a4_210x297mm',
+            printer_id: printer.printer_id,
+          }),
         });
         const finalRun = await waitForInvocation({
           client: askCoreWorkbenchClient,
@@ -8057,7 +8105,7 @@ const AskCoreWorkbenchPage = memo(() => {
                 </Button>
               </Popconfirm>
             ) : null}
-            {resource === 'submissions' && canRunTeacherSubmissionOcr ? (
+            {isSubmissionRuntimeResource && canRunTeacherSubmissionOcr ? (
               <>
                 <Popconfirm
                   description="会使用各提交已有图片覆盖 OCR、批改和学生归属结果；没有图片的提交会记录为失败。"
@@ -8111,7 +8159,7 @@ const AskCoreWorkbenchPage = memo(() => {
           </span>
         </div>
 
-        {resource === 'submissions' && submissionListBatchStatus ? (
+        {isSubmissionRuntimeResource && submissionListBatchStatus ? (
           <div className={styles.panel}>
             <div className={styles.actionBar} style={{ marginBottom: 8 }}>
               <Space wrap>
@@ -8409,6 +8457,10 @@ const AskCoreWorkbenchPage = memo(() => {
             detail={submissionDetail}
             lookups={lookups}
             protocolNotice={protocolNotice}
+            protocolAttemptId={
+              positiveId(detail.detail.attempt.attempt_id || detail.detail.attempt.id) ||
+              currentRoute.entityId
+            }
             onBack={backToList}
             onEdit={() => undefined}
             onReload={reloadDetail}

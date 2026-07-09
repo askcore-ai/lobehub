@@ -597,6 +597,19 @@ export class AskCoreWorkbenchApiClient {
       onProgress: options.onProgress,
     });
   }
+
+  downloadAttemptReportsZip(
+    attemptIds: number[],
+    options: { onProgress?: (progress: BlobDownloadProgress) => void } = {},
+  ) {
+    return this.requestBlob('/attempts/reports/download', {
+      body: JSON.stringify({ attempt_ids: attemptIds }),
+      fallbackName: 'submission-reports.zip',
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+      onProgress: options.onProgress,
+    });
+  }
 }
 
 export const askCoreWorkbenchClient = new AskCoreWorkbenchApiClient();
