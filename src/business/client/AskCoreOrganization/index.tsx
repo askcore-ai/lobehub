@@ -168,8 +168,10 @@ const statusLabel = (value?: string | boolean | null) => {
       no_jobs: '无待处理任务',
       not_configured: '未配置',
       not_required: '无需处理',
+      not_run: '未执行',
       ok: '正常',
       ready: '已就绪',
+      ready_for_operator_probe: '可探测',
       succeeded: '正常',
       warning: '需关注',
     }[normalized] ||
@@ -184,7 +186,10 @@ const subsystemLabel = (key: string) =>
     billing_reservations: '用量预留',
     caliper: '学习事件',
     lti_registry: '连接注册',
+    moodle_lti: 'Moodle LTI',
+    oneroster: 'OneRoster',
     school_fact_gateway: '数据访问',
+    sql_views: 'SQL 视图',
   })[key] || key;
 
 const activationActionLabel = (action?: string) =>
@@ -830,6 +835,8 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
     const [activationLoading, setActivationLoading] =
       useState<AskCoreMoodleGibbonPilotActivationAction | null>(null);
     const subsystemStatuses = Object.entries(status?.diagnostics?.subsystem_statuses || {});
+    const liveConnection = status?.live_pilot_connection;
+    const liveComponentStatuses = Object.entries(liveConnection?.components || {});
     const runbookOwners = status?.diagnostics?.runbook_owners || {};
     const safe = Boolean(status?.safe && status.redaction_passed);
     const activation = activationResult?.activation;
@@ -839,6 +846,10 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
       {
         label: '连接准备',
         value: statusLabel(status?.pilot_registry?.pilot_registry_ready),
+      },
+      {
+        label: '只读连接',
+        value: statusLabel(liveConnection?.connection_status),
       },
       {
         label: '运行状态',
@@ -976,12 +987,46 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
                     </span>
                   </div>
                   <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>连接组件</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {displayValue(liveConnection?.ready_component_count)} /{' '}
+                      {displayValue(liveConnection?.component_count)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>连接探测</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {statusLabel(liveConnection?.probe_status)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>成绩镜像</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {displayValue(liveConnection?.gradebook_mirror_rows)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
                     <span className={styles.settingsLabel}>契约</span>
                     <span style={{ fontSize: 14, color: cssVar.colorText }}>
                       {status?.frontend_contract_version || '--'}
                     </span>
                   </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>连接契约</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {liveConnection?.contract || '--'}
+                    </span>
+                  </div>
                 </div>
+                {liveComponentStatuses.length > 0 && (
+                  <Space wrap size={[8, 8]}>
+                    {liveComponentStatuses.map(([key, value]) => (
+                      <span className={styles.settingsValue} key={key}>
+                        {subsystemLabel(key)}：{statusLabel(value)}
+                      </span>
+                    ))}
+                  </Space>
+                )}
                 {subsystemStatuses.length > 0 && (
                   <Space wrap size={[8, 8]}>
                     {subsystemStatuses.map(([key]) => (

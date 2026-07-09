@@ -168,6 +168,26 @@ const integrationOperationsStatusPayload = {
     lti_registry_status: 'incomplete',
     school_fact_gateway_status: 'incomplete',
   },
+  live_pilot_connection: {
+    component_count: 4,
+    components: {
+      caliper: 'ready',
+      moodle_lti: 'ready',
+      oneroster: 'ready',
+      sql_views: 'ready',
+    },
+    connection_ready: true,
+    connection_status: 'ready',
+    contract: 'moodle_gibbon_live_pilot_connection@v1',
+    external_calls: 0,
+    gradebook_mirror_rows: 0,
+    probe_blocked_reason: 'default_read_only_mode',
+    probe_status: 'not_run',
+    ready_component_count: 4,
+    redaction_passed: true,
+    roster_projection_rows: 0,
+    school_fact_snapshot_rows: 0,
+  },
   phase: 'P115',
   pilot_registry: {
     pilot_registry_ready: false,
@@ -374,8 +394,15 @@ describe('AskCoreOrganizationRoute', () => {
     await within(panel).findByText('未就绪');
     expect(within(panel).getAllByText('需关注').length).toBeGreaterThan(0);
     expect(within(panel).getByText('integration_operations_status@v1')).toBeInTheDocument();
+    expect(within(panel).getByText('moodle_gibbon_live_pilot_connection@v1')).toBeInTheDocument();
     expect(within(panel).getByText('外部调用')).toBeInTheDocument();
     expect(within(panel).getByText('名册投影')).toBeInTheDocument();
+    expect(within(panel).getByText('只读连接')).toBeInTheDocument();
+    expect(within(panel).getByText('连接组件')).toBeInTheDocument();
+    expect(within(panel).getByText('连接探测')).toBeInTheDocument();
+    expect(within(panel).getByText('成绩镜像')).toBeInTheDocument();
+    expect(within(panel).getByText('Moodle LTI：已就绪')).toBeInTheDocument();
+    expect(within(panel).getByText('OneRoster：已就绪')).toBeInTheDocument();
     expect(within(panel).getByLabelText('激活包 JSON')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/askcore/workbench/integrations/operations/status',

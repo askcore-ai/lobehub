@@ -48,6 +48,21 @@ export interface AskCoreIntegrationOperationsStatusPayload {
   external_calls?: number;
   frontend_contract_version: 'integration_operations_status@v1';
   generated_at?: string;
+  live_pilot_connection?: {
+    component_count?: number;
+    components?: Record<string, string>;
+    connection_ready?: boolean;
+    connection_status?: string;
+    contract?: 'moodle_gibbon_live_pilot_connection@v1';
+    external_calls?: number;
+    gradebook_mirror_rows?: number;
+    probe_blocked_reason?: string;
+    probe_status?: string;
+    ready_component_count?: number;
+    redaction_passed?: boolean;
+    roster_projection_rows?: number;
+    school_fact_snapshot_rows?: number;
+  };
   operations?: Record<string, unknown>;
   phase: string;
   pilot_registry?: {
