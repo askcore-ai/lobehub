@@ -140,6 +140,49 @@ const directoryPayload = {
   ],
 };
 
+const integrationOperationsStatusPayload = {
+  diagnostics: {
+    diagnostic_count: 5,
+    overall_severity: 'warning',
+    runbook_owners: {
+      ags: 'lms_gradebook_admin',
+      billing_reservations: 'askcore_billing_admin',
+      caliper: 'school_data_admin',
+      lti_registry: 'askcore_admin',
+      school_fact_gateway: 'school_integration_admin',
+    },
+    subsystem_statuses: {
+      ags: 'no_jobs',
+      billing_reservations: 'configured',
+      caliper: 'no_jobs',
+      lti_registry: 'incomplete',
+      school_fact_gateway: 'incomplete',
+    },
+  },
+  external_calls: 0,
+  frontend_contract_version: 'integration_operations_status@v1',
+  operations: {
+    ags_status: 'no_jobs',
+    billing_reservations_status: 'configured',
+    caliper_status: 'no_jobs',
+    lti_registry_status: 'incomplete',
+    school_fact_gateway_status: 'incomplete',
+  },
+  phase: 'P115',
+  pilot_registry: {
+    pilot_registry_ready: false,
+    pilot_registry_status: 'not_configured',
+  },
+  production_preflight: {
+    preflight_required: false,
+    preflight_status: 'not_required',
+  },
+  redaction_passed: true,
+  roster_projection_rows: 0,
+  safe: true,
+  status: 'succeeded',
+};
+
 describe('AskCoreOrganizationRoute', () => {
   afterEach(() => {
     cleanup();
@@ -208,6 +251,9 @@ describe('AskCoreOrganizationRoute', () => {
             status: 200,
           });
         }
+        if (url.endsWith('/workbench/integrations/operations/status')) {
+          return new Response(JSON.stringify(integrationOperationsStatusPayload), { status: 200 });
+        }
         return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
       }),
     );
@@ -270,6 +316,65 @@ describe('AskCoreOrganizationRoute', () => {
     expect(
       within(directory).queryByRole('button', { name: /批量导入到当前节点/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it('shows integration operations status only to organization administrators', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/directory')) {
+        return new Response(JSON.stringify(directoryPayload), { status: 200 });
+      }
+      if (url.endsWith('/workbench/integrations/operations/status')) {
+        return new Response(JSON.stringify(integrationOperationsStatusPayload), { status: 200 });
+      }
+      return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    const panel = await screen.findByLabelText('集成运维状态');
+    expect(within(panel).getByText('集成运维')).toBeInTheDocument();
+    expect(within(panel).getByText('未就绪')).toBeInTheDocument();
+    expect(within(panel).getAllByText('需关注').length).toBeGreaterThan(0);
+    expect(within(panel).getByText('integration_operations_status@v1')).toBeInTheDocument();
+    expect(within(panel).getByText('外部调用')).toBeInTheDocument();
+    expect(within(panel).getByText('名册投影')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/workbench/integrations/operations/status',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+    expect(within(panel).queryByText('moodle.example.edu')).not.toBeInTheDocument();
+    expect(within(panel).queryByText('gibbon.example.edu')).not.toBeInTheDocument();
+  });
+
+  it('does not fetch or render integration operations status for ordinary members', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/directory')) {
+        return new Response(JSON.stringify(directoryPayload), { status: 200 });
+      }
+      return new Response(JSON.stringify(memberOrganizationPayload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText('组织架构工作区')).toBeInTheDocument());
+    expect(screen.queryByLabelText('集成运维状态')).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith('/workbench/integrations/operations/status'),
+      ),
+    ).toBe(false);
   });
 
   it('lets admins create and edit organization units from the organization tree', async () => {

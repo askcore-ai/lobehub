@@ -22,6 +22,7 @@ import {
   type AskCoreEducationRoleAssignment,
   type AskCoreEducationRoleAssignmentCreateInput,
   type AskCoreEducationRoleAssignmentPayload,
+  type AskCoreIntegrationOperationsStatusPayload,
   type AskCoreInviteChannel,
   type AskCoreInviteExpiry,
   type AskCoreInvitePayload,
@@ -34,6 +35,7 @@ import {
 
 const ORGANIZATION_API_BASE = '/api/askcore/organizations';
 const EDUCATION_ORG_API_BASE = '/api/askcore/workbench/organization';
+const INTEGRATION_OPERATIONS_API_PATH = '/api/askcore/workbench/integrations/operations/status';
 const WORKBENCH_UPLOAD_API_BASE = '/api/askcore/workbench/uploads';
 
 export class AskCoreOrganizationApiError extends Error {
@@ -83,6 +85,9 @@ export const bootstrapAskCoreOrganization = (inviteToken?: string) =>
 
 export const fetchAskCoreOrganizations = () =>
   requestJson<AskCoreOrganizationPayload>(ORGANIZATION_API_BASE);
+
+export const fetchAskCoreIntegrationOperationsStatus = () =>
+  requestJson<AskCoreIntegrationOperationsStatusPayload>(INTEGRATION_OPERATIONS_API_PATH);
 
 export const createAskCoreOrganization = (input: {
   contact?: string;
