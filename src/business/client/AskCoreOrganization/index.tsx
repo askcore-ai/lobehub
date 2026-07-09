@@ -41,7 +41,10 @@ import {
   toFormState,
 } from '../AskCoreWorkbench/resourceMeta';
 import { type JsonRecord, type ResourceKey } from '../AskCoreWorkbench/types';
-import { fetchAskCoreIntegrationOperationsStatus } from './api';
+import {
+  fetchAskCoreIntegrationOperationsStatus,
+  runAskCoreMoodleGibbonPilotActivation,
+} from './api';
 import {
   EducationIdentitySection,
   EducationOrgSection,
@@ -55,6 +58,8 @@ import { styles } from './styles';
 import {
   type AskCoreEducationOrgUnit,
   type AskCoreIntegrationOperationsStatusPayload,
+  type AskCoreMoodleGibbonPilotActivationAction,
+  type AskCoreMoodleGibbonPilotActivationPayload,
 } from './types';
 
 type OrganizationRosterResource = Extract<ResourceKey, 'students' | 'teachers'>;
@@ -180,6 +185,38 @@ const subsystemLabel = (key: string) =>
     caliper: '学习事件',
     lti_registry: '连接注册',
     school_fact_gateway: '数据访问',
+  })[key] || key;
+
+const activationActionLabel = (action?: string) =>
+  ({
+    apply: '应用',
+    dry_run: '试运行',
+    validate: '校验',
+  })[String(action || '')] || '--';
+
+const activationIssueLabel = (code: string) =>
+  ({
+    caliper_not_ready: '学习事件',
+    configuration_not_ready: '配置',
+    data_access_not_ready: '数据访问',
+    deployment_not_ready: '部署',
+    oneroster_not_ready: '名册协议',
+    platform_not_ready: '平台',
+    public_jwk_not_ready: '公钥',
+    security_ack_not_ready: '安全确认',
+    target_not_ready: '目标系统',
+    tool_key_not_ready: '工具密钥',
+    unsafe_payload: '不安全内容',
+  })[code] || code;
+
+const operationCountLabel = (key: string) =>
+  ({
+    caliper_connections: '学习事件',
+    data_sources: '数据源',
+    deployments: '部署',
+    oneroster_connections: '名册连接',
+    platforms: '平台',
+    tool_keys: '工具密钥',
   })[key] || key;
 
 const summarizeOperations = (status?: AskCoreIntegrationOperationsStatusPayload | null) => {
@@ -779,15 +816,25 @@ OrganizationRosterSection.displayName = 'OrganizationRosterSection';
 interface IntegrationOperationsPanelProps {
   error: string | null;
   loading: boolean;
+  onActivationStatus: (status: AskCoreIntegrationOperationsStatusPayload) => void;
   onRefresh: () => void;
   status: AskCoreIntegrationOperationsStatusPayload | null;
 }
 
 const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
-  ({ error, loading, status, onRefresh }) => {
+  ({ error, loading, status, onActivationStatus, onRefresh }) => {
+    const [bundleText, setBundleText] = useState('{}');
+    const [activationError, setActivationError] = useState<string | null>(null);
+    const [activationResult, setActivationResult] =
+      useState<AskCoreMoodleGibbonPilotActivationPayload | null>(null);
+    const [activationLoading, setActivationLoading] =
+      useState<AskCoreMoodleGibbonPilotActivationAction | null>(null);
     const subsystemStatuses = Object.entries(status?.diagnostics?.subsystem_statuses || {});
     const runbookOwners = status?.diagnostics?.runbook_owners || {};
     const safe = Boolean(status?.safe && status.redaction_passed);
+    const activation = activationResult?.activation;
+    const operationCounts = Object.entries(activation?.operation_counts || {});
+    const issueCodes = activation?.validation_issue_codes || [];
     const summaryItems = [
       {
         label: '连接准备',
@@ -810,6 +857,33 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
         value: safe ? '已确认' : status ? '需复核' : '--',
       },
     ];
+
+    const runActivation = async (action: AskCoreMoodleGibbonPilotActivationAction) => {
+      let bundle: Record<string, unknown>;
+      try {
+        const parsed = JSON.parse(bundleText) as unknown;
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          throw new Error('激活包必须是 JSON 对象');
+        }
+        bundle = parsed as Record<string, unknown>;
+      } catch (reason) {
+        setActivationError(reason instanceof Error ? reason.message : 'JSON 格式错误');
+        return;
+      }
+
+      setActivationLoading(action);
+      setActivationError(null);
+      try {
+        const result = await runAskCoreMoodleGibbonPilotActivation({ action, bundle });
+        setActivationResult(result);
+        if (result.operations_status) onActivationStatus(result.operations_status);
+        message.success(`${activationActionLabel(action)}完成`);
+      } catch (reason) {
+        setActivationError(reason instanceof Error ? reason.message : '操作失败');
+      } finally {
+        setActivationLoading(null);
+      }
+    };
 
     return (
       <div className={styles.staggerItem} style={{ animationDelay: '0.06s' }}>
@@ -917,6 +991,114 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
                     ))}
                   </Space>
                 )}
+                <div className={styles.settingsRow}>
+                  <span className={styles.settingsLabel}>激活包 JSON</span>
+                  <Input.TextArea
+                    aria-label="激活包 JSON"
+                    autoSize={{ maxRows: 12, minRows: 6 }}
+                    value={bundleText}
+                    onChange={(event) => setBundleText(event.target.value)}
+                  />
+                </div>
+                <Space wrap>
+                  <Button
+                    icon={<Check size={14} />}
+                    loading={activationLoading === 'validate'}
+                    size="small"
+                    onClick={() => void runActivation('validate')}
+                  >
+                    校验
+                  </Button>
+                  <Button
+                    icon={<RefreshCw size={14} />}
+                    loading={activationLoading === 'dry_run'}
+                    size="small"
+                    onClick={() => void runActivation('dry_run')}
+                  >
+                    试运行
+                  </Button>
+                  <Popconfirm
+                    okText="应用"
+                    title="应用激活包"
+                    onConfirm={() => void runActivation('apply')}
+                  >
+                    <Button
+                      icon={<Save size={14} />}
+                      loading={activationLoading === 'apply'}
+                      size="small"
+                      type="primary"
+                    >
+                      应用
+                    </Button>
+                  </Popconfirm>
+                </Space>
+                {activationError && <Alert showIcon title={activationError} type="warning" />}
+                {activationResult && (
+                  <div aria-label="激活结果" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gap: 10,
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                      }}
+                    >
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>动作</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {activationActionLabel(activationResult.action)}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>激活状态</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {statusLabel(activation?.activation_status || activation?.status)}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>注册状态</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {statusLabel(activation?.pilot_registry_status)}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>问题</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {displayValue(activation?.validation_issue_count)}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>安全输出</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {activationResult.redaction_passed ? '已确认' : '需复核'}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>契约</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {activationResult.frontend_contract_version}
+                        </span>
+                      </div>
+                    </div>
+                    {issueCodes.length > 0 && (
+                      <Space wrap size={[8, 8]}>
+                        {issueCodes.map((code) => (
+                          <span className={styles.settingsValue} key={code}>
+                            {activationIssueLabel(code)}
+                          </span>
+                        ))}
+                      </Space>
+                    )}
+                    {operationCounts.length > 0 && (
+                      <Space wrap size={[8, 8]}>
+                        {operationCounts.map(([key, value]) => (
+                          <span className={styles.settingsValue} key={key}>
+                            {operationCountLabel(key)}：{value}
+                          </span>
+                        ))}
+                      </Space>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -969,6 +1151,11 @@ export const AskCoreOrganizationRoute = memo(() => {
       setIntegrationStatusLoading(false);
     }
   }, [canViewIntegrationOperations]);
+
+  const handleActivationStatus = useCallback((payload: AskCoreIntegrationOperationsStatusPayload) => {
+    setIntegrationStatus(payload);
+    setIntegrationStatusError(null);
+  }, []);
 
   useEffect(() => {
     if (!canViewIntegrationOperations) {
@@ -1122,6 +1309,7 @@ export const AskCoreOrganizationRoute = memo(() => {
                 error={integrationStatusError}
                 loading={integrationStatusLoading}
                 status={integrationStatus}
+                onActivationStatus={handleActivationStatus}
                 onRefresh={() => void loadIntegrationStatus()}
               />
             )}

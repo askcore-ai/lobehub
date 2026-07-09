@@ -74,6 +74,34 @@ export interface AskCoreIntegrationOperationsStatusPayload {
   status: string;
 }
 
+export type AskCoreMoodleGibbonPilotActivationAction = 'validate' | 'dry_run' | 'apply';
+
+export interface AskCoreMoodleGibbonPilotActivationInput {
+  action: AskCoreMoodleGibbonPilotActivationAction;
+  bundle: Record<string, unknown>;
+}
+
+export interface AskCoreMoodleGibbonPilotActivationPayload {
+  action: AskCoreMoodleGibbonPilotActivationAction;
+  activation?: {
+    activation_ready?: boolean;
+    activation_status?: string;
+    operation_counts?: Record<string, number>;
+    pilot_registry_ready?: boolean;
+    pilot_registry_status?: string;
+    ready_check_count?: number;
+    redaction_passed?: boolean;
+    status?: string;
+    validation_issue_codes?: string[];
+    validation_issue_count?: number;
+  };
+  external_calls?: number;
+  frontend_contract_version: 'moodle_gibbon_pilot_activation@v1';
+  operations_status?: AskCoreIntegrationOperationsStatusPayload;
+  redaction_passed?: boolean;
+  roster_projection_rows?: number;
+}
+
 export interface AskCoreInvitePayload {
   channel: AskCoreInviteChannel;
   directoryInvitationToken: string;

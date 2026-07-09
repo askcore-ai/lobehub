@@ -258,6 +258,32 @@ const integrationOperationsStatusPayload = {
   status: 'succeeded',
 };
 
+const activationConsolePayload = {
+  action: 'dry_run',
+  activation: {
+    activation_ready: true,
+    activation_status: 'ready',
+    operation_counts: {
+      data_sources: 2,
+      deployments: 1,
+      platforms: 1,
+      tool_keys: 1,
+    },
+    pilot_registry_ready: false,
+    pilot_registry_status: 'dry_run_ready',
+    ready_check_count: 30,
+    redaction_passed: true,
+    status: 'succeeded',
+    validation_issue_codes: [],
+    validation_issue_count: 0,
+  },
+  external_calls: 0,
+  frontend_contract_version: 'moodle_gibbon_pilot_activation@v1',
+  operations_status: integrationOperationsStatusPayload,
+  redaction_passed: true,
+  roster_projection_rows: 0,
+};
+
 describe('AskCoreOrganizationRoute', () => {
   afterEach(() => {
     cleanup();
@@ -554,13 +580,19 @@ describe('AskCoreOrganizationRoute', () => {
   });
 
   it('shows integration operations status only to organization administrators', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith('/workbench/organization/directory')) {
         return new Response(JSON.stringify(directoryPayload), { status: 200 });
       }
       if (url.endsWith('/workbench/integrations/operations/status')) {
         return new Response(JSON.stringify(integrationOperationsStatusPayload), { status: 200 });
+      }
+      if (
+        url.endsWith('/workbench/integrations/pilot/moodle-gibbon/activation') &&
+        init?.method === 'POST'
+      ) {
+        return new Response(JSON.stringify(activationConsolePayload), { status: 200 });
       }
       return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
     });
@@ -574,17 +606,39 @@ describe('AskCoreOrganizationRoute', () => {
 
     const panel = await screen.findByLabelText('集成运维状态');
     expect(within(panel).getByText('集成运维')).toBeInTheDocument();
-    expect(within(panel).getByText('未就绪')).toBeInTheDocument();
+    await within(panel).findByText('未就绪');
     expect(within(panel).getAllByText('需关注').length).toBeGreaterThan(0);
     expect(within(panel).getByText('integration_operations_status@v1')).toBeInTheDocument();
     expect(within(panel).getByText('外部调用')).toBeInTheDocument();
     expect(within(panel).getByText('名册投影')).toBeInTheDocument();
+    expect(within(panel).getByLabelText('激活包 JSON')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/askcore/workbench/integrations/operations/status',
       expect.objectContaining({ credentials: 'include' }),
     );
     expect(within(panel).queryByText('moodle.example.edu')).not.toBeInTheDocument();
     expect(within(panel).queryByText('gibbon.example.edu')).not.toBeInTheDocument();
+
+    const activationBundle = { phase: 'P113', target_lms: 'moodle', target_sis: 'gibbon' };
+    fireEvent.change(within(panel).getByLabelText('激活包 JSON'), {
+      target: { value: JSON.stringify(activationBundle) },
+    });
+    fireEvent.click(within(panel).getByRole('button', { name: /试运行/ }));
+
+    const result = await screen.findByLabelText('激活结果');
+    expect(within(result).getByText('moodle_gibbon_pilot_activation@v1')).toBeInTheDocument();
+    expect(within(result).getByText('试运行')).toBeInTheDocument();
+    expect(within(result).getByText('数据源：2')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/workbench/integrations/pilot/moodle-gibbon/activation',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'dry_run', bundle: activationBundle }),
+        credentials: 'include',
+        method: 'POST',
+      }),
+    );
+    expect(within(result).queryByText('secret-ref')).not.toBeInTheDocument();
+    expect(within(result).queryByText('endpoint_url')).not.toBeInTheDocument();
   });
 
   it('does not fetch or render integration operations status for ordinary members', async () => {
@@ -608,6 +662,11 @@ describe('AskCoreOrganizationRoute', () => {
     expect(
       fetchMock.mock.calls.some(([input]) =>
         String(input).endsWith('/workbench/integrations/operations/status'),
+      ),
+    ).toBe(false);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith('/workbench/integrations/pilot/moodle-gibbon/activation'),
       ),
     ).toBe(false);
   });
