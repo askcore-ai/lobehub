@@ -445,6 +445,48 @@ describe('AskCore workbench proxy route', () => {
     expect(payload.organization_role).toBe('owner');
   });
 
+  it('derives organization role from nested Better Auth member user payloads', async () => {
+    vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'test-lobehub-workbench');
+    vi.stubEnv('AITUTOR_API_BASE_URL', 'http://api:8000');
+    authApi.getSession.mockResolvedValue({
+      session: { activeOrganizationId: 'org-1' },
+      user: { email: 'admin@askcore.cn', id: 'user-1' },
+    } as any);
+    authApi.getFullOrganization.mockResolvedValue({
+      id: 'org-1',
+      members: [{ role: 'admin', user: { id: 'user-1' } }],
+      name: 'AskCore School',
+    });
+    const { GET } = await loadRoute();
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await GET(
+      new NextRequest('https://askcore.cn/api/askcore/workbench/dashboard'),
+      routeContext(),
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    const assertion = (init.headers as Headers).get('X-AskCore-Billing-Assertion');
+    const { payload } = await jwtVerify(
+      assertion!,
+      new TextEncoder().encode('test-lobehub-workbench'),
+      {
+        audience: 'aitutor-billing',
+        issuer: 'askcore-lobehub',
+      },
+    );
+    expect(payload.active_org_id).toBe('org-1');
+    expect(payload.organization_role).toBe('admin');
+  });
+
   it('bootstraps an organization for device agent link callbacks without an active organization', async () => {
     vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'test-lobehub-workbench');
     vi.stubEnv('AITUTOR_API_BASE_URL', 'http://api:8000');
