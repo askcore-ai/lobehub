@@ -51,7 +51,7 @@ export const useCategory = (): CategoryGroup[] => {
   const navigate = useNavigate();
   const { t } = useTranslation(['setting', 'auth', 'subscription']);
   const { hideDocs, showApiKeyManage, showProvider } = useServerConfigStore(featureFlagsSelectors);
-  const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
+  const enableAskCoreBilling = useServerConfigStore(serverConfigSelectors.enableAskCoreBilling);
   const isDevMode = useUserStore((s) => userGeneralSettingsSelectors.config(s).isDevMode);
 
   return useMemo(() => {
@@ -73,7 +73,7 @@ export const useCategory = (): CategoryGroup[] => {
       }),
     ];
 
-    const subscription: CategoryItem[] = enableBusinessFeatures
+    const subscription: CategoryItem[] = enableAskCoreBilling
       ? [
           makeItem({ icon: Map, key: SettingsTabs.Plans, label: t('subscription:tab.plans') }),
           makeItem({
@@ -138,5 +138,5 @@ export const useCategory = (): CategoryGroup[] => {
       { items: agent, key: SettingsGroupKey.Agent, title: t('setting:group.aiConfig') },
       { items: system, key: SettingsGroupKey.System, title: t('setting:group.system') },
     ].filter((group) => group.items.length > 0);
-  }, [t, enableBusinessFeatures, hideDocs, showApiKeyManage, showProvider, isDevMode, navigate]);
+  }, [t, enableAskCoreBilling, hideDocs, showApiKeyManage, showProvider, isDevMode, navigate]);
 };

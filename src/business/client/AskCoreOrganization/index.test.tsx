@@ -104,7 +104,51 @@ const directoryPayload = {
       registration_status: 'registered',
     },
   ],
-  role_assignments: [
+  person_profiles: [
+    {
+      account: null,
+      education: {
+        roles: [
+          {
+            authorization_id: 900,
+            org_unit_id: 3,
+            role: 'teacher',
+            subject_id: null,
+          },
+          {
+            authorization_id: 901,
+            org_unit_id: 2,
+            role: 'subject_lead',
+            subject_id: 1,
+          },
+        ],
+        status: 'assigned',
+      },
+      invitation: { pending_directed_count: 1, pending_open_count: 0, statuses: ['pending'] },
+      person: {
+        display_name: '李老师',
+        id: 101,
+        lifecycle_status: 'active',
+        org_id: 'org-1',
+        primary_org_unit_id: 2,
+        source: 'sample',
+      },
+    },
+    {
+      account: { user_id: 'user-student' },
+      education: { roles: [], status: 'unassigned' },
+      invitation: { pending_directed_count: 0, pending_open_count: 0, statuses: [] },
+      person: {
+        display_name: '王同学',
+        id: 102,
+        lifecycle_status: 'active',
+        org_id: 'org-1',
+        primary_org_unit_id: 3,
+        source: 'sample',
+      },
+    },
+  ],
+  authorizations: [
     {
       id: 900,
       org_id: 'org-1',
@@ -112,21 +156,26 @@ const directoryPayload = {
       person_id: 101,
       role: 'teacher',
       subject_user_id: 'user:directory-person-101',
-      teacher_id: 301,
+    },
+    {
+      id: 901,
+      org_id: 'org-1',
+      org_unit_id: 2,
+      person_id: 101,
+      role: 'subject_lead',
+      subject_id: 1,
+      subject_user_id: 'user:directory-person-101',
     },
   ],
-  roster_links: [
-    { id: 701, org_id: 'org-1', person_id: 101, roster_id: 301, roster_kind: 'teacher' },
-    { id: 702, org_id: 'org-1', person_id: 102, roster_id: 201, roster_kind: 'student' },
-  ],
   units: [
-    { id: 1, name: 'Seed School', org_id: 'org-1', sort_order: 0, unit_type: 'school' },
+    { id: 1, name: 'Seed School', org_id: 'org-1', sort_order: 0, unit_type: 'organization' },
     {
       id: 2,
       name: '数学组',
       org_id: 'org-1',
       parent_id: 1,
       sort_order: 0,
+      subject_id: 1,
       unit_type: 'department',
     },
     {
@@ -373,7 +422,7 @@ describe('AskCoreOrganizationRoute', () => {
           });
         }
         if (url.includes('/workbench/organization/roles')) {
-          return new Response(JSON.stringify({ items: directoryPayload.role_assignments }), {
+          return new Response(JSON.stringify({ items: directoryPayload.authorizations }), {
             status: 200,
           });
         }
@@ -409,6 +458,7 @@ describe('AskCoreOrganizationRoute', () => {
     expect(within(directory).getAllByText('李老师').length).toBeGreaterThan(0);
     expect(within(directory).getAllByText('邀请中').length).toBeGreaterThan(0);
     expect(within(directory).getAllByText(/教师/).length).toBeGreaterThan(0);
+    expect(within(directory).getAllByText(/学科组长/).length).toBeGreaterThan(0);
     expect(within(directory).getByText('账号绑定')).toBeInTheDocument();
     expect(within(directory).getByText('定向邀请')).toBeInTheDocument();
     expect(within(directory).queryByPlaceholderText('不定向邀请位置')).not.toBeInTheDocument();
@@ -427,6 +477,10 @@ describe('AskCoreOrganizationRoute', () => {
       'aria-current',
       'true',
     );
+
+    fireEvent.click(within(orgTree).getByRole('button', { name: /Seed School/ }));
+    expect(within(directory).queryByRole('button', { name: '编辑节点' })).not.toBeInTheDocument();
+    expect(within(directory).queryByRole('button', { name: '删除节点' })).not.toBeInTheDocument();
 
     fireEvent.click(within(orgTree).getByRole('button', { name: /高一 1 班/ }));
     await waitFor(() => expect(within(directory).getAllByText('王同学').length).toBeGreaterThan(0));
@@ -531,7 +585,9 @@ describe('AskCoreOrganizationRoute', () => {
 
     fireEvent.click(within(panel).getByRole('button', { name: /验收试点/ }));
     const acceptanceResult = await screen.findByLabelText('准入结果');
-    expect(within(acceptanceResult).getByText('moodle_gibbon_live_pilot_acceptance@v1')).toBeInTheDocument();
+    expect(
+      within(acceptanceResult).getByText('moodle_gibbon_live_pilot_acceptance@v1'),
+    ).toBeInTheDocument();
     expect(within(acceptanceResult).getByText('验收试点')).toBeInTheDocument();
     expect(within(acceptanceResult).getByText('已阻止')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
@@ -660,7 +716,7 @@ describe('AskCoreOrganizationRoute', () => {
     fireEvent.mouseDown(within(createPanel as HTMLElement).getByText('选择节点类型'));
     fireEvent.click(await screen.findByTitle('部门'));
     fireEvent.mouseDown(within(createPanel as HTMLElement).getByText('选择上级节点'));
-    fireEvent.click(await screen.findByTitle('Seed School / 学校'));
+    fireEvent.click(await screen.findByTitle('Seed School / 组织'));
     fireEvent.click(within(createPanel as HTMLElement).getByRole('button', { name: '确认新建' }));
 
     await waitFor(() =>
@@ -853,8 +909,8 @@ describe('AskCoreOrganizationRoute', () => {
             id: 31,
             org_id: 'org-1',
             requested_by_user_id: 'user-member',
-            roster_id: 301,
-            roster_kind: 'teacher',
+            roster_id: 101,
+            roster_kind: 'member',
             status: 'pending',
           }),
           { status: 200 },
@@ -875,11 +931,11 @@ describe('AskCoreOrganizationRoute', () => {
       expect(within(drawer).getAllByText('提交身份申请').length).toBeGreaterThan(0),
     );
     expect(screen.getByRole('button', { name: /提交身份申请/ })).toBeInTheDocument();
-    expect(within(drawer).getByPlaceholderText('输入姓名搜索教师或学生名册')).toBeInTheDocument();
+    expect(within(drawer).getByPlaceholderText('输入姓名搜索组织人员档案')).toBeInTheDocument();
     expect(within(drawer).queryByText(/审批/)).not.toBeInTheDocument();
     expect(within(drawer).queryByText('李老师')).not.toBeInTheDocument();
-    expect(within(drawer).getByText('请输入姓名搜索可申请的教师或学生名册')).toBeInTheDocument();
-    fireEvent.change(within(drawer).getByPlaceholderText('输入姓名搜索教师或学生名册'), {
+    expect(within(drawer).getByText('请输入姓名搜索可申请的组织人员档案')).toBeInTheDocument();
+    fireEvent.change(within(drawer).getByPlaceholderText('输入姓名搜索组织人员档案'), {
       target: { value: '李' },
     });
     await waitFor(() => expect(within(drawer).getByText('李老师')).toBeInTheDocument());
@@ -894,7 +950,7 @@ describe('AskCoreOrganizationRoute', () => {
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/askcore/workbench/organization/identity-claims',
         expect.objectContaining({
-          body: JSON.stringify({ roster_id: 301, roster_kind: 'teacher' }),
+          body: JSON.stringify({ roster_id: 101, roster_kind: 'member' }),
           method: 'POST',
         }),
       ),
@@ -929,7 +985,7 @@ describe('AskCoreOrganizationRoute', () => {
     });
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
-    expect(screen.getByPlaceholderText('输入姓名搜索教师或学生名册')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('输入姓名搜索组织人员档案')).toBeInTheDocument();
   });
 
   it('opens the application form by default for organization admins and keeps approval reachable', async () => {
@@ -950,8 +1006,8 @@ describe('AskCoreOrganizationRoute', () => {
                 id: 41,
                 org_id: 'org-1',
                 requested_by_user_id: 'other-user',
-                roster_id: 301,
-                roster_kind: 'teacher',
+                roster_id: 101,
+                roster_kind: 'member',
                 status: 'pending',
               },
             ],
@@ -974,7 +1030,7 @@ describe('AskCoreOrganizationRoute', () => {
     await waitFor(() => expect(within(drawer).getByText('提交身份申请')).toBeInTheDocument());
     expect(within(drawer).getByText('提交申请')).toBeInTheDocument();
     expect(within(drawer).getByText('身份审批')).toBeInTheDocument();
-    fireEvent.change(within(drawer).getByPlaceholderText('输入姓名搜索教师或学生名册'), {
+    fireEvent.change(within(drawer).getByPlaceholderText('输入姓名搜索组织人员档案'), {
       target: { value: '李' },
     });
     expect(within(drawer).getByText('李老师')).toBeInTheDocument();

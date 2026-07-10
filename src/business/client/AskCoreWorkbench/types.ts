@@ -72,10 +72,20 @@ export type AskCoreEducationPersona = {
 };
 
 export type AskCoreEducationWorkbenchMode =
-  | 'identity_required'
-  | 'student_managed'
-  | 'student_restricted'
-  | 'teacher';
+  'identity_required' | 'student_managed' | 'student_restricted' | 'teacher';
+
+export type AskCoreTeachingRuntime = {
+  app_env: string;
+  coherent: boolean;
+  forbid_legacy_school_writes: boolean;
+  production_preflight_required: boolean;
+  production_preflight_status: string;
+  protocol_enabled: boolean;
+  protocol_mode: string;
+  reason: string;
+  require_lms_sis_in_production: boolean;
+  teaching_available: boolean;
+};
 
 export type AskCoreEducationProfile = {
   active_persona?: AskCoreEducationPersona | null;
@@ -83,6 +93,7 @@ export type AskCoreEducationProfile = {
   default_persona?: AskCoreEducationPersona | null;
   education_identities: AskCoreEducationPersona[];
   org_composition: Record<string, number>;
+  teaching_runtime: AskCoreTeachingRuntime;
   workbench_mode: AskCoreEducationWorkbenchMode;
 };
 

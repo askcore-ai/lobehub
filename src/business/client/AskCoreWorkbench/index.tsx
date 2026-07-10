@@ -5504,7 +5504,10 @@ const GenericDetailView = ({
             <Button className={styles.secondary} icon={<Pencil size={14} />} onClick={onEdit}>
               编辑
             </Button>
-            <Popconfirm title={`删除该${RESOURCE_LABELS[resource].singular}？`} onConfirm={onDelete}>
+            <Popconfirm
+              title={`删除该${RESOURCE_LABELS[resource].singular}？`}
+              onConfirm={onDelete}
+            >
               <Button danger icon={<Trash2 size={14} />}>
                 删除
               </Button>
@@ -7057,15 +7060,17 @@ const AskCoreWorkbenchPage = memo(() => {
   const listVersionRef = useRef(0);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
   const capabilities = educationProfile?.capabilities || null;
+  const teachingRuntime = educationProfile?.teaching_runtime;
+  const teachingAvailable = teachingRuntime?.teaching_available === true;
   const workbenchMode = educationProfile?.workbench_mode;
   const isRestrictedStudent = workbenchMode === 'student_restricted';
   const isIdentityRequired = workbenchMode === 'identity_required';
-  const canCreateAssignment = capabilities ? Boolean(capabilities.can_create_assignment) : true;
-  const canCreateQuestion = capabilities ? Boolean(capabilities.can_create_question) : true;
+  const canCreateAssignment = teachingAvailable && Boolean(capabilities?.can_create_assignment);
+  const canCreateQuestion = teachingAvailable && Boolean(capabilities?.can_create_question);
   const canRunTeacherSubmissionOcr = capabilities
-    ? Boolean(capabilities.can_run_teacher_submission_ocr)
-    : true;
-  const canSubmitOwnWork = capabilities ? Boolean(capabilities.can_submit_own_work) : false;
+    ? teachingAvailable && Boolean(capabilities.can_run_teacher_submission_ocr)
+    : false;
+  const canSubmitOwnWork = teachingAvailable && Boolean(capabilities?.can_submit_own_work);
   const activeOrganization = organizationState?.organization || null;
   const organizationRequired = !organizationLoading && !activeOrganization?.organization_id;
 
@@ -7557,8 +7562,7 @@ const AskCoreWorkbenchPage = memo(() => {
 
   const renderResourceList = (resource: ResourceKey) => {
     const resourceEditable = isEditableResource(resource);
-    const config =
-      availableTabs.find((tab) => tab.resource === resource) ||
+    const config = availableTabs.find((tab) => tab.resource === resource) ||
       ASKCORE_WORKBENCH_TABS.find((tab) => tab.resource === resource) ||
       LEGACY_RESOURCE_LIST_CONFIGS[resource] || {
         label: RESOURCE_LABELS[resource].label,
@@ -8361,7 +8365,10 @@ const AskCoreWorkbenchPage = memo(() => {
       {mode === 'edit' && detailLoading ? (
         <Skeleton active />
       ) : !isEditableResource(resource) ? (
-        <Empty description="该协议资源为只读，不能新建或编辑" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <Empty
+          description="该协议资源为只读，不能新建或编辑"
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+        />
       ) : (
         <ResourceForm
           initial={mode === 'edit' ? detail?.item || null : null}
@@ -8710,6 +8717,21 @@ const AskCoreWorkbenchPage = memo(() => {
               >
                 重试
               </Button>
+            }
+          />
+        ) : null}
+
+        {!educationProfileLoading && educationProfile && !teachingAvailable ? (
+          <Alert
+            showIcon
+            className={styles.error}
+            description="当前仅可查看已有教学记录。创建、提交和编辑将在学校教学系统连接完成后开放。"
+            message="学校教学连接尚未就绪"
+            type="warning"
+            action={
+              <Link to="/organization">
+                <Button size="small">查看连接状态</Button>
+              </Link>
             }
           />
         ) : null}

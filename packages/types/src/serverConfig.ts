@@ -69,6 +69,7 @@ export interface GlobalServerConfig {
   compliance?: GlobalComplianceConfig;
   defaultAgent?: PartialDeep<UserDefaultAgent>;
   disableEmailPassword?: boolean;
+  enableAskCoreBilling?: boolean;
   enableBusinessFeatures?: boolean;
   /**
    * @deprecated

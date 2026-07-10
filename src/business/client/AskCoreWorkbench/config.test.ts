@@ -27,6 +27,18 @@ describe('AskCoreWorkbench config', () => {
       default_persona: null,
       education_identities: [],
       org_composition: { student_count: 1, teacher_count: 1 },
+      teaching_runtime: {
+        app_env: 'production',
+        coherent: true,
+        forbid_legacy_school_writes: true,
+        production_preflight_required: true,
+        production_preflight_status: 'passed',
+        protocol_enabled: true,
+        protocol_mode: 'protocol',
+        reason: 'ready',
+        require_lms_sis_in_production: true,
+        teaching_available: true,
+      },
       workbench_mode: 'student_restricted',
     });
 

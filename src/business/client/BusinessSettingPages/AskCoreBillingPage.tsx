@@ -526,6 +526,7 @@ const enCopy = {
     messages: 'messages',
     month: 'month',
     oneTime: 'one time',
+    perCredit: '/ Credit',
     perMillionCredits: '/ 1M Credits',
   },
   usage: {
@@ -724,6 +725,7 @@ const zhCopy: typeof enCopy = {
     messages: '条消息',
     month: '月',
     oneTime: '一次性',
+    perCredit: '/ 积分',
     perMillionCredits: '/ 100 万积分',
   },
   usage: {
@@ -1083,13 +1085,7 @@ export const isWechatQrCheckout = (checkout?: CheckoutResponse | null) =>
   checkout.checkout_type === 'qrcode' &&
   Boolean(checkout.code_url);
 
-const terminalPaymentStatuses = new Set([
-  'closed',
-  'failed',
-  'refunded',
-  'shadow',
-  'succeeded',
-]);
+const terminalPaymentStatuses = new Set(['closed', 'failed', 'refunded', 'shadow', 'succeeded']);
 
 const isTerminalPaymentStatus = (status: string | null | undefined) =>
   terminalPaymentStatuses.has(String(status || '').toLowerCase());
@@ -1199,10 +1195,7 @@ const WechatCheckoutModal = memo<{
         if (closed) return;
         setPollError(null);
         setStatus(next.status);
-        if (
-          next.status === 'succeeded' &&
-          reportedSuccessRef.current !== checkout.checkout_id
-        ) {
+        if (next.status === 'succeeded' && reportedSuccessRef.current !== checkout.checkout_id) {
           reportedSuccessRef.current = checkout.checkout_id;
           message.success(copy.payment.succeeded);
           onSuccess();
@@ -1239,7 +1232,10 @@ const WechatCheckoutModal = memo<{
       open={open}
       title={copy.payment.title}
       footer={
-        <Button type={isTerminalPaymentStatus(status) ? 'primary' : 'default'} onClick={handleClose}>
+        <Button
+          type={isTerminalPaymentStatus(status) ? 'primary' : 'default'}
+          onClick={handleClose}
+        >
           {copy.payment.close}
         </Button>
       }
@@ -1258,7 +1254,9 @@ const WechatCheckoutModal = memo<{
             {copy.payment.expiresAt}: {formatDate(checkout.expires_at)}
           </Text>
         )}
-        {pollError && <Alert showIcon message={pollError || copy.payment.pollFailed} type="warning" />}
+        {pollError && (
+          <Alert showIcon message={pollError || copy.payment.pollFailed} type="warning" />
+        )}
       </Flexbox>
     </Modal>
   );
@@ -1332,13 +1330,13 @@ const PaymentReturnAlert = memo<{
   return (
     <Alert
       showIcon
+      message={copy.payment.returnTitle}
+      type={paymentAlertType(checkout?.status)}
       description={
         checkout?.amount?.display
           ? `${paymentStatusText(checkout.status, copy)} · ${checkout.amount.display}`
           : paymentStatusText(checkout?.status, copy)
       }
-      message={copy.payment.returnTitle}
-      type={paymentAlertType(checkout?.status)}
     />
   );
 });
@@ -1375,6 +1373,17 @@ const moneyValue = (
   cnyValue: number | null | undefined,
   isChinese: boolean,
 ) => Number((isChinese ? cnyValue : usdValue) ?? usdValue ?? cnyValue ?? 0);
+
+export const formatPlanTopupUnitPrice = (
+  plan: Pick<AskCoreBillingPlan, 'topup_unit_price_cny' | 'topup_unit_price_usd'>,
+  isChinese: boolean,
+  copy: BillingCopy,
+) => {
+  const unitPrice = moneyValue(plan.topup_unit_price_usd, plan.topup_unit_price_cny, isChinese);
+  return unitPrice
+    ? `${createMoneyFormatter(isChinese).format(unitPrice)} ${copy.units.perCredit}`
+    : copy.credits.unitPriceFallback;
+};
 
 const planPrice = (
   plan: AskCoreBillingPlan,
@@ -1882,14 +1891,7 @@ const PlansView = memo<{
                         if (row.label === 'Support Channels')
                           return localPlanSupport(plan, isChinese, copy);
                         if (row.label === 'Top up Credits') {
-                          const unitPrice = moneyValue(
-                            plan.topup_unit_price_usd,
-                            plan.topup_unit_price_cny,
-                            isChinese,
-                          );
-                          return unitPrice
-                            ? `${moneyFormatter.format(unitPrice)} ${copy.units.perMillionCredits}`
-                            : copy.credits.unitPriceFallback;
+                          return formatPlanTopupUnitPrice(plan, isChinese, copy);
                         }
                         const value = row.values[plan.id];
                         if (typeof value === 'number') {

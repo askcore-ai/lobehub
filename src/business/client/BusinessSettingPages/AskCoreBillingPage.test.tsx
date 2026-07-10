@@ -5,6 +5,7 @@ import {
   buildAskCoreBillingEmbedUrl,
   formatBillingInterval,
   formatBillingStatus,
+  formatPlanTopupUnitPrice,
   getBillingCopy,
   isAllowedBillingExternalUrl,
   isAskCoreBillingPageKey,
@@ -76,7 +77,9 @@ describe('AskCore billing embed helpers', () => {
     expect(payload.plans.map((plan) => plan.id)).toEqual(['hobby']);
     expect(payload.creditPacks).toHaveLength(1);
     expect(payload.billingPeriods).toEqual([{ id: 'yearly', label: 'Yearly' }]);
-    expect(resolveDefaultProvider({ alipay: { enabled: true }, stripe: { enabled: false } })).toBeNull();
+    expect(
+      resolveDefaultProvider({ alipay: { enabled: true }, stripe: { enabled: false } }),
+    ).toBeNull();
     expect(
       resolveDefaultProvider(
         { alipay: { enabled: true }, stripe: { enabled: true }, wechat: { enabled: true } },
@@ -106,6 +109,16 @@ describe('AskCore billing embed helpers', () => {
       ),
     ).toBe('stripe');
     expect(resolveDefaultProvider({ wechat: { enabled: true } }, { isChinese: false })).toBeNull();
+  });
+
+  it('labels plan top-up prices per credit rather than per million credits', () => {
+    expect(
+      formatPlanTopupUnitPrice(
+        { topup_unit_price_cny: 0.09, topup_unit_price_usd: 0.01 },
+        true,
+        getBillingCopy('zh-CN'),
+      ),
+    ).toBe('¥0.09 / 积分');
   });
 
   it('detects WeChat Native QR checkout responses', () => {

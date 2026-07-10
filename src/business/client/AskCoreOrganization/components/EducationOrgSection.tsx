@@ -20,6 +20,7 @@ import { type JsonRecord } from '../../AskCoreWorkbench/types';
 import { styles } from '../styles';
 import {
   type AskCoreEducationIdentityClaim,
+  type AskCoreEducationIdentityClaimRosterKind,
   type AskCoreEducationIdentityRosterKind,
   type AskCoreEducationOrgUnit,
   type AskCoreEducationOrgUnitPayload,
@@ -34,6 +35,7 @@ const unitTypeLabels = {
   class: '班级',
   cohort: '届别',
   department: '部门',
+  organization: '组织',
   school: '学校',
 };
 
@@ -42,6 +44,7 @@ const roleLabels: Record<AskCoreEducationRole, string> = {
   homeroom_teacher: '班主任',
   school_admin: '学校管理者',
   student: '学生',
+  subject_lead: '学科组长',
   teacher: '教师',
 };
 
@@ -55,7 +58,8 @@ type IdentityRosterOption = {
 const roleOptionsByUnitType: Record<AskCoreEducationOrgUnitType, AskCoreEducationRole[]> = {
   class: ['homeroom_teacher', 'teacher', 'student'],
   cohort: ['grade_admin', 'teacher'],
-  department: ['teacher'],
+  department: ['subject_lead', 'teacher'],
+  organization: ['teacher'],
   school: ['school_admin', 'teacher'],
 };
 
@@ -64,15 +68,18 @@ const subjectKindByRole: Record<AskCoreEducationRole, RoleSubjectKind> = {
   homeroom_teacher: 'teacher',
   school_admin: 'member',
   student: 'student',
+  subject_lead: 'teacher',
   teacher: 'teacher',
 };
 
 const getRoleOptions = (unit: AskCoreEducationOrgUnit | null) =>
   unit
-    ? roleOptionsByUnitType[unit.unit_type].map((role) => ({
-        label: roleLabels[role],
-        value: role,
-      }))
+    ? roleOptionsByUnitType[unit.unit_type]
+        .filter((role) => role !== 'subject_lead' || Boolean(unit.subject_id))
+        .map((role) => ({
+          label: roleLabels[role],
+          value: role,
+        }))
     : [];
 
 const numericId = (record: JsonRecord, keys: string[]) => {
@@ -100,6 +107,11 @@ const rosterKindLabels: Record<AskCoreEducationIdentityRosterKind, string> = {
   teacher: '教师',
 };
 
+const identityClaimKindLabels: Record<AskCoreEducationIdentityClaimRosterKind, string> = {
+  member: '人员',
+  ...rosterKindLabels,
+};
+
 const memberLabel = (members: AskCoreOrganizationMember[], userId: string) => {
   const member = members.find((item) => item.userId === userId);
   if (!member) return userId;
@@ -107,11 +119,12 @@ const memberLabel = (members: AskCoreOrganizationMember[], userId: string) => {
 };
 
 const rosterName = (
-  rosterKind: AskCoreEducationIdentityRosterKind,
+  rosterKind: AskCoreEducationIdentityClaimRosterKind,
   rosterId: number,
   teachers: JsonRecord[],
   students: JsonRecord[],
 ) => {
+  if (rosterKind === 'member') return `人员 #${rosterId}`;
   const rows = rosterKind === 'teacher' ? teachers : students;
   const row = rows.find(
     (item) =>
@@ -699,7 +712,7 @@ export const EducationIdentitySection = memo<EducationIdentitySectionProps>(
         <div className={styles.identityClaimItem} key={claim.id}>
           <div className={styles.identityClaimMain}>
             <div className={styles.identityClaimTitle}>
-              {rosterKindLabels[claim.roster_kind]} · {rosterLabel}
+              {identityClaimKindLabels[claim.roster_kind]} · {rosterLabel}
             </div>
             <div className={styles.identityClaimMeta}>{userLabel}</div>
           </div>

@@ -1,6 +1,9 @@
 import { ENABLE_LOBEHUB_CLOUD_PROVIDER } from '@lobechat/business-const';
 
-import { isBusinessFeatureEnabledForUser } from '@/business/server/user';
+import {
+  isAskCoreBillingEnabledForUser,
+  isBusinessFeatureEnabledForUser,
+} from '@/business/server/user';
 import { klavisEnv } from '@/config/klavis';
 import { isDesktop } from '@/const/version';
 import { appEnv, getAppConfig } from '@/envs/app';
@@ -40,6 +43,7 @@ const getBetterAuthSSOProviders = () => {
 export const getServerGlobalConfig = async (user?: ServerGlobalConfigUser) => {
   const { DEFAULT_AGENT_CONFIG } = getAppConfig();
   const enableBusinessFeatures = isBusinessFeatureEnabledForUser(user);
+  const enableAskCoreBilling = isAskCoreBillingEnabledForUser(user);
   const aiProviderSpecificConfig: Record<string, ProviderSpecificConfig> = {
     ...(ENABLE_LOBEHUB_CLOUD_PROVIDER
       ? {
@@ -109,6 +113,7 @@ export const getServerGlobalConfig = async (user?: ServerGlobalConfigUser) => {
       config: parseAgentConfig(DEFAULT_AGENT_CONFIG),
     },
     disableEmailPassword: authEnv.AUTH_DISABLE_EMAIL_PASSWORD,
+    enableAskCoreBilling,
     enableBusinessFeatures,
     enableEmailVerification: authEnv.AUTH_EMAIL_VERIFICATION,
     enableKlavis: !!klavisEnv.KLAVIS_API_KEY,

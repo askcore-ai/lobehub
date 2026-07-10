@@ -41,6 +41,34 @@ const activeOrganizationResponse = () =>
     { headers: { 'content-type': 'application/json' }, status: 200 },
   );
 
+const teachingReadyMeResponse = () =>
+  new Response(
+    JSON.stringify({
+      capabilities: {
+        can_create_assignment: true,
+        can_create_question: true,
+        can_run_teacher_submission_ocr: true,
+        can_submit_own_work: false,
+      },
+      education_identities: [],
+      org_composition: {},
+      teaching_runtime: {
+        app_env: 'production',
+        coherent: true,
+        forbid_legacy_school_writes: true,
+        production_preflight_required: true,
+        production_preflight_status: 'passed',
+        protocol_enabled: true,
+        protocol_mode: 'protocol',
+        reason: 'ready',
+        require_lms_sis_in_production: true,
+        teaching_available: true,
+      },
+      workbench_mode: 'teacher',
+    }),
+    { headers: { 'content-type': 'application/json' }, status: 200 },
+  );
+
 describe('AskCoreWorkbenchRoute dashboard overview', () => {
   afterEach(() => {
     message.destroy();
@@ -315,6 +343,18 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
             default_persona: null,
             education_identities: [],
             org_composition: { students: 1, teachers: 1 },
+            teaching_runtime: {
+              app_env: 'production',
+              coherent: false,
+              forbid_legacy_school_writes: false,
+              production_preflight_required: false,
+              production_preflight_status: 'not_required',
+              protocol_enabled: false,
+              protocol_mode: 'legacy',
+              reason: 'protocol_disabled',
+              require_lms_sis_in_production: false,
+              teaching_available: false,
+            },
             workbench_mode: 'identity_required',
           }),
           { headers: { 'content-type': 'application/json' }, status: 200 },
@@ -374,6 +414,7 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
     );
 
     await waitFor(() => expect(screen.getByText('请先完成教师或学生身份绑定')).toBeInTheDocument());
+    expect(screen.getByText('学校教学连接尚未就绪')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '去提交身份申请' })).toHaveAttribute(
       'href',
       '/organization?action=identity-claim',
@@ -563,6 +604,7 @@ describe('AskCoreWorkbenchRoute submission detail binding', () => {
       const url = String(input);
 
       if (url === '/api/askcore/organizations') return activeOrganizationResponse();
+      if (url === '/api/askcore/workbench/me') return teachingReadyMeResponse();
 
       if (url === '/api/askcore/workbench/submissions/1109/detail') {
         return new Response(JSON.stringify(submissionDetail(status, assignmentStudentId, files)), {
@@ -937,6 +979,7 @@ describe('AskCoreWorkbenchRoute submission list batch actions', () => {
       const url = String(input);
 
       if (url === '/api/askcore/organizations') return activeOrganizationResponse();
+      if (url === '/api/askcore/workbench/me') return teachingReadyMeResponse();
 
       if (url.startsWith('/api/askcore/workbench/submissions?')) {
         return new Response(
@@ -1231,7 +1274,11 @@ describe('AskCoreWorkbenchRoute protocol attempt list batch actions', () => {
   });
 
   const attemptDetail = (attemptId: number, hasImage: boolean) => ({
-    attempt: { attempt_id: attemptId, legacy: { submission_id: attemptId - 11_000 }, status: 'graded' },
+    attempt: {
+      attempt_id: attemptId,
+      legacy: { submission_id: attemptId - 11_000 },
+      status: 'graded',
+    },
     detail_kind: 'legacy_submission',
     item: { attempt_id: attemptId, status: 'graded' },
     legacy_submission_id: attemptId - 11_000,
@@ -1277,6 +1324,18 @@ describe('AskCoreWorkbenchRoute protocol attempt list batch actions', () => {
           },
           education_identities: [],
           org_composition: {},
+          teaching_runtime: {
+            app_env: 'production',
+            coherent: true,
+            forbid_legacy_school_writes: true,
+            production_preflight_required: true,
+            production_preflight_status: 'passed',
+            protocol_enabled: true,
+            protocol_mode: 'protocol',
+            reason: 'ready',
+            require_lms_sis_in_production: true,
+            teaching_available: true,
+          },
           workbench_mode: 'teacher',
         });
       }
@@ -1508,6 +1567,9 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     if (url === '/api/askcore/organizations') {
       return activeOrganizationResponse();
     }
+    if (url === '/api/askcore/workbench/me') {
+      return teachingReadyMeResponse();
+    }
     if (url === '/api/askcore/workbench/organization/units') {
       return jsonResponse({ units: [] });
     }
@@ -1664,9 +1726,7 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     expect(
       fetchMock.mock.calls.some(([input]) => {
         const url = String(input);
-        return (
-          url.startsWith('/api/askcore/workbench/attempts?') && url.includes('page_size=100')
-        );
+        return url.startsWith('/api/askcore/workbench/attempts?') && url.includes('page_size=100');
       }),
     ).toBe(true);
 
@@ -1752,9 +1812,7 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
       if (url.startsWith('/api/askcore/workbench/activities?')) {
         activityCalls += 1;
         if (activityCalls <= 2) {
-          return jsonResponse(
-            listResponse('activities', [{ activity_id: 501, title: '旧活动' }]),
-          );
+          return jsonResponse(listResponse('activities', [{ activity_id: 501, title: '旧活动' }]));
         }
         return refreshResponse.promise;
       }
@@ -1792,7 +1850,9 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
 
       if (url.startsWith('/api/askcore/workbench/activities?')) {
         return jsonResponse(
-          listResponse('activities', [{ activity_id: 12101, status: 'active', title: 'P121 活动' }]),
+          listResponse('activities', [
+            { activity_id: 12101, status: 'active', title: 'P121 活动' },
+          ]),
         );
       }
 
@@ -1885,7 +1945,9 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(
-      <MemoryRouter initialEntries={['/askcore/workbench?tab=activities&route=%2Factivities%2F12101']}>
+      <MemoryRouter
+        initialEntries={['/askcore/workbench?tab=activities&route=%2Factivities%2F12101']}
+      >
         <AskCoreWorkbenchRoute />
       </MemoryRouter>,
     );
@@ -1918,6 +1980,18 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
           },
           education_identities: [],
           org_composition: {},
+          teaching_runtime: {
+            app_env: 'production',
+            coherent: true,
+            forbid_legacy_school_writes: true,
+            production_preflight_required: true,
+            production_preflight_status: 'passed',
+            protocol_enabled: true,
+            protocol_mode: 'protocol',
+            reason: 'ready',
+            require_lms_sis_in_production: true,
+            teaching_available: true,
+          },
           workbench_mode: 'teacher',
         });
       }
@@ -1963,7 +2037,10 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
         });
       }
 
-      if (url === '/api/askcore/workbench/actions/submission.ocr.rerun' && init?.method === 'POST') {
+      if (
+        url === '/api/askcore/workbench/actions/submission.ocr.rerun' &&
+        init?.method === 'POST'
+      ) {
         return jsonResponse({
           action_id: 'submission.ocr.rerun',
           invocation_id: 'inv-rerun',

@@ -82,6 +82,7 @@ export const useCategory = () => {
     return avatar;
   }, [avatar, remoteServerUrl]);
   const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
+  const enableAskCoreBilling = useServerConfigStore(serverConfigSelectors.enableAskCoreBilling);
   const categoryGroups: CategoryGroup[] = useMemo(() => {
     const groups: CategoryGroup[] = [];
 
@@ -126,7 +127,7 @@ export const useCategory = () => {
     });
 
     // Subscription group
-    if (enableBusinessFeatures) {
+    if (enableAskCoreBilling) {
       const subscriptionItems: CategoryItem[] = [
         { icon: Map, key: SettingsTabs.Plans, label: tSubscription('tab.plans') },
         { icon: ChartColumnBigIcon, key: SettingsTabs.Usage, label: t('tab.usage') },
@@ -231,6 +232,7 @@ export const useCategory = () => {
 
     return groups;
   }, [
+    enableAskCoreBilling,
     t,
     tAuth,
     tSubscription,
