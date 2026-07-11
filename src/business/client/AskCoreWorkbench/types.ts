@@ -117,6 +117,102 @@ export type AskCoreOrganizationState = {
   permissions?: string[];
 };
 
+export type ProtocolProcessingCapabilities = {
+  can_edit: boolean;
+  can_generate_report: boolean;
+  can_grade: boolean;
+  can_link_account: boolean;
+  can_preview: boolean;
+  can_run_ocr: boolean;
+};
+
+export type ProtocolProcessingContext = {
+  account_link_required: boolean;
+  account_linked: boolean;
+  capabilities: ProtocolProcessingCapabilities;
+  context_kind: 'account_link_required' | 'processing';
+  expires_at: string;
+  processing_state: string;
+};
+
+export type ProtocolProcessingInput = {
+  content_type: string;
+  kind: 'reference' | 'response';
+  page_order: number;
+  preview_url: string;
+  slot_id: string;
+};
+
+export type ProtocolProcessingQuestion = {
+  feedback?: string | null;
+  is_correct?: boolean | null;
+  max_score?: number | null;
+  ocr_meta?: JsonRecord;
+  order_index: number;
+  question_content?: JsonRecord;
+  question_number?: string | null;
+  question_type?: string | null;
+  reference_answer?: JsonRecord;
+  score?: number | null;
+  student_answer?: string | null;
+};
+
+export type ProtocolProcessingResultContent = {
+  questions: ProtocolProcessingQuestion[];
+  score?: number | null;
+  teacher_summary?: string | null;
+  total_score?: number | null;
+};
+
+export type ProtocolProcessingSurface = {
+  context: ProtocolProcessingContext;
+  inputs: ProtocolProcessingInput[];
+  report: {
+    artifact_id: string | null;
+    available: boolean;
+    preview_url?: string;
+  } | null;
+  result: {
+    artifact_id: string;
+    content: ProtocolProcessingResultContent;
+  } | null;
+};
+
+export type ProtocolProcessingQuestionEdit = {
+  feedback?: string | null;
+  is_correct?: boolean | null;
+  max_score?: number | null;
+  order_index: number;
+  score?: number | null;
+  student_answer?: string | null;
+};
+
+export type ProtocolProcessingEditInput = {
+  expected_latest_artifact_id: string;
+  questions: ProtocolProcessingQuestionEdit[];
+  teacher_summary?: string | null;
+};
+
+export type ProtocolProcessingEditResult = {
+  artifact_id: string;
+  content: ProtocolProcessingResultContent;
+};
+
+export type ProtocolProcessingReportResult = {
+  artifact_id: string;
+  created: boolean;
+  source_artifact_id: string;
+};
+
+export type ProtocolIdentityLinkAcceptResult = {
+  account_user_id: string;
+  deployment_id: number;
+  identity_link_id: number;
+  invitation_id: string;
+  invitation_status: 'accepted';
+  link_status: 'active';
+};
+
 export type FileDescriptor = {
   download_url?: string | null;
   media_type?: string | null;

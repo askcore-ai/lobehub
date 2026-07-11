@@ -13,4 +13,21 @@ describe('proxy matcher', () => {
     expect(source).toContain("'/organization(.*)'");
     expect(source).toContain("'/join/organization(.*)'");
   });
+
+  it('leaves only public LMS protocol ingress outside Better Auth middleware', async () => {
+    const source = await readFile(
+      path.join(process.cwd(), 'src/libs/next/proxy/define-config.ts'),
+      'utf8',
+    );
+    const publicRoutes = source.slice(
+      source.indexOf('const isPublicRoute'),
+      source.indexOf('const betterAuthMiddleware'),
+    );
+
+    expect(publicRoutes).toContain("'/api/askcore/lti/jwks'");
+    expect(publicRoutes).toContain("'/api/askcore/lti/launch(.*)'");
+    expect(publicRoutes).toContain("'/api/lms-connectors(.*)'");
+    expect(publicRoutes).not.toContain('/api/askcore/lti/processing');
+    expect(publicRoutes).not.toContain('/api/askcore/lti/identity-links');
+  });
 });

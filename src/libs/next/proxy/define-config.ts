@@ -107,8 +107,7 @@ export function defineConfig() {
       // If locale explicitly provided via query (?hl=), persist it in cookie
       if (explicitlyLocale) {
         const existingLocale = request.cookies.get(LOBE_LOCALE_COOKIE)?.value as
-          | Locales
-          | undefined;
+          Locales | undefined;
         if (!existingLocale) {
           response.cookies.set(LOBE_LOCALE_COOKIE, explicitlyLocale, {
             maxAge: 60 * 60 * 24 * 90,
@@ -174,6 +173,10 @@ export function defineConfig() {
     '/api/workflows(.*)',
     '/api/agent(.*)',
     '/api/dev(.*)',
+    // LMS protocol and HMAC connector ingress. Route handlers enforce exact paths.
+    '/api/askcore/lti/jwks',
+    '/api/askcore/lti/launch(.*)',
+    '/api/lms-connectors(.*)',
     '/webapi(.*)',
     '/trpc(.*)',
     // version

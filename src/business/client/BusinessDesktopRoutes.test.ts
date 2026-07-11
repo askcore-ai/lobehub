@@ -3,15 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { BusinessDesktopRoutesWithMainLayout } from './BusinessDesktopRoutes';
 
 describe('BusinessDesktopRoutes', () => {
-  it('registers organization before the AskCore workbench under the main LobeHub layout', () => {
+  it('keeps only the LTI processing and identity callback route under the main layout', () => {
     const paths = BusinessDesktopRoutesWithMainLayout.map((route) => route.path);
 
-    expect(paths).toContain('organization');
     expect(paths).toContain('askcore/workbench');
-    expect(paths.indexOf('organization')).toBeLessThan(paths.indexOf('askcore/workbench'));
+    expect(paths).not.toContain('organization');
   });
 
-  it('registers the AskCore workbench under the main LobeHub layout', () => {
+  it('registers the protocol callback route for signed LTI handoffs and identity invitations', () => {
     expect(
       BusinessDesktopRoutesWithMainLayout.some((route) => route.path === 'askcore/workbench'),
     ).toBe(true);

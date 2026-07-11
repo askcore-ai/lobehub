@@ -1330,7 +1330,7 @@ const PaymentReturnAlert = memo<{
   return (
     <Alert
       showIcon
-      message={copy.payment.returnTitle}
+      title={copy.payment.returnTitle}
       type={paymentAlertType(checkout?.status)}
       description={
         checkout?.amount?.display

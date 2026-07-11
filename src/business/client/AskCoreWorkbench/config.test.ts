@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import { ASKCORE_WORKBENCH_TABS, askCoreWorkbenchTabsForProfile } from './config';
+import {
+  ASKCORE_WORKBENCH_TABS,
+  askCoreProtocolMode,
+  askCoreWorkbenchTabsForProfile,
+} from './config';
 
 describe('AskCoreWorkbench config', () => {
+  it('accepts only the processing and directed identity-link protocol modes', () => {
+    expect(askCoreProtocolMode('processing')).toBe('processing');
+    expect(askCoreProtocolMode('identity-link')).toBe('identity-link');
+    expect(askCoreProtocolMode('deep_linking')).toBeNull();
+    expect(askCoreProtocolMode('resource_link')).toBeNull();
+    expect(askCoreProtocolMode(null)).toBeNull();
+  });
+
   it('keeps organization-owned roster resources out of first-class workbench tabs', () => {
     const tabKeys = ASKCORE_WORKBENCH_TABS.map((tab) => tab.key);
 

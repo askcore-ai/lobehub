@@ -1,10 +1,7 @@
-import { BriefcaseBusiness, Building2, HomeIcon, SearchIcon, UserCheck } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { HomeIcon, SearchIcon } from 'lucide-react';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { ASKCORE_ORGANIZATION_CHANGED_EVENT } from '@/business/client/AskCoreOrganization/events';
-import { askCoreWorkbenchClient } from '@/business/client/AskCoreWorkbench/api';
-import { ASKCORE_WORKBENCH_PATH } from '@/business/client/AskCoreWorkbench/config';
 import { getRouteById } from '@/config/routes';
 import { useGlobalStore } from '@/store/global';
 import { SidebarTabKey } from '@/store/global/initialState';
@@ -35,80 +32,10 @@ export interface NavLayout {
   };
 }
 
-type AskCoreWorkbenchNavAccess =
-  | 'identity_required'
-  | 'learning'
-  | 'loading'
-  | 'organization_required'
-  | 'teaching';
-
-const resolveAskCoreWorkbenchNavAccess = async (): Promise<AskCoreWorkbenchNavAccess> => {
-  try {
-    const organizationState = await askCoreWorkbenchClient.getOrganizationState();
-    if (!organizationState.organization?.organization_id) return 'organization_required';
-  } catch {
-    return 'organization_required';
-  }
-
-  try {
-    const profile = await askCoreWorkbenchClient.getEducationProfile();
-    switch (profile.workbench_mode) {
-      case 'identity_required': {
-        return 'identity_required';
-      }
-      case 'student_managed':
-      case 'student_restricted': {
-        return 'learning';
-      }
-      case 'teacher': {
-        return 'teaching';
-      }
-      default: {
-        return 'identity_required';
-      }
-    }
-  } catch {
-    return 'identity_required';
-  }
-};
-
-const useAskCoreWorkbenchNavAccess = () => {
-  const [access, setAccess] = useState<AskCoreWorkbenchNavAccess>('loading');
-
-  useEffect(() => {
-    let active = true;
-    let requestId = 0;
-
-    const refresh = () => {
-      const currentRequestId = requestId + 1;
-      requestId = currentRequestId;
-      setAccess('loading');
-      void resolveAskCoreWorkbenchNavAccess().then((nextAccess) => {
-        if (active && requestId === currentRequestId) setAccess(nextAccess);
-      });
-    };
-
-    refresh();
-    window.addEventListener(ASKCORE_ORGANIZATION_CHANGED_EVENT, refresh);
-
-    return () => {
-      active = false;
-      window.removeEventListener(ASKCORE_ORGANIZATION_CHANGED_EVENT, refresh);
-    };
-  }, []);
-
-  return access;
-};
-
-export const __resetAskCoreWorkbenchNavAccessForTest = () => {
-  return undefined;
-};
-
 export const useNavLayout = (): NavLayout => {
   const { t } = useTranslation('common');
   const toggleCommandMenu = useGlobalStore((s) => s.toggleCommandMenu);
   const { showMarket, hideGitHub } = useServerConfigStore(featureFlagsSelectors);
-  const askCoreWorkbenchNavAccess = useAskCoreWorkbenchNavAccess();
 
   const topNavItems = useMemo(
     () =>
@@ -137,32 +64,8 @@ export const useNavLayout = (): NavLayout => {
           title: t('tab.pages'),
           url: '/page',
         },
-        {
-          icon: Building2,
-          key: SidebarTabKey.Organization,
-          title: t('tab.organization'),
-          url: '/organization',
-        },
-        {
-          hidden: askCoreWorkbenchNavAccess !== 'identity_required',
-          icon: UserCheck,
-          key: 'askcore-identity-claim',
-          title: t('tab.askcoreIdentityClaim'),
-          url: '/organization?action=identity-claim',
-        },
-        {
-          hidden: !['learning', 'teaching'].includes(askCoreWorkbenchNavAccess),
-          icon: BriefcaseBusiness,
-          key: SidebarTabKey.AskCore,
-          title: t(
-            askCoreWorkbenchNavAccess === 'learning'
-              ? 'tab.askcoreLearningWorkbench'
-              : 'tab.askcoreTeachingWorkbench',
-          ),
-          url: ASKCORE_WORKBENCH_PATH,
-        },
       ] as NavItem[],
-    [askCoreWorkbenchNavAccess, t, toggleCommandMenu],
+    [t, toggleCommandMenu],
   );
 
   const bottomMenuItems = useMemo(
@@ -194,7 +97,7 @@ export const useNavLayout = (): NavLayout => {
           url: '/memory',
         },
       ] as NavItem[],
-    [t, showMarket],
+    [showMarket, t],
   );
 
   const footer = useMemo(

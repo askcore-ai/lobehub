@@ -4,14 +4,31 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  AskCoreWorkbenchRoute,
+  AskCoreWorkbenchRoute as ProductionAskCoreWorkbenchRoute,
   buildAssignmentOcrRunSummary,
   buildQuestionOcrRunSummary,
   buildSubmissionOcrAssignmentSelectOption,
   buildSubmissionOcrRunSummary,
+  LegacyAskCoreWorkbenchRoute as AskCoreWorkbenchRoute,
   RESOURCE_LIST_LAYOUT,
   SUBMISSION_OCR_LAYOUT_BREAKPOINTS,
 } from './index';
+
+describe('AskCoreWorkbenchRoute production boundary', () => {
+  it('does not mount the retired school workbench without a processing handoff', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/askcore/workbench']}>
+        <ProductionAskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.queryByText('总览')).not.toBeInTheDocument());
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
 
 const activeOrganizationResponse = () =>
   new Response(

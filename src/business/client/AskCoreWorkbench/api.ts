@@ -15,6 +15,12 @@ import {
   type PluginInvocationArtifacts,
   type PresignUploadResponse,
   type PrinterDeviceListResponse,
+  type ProtocolIdentityLinkAcceptResult,
+  type ProtocolProcessingContext,
+  type ProtocolProcessingEditInput,
+  type ProtocolProcessingEditResult,
+  type ProtocolProcessingReportResult,
+  type ProtocolProcessingSurface,
   type ResourceItemResponse,
   type ResourceKey,
   type ResourceListResponse,
@@ -26,6 +32,7 @@ import {
 
 const WORKBENCH_API_BASE = '/api/askcore/workbench';
 const ORGANIZATION_API_BASE = '/api/askcore/organizations';
+const PROTOCOL_API_BASE = '/api/askcore/lti';
 const DEFAULT_PAGE_SIZE = 100;
 
 type AskCoreOrganizationPayloadSummary = {
@@ -141,6 +148,39 @@ export const fetchAskCoreWorkbenchJson = async <T>(
   const { payload } = await readResponsePayload(response);
   return payload as T;
 };
+
+const protocolJson = <T>(path: string, init: RequestInit = {}) =>
+  fetchAskCoreWorkbenchJson<T>(`${PROTOCOL_API_BASE}${path}`, init);
+
+const protocolMutation = (method: 'PATCH' | 'POST', payload?: unknown): RequestInit => ({
+  body: payload === undefined ? undefined : JSON.stringify(payload),
+  headers: payload === undefined ? undefined : { 'Content-Type': 'application/json' },
+  method,
+});
+
+export const fetchProtocolProcessingContext = () =>
+  protocolJson<ProtocolProcessingContext>('/processing/context');
+
+export const acceptProtocolIdentityLinkInvitation = (invitationToken: string) =>
+  protocolJson<ProtocolIdentityLinkAcceptResult>(
+    '/identity-links/accept',
+    protocolMutation('POST', { invitation_token: invitationToken }),
+  );
+
+export const fetchCurrentProtocolProcessingSurface = () =>
+  protocolJson<ProtocolProcessingSurface>('/processing/current');
+
+export const editCurrentProtocolProcessingResult = (payload: ProtocolProcessingEditInput) =>
+  protocolJson<ProtocolProcessingEditResult>(
+    '/processing/current/result',
+    protocolMutation('PATCH', payload),
+  );
+
+export const generateCurrentProtocolProcessingReport = () =>
+  protocolJson<ProtocolProcessingReportResult>(
+    '/processing/current/report',
+    protocolMutation('POST'),
+  );
 
 export const askCoreWorkbenchResourceUrl = (resource: string, page: number, pageSize: number) =>
   `${WORKBENCH_API_BASE}/${resource}${buildQuery({

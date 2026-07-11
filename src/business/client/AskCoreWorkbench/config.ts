@@ -9,6 +9,11 @@ import {
 export const ASKCORE_WORKBENCH_PATH = '/askcore/workbench';
 export const ASKCORE_WORKBENCH_PLUGIN_ID = 'aitutor-suite';
 
+export type AskCoreProtocolMode = 'identity-link' | 'processing';
+
+export const askCoreProtocolMode = (value?: string | null): AskCoreProtocolMode | null =>
+  value === 'identity-link' || value === 'processing' ? value : null;
+
 export const ASKCORE_WORKBENCH_TABS: AskCoreWorkbenchTabConfig[] = [
   { key: 'overview', label: '总览' },
   {
