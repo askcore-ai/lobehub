@@ -115,7 +115,7 @@ describe('useNavLayout source-role school navigation', () => {
 
     expect(items.map((item) => item.title)).toEqual(expect.arrayContaining(['学校', '学习空间']));
     expect(items.map((item) => item.title)).not.toContain('教学中心');
-    expect(items.find((item) => item.title === '学习空间')?.url).toBe('/school/learning');
+    expect(items.find((item) => item.title === '学习空间')?.url).toBe('/school/learning-space');
     expect(requestedRoleKeys).toContainEqual([
       'https://askcore.cn/school/services/askcore/session.php',
       'user-1',
@@ -132,7 +132,7 @@ describe('useNavLayout source-role school navigation', () => {
 
       expect(items.map((item) => item.title)).toEqual(expect.arrayContaining(['学校', '教学中心']));
       expect(items.map((item) => item.title)).not.toContain('学习空间');
-      expect(items.find((item) => item.title === '教学中心')?.url).toBe('/school/teaching');
+      expect(items.find((item) => item.title === '教学中心')?.url).toBe('/school/teaching-center');
     },
   );
 });

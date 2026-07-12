@@ -18,6 +18,8 @@ export const config = {
     '/askcore',
     '/askcore(.*)',
     '/school',
+    '/school/learning-space',
+    '/school/teaching-center',
     '/agent',
     '/agent(.*)',
     '/group',

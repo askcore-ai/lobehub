@@ -154,11 +154,12 @@ export const AskCoreSchoolPortalRoute = memo(() => {
   );
 
   const terminalState = data?.state && data.state !== 'ready' ? stateCopy[data.state] : undefined;
-  const isTeachingSurface = pathname === '/school/teaching' || pathname === '/school/learning';
+  const isTeachingSurface =
+    pathname === '/school/teaching-center' || pathname === '/school/learning-space';
   const destinationKey = isTeachingSurface ? 'teaching' : 'school-services';
   const destination = sharedSchool?.destinations.find((item) => item.key === destinationKey);
   const surfaceTitle = isTeachingSurface
-    ? sourceSession?.role === 'student' || pathname === '/school/learning'
+    ? sourceSession?.role === 'student' || pathname === '/school/learning-space'
       ? '学习空间'
       : '教学中心'
     : '学校';

@@ -11,8 +11,8 @@ describe('BusinessDesktopRoutes', () => {
 
     expect(paths).toContain('askcore/workbench');
     expect(paths).toContain('school');
-    expect(paths).toContain('school/teaching');
-    expect(paths).toContain('school/learning');
+    expect(paths).toContain('school/teaching-center');
+    expect(paths).toContain('school/learning-space');
     expect(paths).not.toContain('organization');
   });
 
@@ -20,8 +20,8 @@ describe('BusinessDesktopRoutes', () => {
     const paths = BusinessDesktopRoutesWithMainLayout.map((route) => route.path);
 
     expect(paths).toContain('school');
-    expect(paths).toContain('school/teaching');
-    expect(paths).toContain('school/learning');
+    expect(paths).toContain('school/teaching-center');
+    expect(paths).toContain('school/learning-space');
     expect(paths).not.toContain('organization');
   });
 

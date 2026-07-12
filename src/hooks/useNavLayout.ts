@@ -103,14 +103,14 @@ export const useNavLayout = (): NavLayout => {
           icon: BookOpenCheckIcon,
           key: 'teaching-center',
           title: '教学中心',
-          url: '/school/teaching',
+          url: '/school/teaching-center',
         },
         {
           hidden: !isLearner || !hasTeachingDestination,
           icon: GraduationCapIcon,
           key: 'learning-space',
           title: '学习空间',
-          url: '/school/learning',
+          url: '/school/learning-space',
         },
         {
           icon: getRouteById('tasks')!.icon,

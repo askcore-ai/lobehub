@@ -12,11 +12,11 @@ export const BusinessMobileRoutesWithMainLayout: RouteObject[] = [
   },
   {
     lazy: loadSchoolRoute,
-    path: 'school/teaching',
+    path: 'school/teaching-center',
   },
   {
     lazy: loadSchoolRoute,
-    path: 'school/learning',
+    path: 'school/learning-space',
   },
   {
     lazy: async () => {

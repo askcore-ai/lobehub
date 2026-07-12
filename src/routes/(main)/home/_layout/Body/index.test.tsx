@@ -232,14 +232,14 @@ describe('Home sidebar body', () => {
   it('navigates the teaching entry to the stable AskCore surface route', () => {
     mocks.navLayout = {
       bottomMenuItems: [],
-      topNavItems: [{ key: 'teaching-center', title: '教学中心', url: '/school/teaching' }],
+      topNavItems: [{ key: 'teaching-center', title: '教学中心', url: '/school/teaching-center' }],
     };
     mocks.globalState.status.sidebarItems = ['teaching-center'];
 
     render(<Body />);
     fireEvent.click(screen.getByRole('link', { name: '教学中心' }));
 
-    expect(mocks.navigate).toHaveBeenCalledWith('/school/teaching');
+    expect(mocks.navigate).toHaveBeenCalledWith('/school/teaching-center');
   });
 
   it('keeps a top item that was dragged past the spacer in its new position', () => {

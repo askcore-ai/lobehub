@@ -80,7 +80,7 @@ describe('AskCoreSchoolPortalRoute', () => {
 
     render(
       <SWRConfig value={{ provider: () => new Map() }}>
-        <MemoryRouter initialEntries={['/school/learning']}>
+        <MemoryRouter initialEntries={['/school/learning-space']}>
           <AskCoreSchoolPortalRoute />
         </MemoryRouter>
       </SWRConfig>,
