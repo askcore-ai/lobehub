@@ -59,6 +59,9 @@ describe('school OIDC login confirmation', () => {
     expect(document.querySelector('input[name="uid"]')?.getAttribute('value')).toBe(
       'interaction-login-123',
     );
+    expect(
+      document.querySelector('input[type="hidden"][name="consent"]')?.getAttribute('value'),
+    ).toBe('accept');
   });
 
   it('does not auto-submit for an explicit third-party confirmation', async () => {

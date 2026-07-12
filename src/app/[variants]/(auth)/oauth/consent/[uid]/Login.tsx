@@ -54,16 +54,14 @@ const LoginConfirmClient = memo<LoginConfirmProps>(
         onSubmit={() => setIsLoading(true)}
       >
         <input name="uid" type="hidden" value={uid} />
-        <input name="choice" type="hidden" value={'accept'} />
+        <input name="consent" type="hidden" value="accept" />
         <Button
           block
           disabled={!isUserStateInit}
           htmlType="submit"
           loading={isLoading}
-          name="consent"
           size="large"
           type="primary"
-          value="accept"
         >
           {buttonText}
         </Button>
