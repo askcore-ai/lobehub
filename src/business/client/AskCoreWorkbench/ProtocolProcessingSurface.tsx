@@ -22,6 +22,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { message } from '@/components/AntdStaticMethods';
 
 import {
+  AskCoreWorkbenchApiError,
   editCurrentProtocolProcessingResult,
   fetchCurrentProtocolProcessingSurface,
   fetchProtocolProcessingContext,
@@ -210,6 +211,25 @@ const recordText = (value: JsonRecord | undefined) => {
 const cloneQuestions = (questions: ProtocolProcessingQuestion[] = []) =>
   questions.map((question) => ({ ...question }));
 
+const processingErrorMessage = (reason: unknown, fallback: string) => {
+  if (!(reason instanceof AskCoreWorkbenchApiError)) {
+    return reason instanceof Error ? reason.message : fallback;
+  }
+
+  if (reason.status === 401) return '登录状态已失效，请重新登录后从教学中心打开';
+  if (reason.status === 403) return '你没有权限处理此内容，请返回教学中心确认课程权限';
+  if (
+    reason.status === 404 ||
+    reason.status === 410 ||
+    /verified processing context|processing context is required/i.test(reason.message)
+  ) {
+    return '处理链接无效或已过期，请返回教学中心重新打开';
+  }
+  if (reason.status === 409) return '处理结果已被更新，请刷新后重试';
+  if (reason.status >= 500) return '处理服务暂时不可用，请稍后重试';
+  return fallback;
+};
+
 const PreviewPane = ({
   choice,
   choices,
@@ -284,7 +304,7 @@ export const ProtocolProcessingSurface = memo(() => {
       setTeacherSummary(nextSurface.result?.content.teacher_summary || '');
       setDirty(false);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '处理内容加载失败');
+      setError(processingErrorMessage(reason, '处理内容加载失败，请返回教学中心重新打开'));
     } finally {
       setLoading(false);
     }
@@ -370,7 +390,7 @@ export const ProtocolProcessingSurface = memo(() => {
       message.success('批改结果已保存');
       await refresh(true);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '批改结果保存失败');
+      setError(processingErrorMessage(reason, '批改结果保存失败，请重试'));
     } finally {
       setSaving(false);
     }
@@ -385,7 +405,7 @@ export const ProtocolProcessingSurface = memo(() => {
       await refresh(true);
       setSelectedPreview('report');
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '反馈报告生成失败');
+      setError(processingErrorMessage(reason, '反馈报告生成失败，请重试'));
     } finally {
       setReporting(false);
     }

@@ -173,4 +173,22 @@ describe('ProtocolProcessingSurface', () => {
     expect(await screen.findByText('学校身份尚未绑定到当前账号')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '保存修订' })).not.toBeInTheDocument();
   });
+
+  it('shows an actionable message instead of a backend error for an invalid context', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          Response.json({ detail: 'Verified processing context is required' }, { status: 400 }),
+        ),
+    );
+
+    render(<ProtocolProcessingSurface />);
+
+    expect(
+      await screen.findByText('处理链接无效或已过期，请返回教学中心重新打开'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Verified processing context is required')).not.toBeInTheDocument();
+  });
 });

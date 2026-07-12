@@ -65,6 +65,22 @@ const clearTokenFromAddressBar = () => {
 
 type IdentityLinkState = 'error' | 'loading' | 'success';
 
+const identityLinkErrorMessage = (reason: unknown) => {
+  if (!(reason instanceof AskCoreWorkbenchApiError)) return '学校身份关联失败，请稍后重试';
+  if (reason.status === 401) return '请先登录当前 AskCore 账号，再继续关联学校身份';
+  if (
+    reason.status === 400 ||
+    reason.status === 404 ||
+    reason.status === 410 ||
+    /invitation token|invitation.*(?:invalid|expired|used)/i.test(reason.message)
+  ) {
+    return '邀请链接无效、已过期或已被使用，请联系学校管理员重新发送';
+  }
+  if (reason.status === 409) return '该学校身份已关联到其他账号，请联系学校管理员处理';
+  if (reason.status >= 500) return '学校身份服务暂时不可用，请稍后重试';
+  return '学校身份关联失败，请稍后重试';
+};
+
 export const ProtocolIdentityLinkSurface = memo(
   ({ invitationToken }: { invitationToken?: string }) => {
     const navigate = useNavigate();
@@ -94,7 +110,7 @@ export const ProtocolIdentityLinkSurface = memo(
         setAuthenticationRequired(
           reason instanceof AskCoreWorkbenchApiError && reason.status === 401,
         );
-        setError(reason instanceof Error ? reason.message : '学校身份关联失败');
+        setError(identityLinkErrorMessage(reason));
         setState('error');
       }
     }, [invitationToken]);

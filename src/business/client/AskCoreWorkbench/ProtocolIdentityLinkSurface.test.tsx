@@ -62,4 +62,26 @@ describe('ProtocolIdentityLinkSurface', () => {
     expect(screen.getByText('邀请令牌缺失或已被使用')).toBeInTheDocument();
     await waitFor(() => expect(fetchMock).not.toHaveBeenCalled());
   });
+
+  it('shows an actionable message instead of a backend error for an invalid token', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          Response.json({ detail: 'invitation token is invalid' }, { status: 400 }),
+        ),
+    );
+
+    render(
+      <MemoryRouter>
+        <ProtocolIdentityLinkSurface invitationToken="invalid-token" />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText('邀请链接无效、已过期或已被使用，请联系学校管理员重新发送'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('invitation token is invalid')).not.toBeInTheDocument();
+  });
 });
