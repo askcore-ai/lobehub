@@ -96,8 +96,12 @@ describe('AskCoreSchoolPortalRoute', () => {
       vi.fn(async (input: RequestInfo | URL) => {
         if (String(input).endsWith('/operations')) {
           return Response.json({
-            live_pilot_connection: { connection_ready: true },
-            production_preflight: { status: 'passed' },
+            live_pilot_connection: { connection_ready: false },
+            production_preflight: {
+              active_deployments: 1,
+              preflight_status: 'passed',
+              status: 'succeeded',
+            },
             redaction_passed: true,
             roster_projection_rows: 0,
             status: 'succeeded',
@@ -124,6 +128,8 @@ describe('AskCoreSchoolPortalRoute', () => {
 
     expect(await screen.findByText('系统集成')).toBeInTheDocument();
     expect(await screen.findAllByText('已就绪')).toHaveLength(1);
+    expect(screen.getByText('教学处理连接')).toBeInTheDocument();
+    expect(screen.getByText('已通过')).toBeInTheDocument();
     expect(screen.getByText('未保存')).toBeInTheDocument();
     expect(screen.queryByText(/client_id|deployment_id|issuer/i)).not.toBeInTheDocument();
   });

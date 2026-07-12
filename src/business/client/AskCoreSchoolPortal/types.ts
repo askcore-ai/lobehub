@@ -23,8 +23,11 @@ export interface SchoolPortalManifest {
 }
 
 export interface SchoolIntegrationOperations {
-  live_pilot_connection?: { connection_ready?: boolean };
-  production_preflight?: { status?: string };
+  production_preflight?: {
+    active_deployments?: number;
+    preflight_status?: string;
+    status?: string;
+  };
   redaction_passed: boolean;
   roster_projection_rows: number;
   status: string;

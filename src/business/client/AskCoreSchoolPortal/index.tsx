@@ -187,6 +187,9 @@ export const AskCoreSchoolPortalRoute = memo(() => {
   );
 
   const terminalState = data?.state && data.state !== 'ready' ? stateCopy[data.state] : undefined;
+  const productionPreflightPassed = operations?.production_preflight?.preflight_status === 'passed';
+  const processingConnectionReady =
+    productionPreflightPassed && (operations?.production_preflight?.active_deployments || 0) > 0;
 
   return (
     <main className={styles.page}>
@@ -237,27 +240,15 @@ export const AskCoreSchoolPortalRoute = memo(() => {
           {operations ? (
             <>
               <div className={styles.operationRow}>
-                <span>学校系统连接</span>
-                <Tag color={operations.live_pilot_connection?.connection_ready ? 'green' : 'gold'}>
-                  {operations.live_pilot_connection?.connection_ready ? '已就绪' : '需处理'}
+                <span>教学处理连接</span>
+                <Tag color={processingConnectionReady ? 'green' : 'gold'}>
+                  {processingConnectionReady ? '已就绪' : '需处理'}
                 </Tag>
               </div>
               <div className={styles.operationRow}>
                 <span>生产运行检查</span>
-                <Tag
-                  color={
-                    ['passed', 'ready', 'succeeded'].includes(
-                      operations.production_preflight?.status || '',
-                    )
-                      ? 'green'
-                      : 'gold'
-                  }
-                >
-                  {['passed', 'ready', 'succeeded'].includes(
-                    operations.production_preflight?.status || '',
-                  )
-                    ? '已通过'
-                    : '需处理'}
+                <Tag color={productionPreflightPassed ? 'green' : 'gold'}>
+                  {productionPreflightPassed ? '已通过' : '需处理'}
                 </Tag>
               </div>
               <div className={styles.operationRow}>
