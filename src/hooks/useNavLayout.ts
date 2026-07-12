@@ -15,6 +15,7 @@ import {
   SCHOOL_PORTAL_API,
 } from '@/business/client/AskCoreSchoolPortal/api';
 import { getRouteById } from '@/config/routes';
+import { useSession } from '@/libs/better-auth/auth-client';
 import { useGlobalStore } from '@/store/global';
 import { SidebarTabKey } from '@/store/global/initialState';
 import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
@@ -48,14 +49,22 @@ export const useNavLayout = (): NavLayout => {
   const { t } = useTranslation('common');
   const toggleCommandMenu = useGlobalStore((s) => s.toggleCommandMenu);
   const { showMarket, hideGitHub } = useServerConfigStore(featureFlagsSelectors);
-  const { data: schoolPortal } = useSWR(SCHOOL_PORTAL_API, fetchSchoolPortalManifest, {
-    revalidateOnFocus: false,
-    shouldRetryOnError: false,
-  });
+  const { data: accountSession } = useSession();
+  const accountUserId = accountSession?.user.id;
+  const { data: schoolPortal } = useSWR(
+    accountUserId ? ([SCHOOL_PORTAL_API, accountUserId] as const) : null,
+    () => fetchSchoolPortalManifest(),
+    {
+      revalidateOnFocus: false,
+      shouldRetryOnError: false,
+    },
+  );
   const sharedSchool = schoolPortal?.state === 'ready' ? schoolPortal.schools[0] : undefined;
   const { data: schoolSession } = useSWR(
-    sharedSchool?.role_source_url ?? null,
-    fetchSchoolSourceSession,
+    sharedSchool?.role_source_url && accountUserId
+      ? ([sharedSchool.role_source_url, accountUserId] as const)
+      : null,
+    ([url]) => fetchSchoolSourceSession(url),
     {
       refreshInterval: 30_000,
       revalidateOnFocus: true,

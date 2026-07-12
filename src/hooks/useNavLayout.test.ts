@@ -1,5 +1,5 @@
 import { renderHook } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useNavLayout } from './useNavLayout';
 
@@ -25,14 +25,21 @@ vi.mock('@/store/serverConfig', () => ({
 }));
 
 const swrState = vi.hoisted(() => ({
+  accountUserId: 'user-1',
   portalAvailable: true,
   role: undefined as 'administrator' | 'student' | 'teacher' | undefined,
   schoolState: 'ready' as 'ready' | 'unavailable',
 }));
 
+const requestedRoleKeys = vi.hoisted(() => [] as unknown[]);
+
+vi.mock('@/libs/better-auth/auth-client', () => ({
+  useSession: () => ({ data: { user: { id: swrState.accountUserId } } }),
+}));
+
 vi.mock('swr', () => ({
-  default: (key: string | null) => {
-    if (key === '/api/askcore/school/portal') {
+  default: (key: readonly string[] | string | null) => {
+    if (Array.isArray(key) && key[0] === '/api/askcore/school/portal') {
       if (!swrState.portalAvailable) return { data: undefined, error: new Error('unavailable') };
       return {
         data: {
@@ -55,12 +62,21 @@ vi.mock('swr', () => ({
         },
       };
     }
-    if (key === 'https://askcore.cn/school/services/askcore/session.php') {
+    if (Array.isArray(key) && key[0] === 'https://askcore.cn/school/services/askcore/session.php') {
+      requestedRoleKeys.push(key);
       return { data: swrState.role ? { authenticated: true, role: swrState.role } : undefined };
     }
     return { data: undefined };
   },
 }));
+
+beforeEach(() => {
+  requestedRoleKeys.length = 0;
+  swrState.accountUserId = 'user-1';
+  swrState.portalAvailable = true;
+  swrState.schoolState = 'ready';
+  swrState.role = undefined;
+});
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -102,6 +118,10 @@ describe('useNavLayout source-role school navigation', () => {
     expect(items.find((item) => item.title === '学习空间')?.url).toBe(
       '/api/askcore/school/launch/teaching',
     );
+    expect(requestedRoleKeys).toContainEqual([
+      'https://askcore.cn/school/services/askcore/session.php',
+      'user-1',
+    ]);
   });
 
   it.each(['teacher', 'administrator'] as const)(

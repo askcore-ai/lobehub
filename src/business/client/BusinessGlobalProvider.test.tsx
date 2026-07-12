@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import BusinessGlobalProvider from './BusinessGlobalProvider';
 
-const state = vi.hoisted(() => ({ authenticated: true }));
+const state = vi.hoisted(() => ({ authenticated: true, userId: 'user-1' }));
 const mutate = vi.hoisted(() => vi.fn());
 
 const portal = {
@@ -44,7 +44,7 @@ vi.mock('swr', () => ({
 }));
 
 vi.mock('@/libs/better-auth/auth-client', () => ({
-  useSession: () => ({ data: state.authenticated ? { user: { id: 'user-1' } } : null }),
+  useSession: () => ({ data: state.authenticated ? { user: { id: state.userId } } : null }),
 }));
 
 describe('BusinessGlobalProvider', () => {
@@ -52,6 +52,7 @@ describe('BusinessGlobalProvider', () => {
     vi.useFakeTimers();
     mutate.mockReset();
     state.authenticated = true;
+    state.userId = 'user-1';
   });
 
   afterEach(() => {
@@ -77,7 +78,10 @@ describe('BusinessGlobalProvider', () => {
     expect(frames[0]?.hidden).toBe(true);
 
     fireEvent.load(frames[0]!);
-    expect(mutate).toHaveBeenCalledWith('https://askcore.cn/school/services/askcore/session.php');
+    expect(mutate).toHaveBeenCalledWith([
+      'https://askcore.cn/school/services/askcore/session.php',
+      'user-1',
+    ]);
 
     act(() => vi.advanceTimersByTime(3000));
     frames = document.querySelectorAll<HTMLIFrameElement>('iframe[data-askcore-school-session]');

@@ -13,10 +13,11 @@ const WARMUP_STAGGER_MS = 3000;
 
 const SchoolSessionWarmup = () => {
   const { data: accountSession } = useSession();
+  const accountUserId = accountSession?.user.id;
   const { mutate } = useSWRConfig();
   const { data: portal } = useSWR(
-    accountSession ? SCHOOL_PORTAL_API : null,
-    fetchSchoolPortalManifest,
+    accountUserId ? ([SCHOOL_PORTAL_API, accountUserId] as const) : null,
+    () => fetchSchoolPortalManifest(),
     { revalidateOnFocus: false, shouldRetryOnError: false },
   );
   const warmups = useMemo(() => {
@@ -45,16 +46,18 @@ const SchoolSessionWarmup = () => {
 
   if (!accountSession || warmups.length === 0) return null;
   const roleSourceUrl = portal?.schools[0]?.role_source_url;
+  const roleSourceKey =
+    roleSourceUrl && accountUserId ? ([roleSourceUrl, accountUserId] as const) : null;
 
   return warmups.slice(0, visibleCount).map((warmup) => (
     <iframe
       hidden
       data-askcore-school-session={warmup.key}
-      key={warmup.key}
+      key={`${accountUserId}:${warmup.key}`}
       src={warmup.url}
       title={`askcore-school-session-${warmup.key}`}
       onLoad={() => {
-        if (roleSourceUrl) void mutate(roleSourceUrl);
+        if (roleSourceKey) void mutate(roleSourceKey);
       }}
     />
   ));
