@@ -138,5 +138,5 @@ export const defaultClaims = {
   email: ['email', 'email_verified'],
   openid: ['sub'],
   // subject (unique user identifier)
-  profile: ['name', 'picture'],
+  profile: ['name', 'picture', 'school_subject'],
 };

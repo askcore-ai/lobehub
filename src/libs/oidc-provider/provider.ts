@@ -9,6 +9,7 @@ import { UserModel } from '@/database/models/user';
 import { appEnv } from '@/envs/app';
 import { getJWKS } from '@/libs/oidc-provider/jwt';
 import { normalizeLocale } from '@/locales/resources';
+import { buildAskCoreAssertion } from '@/server/services/askcoreAssertion';
 
 import { isOIDCUserBanned } from './access-control';
 import { DrizzleAdapter } from './adapter';
@@ -36,6 +37,46 @@ export const isSchoolOIDCClient = (client: ResourceIndicatorClient) =>
 
 export const useGrantedResourceForClient = (ctx: KoaContextWithOIDC) =>
   !isSchoolOIDCClient(ctx.oidc.client);
+
+const SCHOOL_SUBJECT_PATTERN = /^[\w.-]{8,40}$/;
+
+export const resolveSchoolOIDCSubject = async ({
+  email,
+  userId,
+}: {
+  email?: string | null;
+  userId: string;
+}) => {
+  const apiBaseUrl = process.env.AITUTOR_API_BASE_URL?.trim() || 'http://api:8000';
+  const assertion = await buildAskCoreAssertion({
+    email: email || undefined,
+    scopes: ['school.identity.read'],
+    sub: userId,
+  });
+  const endpoint = new URL('/api/lti/v1/identity-links/account-subject', apiBaseUrl);
+  const response = await fetch(endpoint.toString(), {
+    cache: 'no-store',
+    headers: {
+      'Accept': 'application/json',
+      'X-AskCore-Billing-Assertion': assertion,
+    },
+    signal: AbortSignal.timeout(3000),
+  });
+  if (!response.ok) throw new Error(`school subject resolution failed (${response.status})`);
+  const payload = (await response.json()) as {
+    deployment_id?: number;
+    school_subject?: string;
+  };
+  const schoolSubject = payload.school_subject?.trim() || '';
+  if (
+    !Number.isSafeInteger(payload.deployment_id) ||
+    Number(payload.deployment_id) < 1 ||
+    !SCHOOL_SUBJECT_PATTERN.test(schoolSubject)
+  ) {
+    throw new Error('school subject resolution returned an invalid response');
+  }
+  return schoolSubject;
+};
 
 export const OIDC_PROVIDER_ROUTES = {
   authorization: '/oidc/auth',
@@ -247,6 +288,12 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
                 user.username ||
                 `${user.firstName || ''} ${user.lastName || ''}`.trim();
               claims.picture = user.avatar;
+              if (clientId && SCHOOL_OIDC_CLIENT_IDS.has(clientId)) {
+                claims.school_subject = await resolveSchoolOIDCSubject({
+                  email: user.email,
+                  userId: user.id,
+                });
+              }
             }
 
             if (scope.includes('email')) {

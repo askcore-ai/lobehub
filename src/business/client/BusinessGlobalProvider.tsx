@@ -9,14 +9,25 @@ import {
 } from '@/business/client/AskCoreSchoolPortal/api';
 import { useSession } from '@/libs/better-auth/auth-client';
 
-const WARMUP_STAGGER_MS = 3000;
+const WARMUP_TIMEOUT_MS = 30_000;
+
+const sourceSessionReady = (frame: HTMLIFrameElement) => {
+  try {
+    return !!frame.contentDocument?.querySelector('meta[name="askcore-session"][content="ready"]');
+  } catch {
+    return false;
+  }
+};
 
 const SchoolSessionWarmup = () => {
   const { data: accountSession } = useSession();
   const accountUserId = accountSession?.user.id;
+  const identityLinkPending =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('protocol') === 'identity-link';
   const { mutate } = useSWRConfig();
   const { data: portal } = useSWR(
-    accountUserId ? ([SCHOOL_PORTAL_API, accountUserId] as const) : null,
+    accountUserId && !identityLinkPending ? ([SCHOOL_PORTAL_API, accountUserId] as const) : null,
     () => fetchSchoolPortalManifest(),
     { revalidateOnFocus: false, shouldRetryOnError: false },
   );
@@ -27,40 +38,39 @@ const SchoolSessionWarmup = () => {
       .sort((left, right) => Number(left.key === 'teaching') - Number(right.key === 'teaching'))
       .map((destination) => ({ key: destination.key, url: destination.session_launch_url }));
   }, [portal]);
-  const [visibleCount, setVisibleCount] = useState(1);
+  const [activeWarmup, setActiveWarmup] = useState(0);
 
   useEffect(() => {
-    setVisibleCount(1);
-    if (warmups.length < 2) return;
-    const timer = window.setInterval(() => {
-      setVisibleCount((count) => {
-        if (count >= warmups.length) {
-          window.clearInterval(timer);
-          return count;
-        }
-        return count + 1;
-      });
-    }, WARMUP_STAGGER_MS);
-    return () => window.clearInterval(timer);
-  }, [warmups]);
+    setActiveWarmup(0);
+  }, [accountUserId, warmups]);
 
-  if (!accountSession || warmups.length === 0) return null;
+  useEffect(() => {
+    if (activeWarmup >= warmups.length) return;
+    const timer = window.setTimeout(() => setActiveWarmup(warmups.length), WARMUP_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [activeWarmup, warmups.length]);
+
+  if (!accountSession || identityLinkPending || warmups.length === 0) return null;
   const roleSourceUrl = portal?.schools[0]?.role_source_url;
   const roleSourceKey =
     roleSourceUrl && accountUserId ? ([roleSourceUrl, accountUserId] as const) : null;
+  const warmup = warmups[activeWarmup];
+  if (!warmup) return null;
 
-  return warmups.slice(0, visibleCount).map((warmup) => (
+  return (
     <iframe
       hidden
       data-askcore-school-session={warmup.key}
       key={`${accountUserId}:${warmup.key}`}
       src={warmup.url}
       title={`askcore-school-session-${warmup.key}`}
-      onLoad={() => {
+      onLoad={(event) => {
+        if (!sourceSessionReady(event.currentTarget)) return;
         if (roleSourceKey) void mutate(roleSourceKey);
+        setActiveWarmup((current) => (current === activeWarmup ? current + 1 : current));
       }}
     />
-  ));
+  );
 };
 
 export default function BusinessGlobalProvider({ children }: { children: ReactNode }) {

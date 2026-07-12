@@ -5,6 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock dependencies
 
+const buildAskCoreAssertion = vi.hoisted(() => vi.fn());
+
+vi.mock('@/server/services/askcoreAssertion', () => ({
+  buildAskCoreAssertion,
+}));
+
 vi.mock('@/envs/app', () => ({
   appEnv: {
     APP_URL: 'https://example.com',
@@ -30,6 +36,8 @@ describe('OIDC Provider - Market Client Integration', () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     vi.resetModules();
   });
 
@@ -145,6 +153,68 @@ describe('OIDC Provider - Market Client Integration', () => {
       expect(useGrantedResourceForClient({ oidc: { client: desktopClient } } as never)).toBe(true);
     });
 
+    it('resolves a principal-scoped pseudonymous subject for school clients', async () => {
+      buildAskCoreAssertion.mockResolvedValue('signed-school-assertion');
+      const request = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            deployment_id: 1,
+            linked: true,
+            school_subject: 'school_0123456789abcdef0123456789abcdef',
+          }),
+          { status: 200 },
+        ),
+      );
+      vi.stubGlobal('fetch', request);
+      vi.stubEnv('AITUTOR_API_BASE_URL', 'http://api:8000');
+
+      const { resolveSchoolOIDCSubject } = await import('./provider');
+      await expect(
+        resolveSchoolOIDCSubject({ email: 'student@askcore.local', userId: 'user_student_1' }),
+      ).resolves.toBe('school_0123456789abcdef0123456789abcdef');
+      expect(request).toHaveBeenCalledWith(
+        'http://api:8000/api/lti/v1/identity-links/account-subject',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'X-AskCore-Billing-Assertion': 'signed-school-assertion',
+          }),
+        }),
+      );
+    });
+
+    it('fails closed when the school subject cannot be resolved', async () => {
+      buildAskCoreAssertion.mockResolvedValue('signed-school-assertion');
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 503 })));
+      vi.stubEnv('AITUTOR_API_BASE_URL', 'http://api:8000');
+
+      const { resolveSchoolOIDCSubject } = await import('./provider');
+      await expect(
+        resolveSchoolOIDCSubject({ email: 'student@askcore.local', userId: 'user_student_1' }),
+      ).rejects.toThrow('school subject resolution failed');
+    });
+
+    it('accepts an ordinary Better Auth subject containing dots', async () => {
+      buildAskCoreAssertion.mockResolvedValue('signed-school-assertion');
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              deployment_id: 1,
+              linked: false,
+              school_subject: 'user.qa.student.1',
+            }),
+            { status: 200 },
+          ),
+        ),
+      );
+
+      const { resolveSchoolOIDCSubject } = await import('./provider');
+      await expect(
+        resolveSchoolOIDCSubject({ email: 'student@askcore.local', userId: 'user.qa.student.1' }),
+      ).resolves.toBe('user.qa.student.1');
+    });
+
     it('should have createOIDCProvider function', async () => {
       vi.doMock('@/envs/app', () => ({
         appEnv: {
@@ -187,6 +257,11 @@ describe('OIDC Provider - Market Client Integration', () => {
     it('should always include sub claim', () => {
       const requiredClaims = ['sub'];
       expect(requiredClaims).toContain('sub');
+    });
+
+    it('declares school_subject as a profile claim', async () => {
+      const { defaultClaims } = await import('./config');
+      expect(defaultClaims.profile).toContain('school_subject');
     });
   });
 
