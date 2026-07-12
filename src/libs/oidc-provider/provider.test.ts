@@ -94,6 +94,21 @@ describe('OIDC Provider - Market Client Integration', () => {
       expect(requiresPKCEForClient({ tokenEndpointAuthMethod: 'client_secret_post' })).toBe(false);
     });
 
+    it('keeps provider routes relative to the public issuer prefix', async () => {
+      const { OIDC_PROVIDER_ROUTES } = await import('./provider');
+
+      expect(OIDC_PROVIDER_ROUTES).toEqual({
+        authorization: '/auth',
+        code_verification: '/device',
+        device_authorization: '/device/auth',
+        end_session: '/session/end',
+        token: '/token',
+      });
+      expect(Object.values(OIDC_PROVIDER_ROUTES)).not.toEqual(
+        expect.arrayContaining([expect.stringMatching(/^\/oidc\//)]),
+      );
+    });
+
     it('should export API_AUDIENCE constant', async () => {
       vi.doMock('@/envs/app', () => ({
         appEnv: {

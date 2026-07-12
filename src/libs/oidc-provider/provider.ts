@@ -18,6 +18,13 @@ import { createInteractionPolicy } from './interaction-policy';
 const logProvider = debug('lobe-oidc:provider');
 
 export const API_AUDIENCE = 'urn:lobehub:chat';
+export const OIDC_PROVIDER_ROUTES = {
+  authorization: '/auth',
+  code_verification: '/device',
+  device_authorization: '/device/auth',
+  end_session: '/session/end',
+  token: '/token',
+} as const;
 export const requiresPKCEForClient = (client: { tokenEndpointAuthMethod?: string }) =>
   client.tokenEndpointAuthMethod === 'none';
 
@@ -293,13 +300,7 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
     // Added: enable refresh token rotation
     rotateRefreshToken: true,
 
-    routes: {
-      authorization: '/oidc/auth',
-      code_verification: '/oidc/device',
-      device_authorization: '/oidc/device/auth',
-      end_session: '/oidc/session/end',
-      token: '/oidc/token',
-    },
+    routes: OIDC_PROVIDER_ROUTES,
     // 3. Scopes definition
     scopes: defaultScopes,
 

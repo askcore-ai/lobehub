@@ -50,7 +50,7 @@ describe('OIDC HTTP adapter', () => {
 
       expect(nodeRequest).toMatchObject({
         method: 'POST',
-        url: '/oidc/token?client_id=test',
+        url: '/token?client_id=test',
       });
       expect(nodeRequest.socket.remoteAddress).toBe('203.0.113.10');
       expect(nodeRequest.readable).toBe(true);
@@ -113,6 +113,20 @@ describe('OIDC HTTP adapter', () => {
       expect(arrayBuffer).not.toHaveBeenCalled();
       expect(nodeRequest.readable).toBe(true);
       await expect(readStream(nodeRequest as unknown as Readable)).resolves.toBe('');
+    });
+
+    it.each([
+      ['/oidc/.well-known/openid-configuration', '/.well-known/openid-configuration'],
+      ['/oidc/jwks', '/jwks'],
+      ['/oidc/me', '/me'],
+      ['/oidc/auth', '/auth'],
+    ])('mounts %s below the provider issuer prefix', async (publicPath, providerPath) => {
+      const request = new Request(`https://example.com${publicPath}`) as unknown as NextRequest;
+
+      const { createNodeRequest } = await import('./http-adapter');
+      const nodeRequest = await createNodeRequest(request);
+
+      expect(nodeRequest.url).toBe(providerPath);
     });
   });
 });

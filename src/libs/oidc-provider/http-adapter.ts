@@ -11,6 +11,15 @@ import { appEnv } from '@/envs/app';
 const log = debug('lobe-oidc:http-adapter');
 
 const methodsWithBody = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const OIDC_PROVIDER_PREFIX = '/oidc';
+
+export const oidcProviderPath = (pathname: string) => {
+  if (pathname === OIDC_PROVIDER_PREFIX) return '/';
+  if (pathname.startsWith(`${OIDC_PROVIDER_PREFIX}/`)) {
+    return pathname.slice(OIDC_PROVIDER_PREFIX.length);
+  }
+  return pathname;
+};
 
 /**
  * Convert Next.js request headers to standard Node.js HTTP header format
@@ -31,8 +40,9 @@ export const createNodeRequest = async (req: NextRequest): Promise<IncomingMessa
   // Build URL object
   const url = new URL(req.url);
 
-  // Compute path relative to prefix
-  let providerPath = url.pathname;
+  // oidc-provider is mounted by a Next catch-all route, so it must receive a
+  // path relative to its public issuer prefix.
+  let providerPath = oidcProviderPath(url.pathname);
 
   // Ensure path always starts with /
   if (!providerPath.startsWith('/')) {
