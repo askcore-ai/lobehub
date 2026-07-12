@@ -19,11 +19,16 @@ const logProvider = debug('lobe-oidc:provider');
 
 export const API_AUDIENCE = 'urn:lobehub:chat';
 export const OIDC_PROVIDER_ROUTES = {
-  authorization: '/auth',
-  code_verification: '/device',
-  device_authorization: '/device/auth',
-  end_session: '/session/end',
-  token: '/token',
+  authorization: '/oidc/auth',
+  code_verification: '/oidc/device',
+  device_authorization: '/oidc/device/auth',
+  end_session: '/oidc/session/end',
+  introspection: '/oidc/token/introspection',
+  jwks: '/oidc/jwks',
+  pushed_authorization_request: '/oidc/request',
+  revocation: '/oidc/token/revocation',
+  token: '/oidc/token',
+  userinfo: '/oidc/me',
 } as const;
 export const requiresPKCEForClient = (client: { tokenEndpointAuthMethod?: string }) =>
   client.tokenEndpointAuthMethod === 'none';

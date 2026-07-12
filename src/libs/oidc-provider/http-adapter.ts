@@ -14,8 +14,7 @@ const methodsWithBody = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const OIDC_PROVIDER_PREFIX = '/oidc';
 
 export const oidcProviderPath = (pathname: string) => {
-  if (pathname === OIDC_PROVIDER_PREFIX) return '/';
-  if (pathname.startsWith(`${OIDC_PROVIDER_PREFIX}/`)) {
+  if (pathname.startsWith(`${OIDC_PROVIDER_PREFIX}/.well-known/`)) {
     return pathname.slice(OIDC_PROVIDER_PREFIX.length);
   }
   return pathname;

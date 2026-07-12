@@ -98,14 +98,22 @@ describe('OIDC Provider - Market Client Integration', () => {
       const { OIDC_PROVIDER_ROUTES } = await import('./provider');
 
       expect(OIDC_PROVIDER_ROUTES).toEqual({
-        authorization: '/auth',
-        code_verification: '/device',
-        device_authorization: '/device/auth',
-        end_session: '/session/end',
-        token: '/token',
+        authorization: '/oidc/auth',
+        code_verification: '/oidc/device',
+        device_authorization: '/oidc/device/auth',
+        end_session: '/oidc/session/end',
+        introspection: '/oidc/token/introspection',
+        jwks: '/oidc/jwks',
+        pushed_authorization_request: '/oidc/request',
+        revocation: '/oidc/token/revocation',
+        token: '/oidc/token',
+        userinfo: '/oidc/me',
       });
-      expect(Object.values(OIDC_PROVIDER_ROUTES)).not.toEqual(
+      expect(Object.values(OIDC_PROVIDER_ROUTES)).toEqual(
         expect.arrayContaining([expect.stringMatching(/^\/oidc\//)]),
+      );
+      expect(Object.values(OIDC_PROVIDER_ROUTES).every((route) => route.startsWith('/oidc/'))).toBe(
+        true,
       );
     });
 
