@@ -5,6 +5,7 @@ import useSWR, { useSWRConfig } from 'swr';
 
 import {
   fetchSchoolPortalManifest,
+  fetchSchoolSourceSession,
   SCHOOL_PORTAL_API,
 } from '@/business/client/AskCoreSchoolPortal/api';
 import { useSession } from '@/libs/better-auth/auth-client';
@@ -65,9 +66,22 @@ const SchoolSessionWarmup = () => {
       src={warmup.url}
       title={`askcore-school-session-${warmup.key}`}
       onLoad={(event) => {
-        if (!sourceSessionReady(event.currentTarget)) return;
-        if (roleSourceKey) void mutate(roleSourceKey);
-        setActiveWarmup((current) => (current === activeWarmup ? current + 1 : current));
+        const advanceWarmup = () => {
+          setActiveWarmup((current) => (current === activeWarmup ? current + 1 : current));
+        };
+        if (sourceSessionReady(event.currentTarget)) {
+          if (roleSourceKey) void mutate(roleSourceKey);
+          advanceWarmup();
+          return;
+        }
+        if (warmup.key !== 'school-services' || !roleSourceUrl || !roleSourceKey) return;
+
+        void fetchSchoolSourceSession(roleSourceUrl)
+          .then((sourceSession) => {
+            void mutate(roleSourceKey, sourceSession, { revalidate: false });
+            advanceWarmup();
+          })
+          .catch(() => {});
       }}
     />
   );

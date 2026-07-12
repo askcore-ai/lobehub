@@ -6,6 +6,7 @@ import BusinessGlobalProvider from './BusinessGlobalProvider';
 
 const state = vi.hoisted(() => ({ authenticated: true, userId: 'user-1' }));
 const mutate = vi.hoisted(() => vi.fn());
+const fetchSchoolSourceSession = vi.hoisted(() => vi.fn());
 
 const portal = {
   can_manage_integrations: false,
@@ -54,10 +55,17 @@ vi.mock('@/libs/better-auth/auth-client', () => ({
   useSession: () => ({ data: state.authenticated ? { user: { id: state.userId } } : null }),
 }));
 
+vi.mock('@/business/client/AskCoreSchoolPortal/api', async (importOriginal) => ({
+  ...(await importOriginal()),
+  fetchSchoolSourceSession,
+}));
+
 describe('BusinessGlobalProvider', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mutate.mockReset();
+    fetchSchoolSourceSession.mockReset();
+    fetchSchoolSourceSession.mockRejectedValue(new Error('source session is not ready'));
     state.authenticated = true;
     state.userId = 'user-1';
     window.history.replaceState({}, '', '/');
@@ -98,6 +106,35 @@ describe('BusinessGlobalProvider', () => {
     markSessionReady(frames[0]!);
     fireEvent.load(frames[0]!);
     expect(document.querySelectorAll('iframe[data-askcore-school-session]')).toHaveLength(0);
+  });
+
+  it('continues after Gibbon establishes a source role on its native dashboard', async () => {
+    fetchSchoolSourceSession.mockResolvedValue({ authenticated: true, role: 'teacher' });
+    render(
+      <BusinessGlobalProvider>
+        <div>personal workspace</div>
+      </BusinessGlobalProvider>,
+    );
+
+    const gibbonFrame = document.querySelector<HTMLIFrameElement>(
+      'iframe[data-askcore-school-session="school-services"]',
+    );
+    await act(async () => {
+      fireEvent.load(gibbonFrame!);
+      await Promise.resolve();
+    });
+
+    expect(fetchSchoolSourceSession).toHaveBeenCalledWith(
+      'https://askcore.cn/school/services/askcore/session.php',
+    );
+    expect(mutate).toHaveBeenCalledWith(
+      ['https://askcore.cn/school/services/askcore/session.php', 'user-1'],
+      { authenticated: true, role: 'teacher' },
+      { revalidate: false },
+    );
+    expect(
+      document.querySelector<HTMLIFrameElement>('iframe[data-askcore-school-session="teaching"]'),
+    ).not.toBeNull();
   });
 
   it('does not contact school sources before Better Auth is authenticated', () => {
