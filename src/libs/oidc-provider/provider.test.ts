@@ -131,6 +131,20 @@ describe('OIDC Provider - Market Client Integration', () => {
       vi.doUnmock('@/envs/app');
     }, 10000);
 
+    it('issues UserInfo tokens for school clients and API tokens for Lobe clients', async () => {
+      const { isSchoolOIDCClient, useGrantedResourceForClient } = await import('./provider');
+
+      const moodleClient = { clientId: 'askcore-moodle' };
+      const gibbonClient = { clientId: 'askcore-gibbon' };
+      const desktopClient = { clientId: 'lobehub-desktop' };
+
+      expect(isSchoolOIDCClient(moodleClient)).toBe(true);
+      expect(isSchoolOIDCClient(gibbonClient)).toBe(true);
+      expect(isSchoolOIDCClient(desktopClient)).toBe(false);
+      expect(useGrantedResourceForClient({ oidc: { client: moodleClient } } as never)).toBe(false);
+      expect(useGrantedResourceForClient({ oidc: { client: desktopClient } } as never)).toBe(true);
+    });
+
     it('should have createOIDCProvider function', async () => {
       vi.doMock('@/envs/app', () => ({
         appEnv: {

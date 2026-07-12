@@ -12,12 +12,31 @@ import { normalizeLocale } from '@/locales/resources';
 
 import { isOIDCUserBanned } from './access-control';
 import { DrizzleAdapter } from './adapter';
-import { defaultClaims, defaultClients, defaultScopes } from './config';
+import {
+  ASKCORE_GIBBON_OIDC_CLIENT_ID,
+  ASKCORE_MOODLE_OIDC_CLIENT_ID,
+  defaultClaims,
+  defaultClients,
+  defaultScopes,
+} from './config';
 import { createInteractionPolicy } from './interaction-policy';
 
 const logProvider = debug('lobe-oidc:provider');
 
 export const API_AUDIENCE = 'urn:lobehub:chat';
+const SCHOOL_OIDC_CLIENT_IDS = new Set([
+  ASKCORE_GIBBON_OIDC_CLIENT_ID,
+  ASKCORE_MOODLE_OIDC_CLIENT_ID,
+]);
+
+type ResourceIndicatorClient = { clientId?: string } | undefined;
+
+export const isSchoolOIDCClient = (client: ResourceIndicatorClient) =>
+  !!client?.clientId && SCHOOL_OIDC_CLIENT_IDS.has(client.clientId);
+
+export const useGrantedResourceForClient = (ctx: KoaContextWithOIDC) =>
+  !isSchoolOIDCClient(ctx.oidc.client);
+
 export const OIDC_PROVIDER_ROUTES = {
   authorization: '/oidc/auth',
   code_verification: '/oidc/device',
@@ -155,7 +174,7 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
           throw new errors.InvalidTarget();
         },
         // When a client uses a refresh token to request a new access token without specifying a resource, the authorization server checks all resources included in the original authorization and uses them for the new access token. This provides a convenient way to maintain authorization consistency without requiring the client to re-specify all resources on each refresh.
-        useGrantedResource: () => true,
+        useGrantedResource: useGrantedResourceForClient,
       },
       revocation: { enabled: true },
       rpInitiatedLogout: { enabled: true },

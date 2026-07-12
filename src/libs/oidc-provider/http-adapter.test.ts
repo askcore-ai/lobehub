@@ -32,6 +32,19 @@ const readStream = async (stream: Readable) => {
 };
 
 describe('OIDC HTTP adapter', () => {
+  describe('createNodeResponse', () => {
+    it('captures statusCode assignments made directly by oidc-provider', async () => {
+      const { createNodeResponse } = await import('./http-adapter');
+      const collector = createNodeResponse(vi.fn());
+
+      collector.nodeResponse.statusCode = 401;
+      collector.nodeResponse.end('{"error":"invalid_token"}');
+
+      expect(collector.responseStatus).toBe(401);
+      expect(collector.responseBody).toBe('{"error":"invalid_token"}');
+    });
+  });
+
   describe('createNodeRequest', () => {
     it('passes POST bodies through as a readable Node stream without pre-parsing', async () => {
       const body = 'grant_type=authorization_code&code=test-code';

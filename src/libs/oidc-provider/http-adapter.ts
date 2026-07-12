@@ -140,6 +140,14 @@ export const createNodeResponse = (resolvePromise: () => void): ResponseCollecto
 
     headersSent: false,
 
+    get statusCode() {
+      return state.responseStatus;
+    },
+
+    set statusCode(status: number) {
+      state.responseStatus = status;
+    },
+
     removeHeader: (name: string) => {
       const lowerName = name.toLowerCase();
       log('Removing header: %s', lowerName);
