@@ -112,10 +112,16 @@ const Body = memo(() => {
     [hiddenSections],
   );
 
-  const visibleKeys = useMemo(
-    () => sidebarItems.filter((k) => !HEADER_KEYS.has(k) && isVisible(k)),
-    [sidebarItems, isVisible],
-  );
+  const visibleKeys = useMemo(() => {
+    const keys = sidebarItems.filter((key) => !HEADER_KEYS.has(key) && isVisible(key));
+    const existingKeys = new Set(keys);
+
+    for (const key of REQUIRED_NAV_KEYS) {
+      if (navLinkItems.has(key) && !existingKeys.has(key)) keys.unshift(key);
+    }
+
+    return keys;
+  }, [isVisible, navLinkItems, sidebarItems]);
 
   const renderNavLink = useCallback(
     (key: string) => {

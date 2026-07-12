@@ -175,81 +175,32 @@ describe('Home sidebar body', () => {
     expect(children[5]).toHaveTextContent('Resource');
   });
 
-  it('renders the identity-claim entry for users whose persisted sidebar predates that system item', () => {
+  it('renders the school entry for users whose persisted sidebar predates that system item', () => {
     mocks.navLayout = {
       bottomMenuItems: [],
       topNavItems: [
         { key: 'pages', title: 'Pages', url: '/page' },
-        { hidden: true, key: 'askcore', title: 'Teaching Workbench', url: '/askcore/workbench' },
-        {
-          key: 'askcore-identity-claim',
-          title: '身份申请',
-          url: '/organization?action=identity-claim',
-        },
+        { key: 'school', title: '学校', url: '/school' },
       ],
     };
-    mocks.globalState.status.sidebarItems = ['pages', 'askcore', 'recents', 'agent'];
+    mocks.globalState.status.sidebarItems = ['pages', 'recents', 'agent'];
 
     render(<Body />);
 
-    expect(screen.getByText('身份申请')).toBeInTheDocument();
-    expect(screen.queryByText('Teaching Workbench')).not.toBeInTheDocument();
-  });
-
-  it('dispatches the identity claim open event when clicking the identity application entry', () => {
-    const handleIdentityClaimOpen = vi.fn();
-    window.addEventListener('askcore:identity-claim-open', handleIdentityClaimOpen);
-    mocks.navLayout = {
-      bottomMenuItems: [],
-      topNavItems: [
-        {
-          key: 'askcore-identity-claim',
-          title: '身份申请',
-          url: '/organization?action=identity-claim',
-        },
-      ],
-    };
-    mocks.globalState.status.sidebarItems = ['askcore-identity-claim'];
-
-    render(<Body />);
-
-    fireEvent.click(screen.getByText('身份申请'));
-
-    expect(handleIdentityClaimOpen).toHaveBeenCalledTimes(1);
-    window.removeEventListener('askcore:identity-claim-open', handleIdentityClaimOpen);
+    expect(screen.getByText('学校')).toBeInTheDocument();
   });
 
   it('keeps required AskCore navigation visible even when local hidden sections are stale', () => {
     mocks.navLayout = {
       bottomMenuItems: [],
-      topNavItems: [
-        { key: 'organization', title: '组织', url: '/organization' },
-        { key: 'askcore', title: '学习工作台', url: '/askcore/workbench' },
-        {
-          key: 'askcore-identity-claim',
-          title: '身份申请',
-          url: '/organization?action=identity-claim',
-        },
-      ],
+      topNavItems: [{ key: 'school', title: '学校', url: '/school' }],
     };
-    mocks.globalState.status.hiddenSidebarSections = [
-      'organization',
-      'askcore',
-      'askcore-identity-claim',
-    ];
-    mocks.globalState.status.sidebarItems = [
-      'organization',
-      'askcore-identity-claim',
-      'askcore',
-      'recents',
-      'agent',
-    ];
+    mocks.globalState.status.hiddenSidebarSections = ['school'];
+    mocks.globalState.status.sidebarItems = ['school', 'recents', 'agent'];
 
     render(<Body />);
 
-    expect(screen.getByText('组织')).toBeInTheDocument();
-    expect(screen.getByText('身份申请')).toBeInTheDocument();
-    expect(screen.getByText('学习工作台')).toBeInTheDocument();
+    expect(screen.getByText('学校')).toBeInTheDocument();
   });
 
   it('keeps a top item that was dragged past the spacer in its new position', () => {
