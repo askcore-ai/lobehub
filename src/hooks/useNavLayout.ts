@@ -1,7 +1,12 @@
-import { HomeIcon, SearchIcon } from 'lucide-react';
+import { HomeIcon, SchoolIcon, SearchIcon } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import useSWR from 'swr';
 
+import {
+  fetchSchoolPortalManifest,
+  SCHOOL_PORTAL_API,
+} from '@/business/client/AskCoreSchoolPortal/api';
 import { getRouteById } from '@/config/routes';
 import { useGlobalStore } from '@/store/global';
 import { SidebarTabKey } from '@/store/global/initialState';
@@ -36,6 +41,10 @@ export const useNavLayout = (): NavLayout => {
   const { t } = useTranslation('common');
   const toggleCommandMenu = useGlobalStore((s) => s.toggleCommandMenu);
   const { showMarket, hideGitHub } = useServerConfigStore(featureFlagsSelectors);
+  const { data: schoolPortal } = useSWR(SCHOOL_PORTAL_API, fetchSchoolPortalManifest, {
+    revalidateOnFocus: false,
+    shouldRetryOnError: false,
+  });
 
   const topNavItems = useMemo(
     () =>
@@ -53,6 +62,13 @@ export const useNavLayout = (): NavLayout => {
           url: '/',
         },
         {
+          hidden: schoolPortal?.show_school_entry !== true,
+          icon: SchoolIcon,
+          key: 'school',
+          title: '学校',
+          url: '/school',
+        },
+        {
           icon: getRouteById('tasks')!.icon,
           key: SidebarTabKey.Tasks,
           title: t('tab.tasks'),
@@ -65,7 +81,7 @@ export const useNavLayout = (): NavLayout => {
           url: '/page',
         },
       ] as NavItem[],
-    [t, toggleCommandMenu],
+    [schoolPortal?.show_school_entry, t, toggleCommandMenu],
   );
 
   const bottomMenuItems = useMemo(

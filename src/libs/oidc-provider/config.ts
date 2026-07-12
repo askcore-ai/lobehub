@@ -4,6 +4,45 @@ import urlJoin from 'url-join';
 import { appEnv } from '@/envs/app';
 
 const marketBaseUrl = appEnv.MARKET_BASE_URL ?? 'https://askcore.cn/api/lobe/market';
+export const ASKCORE_MOODLE_OIDC_CLIENT_ID = 'askcore-moodle';
+export const ASKCORE_GIBBON_OIDC_CLIENT_ID = 'askcore-gibbon';
+
+export const schoolOIDCClientsFromEnvironment = (
+  environment: Record<string, string | undefined> = process.env,
+): ClientMetadata[] => {
+  const moodleSecret = environment.ASKCORE_MOODLE_OIDC_CLIENT_SECRET?.trim();
+  const gibbonSecret = environment.ASKCORE_GIBBON_OIDC_CLIENT_SECRET?.trim();
+  const clients: ClientMetadata[] = [];
+  if (moodleSecret) {
+    clients.push({
+      application_type: 'web',
+      client_id: ASKCORE_MOODLE_OIDC_CLIENT_ID,
+      client_name: 'AskCore 教学中心',
+      client_secret: moodleSecret,
+      grant_types: ['authorization_code', 'refresh_token'],
+      logo_uri: 'https://askcore.cn/askcore-logo.png',
+      post_logout_redirect_uris: ['https://askcore.cn/school'],
+      redirect_uris: ['https://askcore.cn/school/teaching/admin/oauth2callback.php'],
+      response_types: ['code'],
+      token_endpoint_auth_method: 'client_secret_basic',
+    });
+  }
+  if (gibbonSecret) {
+    clients.push({
+      application_type: 'web',
+      client_id: ASKCORE_GIBBON_OIDC_CLIENT_ID,
+      client_name: 'AskCore 校务中心',
+      client_secret: gibbonSecret,
+      grant_types: ['authorization_code', 'refresh_token'],
+      logo_uri: 'https://askcore.cn/askcore-logo.png',
+      post_logout_redirect_uris: ['https://askcore.cn/school'],
+      redirect_uris: ['https://askcore.cn/school/services/login.php'],
+      response_types: ['code'],
+      token_endpoint_auth_method: 'client_secret_post',
+    });
+  }
+  return clients;
+};
 
 /**
  * Default OIDC client configuration
@@ -79,6 +118,7 @@ export const defaultClients: ClientMetadata[] = [
     response_types: ['code'],
     token_endpoint_auth_method: 'none',
   },
+  ...schoolOIDCClientsFromEnvironment(),
 ];
 
 /**

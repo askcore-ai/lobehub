@@ -33,6 +33,34 @@ describe('OIDC Provider - Market Client Integration', () => {
     vi.resetModules();
   });
 
+  it('builds confidential first-party Moodle and Gibbon clients from runtime secrets', async () => {
+    const {
+      ASKCORE_GIBBON_OIDC_CLIENT_ID,
+      ASKCORE_MOODLE_OIDC_CLIENT_ID,
+      schoolOIDCClientsFromEnvironment,
+    } = await import('./config');
+    const clients = schoolOIDCClientsFromEnvironment({
+      ASKCORE_GIBBON_OIDC_CLIENT_SECRET: 'gibbon-secret',
+      ASKCORE_MOODLE_OIDC_CLIENT_SECRET: 'moodle-secret',
+    });
+
+    expect(clients).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          client_id: ASKCORE_MOODLE_OIDC_CLIENT_ID,
+          redirect_uris: ['https://askcore.cn/school/teaching/admin/oauth2callback.php'],
+          token_endpoint_auth_method: 'client_secret_basic',
+        }),
+        expect.objectContaining({
+          client_id: ASKCORE_GIBBON_OIDC_CLIENT_ID,
+          redirect_uris: ['https://askcore.cn/school/services/login.php'],
+          token_endpoint_auth_method: 'client_secret_post',
+        }),
+      ]),
+    );
+    expect(schoolOIDCClientsFromEnvironment({})).toEqual([]);
+  });
+
   describe('Market Client Logic', () => {
     it('should identify market client correctly', () => {
       expect(MARKET_CLIENT_ID).toBe('lobehub-market');
@@ -58,6 +86,14 @@ describe('OIDC Provider - Market Client Integration', () => {
   });
 
   describe('Provider Configuration', () => {
+    it('requires PKCE for public clients and permits confidential clients to authenticate', async () => {
+      const { requiresPKCEForClient } = await import('./provider');
+
+      expect(requiresPKCEForClient({ tokenEndpointAuthMethod: 'none' })).toBe(true);
+      expect(requiresPKCEForClient({ tokenEndpointAuthMethod: 'client_secret_basic' })).toBe(false);
+      expect(requiresPKCEForClient({ tokenEndpointAuthMethod: 'client_secret_post' })).toBe(false);
+    });
+
     it('should export API_AUDIENCE constant', async () => {
       vi.doMock('@/envs/app', () => ({
         appEnv: {

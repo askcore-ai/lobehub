@@ -29,7 +29,13 @@ function getScopeDescription(scope: string, t: any): string {
   return t(`consent.scope.${scope.replace(':', '-')}`, scope);
 }
 
-const BUILTIN_CLIENTS = new Set(['lobehub-desktop', 'lobehub-mobile', 'lobehub-market']);
+const BUILTIN_CLIENTS = new Set([
+  'askcore-gibbon',
+  'askcore-moodle',
+  'lobehub-desktop',
+  'lobehub-mobile',
+  'lobehub-market',
+]);
 
 const ConsentClient = memo<ClientProps>(({ uid, clientId, scopes, clientMetadata }) => {
   const { t } = useTranslation('oauth');

@@ -21,6 +21,10 @@ const logBetterAuth = debug('middleware:better-auth');
 
 // Dev-only debug proxy route should bypass all middleware rewrites.
 const dangerousLocalDevProxyRoute = '/_dangerous_local_dev_proxy';
+const apiRoutePrefixes = ['/api', '/trpc', '/webapi'];
+
+export const isApiLikeRoute = (pathname: string) =>
+  apiRoutePrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 
 export function defineConfig() {
   const backendApiEndpoints = ['/api', '/trpc', '/webapi', '/oidc'];
@@ -193,6 +197,9 @@ export function defineConfig() {
     '/oauth/consent/(.*)',
     '/oidc/handoff',
     '/oidc/device/auth',
+    '/oidc/.well-known/(.*)',
+    '/oidc/jwks',
+    '/oidc/me',
     '/oidc/token',
     // market
     '/market-auth-callback',
@@ -232,6 +239,9 @@ export function defineConfig() {
     if (!isLoggedIn) {
       // If request a protected route, redirect to sign-in page
       if (isProtected) {
+        if (isApiLikeRoute(req.nextUrl.pathname)) {
+          return NextResponse.json({ detail: 'Authentication required' }, { status: 401 });
+        }
         logBetterAuth('Request a protected route, redirecting to sign-in page');
 
         const callbackUrl = `${appEnv.APP_URL}${req.nextUrl.pathname}${req.nextUrl.search}`;
