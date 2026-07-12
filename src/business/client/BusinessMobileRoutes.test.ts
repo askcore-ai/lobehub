@@ -11,6 +11,8 @@ describe('BusinessMobileRoutes', () => {
 
     expect(paths).toContain('askcore/workbench');
     expect(paths).toContain('school');
+    expect(paths).toContain('school/teaching');
+    expect(paths).toContain('school/learning');
     expect(paths).not.toContain('organization');
   });
 

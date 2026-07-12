@@ -30,13 +30,22 @@ const isFirstPartyRedirect = (value: string | null) => {
   try {
     const url = new URL(value);
     const hostname = url.hostname.toLowerCase();
+    const isSchoolSourcePath =
+      url.pathname.startsWith('/school/teaching/') || url.pathname.startsWith('/school/services/');
+    const queryEntries = [...url.searchParams.entries()];
+    const hasSafeQuery =
+      queryEntries.length === 0 ||
+      (queryEntries.length === 1 &&
+        queryEntries[0][0] === 'destination' &&
+        queryEntries[0][1] === '1');
     return (
       url.protocol === 'https:' &&
       (hostname === 'askcore.cn' || hostname.endsWith('.askcore.cn')) &&
       !url.username &&
       !url.password &&
       (!url.port || url.port === '443') &&
-      !url.search &&
+      isSchoolSourcePath &&
+      hasSafeQuery &&
       !url.hash
     );
   } catch {

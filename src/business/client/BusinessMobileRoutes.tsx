@@ -1,12 +1,22 @@
 import { type RouteObject } from 'react-router-dom';
 
+const loadSchoolRoute = async () => {
+  const routeModule = await import('./AskCoreSchoolPortal');
+  return { Component: routeModule.AskCoreSchoolPortalRoute };
+};
+
 export const BusinessMobileRoutesWithMainLayout: RouteObject[] = [
   {
-    lazy: async () => {
-      const routeModule = await import('./AskCoreSchoolPortal');
-      return { Component: routeModule.AskCoreSchoolPortalRoute };
-    },
+    lazy: loadSchoolRoute,
     path: 'school',
+  },
+  {
+    lazy: loadSchoolRoute,
+    path: 'school/teaching',
+  },
+  {
+    lazy: loadSchoolRoute,
+    path: 'school/learning',
   },
   {
     lazy: async () => {

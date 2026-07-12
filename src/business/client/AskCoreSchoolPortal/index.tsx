@@ -2,15 +2,9 @@
 
 import { Alert, Button, Empty, Skeleton, Tag } from 'antd';
 import { createStaticStyles, cssVar } from 'antd-style';
-import {
-  BookOpenCheck,
-  Building2,
-  ExternalLink,
-  RefreshCw,
-  School,
-  ShieldCheck,
-} from 'lucide-react';
+import { BookOpenCheck, RefreshCw, School, ShieldCheck } from 'lucide-react';
 import { memo } from 'react';
+import { useLocation } from 'react-router-dom';
 import useSWR from 'swr';
 
 import {
@@ -20,7 +14,7 @@ import {
   SCHOOL_OPERATIONS_API,
   SCHOOL_PORTAL_API,
 } from './api';
-import { type SchoolPortalDestination, type SchoolPortalState } from './types';
+import { type SchoolPortalState } from './types';
 
 const styles = createStaticStyles(({ css }) => ({
   card: css`
@@ -46,53 +40,19 @@ const styles = createStaticStyles(({ css }) => ({
     color: ${cssVar.colorText};
     overflow-wrap: anywhere;
   `,
-  destination: css`
-    display: grid;
-    grid-template-columns: 34px minmax(0, 1fr) auto;
-    gap: 12px;
-    align-items: center;
+  frame: css`
+    display: block;
 
-    min-height: 66px;
-    padding-block: 10px;
-    padding-inline: 10px;
-    border-block-start: 1px solid ${cssVar.colorBorderSecondary};
-  `,
-  destinationCopy: css`
-    min-width: 0;
-  `,
-  destinationDescription: css`
-    margin-block-start: 2px;
+    width: 100%;
+    height: calc(100dvh - 154px);
+    min-height: 520px;
+    border: 0;
 
-    font-size: 12px;
-    line-height: 1.45;
-    color: ${cssVar.colorTextDescription};
-    overflow-wrap: anywhere;
-  `,
-  destinationIcon: css`
-    display: grid;
-    place-items: center;
-
-    width: 34px;
-    height: 34px;
-    border-radius: 8px;
-
-    color: ${cssVar.colorPrimary};
-
-    background: ${cssVar.colorPrimaryBg};
-  `,
-  destinationLabel: css`
-    font-size: 14px;
-    font-weight: 600;
-    line-height: 1.4;
-    color: ${cssVar.colorText};
-  `,
-  grid: css`
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+    background: ${cssVar.colorBgContainer};
 
     @media (width <= 840px) {
-      grid-template-columns: 1fr;
+      height: calc(100dvh - 126px);
+      min-height: 420px;
     }
   `,
   operationRow: css`
@@ -131,8 +91,18 @@ const styles = createStaticStyles(({ css }) => ({
     gap: 16px;
 
     min-width: 0;
+    min-height: 100%;
     padding-block: 16px 28px;
     padding-inline: clamp(12px, 2vw, 28px);
+  `,
+  surface: css`
+    overflow: hidden;
+
+    min-width: 0;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 8px;
+
+    background: ${cssVar.colorBgContainer};
   `,
   subtitle: css`
     margin-block-start: 3px;
@@ -161,10 +131,8 @@ const stateCopy: Record<Exclude<SchoolPortalState, 'ready'>, { message: string; 
   },
 };
 
-const destinationIcon = (destination: SchoolPortalDestination) =>
-  destination.key === 'teaching' ? <BookOpenCheck size={17} /> : <Building2 size={17} />;
-
 export const AskCoreSchoolPortalRoute = memo(() => {
+  const { pathname } = useLocation();
   const { data, error, isLoading, mutate } = useSWR(SCHOOL_PORTAL_API, fetchSchoolPortalManifest, {
     revalidateOnFocus: false,
   });
@@ -186,6 +154,15 @@ export const AskCoreSchoolPortalRoute = memo(() => {
   );
 
   const terminalState = data?.state && data.state !== 'ready' ? stateCopy[data.state] : undefined;
+  const isTeachingSurface = pathname === '/school/teaching' || pathname === '/school/learning';
+  const destinationKey = isTeachingSurface ? 'teaching' : 'school-services';
+  const destination = sharedSchool?.destinations.find((item) => item.key === destinationKey);
+  const surfaceTitle = isTeachingSurface
+    ? sourceSession?.role === 'student' || pathname === '/school/learning'
+      ? '学习空间'
+      : '教学中心'
+    : '学校';
+  const SurfaceIcon = isTeachingSurface ? BookOpenCheck : School;
   const productionPreflightPassed = operations?.production_preflight?.preflight_status === 'passed';
   const processingConnectionReady =
     productionPreflightPassed && (operations?.production_preflight?.active_deployments || 0) > 0;
@@ -194,11 +171,11 @@ export const AskCoreSchoolPortalRoute = memo(() => {
     <main className={styles.page}>
       <header className={styles.header}>
         <span className={styles.headerIcon}>
-          <School size={20} />
+          <SurfaceIcon size={20} />
         </span>
         <div>
-          <h1 className={styles.title}>学校</h1>
-          <div className={styles.subtitle}>AskCore 在线学校</div>
+          <h1 className={styles.title}>{surfaceTitle}</h1>
+          <div className={styles.subtitle}>{sharedSchool?.name || 'AskCore 在线学校'}</div>
         </div>
       </header>
 
@@ -217,7 +194,25 @@ export const AskCoreSchoolPortalRoute = memo(() => {
         />
       ) : null}
 
-      {!error && data?.can_manage_integrations ? (
+      {!error && data?.state === 'ready' && destination ? (
+        <section className={styles.surface}>
+          <iframe
+            className={styles.frame}
+            src={destination.launch_url}
+            title={`${sharedSchool?.name || 'AskCore 在线学校'} ${surfaceTitle}`}
+          />
+        </section>
+      ) : null}
+
+      {!error && data?.state === 'ready' && !destination ? (
+        <Empty description="学校服务暂不可用" image={Empty.PRESENTED_IMAGE_SIMPLE}>
+          <Button icon={<RefreshCw size={14} />} onClick={() => void mutate()}>
+            刷新连接状态
+          </Button>
+        </Empty>
+      ) : null}
+
+      {!isTeachingSurface && !error && data?.can_manage_integrations ? (
         <section className={styles.card}>
           <div className={styles.cardHeader}>
             <ShieldCheck size={18} />
@@ -278,42 +273,6 @@ export const AskCoreSchoolPortalRoute = memo(() => {
             刷新连接状态
           </Button>
         </Empty>
-      ) : null}
-
-      {!error && data?.state === 'ready' ? (
-        <div className={styles.grid}>
-          {data.schools.map((school) => (
-            <section className={styles.card} key={school.key}>
-              <div className={styles.cardHeader}>
-                <School size={18} />
-                <h2 className={styles.cardTitle}>{school.name}</h2>
-              </div>
-              {school.destinations.map((destination) => (
-                <div className={styles.destination} key={destination.key}>
-                  <span className={styles.destinationIcon}>{destinationIcon(destination)}</span>
-                  <div className={styles.destinationCopy}>
-                    <div className={styles.destinationLabel}>
-                      {destination.key === 'teaching' && sourceSession?.role === 'student'
-                        ? '学习空间'
-                        : destination.label}
-                    </div>
-                    <div className={styles.destinationDescription}>{destination.description}</div>
-                  </div>
-                  <Button
-                    href={destination.launch_url}
-                    icon={<ExternalLink size={15} />}
-                    type="text"
-                    aria-label={`进入${
-                      destination.key === 'teaching' && sourceSession?.role === 'student'
-                        ? '学习空间'
-                        : destination.label
-                    }`}
-                  />
-                </div>
-              ))}
-            </section>
-          ))}
-        </div>
       ) : null}
     </main>
   );

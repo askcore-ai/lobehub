@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
     bottomMenuItems: [] as MockNavItem[],
     topNavItems: [] as MockNavItem[],
   },
+  navigate: vi.fn(),
   updateSystemStatus: vi.fn(),
 }));
 
@@ -64,7 +65,7 @@ vi.mock('react-router-dom', () => ({
       {children}
     </a>
   ),
-  useNavigate: () => vi.fn(),
+  useNavigate: () => mocks.navigate,
 }));
 
 vi.mock('@/features/NavPanel/components/NavItem', () => ({
@@ -101,6 +102,7 @@ vi.mock('@/store/global', () => ({
 
 beforeEach(() => {
   mocks.updateSystemStatus.mockReset();
+  mocks.navigate.mockReset();
   mocks.navLayout = {
     bottomMenuItems: [],
     topNavItems: [],
@@ -226,6 +228,19 @@ describe('Home sidebar body', () => {
       expect(screen.queryByText(hiddenTitle)).not.toBeInTheDocument();
     },
   );
+
+  it('navigates the teaching entry to the stable AskCore surface route', () => {
+    mocks.navLayout = {
+      bottomMenuItems: [],
+      topNavItems: [{ key: 'teaching-center', title: '教学中心', url: '/school/teaching' }],
+    };
+    mocks.globalState.status.sidebarItems = ['teaching-center'];
+
+    render(<Body />);
+    fireEvent.click(screen.getByRole('link', { name: '教学中心' }));
+
+    expect(mocks.navigate).toHaveBeenCalledWith('/school/teaching');
+  });
 
   it('keeps a top item that was dragged past the spacer in its new position', () => {
     mocks.navLayout = {

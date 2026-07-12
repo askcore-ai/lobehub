@@ -84,7 +84,7 @@ describe('AskCore school portal proxy', () => {
     expect(payload.active_org_id).toBeUndefined();
   });
 
-  it('passes through only a first-party launch redirect', async () => {
+  it('passes through the exact first-party source bootstrap redirect', async () => {
     vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'school-portal-secret');
     authApi.getSession.mockResolvedValue({
       user: { email: 'teacher@askcore.cn', id: 'user-2', role: 'user' },
@@ -93,7 +93,9 @@ describe('AskCore school portal proxy', () => {
       'fetch',
       vi.fn().mockResolvedValue(
         new Response(null, {
-          headers: { location: 'https://askcore.cn/school/teaching' },
+          headers: {
+            location: 'https://askcore.cn/school/teaching/local/askcore/warmup.php?destination=1',
+          },
           status: 303,
         }),
       ),
@@ -106,7 +108,9 @@ describe('AskCore school portal proxy', () => {
     );
 
     expect(response.status).toBe(303);
-    expect(response.headers.get('location')).toBe('https://askcore.cn/school/teaching');
+    expect(response.headers.get('location')).toBe(
+      'https://askcore.cn/school/teaching/local/askcore/warmup.php?destination=1',
+    );
     expect(response.headers.get('cache-control')).toBe('private, no-store');
   });
 
@@ -146,6 +150,29 @@ describe('AskCore school portal proxy', () => {
         .mockResolvedValue(
           new Response(null, { headers: { location: 'https://evil.example/' }, status: 303 }),
         ),
+    );
+    const { GET } = await loadRoute();
+
+    const response = await GET(
+      new NextRequest(`https://askcore.cn/api/askcore/school/launch/${token}`),
+      routeContext(['launch', token]),
+    );
+
+    expect(response.status).toBe(502);
+  });
+
+  it.each([
+    'https://askcore.cn/school/teaching/local/askcore/warmup.php?destination=2',
+    'https://askcore.cn/school/services/askcore/warmup.php?destination=1&next=/admin',
+    'https://askcore.cn/settings?destination=1',
+  ])('blocks an unsafe first-party redirect: %s', async (location) => {
+    vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'school-portal-secret');
+    authApi.getSession.mockResolvedValue({
+      user: { email: 'teacher@askcore.cn', id: 'user-2', role: 'user' },
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(null, { headers: { location }, status: 303 })),
     );
     const { GET } = await loadRoute();
 

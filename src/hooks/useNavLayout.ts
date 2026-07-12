@@ -71,9 +71,9 @@ export const useNavLayout = (): NavLayout => {
       shouldRetryOnError: false,
     },
   );
-  const teachingLaunchUrl = sharedSchool?.destinations.find(
+  const hasTeachingDestination = sharedSchool?.destinations.some(
     (destination) => destination.key === 'teaching',
-  )?.launch_url;
+  );
   const isEducator = schoolSession?.role === 'teacher' || schoolSession?.role === 'administrator';
   const isLearner = schoolSession?.role === 'student';
 
@@ -99,18 +99,18 @@ export const useNavLayout = (): NavLayout => {
           url: '/school',
         },
         {
-          hidden: !isEducator || !teachingLaunchUrl,
+          hidden: !isEducator || !hasTeachingDestination,
           icon: BookOpenCheckIcon,
           key: 'teaching-center',
           title: '教学中心',
-          url: teachingLaunchUrl,
+          url: '/school/teaching',
         },
         {
-          hidden: !isLearner || !teachingLaunchUrl,
+          hidden: !isLearner || !hasTeachingDestination,
           icon: GraduationCapIcon,
           key: 'learning-space',
           title: '学习空间',
-          url: teachingLaunchUrl,
+          url: '/school/learning',
         },
         {
           icon: getRouteById('tasks')!.icon,
@@ -125,7 +125,7 @@ export const useNavLayout = (): NavLayout => {
           url: '/page',
         },
       ] as NavItem[],
-    [isEducator, isLearner, t, teachingLaunchUrl, toggleCommandMenu],
+    [hasTeachingDestination, isEducator, isLearner, t, toggleCommandMenu],
   );
 
   const bottomMenuItems = useMemo(

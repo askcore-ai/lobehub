@@ -15,14 +15,14 @@ const readyPortal = (canManageIntegrations = false) => ({
           description: '课程、作业、提交与成绩',
           key: 'teaching',
           label: '教学中心',
-          launch_url: '/api/askcore/school/launch/opaque-teaching',
+          launch_url: 'about:blank#teaching-launch',
           session_launch_url: '/api/askcore/school/launch/opaque-teaching-session',
         },
         {
           description: '校务资料与学校服务',
           key: 'school-services',
           label: '校务中心',
-          launch_url: '/api/askcore/school/launch/opaque-services',
+          launch_url: 'about:blank#services-launch',
           session_launch_url: '/api/askcore/school/launch/opaque-services-session',
         },
       ],
@@ -41,7 +41,7 @@ afterEach(() => {
 });
 
 describe('AskCoreSchoolPortalRoute', () => {
-  it('renders the student label and only safe first-party launch cards', async () => {
+  it('renders the Gibbon school surface directly without destination cards', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) =>
@@ -53,20 +53,44 @@ describe('AskCoreSchoolPortalRoute', () => {
 
     render(
       <SWRConfig value={{ provider: () => new Map() }}>
-        <MemoryRouter>
+        <MemoryRouter initialEntries={['/school']}>
           <AskCoreSchoolPortalRoute />
         </MemoryRouter>
       </SWRConfig>,
     );
 
-    expect(await screen.findByText('AskCore 在线学校')).toBeInTheDocument();
-    expect(await screen.findByText('学习空间')).toBeInTheDocument();
-    expect(screen.getByText('校务中心')).toBeInTheDocument();
-    expect(screen.getByLabelText('进入学习空间')).toHaveAttribute(
-      'href',
-      '/api/askcore/school/launch/opaque-teaching',
+    expect(await screen.findByTitle('AskCore 在线学校 学校')).toHaveAttribute(
+      'src',
+      'about:blank#services-launch',
     );
+    expect(screen.queryByLabelText('进入学习空间')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('进入校务中心')).not.toBeInTheDocument();
     expect(screen.queryByText(/deployment|actor_hash|account_user_id/i)).not.toBeInTheDocument();
+  });
+
+  it('renders the live-role Moodle surface directly for a student', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes('/askcore/session.php')
+          ? Response.json({ authenticated: true, role: 'student' })
+          : Response.json(readyPortal()),
+      ),
+    );
+
+    render(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <MemoryRouter initialEntries={['/school/learning']}>
+          <AskCoreSchoolPortalRoute />
+        </MemoryRouter>
+      </SWRConfig>,
+    );
+
+    expect(await screen.findByText('学习空间')).toBeInTheDocument();
+    expect(screen.getByTitle('AskCore 在线学校 学习空间')).toHaveAttribute(
+      'src',
+      'about:blank#teaching-launch',
+    );
   });
 
   it('renders an actionable source-unavailable state without a legacy binding fallback', async () => {
