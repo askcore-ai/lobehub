@@ -3,28 +3,21 @@ import { type RouteObject } from 'react-router-dom';
 export const BusinessDesktopRoutesWithMainLayout: RouteObject[] = [
   {
     lazy: async () => {
-      const route = await import('./AskCoreOrganization');
-      return { Component: route.AskCoreOrganizationRoute };
+      const route = await import('./AskCoreSchoolPortal');
+      return { Component: route.AskCoreSchoolPortalRoute };
     },
-    path: 'organization',
+    path: 'school',
   },
   {
     lazy: async () => {
-      const route = await import('./AskCoreWorkbench');
-      return { Component: route.AskCoreWorkbenchRoute };
+      const route = await import('./AskCoreWorkbench/ProtocolRoute');
+      return { Component: route.AskCoreProtocolRoute };
     },
     path: 'askcore/workbench',
   },
 ];
 export const BusinessDesktopRoutesWithSettingsLayout: RouteObject[] = [];
 export const BusinessDesktopRoutesWithoutMainLayout: RouteObject[] = [
-  {
-    lazy: async () => {
-      const route = await import('./AskCoreOrganization/OrganizationJoinRoute');
-      return { Component: route.AskCoreOrganizationJoinRoute };
-    },
-    path: '/join/organization/:token',
-  },
   {
     lazy: async () => {
       const route = await import('./BusinessSettingPages/AskCoreBillingPage');

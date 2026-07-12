@@ -8,6 +8,7 @@ import {
   bootstrapAskCoreOrganization,
   createAskCoreClassUnit,
   createAskCoreCohortUnit,
+  createAskCoreDirectoryBackedInvite,
   createAskCoreDirectoryInvitation,
   createAskCoreDirectoryPerson,
   createAskCoreDirectoryPersonRole,
@@ -28,6 +29,9 @@ import {
   importAskCoreDirectoryPeople,
   presignAskCoreWorkbenchUpload,
   rejectAskCoreEducationIdentityClaim,
+  revokeAskCoreDirectoryInvitation,
+  runAskCoreMoodleGibbonLiveAcceptance,
+  runAskCoreMoodleGibbonLiveProbe,
   runAskCoreMoodleGibbonPilotActivation,
   setActiveAskCoreOrganization,
   unbindAskCoreDirectoryPersonAccount,
@@ -85,14 +89,16 @@ describe('AskCoreOrganization api client', () => {
     await fetchAskCoreOrganizationDirectory();
     await createAskCoreDirectoryPerson({
       display_name: '李老师',
+      education_org_unit_id: 4,
       education_role: 'teacher',
       primary_org_unit_id: 4,
+      roster_kind: 'teacher',
     });
     await updateAskCoreDirectoryPerson(10, { primary_org_unit_id: 5 });
     await createAskCoreDirectoryPersonRole(10, { org_unit_id: 4, role: 'teacher' });
     await deleteAskCoreDirectoryPersonRole(10, 99);
     await bindAskCoreDirectoryPersonAccount(10, {
-      account_user_id: 'user-10',
+      better_auth_user_id: 'user-10',
       education_org_unit_id: 4,
       education_role: 'teacher',
     });
@@ -101,6 +107,14 @@ describe('AskCoreOrganization api client', () => {
       invitation_kind: 'open',
       primary_org_unit_id: 4,
       preset_roles: ['student'],
+    });
+    await revokeAskCoreDirectoryInvitation('dir-token');
+    await createAskCoreDirectoryBackedInvite('org-1', {
+      channel: 'link',
+      invitation_kind: 'open',
+      preset_roles: ['teacher'],
+      primary_org_unit_id: 4,
+      roster_kind: 'teacher',
     });
     await presignAskCoreWorkbenchUpload({
       content_type: 'text/csv',
@@ -115,6 +129,7 @@ describe('AskCoreOrganization api client', () => {
       },
       default_role: 'student',
       primary_org_unit_id: 4,
+      roster_kind: 'student',
       scope: 'unit',
     });
     await assignAskCoreEducationRole({
@@ -139,6 +154,8 @@ describe('AskCoreOrganization api client', () => {
       action: 'dry_run',
       bundle: { phase: 'P113', target_lms: 'moodle', target_sis: 'gibbon' },
     });
+    await runAskCoreMoodleGibbonLiveProbe({ action: 'probe_live' });
+    await runAskCoreMoodleGibbonLiveAcceptance({ action: 'accept_live' });
 
     const calls = fetchMock.mock.calls as [RequestInfo | URL, RequestInit?][];
 
@@ -164,6 +181,8 @@ describe('AskCoreOrganization api client', () => {
       '/api/askcore/workbench/organization/people/10/bind-account',
       '/api/askcore/workbench/organization/people/10/bind-account',
       '/api/askcore/workbench/organization/directory-invitations',
+      '/api/askcore/workbench/organization/directory-invitations/dir-token',
+      '/api/askcore/organizations/org-1/directory-invites',
       '/api/askcore/workbench/uploads/presign',
       '/api/askcore/workbench/organization/directory-imports',
       '/api/askcore/workbench/organization/roles',
@@ -177,6 +196,8 @@ describe('AskCoreOrganization api client', () => {
       '/api/askcore/workbench/organization/roles/9',
       '/api/askcore/workbench/integrations/operations/status',
       '/api/askcore/workbench/integrations/pilot/moodle-gibbon/activation',
+      '/api/askcore/workbench/integrations/pilot/moodle-gibbon/live-probe',
+      '/api/askcore/workbench/integrations/pilot/moodle-gibbon/live-acceptance',
     ]);
     expect(calls[1][1]).toMatchObject({
       body: JSON.stringify({ invite_token: 'token-1' }),
@@ -186,18 +207,6 @@ describe('AskCoreOrganization api client', () => {
     expect(calls[4][1]).toMatchObject({
       body: JSON.stringify({ role: 'admin' }),
       method: 'PATCH',
-    });
-    expect(calls[5][1]).toMatchObject({
-      body: JSON.stringify({
-        channel: 'qr',
-        directory_invitation_token: 'dir-token',
-        expiresIn: '7d',
-        preset_roles: ['student'],
-        primary_org_unit_id: 4,
-        role: 'member',
-        roster_kind: 'student',
-      }),
-      method: 'POST',
     });
     expect(calls[7][1]).toMatchObject({
       body: JSON.stringify({ entry_year: 2025, name: '2025级', parent_id: 1, unit_type: 'cohort' }),
@@ -215,11 +224,30 @@ describe('AskCoreOrganization api client', () => {
       method: 'PATCH',
     });
     expect(calls[9][1]).toMatchObject({ method: 'DELETE' });
-    expect(calls.at(-1)?.[1]).toMatchObject({
+    const activationCall = calls.find(([input]) =>
+      String(input).endsWith('/workbench/integrations/pilot/moodle-gibbon/activation'),
+    );
+    expect(activationCall?.[1]).toMatchObject({
       body: JSON.stringify({
         action: 'dry_run',
         bundle: { phase: 'P113', target_lms: 'moodle', target_sis: 'gibbon' },
       }),
+      credentials: 'include',
+      method: 'POST',
+    });
+    const liveProbeCall = calls.find(([input]) =>
+      String(input).endsWith('/workbench/integrations/pilot/moodle-gibbon/live-probe'),
+    );
+    expect(liveProbeCall?.[1]).toMatchObject({
+      body: JSON.stringify({ action: 'probe_live' }),
+      credentials: 'include',
+      method: 'POST',
+    });
+    const liveAcceptanceCall = calls.find(([input]) =>
+      String(input).endsWith('/workbench/integrations/pilot/moodle-gibbon/live-acceptance'),
+    );
+    expect(liveAcceptanceCall?.[1]).toMatchObject({
+      body: JSON.stringify({ action: 'accept_live' }),
       credentials: 'include',
       method: 'POST',
     });
@@ -238,8 +266,10 @@ describe('AskCoreOrganization api client', () => {
     expect(calls[14][1]).toMatchObject({
       body: JSON.stringify({
         display_name: '李老师',
+        education_org_unit_id: 4,
         education_role: 'teacher',
         primary_org_unit_id: 4,
+        roster_kind: 'teacher',
       }),
       method: 'POST',
     });
@@ -254,7 +284,7 @@ describe('AskCoreOrganization api client', () => {
     expect(calls[17][1]).toMatchObject({ method: 'DELETE' });
     expect(calls[18][1]).toMatchObject({
       body: JSON.stringify({
-        account_user_id: 'user-10',
+        better_auth_user_id: 'user-10',
         education_org_unit_id: 4,
         education_role: 'teacher',
       }),
@@ -269,7 +299,18 @@ describe('AskCoreOrganization api client', () => {
       }),
       method: 'POST',
     });
-    expect(calls[21][1]).toMatchObject({
+    expect(calls[21][1]).toMatchObject({ method: 'DELETE' });
+    expect(calls[22][1]).toMatchObject({
+      body: JSON.stringify({
+        channel: 'link',
+        invitation_kind: 'open',
+        preset_roles: ['teacher'],
+        primary_org_unit_id: 4,
+        roster_kind: 'teacher',
+      }),
+      method: 'POST',
+    });
+    expect(calls[23][1]).toMatchObject({
       body: JSON.stringify({
         content_type: 'text/csv',
         filename: 'people.csv',
@@ -277,7 +318,7 @@ describe('AskCoreOrganization api client', () => {
       }),
       method: 'POST',
     });
-    expect(calls[22][1]).toMatchObject({
+    expect(calls[24][1]).toMatchObject({
       body: JSON.stringify({
         csv_ref: {
           locator: { kind: 'object_store', object_key: 'uploads/org-1/tmp/people.csv' },
@@ -286,11 +327,12 @@ describe('AskCoreOrganization api client', () => {
         },
         default_role: 'student',
         primary_org_unit_id: 4,
+        roster_kind: 'student',
         scope: 'unit',
       }),
       method: 'POST',
     });
-    expect(calls[23][1]).toMatchObject({
+    expect(calls[25][1]).toMatchObject({
       body: JSON.stringify({
         better_auth_user_id: 'user-1',
         org_unit_id: 2,
@@ -298,7 +340,7 @@ describe('AskCoreOrganization api client', () => {
       }),
       method: 'POST',
     });
-    expect(calls[24][1]).toMatchObject({
+    expect(calls[26][1]).toMatchObject({
       body: JSON.stringify({
         better_auth_user_id: 'user-1',
         roster_id: 7001,
@@ -306,13 +348,13 @@ describe('AskCoreOrganization api client', () => {
       }),
       method: 'POST',
     });
-    expect(calls[25][1]).toMatchObject({
+    expect(calls[27][1]).toMatchObject({
       body: JSON.stringify({ roster_id: 9001, roster_kind: 'teacher' }),
       method: 'POST',
     });
-    expect(calls[27][1]).toMatchObject({ method: 'POST' });
-    expect(calls[28][1]).toMatchObject({ method: 'POST' });
-    expect(calls[29][1]).toMatchObject({ method: 'DELETE' });
+    expect(calls[29][1]).toMatchObject({ method: 'POST' });
+    expect(calls[30][1]).toMatchObject({ method: 'POST' });
     expect(calls[31][1]).toMatchObject({ method: 'DELETE' });
+    expect(calls[33][1]).toMatchObject({ method: 'DELETE' });
   });
 });

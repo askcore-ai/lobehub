@@ -26,33 +26,6 @@ interface SignUpErrorLike {
   message?: string;
 }
 
-const referralCodeFromValue = (value?: string | null) => {
-  const trimmed = value?.trim();
-  if (!trimmed) return undefined;
-
-  try {
-    const url = new URL(trimmed);
-    return url.searchParams.get('referral')?.trim() || trimmed;
-  } catch {
-    return trimmed;
-  }
-};
-
-const referralVerificationCallbackUrl = ({
-  callbackUrl,
-  referralCode,
-}: {
-  callbackUrl: string;
-  referralCode?: string;
-}) => {
-  if (!referralCode) return callbackUrl;
-
-  const params = new URLSearchParams({ referral: referralCode });
-  if (callbackUrl && callbackUrl !== '/') params.set('callbackUrl', callbackUrl);
-
-  return `/settings/referral?${params.toString()}`;
-};
-
 export const useSignUp = () => {
   const { t } = useTranslation(['auth', 'authError']);
   const router = useRouter();
@@ -78,25 +51,12 @@ export const useSignUp = () => {
       }
 
       const callbackUrl = searchParams.get('callbackUrl') || '/';
-      const referralCode = referralCodeFromValue(
-        values.referral_code || searchParams.get('referral'),
-      );
-      const verificationCallbackUrl = referralVerificationCallbackUrl({
-        callbackUrl,
-        referralCode,
-      });
-      const isOrganizationInviteCallback = callbackUrl.startsWith('/join/organization/');
-      const authCallbackUrl = isOrganizationInviteCallback
-        ? '/'
-        : enableEmailVerification
-          ? verificationCallbackUrl
-          : callbackUrl;
       const username = values.email.split('@')[0];
       const fetchOptions = await getFetchOptions();
 
       const submit = async (nextFetchOptions?: AuthFetchOptions) =>
         signUp.email({
-          callbackURL: authCallbackUrl,
+          callbackURL: callbackUrl,
           email: values.email,
           fetchOptions: nextFetchOptions,
           name: username,
@@ -136,27 +96,9 @@ export const useSignUp = () => {
         return;
       }
 
-      if (referralCode && !enableEmailVerification) {
-        try {
-          const response = await fetch('/api/askcore/billing/referrals/backfill', {
-            body: JSON.stringify({ referral_code: referralCode }),
-            headers: { 'Content-Type': 'application/json' },
-            method: 'POST',
-          });
-          if (!response.ok) {
-            const payload = (await response.json().catch(() => null)) as {
-              detail?: string;
-            } | null;
-            message.error(payload?.detail || t('betterAuth.signup.invalidReferralCodeTitle'));
-          }
-        } catch {
-          message.error(t('betterAuth.signup.invalidReferralCodeTitle'));
-        }
-      }
-
       if (enableEmailVerification) {
         router.push(
-          `/verify-email?email=${encodeURIComponent(values.email)}&callbackUrl=${encodeURIComponent(verificationCallbackUrl)}`,
+          `/verify-email?email=${encodeURIComponent(values.email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`,
         );
       } else {
         router.push(callbackUrl);

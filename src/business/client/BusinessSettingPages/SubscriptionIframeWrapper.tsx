@@ -12,7 +12,6 @@ import { useServerConfigStore } from '@/store/serverConfig';
 import { serverConfigSelectors } from '@/store/serverConfig/selectors';
 
 import {
-  ASKCORE_BILLING_CLEAR_REFERRAL_QUERY_MESSAGE,
   ASKCORE_BILLING_OPEN_URL_MESSAGE,
   type AskCoreBillingPageKey,
   buildAskCoreBillingEmbedUrl,
@@ -33,53 +32,29 @@ const currentPaymentCheckoutId = () =>
     ? undefined
     : new URLSearchParams(window.location.search).get('p33_checkout') || undefined;
 
-const currentReferralParams = () => {
-  if (typeof window === 'undefined') return {};
-
-  const search = new URLSearchParams(window.location.search);
-  return {
-    referralCallbackUrl: search.get('callbackUrl') || undefined,
-    referralCode: search.get('referral') || undefined,
-  };
-};
-
-const clearReferralQuery = () => {
-  if (typeof window === 'undefined') return;
-
-  const url = new URL(window.location.href);
-  url.searchParams.delete('referral');
-  url.searchParams.delete('callbackUrl');
-  window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
-};
-
 export const SubscriptionIframeWrapper = memo<SubscriptionIframeWrapperProps>(({ page }) => {
   const [sessionReady, setSessionReady] = useState(!isDesktop);
   const [error, setError] = useState<string | null>(null);
   const webviewRef = useRef<HTMLElement>(null);
   const { i18n } = useTranslation();
-  const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
+  const enableAskCoreBilling = useServerConfigStore(serverConfigSelectors.enableAskCoreBilling);
 
-  const iframeUrl = useMemo(() => {
-    const referralParams = currentReferralParams();
-    return buildAskCoreBillingEmbedUrl({
-      checkoutId: currentPaymentCheckoutId(),
-      language: i18n.language,
-      origin: currentOrigin(),
-      page,
-      ...referralParams,
-    });
-  }, [i18n.language, page]);
+  const iframeUrl = useMemo(
+    () =>
+      buildAskCoreBillingEmbedUrl({
+        checkoutId: currentPaymentCheckoutId(),
+        language: i18n.language,
+        origin: currentOrigin(),
+        page,
+      }),
+    [i18n.language, page],
+  );
 
   const embedOrigin = useMemo(() => new URL(iframeUrl, currentOrigin()).origin, [iframeUrl]);
 
   const openExternalUrl = useCallback(
     (url: string) => {
-      if (
-        !isAllowedBillingExternalUrl(url, {
-          appOrigin: currentOrigin(),
-          embedOrigin,
-        })
-      ) {
+      if (!isAllowedBillingExternalUrl(url, { appOrigin: currentOrigin(), embedOrigin })) {
         console.warn('[AskCoreBilling] Blocked external billing URL:', url);
         return;
       }
@@ -121,9 +96,6 @@ export const SubscriptionIframeWrapper = memo<SubscriptionIframeWrapperProps>(({
       const data = event.data as { type?: string; url?: string } | undefined;
       if (data?.type === ASKCORE_BILLING_OPEN_URL_MESSAGE && data.url) {
         openExternalUrl(data.url);
-      }
-      if (data?.type === ASKCORE_BILLING_CLEAR_REFERRAL_QUERY_MESSAGE) {
-        clearReferralQuery();
       }
     };
 
@@ -190,7 +162,7 @@ export const SubscriptionIframeWrapper = memo<SubscriptionIframeWrapperProps>(({
       .catch(() => setError('Failed to initialize subscription session'));
   }, []);
 
-  if (!enableBusinessFeatures) return null;
+  if (!enableAskCoreBilling) return null;
 
   if (error) {
     return (
@@ -233,6 +205,7 @@ export const SubscriptionIframeWrapper = memo<SubscriptionIframeWrapperProps>(({
           referrerPolicy="same-origin"
           sandbox="allow-forms allow-popups allow-same-origin allow-scripts"
           src={iframeUrl}
+          title={`AskCore subscription ${page}`}
           style={{
             border: 0,
             height: '100%',
@@ -240,7 +213,6 @@ export const SubscriptionIframeWrapper = memo<SubscriptionIframeWrapperProps>(({
             position: 'absolute',
             width: '100%',
           }}
-          title={`AskCore subscription ${page}`}
         />
       )}
     </Flexbox>

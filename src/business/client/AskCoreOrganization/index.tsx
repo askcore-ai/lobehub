@@ -43,6 +43,8 @@ import {
 import { type JsonRecord, type ResourceKey } from '../AskCoreWorkbench/types';
 import {
   fetchAskCoreIntegrationOperationsStatus,
+  runAskCoreMoodleGibbonLiveAcceptance,
+  runAskCoreMoodleGibbonLiveProbe,
   runAskCoreMoodleGibbonPilotActivation,
 } from './api';
 import {
@@ -58,6 +60,10 @@ import { styles } from './styles';
 import {
   type AskCoreEducationOrgUnit,
   type AskCoreIntegrationOperationsStatusPayload,
+  type AskCoreMoodleGibbonLiveAcceptanceAction,
+  type AskCoreMoodleGibbonLiveAcceptancePayload,
+  type AskCoreMoodleGibbonLiveProbeAction,
+  type AskCoreMoodleGibbonLiveProbePayload,
   type AskCoreMoodleGibbonPilotActivationAction,
   type AskCoreMoodleGibbonPilotActivationPayload,
 } from './types';
@@ -162,14 +168,18 @@ const statusLabel = (value?: string | boolean | null) => {
   const normalized = String(value || '').trim();
   return (
     {
+      accepted: '已通过',
+      blocked: '已阻止',
       configured: '已配置',
       failed: '失败',
       incomplete: '未完成',
       no_jobs: '无待处理任务',
       not_configured: '未配置',
       not_required: '无需处理',
+      not_run: '未执行',
       ok: '正常',
       ready: '已就绪',
+      ready_for_operator_probe: '可探测',
       succeeded: '正常',
       warning: '需关注',
     }[normalized] ||
@@ -184,7 +194,10 @@ const subsystemLabel = (key: string) =>
     billing_reservations: '用量预留',
     caliper: '学习事件',
     lti_registry: '连接注册',
+    moodle_lti: 'Moodle LTI',
+    oneroster: 'OneRoster',
     school_fact_gateway: '数据访问',
+    sql_views: 'SQL 视图',
   })[key] || key;
 
 const activationActionLabel = (action?: string) =>
@@ -192,6 +205,12 @@ const activationActionLabel = (action?: string) =>
     apply: '应用',
     dry_run: '试运行',
     validate: '校验',
+  })[String(action || '')] || '--';
+
+const acceptanceActionLabel = (action?: string) =>
+  ({
+    accept_live: '验收试点',
+    read_only: '刷新准入',
   })[String(action || '')] || '--';
 
 const activationIssueLabel = (code: string) =>
@@ -829,7 +848,22 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
       useState<AskCoreMoodleGibbonPilotActivationPayload | null>(null);
     const [activationLoading, setActivationLoading] =
       useState<AskCoreMoodleGibbonPilotActivationAction | null>(null);
+    const [probeError, setProbeError] = useState<string | null>(null);
+    const [probeResult, setProbeResult] =
+      useState<AskCoreMoodleGibbonLiveProbePayload | null>(null);
+    const [probeLoading, setProbeLoading] =
+      useState<AskCoreMoodleGibbonLiveProbeAction | null>(null);
+    const [acceptanceError, setAcceptanceError] = useState<string | null>(null);
+    const [acceptanceResult, setAcceptanceResult] =
+      useState<AskCoreMoodleGibbonLiveAcceptancePayload | null>(null);
+    const [acceptanceLoading, setAcceptanceLoading] =
+      useState<AskCoreMoodleGibbonLiveAcceptanceAction | null>(null);
     const subsystemStatuses = Object.entries(status?.diagnostics?.subsystem_statuses || {});
+    const liveConnection = status?.live_pilot_connection;
+    const liveProbeGate = probeResult?.probe_gate || status?.live_probe_gate;
+    const liveAcceptance = acceptanceResult?.acceptance || status?.live_pilot_acceptance;
+    const liveAcceptanceBlockingReasons = liveAcceptance?.blocking_reasons || [];
+    const liveComponentStatuses = Object.entries(liveConnection?.components || {});
     const runbookOwners = status?.diagnostics?.runbook_owners || {};
     const safe = Boolean(status?.safe && status.redaction_passed);
     const activation = activationResult?.activation;
@@ -839,6 +873,18 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
       {
         label: '连接准备',
         value: statusLabel(status?.pilot_registry?.pilot_registry_ready),
+      },
+      {
+        label: '只读连接',
+        value: statusLabel(liveConnection?.connection_status),
+      },
+      {
+        label: '探测门禁',
+        value: statusLabel(liveProbeGate?.gate_status),
+      },
+      {
+        label: '试点准入',
+        value: statusLabel(liveAcceptance?.acceptance_status),
       },
       {
         label: '运行状态',
@@ -882,6 +928,36 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
         setActivationError(reason instanceof Error ? reason.message : '操作失败');
       } finally {
         setActivationLoading(null);
+      }
+    };
+
+    const runLiveProbe = async (action: AskCoreMoodleGibbonLiveProbeAction) => {
+      setProbeLoading(action);
+      setProbeError(null);
+      try {
+        const result = await runAskCoreMoodleGibbonLiveProbe({ action });
+        setProbeResult(result);
+        if (result.operations_status) onActivationStatus(result.operations_status);
+        message.success(action === 'probe_live' ? '只读探测完成' : '探测门禁已刷新');
+      } catch (reason) {
+        setProbeError(reason instanceof Error ? reason.message : '探测失败');
+      } finally {
+        setProbeLoading(null);
+      }
+    };
+
+    const runLiveAcceptance = async (action: AskCoreMoodleGibbonLiveAcceptanceAction) => {
+      setAcceptanceLoading(action);
+      setAcceptanceError(null);
+      try {
+        const result = await runAskCoreMoodleGibbonLiveAcceptance({ action });
+        setAcceptanceResult(result);
+        if (result.operations_status) onActivationStatus(result.operations_status);
+        message.success(action === 'accept_live' ? '试点验收完成' : '准入状态已刷新');
+      } catch (reason) {
+        setAcceptanceError(reason instanceof Error ? reason.message : '准入检查失败');
+      } finally {
+        setAcceptanceLoading(null);
       }
     };
 
@@ -976,12 +1052,241 @@ const IntegrationOperationsPanel = memo<IntegrationOperationsPanelProps>(
                     </span>
                   </div>
                   <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>连接组件</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {displayValue(liveConnection?.ready_component_count)} /{' '}
+                      {displayValue(liveConnection?.component_count)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>连接探测</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {statusLabel(liveConnection?.probe_status)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>探测门禁</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {statusLabel(liveProbeGate?.gate_status)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>探测次数</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {displayValue(liveProbeGate?.probe_attempts)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>探测外部调用</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {displayValue(liveProbeGate?.external_calls)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>成绩镜像</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {displayValue(
+                        liveProbeGate?.gradebook_mirror_rows ??
+                          liveConnection?.gradebook_mirror_rows,
+                      )}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
                     <span className={styles.settingsLabel}>契约</span>
                     <span style={{ fontSize: 14, color: cssVar.colorText }}>
                       {status?.frontend_contract_version || '--'}
                     </span>
                   </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>连接契约</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {liveConnection?.contract || '--'}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>探测契约</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {liveProbeGate?.contract || '--'}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>准入状态</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {statusLabel(liveAcceptance?.acceptance_status)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>阻塞项</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {displayValue(liveAcceptance?.validation_issue_count)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>事实快照</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {displayValue(liveAcceptance?.school_fact_snapshot_rows)}
+                    </span>
+                  </div>
+                  <div className={styles.settingsRow}>
+                    <span className={styles.settingsLabel}>准入契约</span>
+                    <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                      {liveAcceptance?.contract || '--'}
+                    </span>
+                  </div>
                 </div>
+                <Space wrap>
+                  <Button
+                    icon={<RefreshCw size={14} />}
+                    loading={probeLoading === 'read_only'}
+                    size="small"
+                    onClick={() => void runLiveProbe('read_only')}
+                  >
+                    刷新门禁
+                  </Button>
+                  <Button
+                    icon={<Check size={14} />}
+                    loading={probeLoading === 'probe_live'}
+                    size="small"
+                    onClick={() => void runLiveProbe('probe_live')}
+                  >
+                    只读探测
+                  </Button>
+                  <Button
+                    icon={<RefreshCw size={14} />}
+                    loading={acceptanceLoading === 'read_only'}
+                    size="small"
+                    onClick={() => void runLiveAcceptance('read_only')}
+                  >
+                    刷新准入
+                  </Button>
+                  <Button
+                    icon={<Check size={14} />}
+                    loading={acceptanceLoading === 'accept_live'}
+                    size="small"
+                    onClick={() => void runLiveAcceptance('accept_live')}
+                  >
+                    验收试点
+                  </Button>
+                </Space>
+                {probeError && <Alert showIcon title={probeError} type="warning" />}
+                {probeResult && (
+                  <div
+                    aria-label="探测结果"
+                    style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
+                  >
+                    <div
+                      style={{
+                        display: 'grid',
+                        gap: 10,
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                      }}
+                    >
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>动作</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {probeResult.action === 'probe_live' ? '只读探测' : '刷新门禁'}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>门禁状态</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {statusLabel(probeResult.probe_gate?.gate_status)}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>外部调用</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {displayValue(probeResult.external_calls)}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>安全输出</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {probeResult.redaction_passed ? '已确认' : '需复核'}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>契约</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {probeResult.frontend_contract_version}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {acceptanceError && <Alert showIcon title={acceptanceError} type="warning" />}
+                {acceptanceResult && (
+                  <div
+                    aria-label="准入结果"
+                    style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
+                  >
+                    <div
+                      style={{
+                        display: 'grid',
+                        gap: 10,
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                      }}
+                    >
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>动作</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {acceptanceActionLabel(acceptanceResult.action)}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>准入状态</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {statusLabel(acceptanceResult.acceptance?.acceptance_status)}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>外部调用</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {displayValue(acceptanceResult.external_calls)}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>安全输出</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {acceptanceResult.redaction_passed ? '已确认' : '需复核'}
+                        </span>
+                      </div>
+                      <div className={styles.settingsRow}>
+                        <span className={styles.settingsLabel}>契约</span>
+                        <span style={{ fontSize: 14, color: cssVar.colorText }}>
+                          {acceptanceResult.frontend_contract_version}
+                        </span>
+                      </div>
+                    </div>
+                    {acceptanceResult.acceptance?.blocking_reasons?.length ? (
+                      <Space wrap size={[8, 8]}>
+                        {acceptanceResult.acceptance.blocking_reasons.map((reason) => (
+                          <span className={styles.settingsValue} key={reason}>
+                            {reason}
+                          </span>
+                        ))}
+                      </Space>
+                    ) : null}
+                  </div>
+                )}
+                {liveComponentStatuses.length > 0 && (
+                  <Space wrap size={[8, 8]}>
+                    {liveComponentStatuses.map(([key, value]) => (
+                      <span className={styles.settingsValue} key={key}>
+                        {subsystemLabel(key)}：{statusLabel(value)}
+                      </span>
+                    ))}
+                  </Space>
+                )}
+                {liveAcceptanceBlockingReasons.length > 0 && (
+                  <Space wrap size={[8, 8]}>
+                    {liveAcceptanceBlockingReasons.map((reason) => (
+                      <span className={styles.settingsValue} key={reason}>
+                        {reason}
+                      </span>
+                    ))}
+                  </Space>
+                )}
                 {subsystemStatuses.length > 0 && (
                   <Space wrap size={[8, 8]}>
                     {subsystemStatuses.map(([key]) => (
@@ -1117,16 +1422,10 @@ export const AskCoreOrganizationRoute = memo(() => {
     normalizeTab(new URLSearchParams(location.search).get('tab')),
   );
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [transferOpen, setTransferOpen] = useState(false);
-  const [transferMemberId, setTransferMemberId] = useState<string | undefined>();
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteConfirmName, setDeleteConfirmName] = useState('');
 
   // Overview editing state
   const [editingMeta, setEditingMeta] = useState(false);
   const [savedPulse, setSavedPulse] = useState(false);
-  const currentOrganization = org.current;
-  const metaForm = org.metaForm;
   const [integrationStatus, setIntegrationStatus] =
     useState<AskCoreIntegrationOperationsStatusPayload | null>(null);
   const [integrationStatusError, setIntegrationStatusError] = useState<string | null>(null);
@@ -1176,51 +1475,18 @@ export const AskCoreOrganizationRoute = memo(() => {
 
   const handleCancelMeta = useCallback(() => {
     setEditingMeta(false);
-    if (currentOrganization) {
-      metaForm.setFieldsValue({
-        contact: currentOrganization.contact,
-        description: currentOrganization.description,
-        name: currentOrganization.name,
+    if (org.current) {
+      org.metaForm.setFieldsValue({
+        name: org.current.name,
+        description: org.current.description,
+        contact: org.current.contact,
       });
     }
-  }, [currentOrganization, metaForm]);
-
-  const handleEditMeta = useCallback(() => {
-    if (currentOrganization) {
-      metaForm.setFieldsValue({
-        contact: currentOrganization.contact,
-        description: currentOrganization.description,
-        name: currentOrganization.name,
-      });
-    }
-    setEditingMeta(true);
-  }, [currentOrganization, metaForm]);
+  }, [org]);
 
   const copyId = useCallback((id: string) => {
     navigator.clipboard.writeText(id).then(() => message.success('已复制'));
   }, []);
-
-  const isOrganizationOwner = org.current?.role === 'owner';
-  const ownershipTransferCandidates = useMemo(
-    () => org.members.filter((member) => member.role !== 'owner'),
-    [org.members],
-  );
-  const canConfirmDelete =
-    Boolean(org.current?.name) && deleteConfirmName.trim() === org.current?.name;
-
-  const handleTransferOwnership = useCallback(async () => {
-    if (!transferMemberId) return;
-    await org.handleTransferOwnership(transferMemberId);
-    setTransferOpen(false);
-    setTransferMemberId(undefined);
-  }, [org, transferMemberId]);
-
-  const handleDeleteOrganization = useCallback(async () => {
-    if (!canConfirmDelete) return;
-    await org.handleDeleteOrganization();
-    setDeleteOpen(false);
-    setDeleteConfirmName('');
-  }, [canConfirmDelete, org]);
 
   const statCards = [
     { label: '注册成员', value: org.members.length },
@@ -1294,13 +1560,11 @@ export const AskCoreOrganizationRoute = memo(() => {
                 payload={org.payload}
                 savedPulse={savedPulse}
                 saving={org.savingMeta}
-                showOwnerActions={isOrganizationOwner}
+                stats={statCards}
                 onCancel={handleCancelMeta}
                 onCopyId={copyId}
-                onDeleteOrganization={() => setDeleteOpen(true)}
-                onEdit={handleEditMeta}
+                onEdit={() => setEditingMeta(true)}
                 onSave={() => void handleSaveMeta()}
-                onTransferOwnership={() => setTransferOpen(true)}
               />
             </div>
 
@@ -1340,7 +1604,7 @@ export const AskCoreOrganizationRoute = memo(() => {
                           className={styles.pillButton}
                           icon={<Pencil size={14} />}
                           size="small"
-                          onClick={handleEditMeta}
+                          onClick={() => setEditingMeta(true)}
                         >
                           编辑
                         </Button>
@@ -1447,11 +1711,7 @@ export const AskCoreOrganizationRoute = memo(() => {
               )}
 
               {activeTab === 'directory' && (
-                <OrganizationDirectorySection
-                  canManage={org.canManage}
-                  currentOrganizationRole={org.current.role}
-                  organizationName={org.current.name}
-                />
+                <OrganizationDirectorySection canManage={org.canManage} members={org.members} />
               )}
 
               {activeTab === 'identity' && (
@@ -1582,60 +1842,6 @@ export const AskCoreOrganizationRoute = memo(() => {
             <Input maxLength={120} />
           </Form.Item>
         </Form>
-      </Modal>
-
-      <Modal
-        destroyOnHidden
-        confirmLoading={org.transferringOwnership}
-        okButtonProps={{ disabled: !transferMemberId }}
-        okText="确认移交"
-        open={transferOpen}
-        title="移交所有者"
-        onOk={() => void handleTransferOwnership()}
-        onCancel={() => {
-          setTransferOpen(false);
-          setTransferMemberId(undefined);
-        }}
-      >
-        <Form layout="vertical">
-          <Form.Item required label="新的所有者">
-            <Select
-              placeholder="选择组织成员"
-              value={transferMemberId}
-              options={ownershipTransferCandidates.map((member) => ({
-                label: `${member.name}${member.email ? `（${member.email}）` : ''}`,
-                value: member.id,
-              }))}
-              onChange={setTransferMemberId}
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      <Modal
-        destroyOnHidden
-        confirmLoading={org.deletingOrganization}
-        okButtonProps={{ danger: true, disabled: !canConfirmDelete }}
-        okText="删除组织"
-        open={deleteOpen}
-        title="删除组织"
-        onOk={() => void handleDeleteOrganization()}
-        onCancel={() => {
-          setDeleteOpen(false);
-          setDeleteConfirmName('');
-        }}
-      >
-        <Alert
-          showIcon
-          style={{ marginBottom: 12 }}
-          title="删除后，当前组织成员将无法继续访问该组织。"
-          type="warning"
-        />
-        <Input
-          placeholder={`输入“${org.current?.name || ''}”确认删除`}
-          value={deleteConfirmName}
-          onChange={(event) => setDeleteConfirmName(event.target.value)}
-        />
       </Modal>
     </div>
   );

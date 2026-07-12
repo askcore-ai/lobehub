@@ -1,11 +1,21 @@
-import { BriefcaseBusiness, Building2, HomeIcon, SearchIcon, UserCheck } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import {
+  BookOpenCheckIcon,
+  GraduationCapIcon,
+  HomeIcon,
+  SchoolIcon,
+  SearchIcon,
+} from 'lucide-react';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import useSWR from 'swr';
 
-import { ASKCORE_ORGANIZATION_CHANGED_EVENT } from '@/business/client/AskCoreOrganization/events';
-import { askCoreWorkbenchClient } from '@/business/client/AskCoreWorkbench/api';
-import { ASKCORE_WORKBENCH_PATH } from '@/business/client/AskCoreWorkbench/config';
+import {
+  fetchSchoolPortalManifest,
+  fetchSchoolSourceSession,
+  SCHOOL_PORTAL_API,
+} from '@/business/client/AskCoreSchoolPortal/api';
 import { getRouteById } from '@/config/routes';
+import { useSession } from '@/libs/better-auth/auth-client';
 import { useGlobalStore } from '@/store/global';
 import { SidebarTabKey } from '@/store/global/initialState';
 import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
@@ -35,80 +45,37 @@ export interface NavLayout {
   };
 }
 
-type AskCoreWorkbenchNavAccess =
-  | 'identity_required'
-  | 'learning'
-  | 'loading'
-  | 'organization_required'
-  | 'teaching';
-
-const resolveAskCoreWorkbenchNavAccess = async (): Promise<AskCoreWorkbenchNavAccess> => {
-  try {
-    const organizationState = await askCoreWorkbenchClient.getOrganizationState();
-    if (!organizationState.organization?.organization_id) return 'organization_required';
-  } catch {
-    return 'organization_required';
-  }
-
-  try {
-    const profile = await askCoreWorkbenchClient.getEducationProfile();
-    switch (profile.workbench_mode) {
-      case 'identity_required': {
-        return 'identity_required';
-      }
-      case 'student_managed':
-      case 'student_restricted': {
-        return 'learning';
-      }
-      case 'teacher': {
-        return 'teaching';
-      }
-      default: {
-        return 'identity_required';
-      }
-    }
-  } catch {
-    return 'identity_required';
-  }
-};
-
-const useAskCoreWorkbenchNavAccess = () => {
-  const [access, setAccess] = useState<AskCoreWorkbenchNavAccess>('loading');
-
-  useEffect(() => {
-    let active = true;
-    let requestId = 0;
-
-    const refresh = () => {
-      const currentRequestId = requestId + 1;
-      requestId = currentRequestId;
-      setAccess('loading');
-      void resolveAskCoreWorkbenchNavAccess().then((nextAccess) => {
-        if (active && requestId === currentRequestId) setAccess(nextAccess);
-      });
-    };
-
-    refresh();
-    window.addEventListener(ASKCORE_ORGANIZATION_CHANGED_EVENT, refresh);
-
-    return () => {
-      active = false;
-      window.removeEventListener(ASKCORE_ORGANIZATION_CHANGED_EVENT, refresh);
-    };
-  }, []);
-
-  return access;
-};
-
-export const __resetAskCoreWorkbenchNavAccessForTest = () => {
-  return undefined;
-};
-
 export const useNavLayout = (): NavLayout => {
   const { t } = useTranslation('common');
   const toggleCommandMenu = useGlobalStore((s) => s.toggleCommandMenu);
   const { showMarket, hideGitHub } = useServerConfigStore(featureFlagsSelectors);
-  const askCoreWorkbenchNavAccess = useAskCoreWorkbenchNavAccess();
+  const { data: accountSession } = useSession();
+  const accountUserId = accountSession?.user.id;
+  const { data: schoolPortal } = useSWR(
+    accountUserId ? ([SCHOOL_PORTAL_API, accountUserId] as const) : null,
+    () => fetchSchoolPortalManifest(),
+    {
+      revalidateOnFocus: false,
+      shouldRetryOnError: false,
+    },
+  );
+  const sharedSchool = schoolPortal?.state === 'ready' ? schoolPortal.schools[0] : undefined;
+  const { data: schoolSession } = useSWR(
+    sharedSchool?.role_source_url && accountUserId
+      ? ([sharedSchool.role_source_url, accountUserId] as const)
+      : null,
+    ([url]) => fetchSchoolSourceSession(url),
+    {
+      refreshInterval: 30_000,
+      revalidateOnFocus: true,
+      shouldRetryOnError: false,
+    },
+  );
+  const teachingLaunchUrl = sharedSchool?.destinations.find(
+    (destination) => destination.key === 'teaching',
+  )?.launch_url;
+  const isEducator = schoolSession?.role === 'teacher' || schoolSession?.role === 'administrator';
+  const isLearner = schoolSession?.role === 'student';
 
   const topNavItems = useMemo(
     () =>
@@ -126,6 +93,26 @@ export const useNavLayout = (): NavLayout => {
           url: '/',
         },
         {
+          icon: SchoolIcon,
+          key: 'school',
+          title: '学校',
+          url: '/school',
+        },
+        {
+          hidden: !isEducator || !teachingLaunchUrl,
+          icon: BookOpenCheckIcon,
+          key: 'teaching-center',
+          title: '教学中心',
+          url: teachingLaunchUrl,
+        },
+        {
+          hidden: !isLearner || !teachingLaunchUrl,
+          icon: GraduationCapIcon,
+          key: 'learning-space',
+          title: '学习空间',
+          url: teachingLaunchUrl,
+        },
+        {
           icon: getRouteById('tasks')!.icon,
           key: SidebarTabKey.Tasks,
           title: t('tab.tasks'),
@@ -137,32 +124,8 @@ export const useNavLayout = (): NavLayout => {
           title: t('tab.pages'),
           url: '/page',
         },
-        {
-          icon: Building2,
-          key: SidebarTabKey.Organization,
-          title: t('tab.organization'),
-          url: '/organization',
-        },
-        {
-          hidden: askCoreWorkbenchNavAccess !== 'identity_required',
-          icon: UserCheck,
-          key: 'askcore-identity-claim',
-          title: t('tab.askcoreIdentityClaim'),
-          url: '/organization?action=identity-claim',
-        },
-        {
-          hidden: !['learning', 'teaching'].includes(askCoreWorkbenchNavAccess),
-          icon: BriefcaseBusiness,
-          key: SidebarTabKey.AskCore,
-          title: t(
-            askCoreWorkbenchNavAccess === 'learning'
-              ? 'tab.askcoreLearningWorkbench'
-              : 'tab.askcoreTeachingWorkbench',
-          ),
-          url: ASKCORE_WORKBENCH_PATH,
-        },
       ] as NavItem[],
-    [askCoreWorkbenchNavAccess, t, toggleCommandMenu],
+    [isEducator, isLearner, t, teachingLaunchUrl, toggleCommandMenu],
   );
 
   const bottomMenuItems = useMemo(
@@ -194,7 +157,7 @@ export const useNavLayout = (): NavLayout => {
           url: '/memory',
         },
       ] as NavItem[],
-    [t, showMarket],
+    [showMarket, t],
   );
 
   const footer = useMemo(

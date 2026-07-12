@@ -2,7 +2,7 @@
 
 import { Button, Icon, Text } from '@lobehub/ui';
 import { Form, Input, type InputRef } from 'antd';
-import { Gift, Lock, Mail } from 'lucide-react';
+import { Lock, Mail } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useRef } from 'react';
@@ -25,14 +25,12 @@ const BetterAuthSignUpForm = () => {
 
   useEffect(() => {
     const email = searchParams.get('email');
-    const referralCode = searchParams.get('referral');
     if (email) {
       form.setFieldsValue({ email });
       passwordInputRef.current?.focus();
     } else {
       emailInputRef.current?.focus();
     }
-    if (referralCode) form.setFieldsValue({ referral_code: referralCode });
   }, [searchParams, form]);
 
   const footer = (
@@ -132,29 +130,6 @@ const BetterAuthSignUpForm = () => {
             prefix={
               <Icon
                 icon={Lock}
-                style={{
-                  marginInline: 6,
-                }}
-              />
-            }
-          />
-        </Form.Item>
-
-        <Form.Item
-          name="referral_code"
-          rules={[
-            {
-              message: t('betterAuth.signup.invalidReferralCodeTitle'),
-              pattern: /^\w{2,8}$/,
-            },
-          ]}
-        >
-          <Input
-            placeholder={t('betterAuth.signup.referralCodePlaceholder')}
-            size="large"
-            prefix={
-              <Icon
-                icon={Gift}
                 style={{
                   marginInline: 6,
                 }}

@@ -138,19 +138,6 @@ export const normalizeAskCorePublicOrigin = (value: string | null | undefined) =
   }
 };
 
-const normalizeHttpOrigin = (value: string | null | undefined) => {
-  const candidate = firstHeaderValue(value);
-  if (!candidate) return undefined;
-
-  try {
-    const url = new URL(candidate);
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
-    return url.origin;
-  } catch {
-    return undefined;
-  }
-};
-
 const originFromForwardedHost = (
   host: string | null | undefined,
   proto: string | null | undefined,
@@ -159,17 +146,6 @@ const originFromForwardedHost = (
   if (!forwardedHost) return undefined;
   const protocol = firstHeaderValue(proto) || 'https';
   return normalizeAskCorePublicOrigin(`${protocol}://${forwardedHost}`);
-};
-
-const requestOriginFromForwardedHost = (
-  host: string | null | undefined,
-  proto: string | null | undefined,
-  fallbackProtocol = 'https',
-) => {
-  const forwardedHost = firstHeaderValue(host);
-  if (!forwardedHost) return undefined;
-  const protocol = firstHeaderValue(proto) || fallbackProtocol;
-  return normalizeHttpOrigin(`${protocol}://${forwardedHost}`);
 };
 
 type SameOriginRequest = {
@@ -201,24 +177,6 @@ export const askCoreInvitePublicOrigin = (request: SameOriginRequest) =>
 
 const trustedAskCoreWriteOrigins = (request: SameOriginRequest) => {
   const origins = new Set<string>([request.nextUrl.origin]);
-  const requestProtocol = (() => {
-    try {
-      return new URL(request.nextUrl.origin).protocol.replace(':', '') || 'https';
-    } catch {
-      return 'https';
-    }
-  })();
-
-  [
-    normalizeHttpOrigin(process.env.APP_URL),
-    requestOriginFromForwardedHost(
-      request.headers.get('host'),
-      request.headers.get('x-forwarded-proto'),
-      requestProtocol,
-    ),
-  ].forEach((origin) => {
-    if (origin) origins.add(origin);
-  });
 
   const appOrigin = normalizeAskCorePublicOrigin(process.env.APP_URL);
   if (appOrigin) origins.add(appOrigin);

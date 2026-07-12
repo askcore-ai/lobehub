@@ -21,11 +21,7 @@ export type AskCoreInviteChannel = 'email' | 'link' | 'qr';
 export type AskCoreInviteExpiry = '30m' | '1d' | '7d' | '30d';
 export type AskCoreDirectoryRosterKind = 'student' | 'teacher';
 export type AskCoreEducationRole =
-  | 'grade_admin'
-  | 'homeroom_teacher'
-  | 'school_admin'
-  | 'student'
-  | 'teacher';
+  'grade_admin' | 'homeroom_teacher' | 'school_admin' | 'student' | 'teacher';
 
 export interface AskCoreSessionRecord {
   [key: string]: unknown;
@@ -296,11 +292,6 @@ const organizationFromRow = (row: {
   };
 };
 
-const ownerContactFromMembers = (members: AskCoreOrganizationMember[]) => {
-  const owner = members.find((item) => item.role === 'owner');
-  return stringValue(owner?.name) || stringValue(owner?.email);
-};
-
 export class AskCoreOrganizationService {
   private db: LobeChatDatabase;
   private emailService?: EmailService;
@@ -382,7 +373,7 @@ export class AskCoreOrganizationService {
     });
     try {
       await this.addMembership(organizationId, user.id, 'owner');
-      await this.syncOrganizationMemberSource({
+      await this.createDirectoryTeacherPerson({
         organizationId,
         organizationRole: 'owner',
         user,
@@ -400,13 +391,8 @@ export class AskCoreOrganizationService {
     organizationId: string,
   ): Promise<AskCoreOrganizationPayload> {
     const user = userFromSession(session);
-    const activeMembership = await this.requireMembership(user, organizationId);
+    await this.requireMembership(user, organizationId);
     await this.setActiveOrganizationForSession(user, organizationId);
-    await this.syncOrganizationMemberSource({
-      organizationId,
-      organizationRole: activeMembership.role,
-      user,
-    });
     return this.payloadForUser(user, organizationId);
   }
 
@@ -466,11 +452,6 @@ export class AskCoreOrganizationService {
       await this.assertMoreThanOneOwner(organizationId);
 
     await this.db.update(member).set({ role }).where(eq(member.id, memberId));
-    await this.syncOrganizationMemberSource({
-      organizationId,
-      organizationRole: actor.role,
-      user,
-    });
     return this.membersForOrganization(organizationId);
   }
 
@@ -478,9 +459,6 @@ export class AskCoreOrganizationService {
     const user = userFromSession(session);
     const actor = await this.requireAdmin(user, organizationId);
     const target = await this.getMember(memberId, organizationId);
-    if (!this.isSuperAdmin(user) && actor.role !== 'owner' && target.role !== 'member') {
-      throw new AskCoreOrganizationError(403, 'Only owners can remove owner or admin membership');
-    }
     if (target.role === 'owner') {
       if (!this.isSuperAdmin(user) && actor.role !== 'owner') {
         throw new AskCoreOrganizationError(403, 'Only owners can remove owner membership');
@@ -489,84 +467,7 @@ export class AskCoreOrganizationService {
     }
 
     await this.db.delete(member).where(eq(member.id, memberId));
-    await this.syncOrganizationMemberSource({
-      organizationId,
-      organizationRole: actor.role,
-      user,
-    });
     return this.membersForOrganization(organizationId);
-  }
-
-  async transferOwnership(
-    session: AskCoreSessionRecord,
-    organizationId: string,
-    memberId: string,
-  ) {
-    const user = userFromSession(session);
-    const actor = await this.requireMembership(user, organizationId);
-    if (!this.isSuperAdmin(user) && actor.role !== 'owner') {
-      throw new AskCoreOrganizationError(403, 'Only organization owners can transfer ownership');
-    }
-    const target = await this.getMember(memberId, organizationId);
-    if (target.role === 'owner') {
-      throw new AskCoreOrganizationError(400, 'Target member is already an owner');
-    }
-    if (target.id === actor.id || target.userId === user.id) {
-      throw new AskCoreOrganizationError(400, 'Cannot transfer ownership to yourself');
-    }
-
-    const runUpdates = async (db: Pick<LobeChatDatabase, 'update'>) => {
-      await db.update(member).set({ role: 'owner' }).where(eq(member.id, target.id));
-      if (!this.isSuperAdmin(user)) {
-        await db.update(member).set({ role: 'admin' }).where(eq(member.id, actor.id));
-      }
-    };
-    const transactionalDb = this.db as LobeChatDatabase & {
-      transaction?: (callback: (tx: Pick<LobeChatDatabase, 'update'>) => Promise<void>) => Promise<void>;
-    };
-    if (typeof transactionalDb.transaction === 'function') {
-      await transactionalDb.transaction(runUpdates);
-    } else {
-      await runUpdates(this.db);
-    }
-
-    await this.syncOrganizationMemberSource({
-      organizationId,
-      organizationRole: this.isSuperAdmin(user) ? 'owner' : 'admin',
-      user,
-    });
-    return this.membersForOrganization(organizationId);
-  }
-
-  async deleteOrganization(
-    session: AskCoreSessionRecord,
-    organizationId: string,
-  ): Promise<AskCoreOrganizationPayload> {
-    const user = userFromSession(session);
-    const actor = await this.requireMembership(user, organizationId);
-    if (!this.isSuperAdmin(user) && actor.role !== 'owner') {
-      throw new AskCoreOrganizationError(403, 'Only organization owners can delete organizations');
-    }
-
-    await this.deleteWorkbenchOrganizationDirectory({
-      organizationId,
-      organizationRole: actor.role,
-      user,
-    });
-    await this.db.delete(organization).where(eq(organization.id, organizationId));
-    await this.db
-      .update(authSession)
-      .set({ activeOrganizationId: null })
-      .where(eq(authSession.activeOrganizationId, organizationId));
-
-    const remaining = await this.listOrganizationsForUser(user.id, {
-      includeAll: this.isSuperAdmin(user),
-    });
-    const nextOrganizationId = remaining[0]?.id;
-    if (nextOrganizationId) {
-      await this.setActiveOrganizationForSession(user, nextOrganizationId);
-    }
-    return this.payloadForUser(user, nextOrganizationId);
   }
 
   async createInvite(
@@ -685,7 +586,7 @@ export class AskCoreOrganizationService {
     });
     try {
       await this.addMembership(organizationId, user.id, 'owner');
-      await this.syncOrganizationMemberSource({
+      await this.createDirectoryTeacherPerson({
         organizationId,
         organizationRole: 'owner',
         user,
@@ -728,11 +629,6 @@ export class AskCoreOrganizationService {
       await this.acceptDirectoryInvitation({
         directoryInvitationToken,
         organizationId: invite.organizationId,
-        user,
-      });
-      await this.syncOrganizationMemberSource({
-        organizationId: invite.organizationId,
-        organizationRole: normalizeInviteRole(invite.role),
         user,
       });
     } catch (error) {
@@ -788,20 +684,11 @@ export class AskCoreOrganizationService {
     const role = current?.role;
     const canManage = this.isSuperAdmin(user) || role === 'owner' || role === 'admin';
     const members = current ? await this.membersForOrganization(current.id) : [];
-    const currentWithOwnerContact =
-      current && !stringValue(current.contact)
-        ? { ...current, contact: ownerContactFromMembers(members) || current.contact }
-        : current;
-    const organizationsWithOwnerContact = currentWithOwnerContact
-      ? withActive.map((item) =>
-          item.id === currentWithOwnerContact.id ? currentWithOwnerContact : item,
-        )
-      : withActive;
 
     return {
-      current: currentWithOwnerContact,
+      current,
       members,
-      organizations: organizationsWithOwnerContact,
+      organizations: withActive,
       permissions: {
         canInvite: canManage,
         canManageMembers: canManage,
@@ -912,8 +799,9 @@ export class AskCoreOrganizationService {
     );
   }
 
-  private async postWorkbenchOrganizationJson(input: {
-    body: Record<string, unknown>;
+  private async requestWorkbenchOrganizationJson(input: {
+    body?: Record<string, unknown>;
+    method?: 'DELETE' | 'POST';
     organizationId: string;
     organizationRole: AskCoreOrganizationRole;
     path: string;
@@ -937,14 +825,14 @@ export class AskCoreOrganizationService {
       this.workbenchApiBaseUrl(),
     );
     const response = await fetch(url, {
-      body: JSON.stringify(input.body),
+      body: input.body ? JSON.stringify(input.body) : undefined,
       cache: 'no-store',
       headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(input.body ? { 'Content-Type': 'application/json' } : {}),
         [askCoreAssertionHeaderName()]: assertion,
       },
-      method: 'POST',
+      method: input.method ?? 'POST',
     });
     if (!response.ok) {
       throw new AskCoreOrganizationError(response.status, await readUpstreamErrorMessage(response));
@@ -952,49 +840,102 @@ export class AskCoreOrganizationService {
     return response.json();
   }
 
-  private async syncOrganizationMemberSource(input: {
+  private async postWorkbenchOrganizationJson(input: {
+    body: Record<string, unknown>;
     organizationId: string;
     organizationRole: AskCoreOrganizationRole;
+    path: string;
     user: UserSession;
   }) {
-    const org = await this.getOrganization(input.organizationId);
-    const members = await this.membersForOrganization(input.organizationId);
-    await this.postWorkbenchOrganizationJson({
-      body: {
-        members: members.map((item) => ({
-          created_at: item.createdAt,
-          email: item.email ?? undefined,
-          member_id: item.id,
-          name: item.name,
-          role: item.role,
-          user_id: item.userId,
-        })),
-        organization: {
-          id: org.id,
-          logo: org.logo,
-          name: org.name,
-          slug: org.slug,
-        },
-      },
-      organizationId: input.organizationId,
-      organizationRole: input.organizationRole,
-      path: 'member-source/sync',
-      user: input.user,
-    });
+    return this.requestWorkbenchOrganizationJson({ ...input, method: 'POST' });
   }
 
-  private async deleteWorkbenchOrganizationDirectory(input: {
+  async createDirectoryInvite(
+    session: AskCoreSessionRecord,
+    organizationId: string,
+    input: {
+      channel?: string;
+      email?: string | null;
+      expiresIn?: string;
+      invitation_kind?: string;
+      invitationKind?: string;
+      member_role?: string;
+      memberRole?: string;
+      person_id?: number | null;
+      personId?: number | null;
+      preset_roles?: unknown;
+      presetRoles?: unknown;
+      primary_org_unit_id?: number | null;
+      primaryOrgUnitId?: number | null;
+      roster_kind?: string;
+      rosterKind?: string;
+    },
+  ): Promise<AskCoreInvitePayload> {
+    const user = userFromSession(session);
+    const actor = await this.requireAdmin(user, organizationId);
+    const memberRole = normalizeInviteRole(input.member_role ?? input.memberRole);
+    const presetRoles = normalizeEducationRoles(input.preset_roles ?? input.presetRoles);
+    const primaryOrgUnitId = positiveIntegerValue(
+      input.primary_org_unit_id ?? input.primaryOrgUnitId,
+    );
+    const personId = positiveIntegerValue(input.person_id ?? input.personId);
+    const invitationKind = stringValue(input.invitation_kind ?? input.invitationKind) || 'open';
+    const directoryInvitation = (await this.postWorkbenchOrganizationJson({
+      body: {
+        email: cleanEmail(input.email) ?? null,
+        invitation_kind: invitationKind,
+        member_role: memberRole,
+        person_id: personId ?? null,
+        preset_roles: presetRoles,
+        primary_org_unit_id: primaryOrgUnitId ?? null,
+      },
+      organizationId,
+      organizationRole: actor.role,
+      path: 'directory-invitations',
+      user,
+    })) as { token?: string };
+    const token = stringValue(directoryInvitation.token);
+    if (!token) throw new AskCoreOrganizationError(502, 'Directory invitation token is missing');
+    try {
+      return await this.createInvite(session, organizationId, {
+        channel: input.channel,
+        directory_invitation_token: token,
+        email: input.email ?? undefined,
+        expiresIn: input.expiresIn,
+        person_id: personId,
+        preset_roles: presetRoles,
+        primary_org_unit_id: primaryOrgUnitId,
+        role: memberRole,
+        roster_kind: input.roster_kind ?? input.rosterKind,
+      });
+    } catch (error) {
+      await this.requestWorkbenchOrganizationJson({
+        organizationId,
+        organizationRole: actor.role,
+        path: `directory-invitations/${encodeURIComponent(token)}`,
+        method: 'DELETE',
+        user,
+      }).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async createDirectoryTeacherPerson(input: {
     organizationId: string;
     organizationRole: AskCoreOrganizationRole;
     user: UserSession;
   }) {
     await this.postWorkbenchOrganizationJson({
       body: {
-        organization_id: input.organizationId,
+        better_auth_user_id: input.user.id,
+        display_name: input.user.displayName,
+        email: input.user.email,
+        primary_org_unit_id: null,
+        roster_kind: 'teacher',
       },
       organizationId: input.organizationId,
       organizationRole: input.organizationRole,
-      path: 'member-source/delete',
+      path: 'people',
       user: input.user,
     });
   }

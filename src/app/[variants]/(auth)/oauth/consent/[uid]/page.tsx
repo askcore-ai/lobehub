@@ -1,7 +1,11 @@
 import { notFound } from 'next/navigation';
 
 import { authEnv } from '@/envs/auth';
-import { defaultClients } from '@/libs/oidc-provider/config';
+import {
+  ASKCORE_GIBBON_OIDC_CLIENT_ID,
+  ASKCORE_MOODLE_OIDC_CLIENT_ID,
+  defaultClients,
+} from '@/libs/oidc-provider/config';
 import { OIDCService } from '@/server/services/oidc';
 
 import ConsentClientError from './ClientError';
@@ -46,7 +50,15 @@ const InteractionPage = async (props: { params: Promise<{ uid: string }> }) => {
     };
     // Render client component regardless of login or consent type
     if (details.prompt.name === 'login')
-      return <Login clientMetadata={clientMetadata} uid={params.uid} />;
+      return (
+        <Login
+          clientMetadata={clientMetadata}
+          uid={params.uid}
+          autoSubmit={
+            clientId === ASKCORE_MOODLE_OIDC_CLIENT_ID || clientId === ASKCORE_GIBBON_OIDC_CLIENT_ID
+          }
+        />
+      );
 
     return (
       <Consent

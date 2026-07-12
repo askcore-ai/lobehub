@@ -20,6 +20,7 @@ import { type JsonRecord } from '../../AskCoreWorkbench/types';
 import { styles } from '../styles';
 import {
   type AskCoreEducationIdentityClaim,
+  type AskCoreEducationIdentityClaimRosterKind,
   type AskCoreEducationIdentityRosterKind,
   type AskCoreEducationOrgUnit,
   type AskCoreEducationOrgUnitPayload,
@@ -57,7 +58,7 @@ type IdentityRosterOption = {
 const roleOptionsByUnitType: Record<AskCoreEducationOrgUnitType, AskCoreEducationRole[]> = {
   class: ['homeroom_teacher', 'teacher', 'student'],
   cohort: ['grade_admin', 'teacher'],
-  department: ['teacher'],
+  department: ['subject_lead', 'teacher'],
   organization: ['teacher'],
   school: ['school_admin', 'teacher'],
 };
@@ -73,10 +74,12 @@ const subjectKindByRole: Record<AskCoreEducationRole, RoleSubjectKind> = {
 
 const getRoleOptions = (unit: AskCoreEducationOrgUnit | null) =>
   unit
-    ? roleOptionsByUnitType[unit.unit_type].map((role) => ({
-        label: roleLabels[role],
-        value: role,
-      }))
+    ? roleOptionsByUnitType[unit.unit_type]
+        .filter((role) => role !== 'subject_lead' || Boolean(unit.subject_id))
+        .map((role) => ({
+          label: roleLabels[role],
+          value: role,
+        }))
     : [];
 
 const numericId = (record: JsonRecord, keys: string[]) => {
@@ -100,9 +103,13 @@ const identityStatusColors: Record<AskCoreEducationIdentityClaim['status'], stri
 };
 
 const rosterKindLabels: Record<AskCoreEducationIdentityRosterKind, string> = {
-  member: '人员',
   student: '学生',
   teacher: '教师',
+};
+
+const identityClaimKindLabels: Record<AskCoreEducationIdentityClaimRosterKind, string> = {
+  member: '人员',
+  ...rosterKindLabels,
 };
 
 const memberLabel = (members: AskCoreOrganizationMember[], userId: string) => {
@@ -112,7 +119,7 @@ const memberLabel = (members: AskCoreOrganizationMember[], userId: string) => {
 };
 
 const rosterName = (
-  rosterKind: AskCoreEducationIdentityRosterKind,
+  rosterKind: AskCoreEducationIdentityClaimRosterKind,
   rosterId: number,
   teachers: JsonRecord[],
   students: JsonRecord[],
@@ -282,11 +289,17 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
     );
 
     const subjectLabel = (assignment: AskCoreEducationRoleAssignment) => {
-      if (assignment.person_id) {
-        const row = [...teachers, ...students].find(
-          (item) => numericId(item, ['person_id', 'teacher_id', 'student_id', 'id']) === assignment.person_id,
+      if (assignment.teacher_id) {
+        const teacher = teachers.find(
+          (item) => numericId(item, ['teacher_id', 'id']) === assignment.teacher_id,
         );
-        return String(row?.display_name || row?.real_name || row?.name || `人员 #${assignment.person_id}`);
+        return String(teacher?.real_name || teacher?.username || teacher?.name || '未命名教师');
+      }
+      if (assignment.student_id) {
+        const student = students.find(
+          (item) => numericId(item, ['student_id', 'id']) === assignment.student_id,
+        );
+        return String(student?.name || student?.real_name || '未命名学生');
       }
       const member = members.find((item) => item.userId === assignment.better_auth_user_id);
       return member?.email
@@ -543,15 +556,17 @@ export const EducationOrgSection = memo<EducationOrgSectionProps>(
                         />
                       </Form.Item>
                       <Form.Item
-                        label={identityRosterKind === 'teacher' ? '教师' : '学生'}
+                        label={identityRosterKind === 'teacher' ? '教师名册' : '学生名册'}
                         name="identity_roster_id"
-                        rules={[{ required: true, message: '请选择身份' }]}
+                        rules={[{ required: true, message: '请选择名册身份' }]}
                       >
                         <Select
                           showSearch
                           optionFilterProp="label"
                           options={identityRosterOptions}
-                          placeholder={identityRosterKind === 'teacher' ? '搜索教师' : '搜索学生'}
+                          placeholder={
+                            identityRosterKind === 'teacher' ? '搜索教师名册' : '搜索学生名册'
+                          }
                           onChange={(value) => setIdentityRosterId(Number(value))}
                         />
                       </Form.Item>
@@ -697,7 +712,7 @@ export const EducationIdentitySection = memo<EducationIdentitySectionProps>(
         <div className={styles.identityClaimItem} key={claim.id}>
           <div className={styles.identityClaimMain}>
             <div className={styles.identityClaimTitle}>
-              {rosterKindLabels[claim.roster_kind]} · {rosterLabel}
+              {identityClaimKindLabels[claim.roster_kind]} · {rosterLabel}
             </div>
             <div className={styles.identityClaimMeta}>{userLabel}</div>
           </div>
@@ -751,7 +766,7 @@ export const EducationIdentitySection = memo<EducationIdentitySectionProps>(
               <div className={styles.identityPanelHeader}>
                 <div className={styles.rolePanelTitle}>提交身份申请</div>
                 <div className={styles.rolePanelMeta}>
-                  选择教师或学生身份，提交后由组织管理员审批。
+                  选择教师或学生名册身份，提交后由组织管理员审批。
                 </div>
               </div>
               <Form className={styles.roleAssignForm} form={identityForm} layout="vertical">
@@ -770,15 +785,15 @@ export const EducationIdentitySection = memo<EducationIdentitySectionProps>(
                   />
                 </Form.Item>
                 <Form.Item
-                  label={identityRosterKind === 'teacher' ? '教师' : '学生'}
+                  label={identityRosterKind === 'teacher' ? '教师名册' : '学生名册'}
                   name="identity_roster_id"
-                  rules={[{ required: true, message: '请选择身份' }]}
+                  rules={[{ required: true, message: '请选择名册身份' }]}
                 >
                   <Select
                     showSearch
                     optionFilterProp="label"
                     options={identityRosterOptions}
-                    placeholder={identityRosterKind === 'teacher' ? '搜索教师' : '搜索学生'}
+                    placeholder={identityRosterKind === 'teacher' ? '搜索教师名册' : '搜索学生名册'}
                     onChange={(value) => setIdentityRosterId(Number(value))}
                   />
                 </Form.Item>
@@ -838,7 +853,7 @@ export const EducationIdentitySection = memo<EducationIdentitySectionProps>(
                 </div>
                 <div className={styles.rolePanelMeta}>
                   {canManage
-                    ? '管理员通过后，申请人会立即绑定到对应教师或学生身份。'
+                    ? '管理员通过后，申请人会立即绑定到对应教师或学生名册。'
                     : '管理员审批通过后，工作台会按你的教师或学生身份显示。'}
                 </div>
               </div>

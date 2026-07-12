@@ -9,6 +9,7 @@ import {
   ChevronRight,
   GitBranch,
   Landmark,
+  Network,
   Plus,
   UsersRound,
   X,
@@ -22,7 +23,7 @@ const unitTypeIcons: Record<AskCoreEducationOrgUnitType, React.ReactNode> = {
   class: <UsersRound size={14} />,
   cohort: <GitBranch size={14} />,
   department: <Landmark size={14} />,
-  organization: <Building2 size={14} />,
+  organization: <Network size={14} />,
   school: <Building2 size={14} />,
 };
 
@@ -102,23 +103,21 @@ export const OrgTreeNode = memo<OrgTreeNodeProps>(
             {node.name}
           </span>
           <span className={styles.treeBadge}>{unitTypeLabels[node.unit_type]}</span>
-          {canManage && (
+          {canManage && (node.unit_type === 'school' || node.unit_type === 'cohort') && (
             <div className={`tree-node-actions ${styles.treeNodeActions}`}>
-              {node.unit_type !== 'class' && (
-                <Tooltip title={childActionLabel}>
-                  <Button
-                    aria-label={childActionLabel}
-                    className={styles.treeAddButton}
-                    icon={<Plus size={13} />}
-                    size="small"
-                    type="text"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setAdding(true);
-                    }}
-                  />
-                </Tooltip>
-              )}
+              <Tooltip title={childActionLabel}>
+                <Button
+                  aria-label={childActionLabel}
+                  className={styles.treeAddButton}
+                  icon={<Plus size={13} />}
+                  size="small"
+                  type="text"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setAdding(true);
+                  }}
+                />
+              </Tooltip>
             </div>
           )}
         </div>

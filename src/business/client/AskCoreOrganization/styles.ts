@@ -82,34 +82,6 @@ export const styles = createStaticStyles(({ css }) => ({
     line-height: 1.3;
     color: ${cssVar.colorText};
   `,
-  heroTitleRow: css`
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-    min-width: 0;
-  `,
-  heroIdButton: css`
-    display: inline-flex;
-    gap: 4px;
-    align-items: center;
-
-    height: 22px;
-    padding-block: 0;
-    padding-inline: 6px;
-
-    font-family: monospace;
-    font-size: 12px;
-    font-weight: 500;
-    color: ${cssVar.colorTextTertiary};
-
-    background: ${cssVar.colorFillQuaternary};
-
-    &:hover {
-      color: ${cssVar.colorTextSecondary};
-      background: ${cssVar.colorFillSecondary};
-    }
-  `,
   heroDesc: css`
     overflow: hidden;
     display: -webkit-box;
@@ -129,6 +101,46 @@ export const styles = createStaticStyles(({ css }) => ({
 
     margin-block-start: 2px;
   `,
+  heroOverviewStats: css`
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+
+    @media (width <= 760px) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  `,
+  heroOverviewStat: css`
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    justify-content: space-between;
+
+    min-width: 0;
+    padding-block: 8px;
+    padding-inline: 10px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 8px;
+
+    background: ${cssVar.colorFillQuaternary};
+
+    strong {
+      font-size: 18px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      color: ${cssVar.colorText};
+    }
+
+    span {
+      overflow: hidden;
+
+      font-size: 12px;
+      color: ${cssVar.colorTextSecondary};
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  `,
   heroEditForm: css`
     width: 100%;
     text-align: start;
@@ -140,6 +152,39 @@ export const styles = createStaticStyles(({ css }) => ({
     justify-content: flex-end;
     margin-block-start: 12px;
   `,
+  heroInfoGrid: css`
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 8px 16px;
+
+    padding-block-start: 2px;
+
+    font-size: 13px;
+    line-height: 1.5;
+
+    span {
+      color: ${cssVar.colorTextSecondary};
+    }
+
+    strong {
+      min-width: 0;
+      font-weight: 500;
+      color: ${cssVar.colorText};
+      overflow-wrap: anywhere;
+    }
+
+    @media (width <= 700px) {
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+  `,
+  heroOrgId: css`
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    font-family: monospace;
+  `,
+
   // Tab Navigation
   tabNav: css`
     display: flex;
@@ -1290,15 +1335,15 @@ export const styles = createStaticStyles(({ css }) => ({
   `,
   directoryWorkspace: css`
     display: grid;
-    grid-template-columns: minmax(340px, 440px) minmax(0, 1fr);
+    grid-template-columns: 240px minmax(420px, 1fr) 320px;
     gap: 16px;
     align-items: stretch;
 
     @media (width <= 1360px) {
-      grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+      grid-template-columns: 220px minmax(360px, 1fr) 280px;
     }
 
-    @media (width <= 980px) {
+    @media (width <= 1100px) {
       grid-template-columns: 1fr;
     }
   `,
@@ -1414,7 +1459,9 @@ export const styles = createStaticStyles(({ css }) => ({
     padding-block: 0 14px;
     padding-inline: 10px;
   `,
-  directoryTreeNodeRow: css`
+  directoryTreeNode: css`
+    cursor: pointer;
+
     position: relative;
 
     display: flex;
@@ -1424,11 +1471,19 @@ export const styles = createStaticStyles(({ css }) => ({
 
     width: 100%;
     min-height: 34px;
+    padding-block: 6px;
+    padding-inline: 10px;
+    border: 0;
     border-radius: 6px;
+
+    font-size: 13px;
+    color: #1f2329;
+    text-align: start;
 
     background: transparent;
 
     transition:
+      border-color 0.15s ease,
       background 0.15s ease,
       color 0.15s ease,
       box-shadow 0.15s ease;
@@ -1451,28 +1506,17 @@ export const styles = createStaticStyles(({ css }) => ({
 
     &:hover {
       background: #f2f3f5;
-
-      [data-directory-tree-actions='true'] {
-        pointer-events: auto;
-        opacity: 1;
-      }
     }
 
-    &:focus-within {
-      [data-directory-tree-actions='true'] {
-        pointer-events: auto;
-        opacity: 1;
-      }
+    &:focus-visible {
+      outline: 2px solid rgb(51 112 255 / 30%);
+      outline-offset: 2px;
     }
 
     @media (prefers-reduced-motion: reduce) {
       transition: none;
 
       &::before {
-        transition: none;
-      }
-
-      [data-directory-tree-actions='true'] {
         transition: none;
       }
     }
@@ -1485,99 +1529,27 @@ export const styles = createStaticStyles(({ css }) => ({
       }
     }
   `,
-  directoryTreeNodeRowActive: css`
+  directoryTreeNodeActive: css`
+    font-weight: 650;
+    color: #245bdb;
     background: #eef5ff;
 
     &::before {
       opacity: 1;
     }
 
-    button {
-      font-weight: 650;
-      color: #245bdb;
-    }
-
-    [data-directory-tree-actions='true'] {
-      pointer-events: auto;
-      opacity: 1;
-    }
-
     @media (prefers-color-scheme: dark) {
+      color: ${cssVar.colorPrimaryText};
       background: ${cssVar.colorPrimaryBg};
-
-      button {
-        color: ${cssVar.colorPrimaryText};
-      }
     }
   `,
   directoryTreeNodeAncestor: css`
+    color: #245bdb;
     background: #f7faff;
 
-    button {
-      color: #245bdb;
-    }
-
     @media (prefers-color-scheme: dark) {
+      color: ${cssVar.colorPrimaryText};
       background: ${cssVar.colorFillQuaternary};
-
-      button {
-        color: ${cssVar.colorPrimaryText};
-      }
-    }
-  `,
-  directoryTreeNode: css`
-    cursor: pointer;
-
-    display: flex;
-    flex: 1;
-    gap: 8px;
-    align-items: center;
-    justify-content: space-between;
-
-    min-width: 0;
-    min-height: 34px;
-    padding-block: 6px;
-    padding-inline: 10px;
-    border: 0;
-
-    font-size: 13px;
-    color: #1f2329;
-    text-align: start;
-
-    background: transparent;
-
-    &:focus-visible {
-      outline: 2px solid rgb(51 112 255 / 30%);
-      outline-offset: 2px;
-    }
-
-    @media (prefers-color-scheme: dark) {
-      color: ${cssVar.colorText};
-    }
-  `,
-  directoryTreeNodeActions: css`
-    pointer-events: none;
-
-    display: flex;
-    flex-shrink: 0;
-    gap: 1px;
-    justify-content: flex-end;
-
-    width: 76px;
-    padding-inline-end: 4px;
-
-    opacity: 0;
-
-    transition: opacity 0.15s ease;
-
-    .ant-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-
-      width: 24px;
-      height: 24px;
-      padding: 0;
     }
   `,
   directoryTreeNodeLabel: css`
@@ -1679,8 +1651,8 @@ export const styles = createStaticStyles(({ css }) => ({
 
     display: grid;
     grid-template-columns:
-      minmax(128px, 1.2fr) minmax(140px, 1fr) minmax(96px, 0.8fr)
-      minmax(128px, 1fr) minmax(76px, 0.6fr);
+      minmax(110px, 1.1fr) minmax(120px, 1.1fr) minmax(116px, 1fr)
+      minmax(90px, 0.8fr) 74px 64px;
     gap: 8px;
     align-items: center;
 
@@ -1711,8 +1683,8 @@ export const styles = createStaticStyles(({ css }) => ({
 
     display: grid;
     grid-template-columns:
-      minmax(128px, 1.2fr) minmax(140px, 1fr) minmax(96px, 0.8fr)
-      minmax(128px, 1fr) minmax(76px, 0.6fr);
+      minmax(110px, 1.1fr) minmax(120px, 1.1fr) minmax(116px, 1fr)
+      minmax(90px, 0.8fr) 74px 64px;
     gap: 8px;
     align-items: center;
 
@@ -1867,7 +1839,6 @@ export const styles = createStaticStyles(({ css }) => ({
   directoryRoleTag: css`
     display: inline-flex;
     align-items: center;
-    gap: 4px;
 
     max-width: 100%;
     height: 22px;
@@ -1887,18 +1858,6 @@ export const styles = createStaticStyles(({ css }) => ({
       border-color: #d7c9ff;
       color: #6425d0;
       background: #f5f0ff;
-    }
-
-    &[data-tone='owner'] {
-      border-color: #ffd591;
-      color: #ad6800;
-      background: #fff7e6;
-    }
-
-    &[data-tone='member'] {
-      border-color: #d9dce2;
-      color: #4e5969;
-      background: #f7f8fa;
     }
 
     &[data-tone='teacher'] {
@@ -1929,15 +1888,6 @@ export const styles = createStaticStyles(({ css }) => ({
         background: ${cssVar.colorBgElevated};
       }
     }
-  `,
-  directoryTagAction: css`
-    width: 16px;
-    min-width: 16px;
-    height: 16px;
-    padding: 0;
-    border: 0;
-    border-radius: 4px;
-    line-height: 16px;
   `,
   directoryFileInput: css`
     display: none;

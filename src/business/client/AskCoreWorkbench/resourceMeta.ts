@@ -24,7 +24,10 @@ export type LookupCollectionKey =
   | 'students'
   | 'subjects'
   | 'teachers';
-export type EditableResourceKey = ResourceKey;
+export type EditableResourceKey = Exclude<ResourceKey, 'activities' | 'attempts'>;
+
+export const isEditableResource = (resource: ResourceKey): resource is EditableResourceKey =>
+  resource !== 'activities' && resource !== 'attempts';
 
 export type FieldDefinition = {
   help?: string;
@@ -139,10 +142,20 @@ export const RESOURCE_LABELS: Record<
   ResourceKey,
   { description: string; label: string; singular: string }
 > = {
+  'activities': {
+    description: '活动来自 AskCore 协议活动模型，是 LMS/LTI 资源链接和历史作业的统一只读入口。',
+    label: '活动',
+    singular: '活动',
+  },
   'assignments': {
     description: '作业列表承接草稿入口、详情、发布对象与后续维护。',
     label: '作业',
     singular: '作业',
+  },
+  'attempts': {
+    description: '提交记录来自 AskCore 协议尝试模型，统一承载学生提交、批改结果和报告状态。',
+    label: '提交记录',
+    singular: '提交记录',
   },
   'classes': {
     description: '班级列表支持学校和教学年级筛选，并展示推导出的教学年级标签。',
@@ -192,10 +205,24 @@ export const RESOURCE_LABELS: Record<
 };
 
 export const RESOURCE_FILTER_FIELDS: Record<ResourceKey, FieldDefinition[]> = {
+  'activities': [
+    { key: 'subject_id', kind: 'select', label: '科目', numeric: true, optionsFrom: 'subjects' },
+    { key: 'grade_id', kind: 'select', label: '教学年级', numeric: true, optionsFrom: 'grades' },
+  ],
   'assignments': [
     { key: 'query', kind: 'text', label: '标题搜索', placeholder: '输入作业标题关键字' },
     { key: 'subject_id', kind: 'select', label: '科目', numeric: true, optionsFrom: 'subjects' },
     { key: 'grade_id', kind: 'select', label: '教学年级', numeric: true, optionsFrom: 'grades' },
+  ],
+  'attempts': [
+    { key: 'activity_id', kind: 'number', label: '活动 ID' },
+    {
+      key: 'status',
+      kind: 'text',
+      label: '状态',
+      placeholder: 'started / submitted / graded',
+    },
+    { key: 'learner_person_id', kind: 'number', label: '学习者 Person ID' },
   ],
   'classes': [
     { key: 'school_id', kind: 'select', label: '学校', numeric: true, optionsFrom: 'schools' },
@@ -233,7 +260,7 @@ export const RESOURCE_FILTER_FIELDS: Record<ResourceKey, FieldDefinition[]> = {
       key: 'status',
       kind: 'text',
       label: '状态',
-      placeholder: '已提交 / 已批改 / 待绑定',
+      placeholder: 'submitted / graded / needs_binding',
     },
   ],
   'teachers': [
@@ -623,7 +650,13 @@ export const filtersFromFormState = (resource: ResourceKey, form: Record<string,
 };
 
 export const getResourceIdKey = (resource: ResourceKey) =>
-  resource === 'submission-questions' ? 'submission_question_id' : `${resource.slice(0, -1)}_id`;
+  resource === 'activities'
+    ? 'activity_id'
+    : resource === 'attempts'
+      ? 'attempt_id'
+      : resource === 'submission-questions'
+        ? 'submission_question_id'
+        : `${resource.slice(0, -1)}_id`;
 
 export const buildResourceBasePath = (resource: ResourceKey) =>
   resource === 'submission-questions' ? '/submissions/questions' : `/${resource}`;

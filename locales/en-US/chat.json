@@ -679,7 +679,7 @@
   "taskList.empty": "No tasks yet",
   "taskList.emptyHero.greeting": "What should we tackle today?",
   "taskList.emptyHero.subtitle": "Describe a task for your agent, or start from a template below.",
-  "taskList.emptyHero.templatesTitle": "AskCore teaching task templates",
+  "taskList.emptyHero.templatesTitle": "Task templates",
   "taskList.form.grouping": "Grouping",
   "taskList.form.orderCompletedByRecency": "Sort completed tasks by recency",
   "taskList.form.ordering": "Ordering",

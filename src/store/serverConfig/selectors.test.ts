@@ -27,6 +27,22 @@ describe('featureFlagsSelectors', () => {
 });
 
 describe('serverConfigSelectors', () => {
+  describe('enableAskCoreBilling', () => {
+    it('is independent from generic business features', () => {
+      const store = initServerConfigStore({
+        serverConfig: {
+          aiProvider: {},
+          enableAskCoreBilling: true,
+          enableBusinessFeatures: false,
+          telemetry: {},
+        },
+      });
+
+      expect(serverConfigSelectors.enableAskCoreBilling(store.getState())).toBe(true);
+      expect(serverConfigSelectors.enableBusinessFeatures(store.getState())).toBe(false);
+    });
+  });
+
   describe('enabledTelemetryChat', () => {
     it('should return langfuse value from store when defined', () => {
       const store = initServerConfigStore({

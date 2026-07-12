@@ -17,6 +17,18 @@ const UTC_DAY_1 = new Date('2026-04-24T10:00:00Z');
 const UTC_DAY_2 = new Date('2026-04-25T10:00:00Z');
 
 describe('TaskTemplateService.listDailyRecommend', () => {
+  it('uses personal templates and excludes retired school operations globally', async () => {
+    const service = new TaskTemplateService('personal-user');
+    const picked = await service.listDailyRecommend(['education', 'personal'], {
+      now: UTC_DAY_1,
+    });
+
+    expect(taskTemplates.some((template) => template.id.startsWith('askcore-'))).toBe(false);
+    expect(taskTemplates.some((template) => template.id === 'daily-learning-bite')).toBe(true);
+    expect(picked).toHaveLength(TASK_TEMPLATE_RECOMMEND_COUNT);
+    expect(picked.every((template) => !template.id.startsWith('askcore-'))).toBe(true);
+  });
+
   it('returns the default recommendation count when user has matching interests', async () => {
     const service = new TaskTemplateService('user-1');
     const picked = await service.listDailyRecommend(['coding'], { now: UTC_DAY_1 });

@@ -1,12 +1,17 @@
 'use client';
 
-import { Button, Form, type FormInstance, Input, Space } from 'antd';
+import { Avatar, Button, Form, type FormInstance, Input } from 'antd';
 import { cssVar } from 'antd-style';
-import { Check, Copy, Pencil, Save, Trash2, UserCog, UsersRound } from 'lucide-react';
+import { Check, Copy, Pencil, Save, UsersRound } from 'lucide-react';
 import { memo } from 'react';
 
 import { styles } from '../styles';
 import { type AskCoreOrganizationPayload } from '../types';
+
+interface HeroStat {
+  label: string;
+  value: number;
+}
 
 interface HeroCardProps {
   canUpdateMeta: boolean;
@@ -14,14 +19,12 @@ interface HeroCardProps {
   metaForm: FormInstance;
   onCancel: () => void;
   onCopyId: (id: string) => void;
-  onDeleteOrganization?: () => void;
   onEdit: () => void;
   onSave: () => void;
-  onTransferOwnership?: () => void;
   payload: AskCoreOrganizationPayload | null;
   savedPulse: boolean;
   saving: boolean;
-  showOwnerActions?: boolean;
+  stats: HeroStat[];
 }
 
 export const HeroCard = memo<HeroCardProps>(
@@ -32,13 +35,11 @@ export const HeroCard = memo<HeroCardProps>(
     metaForm,
     onCancel,
     onCopyId,
-    onDeleteOrganization,
     onEdit,
     onSave,
-    onTransferOwnership,
     savedPulse,
     saving,
-    showOwnerActions,
+    stats,
   }) => {
     const current = payload?.current;
 
@@ -50,21 +51,14 @@ export const HeroCard = memo<HeroCardProps>(
     return (
       <div className={styles.heroCard}>
         <div className={styles.heroSummary}>
+          <div className={styles.heroAvatarWrap}>
+            <Avatar className={styles.heroAvatar} size={56} src={current?.logo}>
+              {current?.name?.slice(0, 1) || '?'}
+            </Avatar>
+          </div>
+
           <div className={styles.heroBody}>
-            <div className={styles.heroTitleRow}>
-              <div className={styles.heroName}>{current?.name || '未命名组织'}</div>
-              {current?.id && (
-                <Button
-                  className={styles.heroIdButton}
-                  icon={<Copy size={12} />}
-                  size="small"
-                  type="text"
-                  onClick={() => onCopyId(current.id)}
-                >
-                  {current.id}
-                </Button>
-              )}
-            </div>
+            <div className={styles.heroName}>{current?.name || '未命名组织'}</div>
             <div className={styles.heroDesc}>{current?.description || '暂无描述'}</div>
 
             <div className={styles.heroStats}>
@@ -91,47 +85,27 @@ export const HeroCard = memo<HeroCardProps>(
             </div>
           </div>
 
-          {!editing && (
-            <Space wrap>
-              {showOwnerActions && onTransferOwnership ? (
-                <Button
-                  className={styles.pillButton}
-                  icon={<UserCog size={12} />}
-                  size="small"
-                  style={{ fontSize: 12, padding: '0 10px', height: 28 }}
-                  type="text"
-                  onClick={onTransferOwnership}
-                >
-                  移交所有者
-                </Button>
-              ) : null}
-              {showOwnerActions && onDeleteOrganization ? (
-                <Button
-                  danger
-                  className={styles.pillButton}
-                  icon={<Trash2 size={12} />}
-                  size="small"
-                  style={{ fontSize: 12, padding: '0 10px', height: 28 }}
-                  type="text"
-                  onClick={onDeleteOrganization}
-                >
-                  删除组织
-                </Button>
-              ) : null}
-              {canUpdateMeta && (
-                <Button
-                  className={styles.pillButton}
-                  icon={<Pencil size={12} />}
-                  size="small"
-                  style={{ fontSize: 12, padding: '0 10px', height: 28 }}
-                  type="text"
-                  onClick={onEdit}
-                >
-                  编辑资料
-                </Button>
-              )}
-            </Space>
+          {canUpdateMeta && !editing && (
+            <Button
+              className={styles.pillButton}
+              icon={<Pencil size={12} />}
+              size="small"
+              style={{ fontSize: 12, padding: '0 10px', height: 28 }}
+              type="text"
+              onClick={onEdit}
+            >
+              编辑资料
+            </Button>
           )}
+        </div>
+
+        <div className={styles.heroOverviewStats}>
+          {stats.map((item) => (
+            <div className={styles.heroOverviewStat} key={item.label}>
+              <strong>{item.value}</strong>
+              <span>{item.label}</span>
+            </div>
+          ))}
         </div>
 
         {editing ? (
@@ -166,7 +140,29 @@ export const HeroCard = memo<HeroCardProps>(
               </Button>
             </div>
           </div>
-        ) : null}
+        ) : (
+          <div className={styles.heroInfoGrid}>
+            <span>组织名称</span>
+            <strong>{current?.name || '--'}</strong>
+            <span>组织简介</span>
+            <strong>{current?.description || '--'}</strong>
+            <span>联系人</span>
+            <strong>{current?.contact || '--'}</strong>
+            <span>组织 ID</span>
+            <strong className={styles.heroOrgId}>
+              {current?.id || '--'}
+              {current?.id && (
+                <Button
+                  className={styles.copyBtn}
+                  icon={<Copy size={13} />}
+                  size="small"
+                  type="text"
+                  onClick={() => onCopyId(current.id)}
+                />
+              )}
+            </strong>
+          </div>
+        )}
       </div>
     );
   },

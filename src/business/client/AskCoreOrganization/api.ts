@@ -1,4 +1,5 @@
 import {
+  type AskCoreDirectoryBackedInviteInput,
   type AskCoreDirectoryImportInput,
   type AskCoreDirectoryImportResult,
   type AskCoreDirectoryInvitation,
@@ -7,6 +8,7 @@ import {
   type AskCoreDirectoryPersonCreateInput,
   type AskCoreDirectoryPersonPatchInput,
   type AskCoreDirectoryPersonRoleInput,
+  type AskCoreDirectoryRosterKind,
   type AskCoreEducationIdentityBinding,
   type AskCoreEducationIdentityBindingInput,
   type AskCoreEducationIdentityClaim,
@@ -24,6 +26,10 @@ import {
   type AskCoreInviteChannel,
   type AskCoreInviteExpiry,
   type AskCoreInvitePayload,
+  type AskCoreMoodleGibbonLiveAcceptanceInput,
+  type AskCoreMoodleGibbonLiveAcceptancePayload,
+  type AskCoreMoodleGibbonLiveProbeInput,
+  type AskCoreMoodleGibbonLiveProbePayload,
   type AskCoreMoodleGibbonPilotActivationInput,
   type AskCoreMoodleGibbonPilotActivationPayload,
   type AskCoreOrganizationDirectoryPayload,
@@ -31,9 +37,6 @@ import {
   type AskCoreOrganizationRole,
   type AskCorePresignUploadPayload,
   type AskCorePresignUploadResult,
-  type AskCoreTeachingAssignment,
-  type AskCoreTeachingAssignmentCreateInput,
-  type AskCoreTeachingAssignmentPayload,
 } from './types';
 
 const ORGANIZATION_API_BASE = '/api/askcore/organizations';
@@ -41,6 +44,10 @@ const EDUCATION_ORG_API_BASE = '/api/askcore/workbench/organization';
 const INTEGRATION_OPERATIONS_API_PATH = '/api/askcore/workbench/integrations/operations/status';
 const MOODLE_GIBBON_PILOT_ACTIVATION_API_PATH =
   '/api/askcore/workbench/integrations/pilot/moodle-gibbon/activation';
+const MOODLE_GIBBON_LIVE_PROBE_API_PATH =
+  '/api/askcore/workbench/integrations/pilot/moodle-gibbon/live-probe';
+const MOODLE_GIBBON_LIVE_ACCEPTANCE_API_PATH =
+  '/api/askcore/workbench/integrations/pilot/moodle-gibbon/live-acceptance';
 const WORKBENCH_UPLOAD_API_BASE = '/api/askcore/workbench/uploads';
 
 export class AskCoreOrganizationApiError extends Error {
@@ -105,6 +112,20 @@ export const runAskCoreMoodleGibbonPilotActivation = (
     },
   );
 
+export const runAskCoreMoodleGibbonLiveProbe = (input: AskCoreMoodleGibbonLiveProbeInput) =>
+  requestJson<AskCoreMoodleGibbonLiveProbePayload>(MOODLE_GIBBON_LIVE_PROBE_API_PATH, {
+    body: JSON.stringify(input),
+    method: 'POST',
+  });
+
+export const runAskCoreMoodleGibbonLiveAcceptance = (
+  input: AskCoreMoodleGibbonLiveAcceptanceInput,
+) =>
+  requestJson<AskCoreMoodleGibbonLiveAcceptancePayload>(MOODLE_GIBBON_LIVE_ACCEPTANCE_API_PATH, {
+    body: JSON.stringify(input),
+    method: 'POST',
+  });
+
 export const createAskCoreOrganization = (input: {
   contact?: string;
   description?: string;
@@ -129,20 +150,6 @@ export const updateAskCoreOrganization = (
     body: JSON.stringify(input),
     method: 'PATCH',
   });
-
-export const deleteAskCoreOrganization = (organizationId: string) =>
-  requestJson<AskCoreOrganizationPayload>(`${ORGANIZATION_API_BASE}/${organizationId}`, {
-    method: 'DELETE',
-  });
-
-export const transferAskCoreOrganizationOwnership = (organizationId: string, memberId: string) =>
-  requestJson<{ members: AskCoreOrganizationPayload['members'] }>(
-    `${ORGANIZATION_API_BASE}/${organizationId}/owner-transfer`,
-    {
-      body: JSON.stringify({ member_id: memberId }),
-      method: 'POST',
-    },
-  );
 
 export const updateAskCoreOrganizationMemberRole = (
   organizationId: string,
@@ -174,7 +181,7 @@ export const createAskCoreOrganizationInvite = (
     preset_roles: AskCoreEducationRole[];
     primary_org_unit_id?: number | null;
     role: Extract<AskCoreOrganizationRole, 'admin' | 'member'>;
-    roster_kind: Exclude<AskCoreEducationIdentityRosterKind, 'member'>;
+    roster_kind: AskCoreDirectoryRosterKind;
   },
 ) =>
   requestJson<AskCoreInvitePayload>(`${ORGANIZATION_API_BASE}/${organizationId}/invites`, {
@@ -245,13 +252,11 @@ export const createAskCoreDepartmentUnit = (input: {
   description?: string;
   name: string;
   parentUnitId?: number;
-  subjectId?: number | null;
 }) =>
   createAskCoreEducationOrgUnit({
     description: input.description,
     name: input.name,
     parent_id: input.parentUnitId,
-    subject_id: input.subjectId,
     unit_type: 'department',
   });
 
@@ -261,20 +266,6 @@ export const fetchAskCoreOrganizationDirectory = (includeArchived = false) => {
     `${EDUCATION_ORG_API_BASE}/directory${query}`,
   );
 };
-
-export const fetchAskCoreTeachingAssignments = () =>
-  requestJson<AskCoreTeachingAssignmentPayload>(
-    `${EDUCATION_ORG_API_BASE}/teaching-assignments`,
-  );
-
-export const createAskCoreTeachingAssignment = (input: AskCoreTeachingAssignmentCreateInput) =>
-  requestJson<AskCoreTeachingAssignment>(
-    `${EDUCATION_ORG_API_BASE}/teaching-assignments`,
-    {
-      body: JSON.stringify(input),
-      method: 'POST',
-    },
-  );
 
 export const createAskCoreDirectoryPerson = (input: AskCoreDirectoryPersonCreateInput) =>
   requestJson<AskCoreDirectoryPerson>(`${EDUCATION_ORG_API_BASE}/people`, {
@@ -312,7 +303,7 @@ export const deleteAskCoreDirectoryPersonRole = (personId: number, roleAssignmen
 export const bindAskCoreDirectoryPersonAccount = (
   personId: number,
   input: {
-    account_user_id: string;
+    better_auth_user_id: string;
     education_org_unit_id: number;
     education_role: AskCoreEducationRole;
   },
@@ -332,6 +323,24 @@ export const createAskCoreDirectoryInvitation = (input: AskCoreDirectoryInvitati
     body: JSON.stringify(input),
     method: 'POST',
   });
+
+export const revokeAskCoreDirectoryInvitation = (token: string) =>
+  requestJson<AskCoreDirectoryInvitation>(
+    `${EDUCATION_ORG_API_BASE}/directory-invitations/${encodeURIComponent(token)}`,
+    { method: 'DELETE' },
+  );
+
+export const createAskCoreDirectoryBackedInvite = (
+  organizationId: string,
+  input: AskCoreDirectoryBackedInviteInput,
+) =>
+  requestJson<AskCoreInvitePayload>(
+    `${ORGANIZATION_API_BASE}/${organizationId}/directory-invites`,
+    {
+      body: JSON.stringify(input),
+      method: 'POST',
+    },
+  );
 
 export const presignAskCoreWorkbenchUpload = (input: AskCorePresignUploadPayload) =>
   requestJson<AskCorePresignUploadResult>(`${WORKBENCH_UPLOAD_API_BASE}/presign`, {
@@ -377,10 +386,17 @@ const roleAssignmentBody = (input: AskCoreEducationRoleAssignmentCreateInput) =>
       role: input.role,
     };
   }
+  if (input.subject.kind === 'teacher') {
+    return {
+      org_unit_id: input.org_unit_id,
+      role: input.role,
+      teacher_id: input.subject.teacherId,
+    };
+  }
   return {
     org_unit_id: input.org_unit_id,
-    person_id: input.subject.personId,
     role: input.role,
+    student_id: input.subject.studentId,
   };
 };
 

@@ -32,6 +32,19 @@ const readStream = async (stream: Readable) => {
 };
 
 describe('OIDC HTTP adapter', () => {
+  describe('createNodeResponse', () => {
+    it('captures statusCode assignments made directly by oidc-provider', async () => {
+      const { createNodeResponse } = await import('./http-adapter');
+      const collector = createNodeResponse(vi.fn());
+
+      collector.nodeResponse.statusCode = 401;
+      collector.nodeResponse.end('{"error":"invalid_token"}');
+
+      expect(collector.responseStatus).toBe(401);
+      expect(collector.responseBody).toBe('{"error":"invalid_token"}');
+    });
+  });
+
   describe('createNodeRequest', () => {
     it('passes POST bodies through as a readable Node stream without pre-parsing', async () => {
       const body = 'grant_type=authorization_code&code=test-code';
@@ -113,6 +126,21 @@ describe('OIDC HTTP adapter', () => {
       expect(arrayBuffer).not.toHaveBeenCalled();
       expect(nodeRequest.readable).toBe(true);
       await expect(readStream(nodeRequest as unknown as Readable)).resolves.toBe('');
+    });
+
+    it.each([
+      ['/oidc/.well-known/openid-configuration', '/.well-known/openid-configuration'],
+      ['/oidc/.well-known/oauth-authorization-server', '/.well-known/oauth-authorization-server'],
+      ['/oidc/jwks', '/oidc/jwks'],
+      ['/oidc/me', '/oidc/me'],
+      ['/oidc/auth', '/oidc/auth'],
+    ])('mounts %s below the provider issuer prefix', async (publicPath, providerPath) => {
+      const request = new Request(`https://example.com${publicPath}`) as unknown as NextRequest;
+
+      const { createNodeRequest } = await import('./http-adapter');
+      const nodeRequest = await createNodeRequest(request);
+
+      expect(nodeRequest.url).toBe(providerPath);
     });
   });
 });

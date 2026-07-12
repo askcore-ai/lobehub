@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ASKCORE_BILLING_OPEN_URL_MESSAGE,
   buildAskCoreBillingEmbedUrl,
-  createLocalizedBillingCopy,
   formatBillingInterval,
   formatBillingStatus,
+  formatPlanTopupUnitPrice,
   getBillingCopy,
   isAllowedBillingExternalUrl,
   isAskCoreBillingPageKey,
@@ -58,28 +58,6 @@ describe('AskCore billing embed helpers', () => {
     );
   });
 
-  it('carries pending referral binding params only into the referral embed URL', () => {
-    const referralUrl = buildAskCoreBillingEmbedUrl({
-      language: 'zh-CN',
-      origin: 'https://askcore.cn',
-      page: 'referral',
-      referralCallbackUrl: '/dashboard',
-      referralCode: 'ASK33',
-    });
-    const plansUrl = buildAskCoreBillingEmbedUrl({
-      language: 'zh-CN',
-      origin: 'https://askcore.cn',
-      page: 'plans',
-      referralCallbackUrl: '/dashboard',
-      referralCode: 'ASK33',
-    });
-
-    expect(referralUrl).toBe(
-      'https://askcore.cn/embed/subscription/referral?hl=zh-CN&referral=ASK33&callbackUrl=%2Fdashboard',
-    );
-    expect(plansUrl).toBe('https://askcore.cn/embed/subscription/plans?hl=zh-CN');
-  });
-
   it('keeps plan data backend-driven and resolves enabled providers', () => {
     const payload = normalizePlansPayload({
       billing_periods: [{ id: 'yearly', label: 'Yearly' }],
@@ -100,18 +78,11 @@ describe('AskCore billing embed helpers', () => {
     expect(payload.creditPacks).toHaveLength(1);
     expect(payload.billingPeriods).toEqual([{ id: 'yearly', label: 'Yearly' }]);
     expect(
-      resolveDefaultProvider({
-        alipay: { enabled: true },
-        stripe: { enabled: false },
-      }),
+      resolveDefaultProvider({ alipay: { enabled: true }, stripe: { enabled: false } }),
     ).toBeNull();
     expect(
       resolveDefaultProvider(
-        {
-          alipay: { enabled: true },
-          stripe: { enabled: true },
-          wechat: { enabled: true },
-        },
+        { alipay: { enabled: true }, stripe: { enabled: true }, wechat: { enabled: true } },
         { isChinese: true },
       ),
     ).toBe('alipay');
@@ -127,11 +98,7 @@ describe('AskCore billing embed helpers', () => {
     ).toBe('wechat');
     expect(
       resolveDefaultProvider(
-        {
-          alipay: { enabled: true },
-          stripe: { enabled: true },
-          wechat: { enabled: true },
-        },
+        { alipay: { enabled: true }, stripe: { enabled: true }, wechat: { enabled: true } },
         { isChinese: false },
       ),
     ).toBe('stripe');
@@ -142,6 +109,16 @@ describe('AskCore billing embed helpers', () => {
       ),
     ).toBe('stripe');
     expect(resolveDefaultProvider({ wechat: { enabled: true } }, { isChinese: false })).toBeNull();
+  });
+
+  it('labels plan top-up prices per credit rather than per million credits', () => {
+    expect(
+      formatPlanTopupUnitPrice(
+        { topup_unit_price_cny: 0.09, topup_unit_price_usd: 0.01 },
+        true,
+        getBillingCopy('zh-CN'),
+      ),
+    ).toBe('¥0.09 / 积分');
   });
 
   it('detects WeChat Native QR checkout responses', () => {
@@ -222,42 +199,14 @@ describe('AskCore billing embed helpers', () => {
     expect(formatBillingStatus('pending_reward', zhCopy)).toBe('审核中');
 
     const rules = localizeReferralRules(
-      {
-        expiry_days: 100,
-        registration: 'registration',
-        reward: 'reward',
-        reward_delay_hours: 6,
-        valid_action: 'first_billable_usage',
-      },
-      100,
+      { registration: 'registration', reward: 'reward', rewardDelay: 'rewardDelay' },
+      1_000_000,
       zhCopy,
     );
 
-    const text = rules.map((item) => item.text).join('\n');
-
-    expect(text).toContain('注册方式');
-    expect(text).toContain('100 积分');
-    expect(text).toContain('6 小时');
-    expect(text).toContain('100 天');
-    expect(text).toContain('首次产生可计费用量');
-    expect(text).not.toContain('0M');
-    expect(text).not.toContain('registration');
-    expect(text).not.toContain('first_billable_usage');
-  });
-
-  it('ignores stale referral reward i18n templates that still append million-credit suffixes', () => {
-    const copy = createLocalizedBillingCopy('zh-CN', (key, options) => {
-      if (key === 'referral.rules.reward') {
-        return '奖励：邀请人和被邀请人各获得 {{reward}}M 积分';
-      }
-      return String(options?.defaultValue || '');
-    });
-
-    const text = localizeReferralRules({ reward: 'reward' }, 100, copy)
-      .map((item) => item.text)
-      .join('\n');
-
-    expect(text).toContain('100 积分');
-    expect(text).not.toContain('M 积分');
+    expect(rules.map((item) => item.text).join('\n')).toContain('注册方式');
+    expect(rules.map((item) => item.text).join('\n')).toContain('奖励');
+    expect(rules.map((item) => item.text).join('\n')).not.toContain('registration');
+    expect(rules.map((item) => item.text).join('\n')).not.toContain('rewardDelay');
   });
 });

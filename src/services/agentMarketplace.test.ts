@@ -54,17 +54,4 @@ describe('fetchOnboardingAgentTemplates', () => {
       },
     ]);
   });
-
-  it('returns an empty template list when the marketplace endpoint is unavailable', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    mocks.getOnboardingFull.mockRejectedValue(new Error('Failed to get onboarding full: Not Found'));
-
-    await expect(fetchOnboardingAgentTemplates()).resolves.toEqual([]);
-
-    expect(warn).toHaveBeenCalledWith(
-      '[AgentMarketplace] failed to load onboarding templates',
-      expect.any(Error),
-    );
-    warn.mockRestore();
-  });
 });

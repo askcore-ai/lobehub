@@ -2,18 +2,9 @@ export type AskCoreOrganizationRole = 'owner' | 'admin' | 'member';
 export type AskCoreInviteChannel = 'email' | 'link' | 'qr';
 export type AskCoreInviteExpiry = '30m' | '1d' | '7d' | '30d';
 export type AskCoreEducationOrgUnitType =
-  | 'organization'
-  | 'school'
-  | 'cohort'
-  | 'class'
-  | 'department';
+  'organization' | 'school' | 'cohort' | 'class' | 'department';
 export type AskCoreEducationRole =
-  | 'school_admin'
-  | 'grade_admin'
-  | 'homeroom_teacher'
-  | 'teacher'
-  | 'student'
-  | 'subject_lead';
+  'school_admin' | 'grade_admin' | 'homeroom_teacher' | 'subject_lead' | 'teacher' | 'student';
 
 export interface AskCoreOrganizationSummary {
   contact?: string;
@@ -58,6 +49,61 @@ export interface AskCoreIntegrationOperationsStatusPayload {
   external_calls?: number;
   frontend_contract_version: 'integration_operations_status@v1';
   generated_at?: string;
+  live_pilot_acceptance?: {
+    acceptance?: {
+      connection_ready?: boolean;
+      live_mode_requested?: boolean;
+      no_gradebook_mirror?: boolean;
+      no_roster_projection?: boolean;
+      no_school_fact_snapshot?: boolean;
+      operations_ready?: boolean;
+      probe_passed?: boolean;
+      redaction_safe?: boolean;
+      registry_ready?: boolean;
+    };
+    acceptance_status?: string;
+    blocking_reason_counts?: Record<string, number>;
+    blocking_reasons?: string[];
+    contract?: 'moodle_gibbon_live_pilot_acceptance@v1';
+    external_calls?: number;
+    gradebook_mirror_rows?: number;
+    phase?: string;
+    redaction_passed?: boolean;
+    roster_projection_rows?: number;
+    school_fact_snapshot_rows?: number;
+    validation_issue_count?: number;
+  };
+  live_pilot_connection?: {
+    component_count?: number;
+    components?: Record<string, string>;
+    connection_ready?: boolean;
+    connection_status?: string;
+    contract?: 'moodle_gibbon_live_pilot_connection@v1';
+    external_calls?: number;
+    gradebook_mirror_rows?: number;
+    probe_blocked_reason?: string;
+    probe_status?: string;
+    ready_component_count?: number;
+    redaction_passed?: boolean;
+    roster_projection_rows?: number;
+    school_fact_snapshot_rows?: number;
+  };
+  live_probe_gate?: {
+    components?: Record<string, string>;
+    contract?: 'moodle_gibbon_live_probe_gate@v1';
+    external_calls?: number;
+    failed_probes?: number;
+    gate_status?: string;
+    gradebook_mirror_rows?: number;
+    probe_attempts?: number;
+    probe_blocked_reason?: string | null;
+    probe_status?: string;
+    redaction_passed?: boolean;
+    roster_projection_rows?: number;
+    school_fact_snapshot_rows?: number;
+    successful_probes?: number;
+    validation_issue_count?: number;
+  };
   operations?: Record<string, unknown>;
   phase: string;
   pilot_registry?: {
@@ -102,6 +148,43 @@ export interface AskCoreMoodleGibbonPilotActivationPayload {
   roster_projection_rows?: number;
 }
 
+export type AskCoreMoodleGibbonLiveProbeAction = 'read_only' | 'probe_live';
+
+export interface AskCoreMoodleGibbonLiveProbeInput {
+  action: AskCoreMoodleGibbonLiveProbeAction;
+}
+
+export interface AskCoreMoodleGibbonLiveProbePayload {
+  action: AskCoreMoodleGibbonLiveProbeAction;
+  external_calls?: number;
+  frontend_contract_version: 'moodle_gibbon_live_probe_gate@v1';
+  operations_status?: AskCoreIntegrationOperationsStatusPayload;
+  probe_gate?: AskCoreIntegrationOperationsStatusPayload['live_probe_gate'] & {
+    phase?: string;
+    status?: string;
+  };
+  redaction_passed?: boolean;
+  roster_projection_rows?: number;
+}
+
+export type AskCoreMoodleGibbonLiveAcceptanceAction = 'read_only' | 'accept_live';
+
+export interface AskCoreMoodleGibbonLiveAcceptanceInput {
+  action: AskCoreMoodleGibbonLiveAcceptanceAction;
+}
+
+export interface AskCoreMoodleGibbonLiveAcceptancePayload {
+  acceptance?: AskCoreIntegrationOperationsStatusPayload['live_pilot_acceptance'] & {
+    status?: string;
+  };
+  action: AskCoreMoodleGibbonLiveAcceptanceAction;
+  external_calls?: number;
+  frontend_contract_version: 'moodle_gibbon_live_pilot_acceptance@v1';
+  operations_status?: AskCoreIntegrationOperationsStatusPayload;
+  redaction_passed?: boolean;
+  roster_projection_rows?: number;
+}
+
 export interface AskCoreInvitePayload {
   channel: AskCoreInviteChannel;
   directoryInvitationToken: string;
@@ -112,6 +195,7 @@ export interface AskCoreInvitePayload {
   presetRoles: AskCoreEducationRole[];
   primaryOrgUnitId?: number;
   role: Extract<AskCoreOrganizationRole, 'admin' | 'member'>;
+  rosterKind: AskCoreDirectoryRosterKind;
   token: string;
 }
 
@@ -146,7 +230,8 @@ export type AskCoreEducationOrgUnitPatchInput = AskCoreEducationOrgUnitCreateInp
 
 export type AskCoreEducationRoleSubject =
   | { kind: 'member'; userId: string }
-  | { kind: 'person'; personId: number };
+  | { kind: 'teacher'; teacherId: number }
+  | { kind: 'student'; studentId: number };
 
 export interface AskCoreEducationRoleAssignmentCreateInput {
   org_unit_id: number;
@@ -159,17 +244,20 @@ export interface AskCoreEducationRoleAssignment {
   id: number;
   org_id: string;
   org_unit_id: number;
-  person_id: number;
+  person_id?: number | null;
   role: AskCoreEducationRole;
+  student_id?: number | null;
   subject_id?: number | null;
   subject_user_id: string;
+  teacher_id?: number | null;
 }
 
 export interface AskCoreEducationRoleAssignmentPayload {
   items: AskCoreEducationRoleAssignment[];
 }
 
-export type AskCoreEducationIdentityRosterKind = 'member' | 'student' | 'teacher';
+export type AskCoreEducationIdentityRosterKind = 'student' | 'teacher';
+export type AskCoreEducationIdentityClaimRosterKind = 'member' | AskCoreEducationIdentityRosterKind;
 
 export interface AskCoreEducationIdentityBindingInput {
   better_auth_user_id: string;
@@ -186,7 +274,7 @@ export interface AskCoreEducationIdentityBinding {
 
 export interface AskCoreEducationIdentityClaimInput {
   roster_id: number;
-  roster_kind: AskCoreEducationIdentityRosterKind;
+  roster_kind: AskCoreEducationIdentityClaimRosterKind;
 }
 
 export interface AskCoreEducationIdentityClaim {
@@ -197,7 +285,7 @@ export interface AskCoreEducationIdentityClaim {
   reviewed_at?: string | null;
   reviewed_by_user_id?: string | null;
   roster_id: number;
-  roster_kind: AskCoreEducationIdentityRosterKind;
+  roster_kind: AskCoreEducationIdentityClaimRosterKind;
   status: 'approved' | 'pending' | 'rejected';
 }
 
@@ -207,6 +295,7 @@ export interface AskCoreEducationIdentityClaimPayload {
 
 export type AskCoreDirectoryRegistrationStatus = 'invited' | 'registered' | 'unregistered';
 export type AskCoreDirectoryLifecycleStatus = 'active' | 'archived';
+export type AskCoreDirectoryRosterKind = 'student' | 'teacher';
 export type AskCoreDirectoryInvitationKind = 'directed' | 'open';
 export type AskCoreDirectoryInvitationStatus = 'accepted' | 'expired' | 'pending' | 'revoked';
 
@@ -214,38 +303,53 @@ export interface AskCoreDirectoryPerson {
   better_auth_user_id?: string | null;
   display_name: string;
   email?: string | null;
-  gender?: string | null;
   id: number;
   lifecycle_status: AskCoreDirectoryLifecycleStatus;
   org_id: string;
   phone?: string | null;
-  pinyin_name?: string | null;
   primary_org_unit_id?: number | null;
   registration_status: AskCoreDirectoryRegistrationStatus;
   source?: string | null;
-  staff_number?: string | null;
-  student_number?: string | null;
 }
 
-export interface AskCoreTeachingAssignment {
-  class_org_unit_id: number;
-  created_at?: string | null;
+export interface AskCoreDirectoryRosterLink {
   id: number;
   org_id: string;
   person_id: number;
-  role: string;
-  subject_id: number;
+  roster_id: number;
+  roster_kind: AskCoreDirectoryRosterKind;
 }
 
-export interface AskCoreTeachingAssignmentPayload {
-  items: AskCoreTeachingAssignment[];
-}
-
-export interface AskCoreTeachingAssignmentCreateInput {
-  class_org_unit_id: number;
-  person_id: number;
-  role?: string | null;
-  subject_id: number;
+export interface AskCoreOrganizationPersonProfile {
+  account?: {
+    email?: string | null;
+    member_id?: string | null;
+    name?: string | null;
+    organization_role?: AskCoreOrganizationRole | null;
+    phone?: string | null;
+    user_id: string;
+  } | null;
+  education: {
+    roles: Array<{
+      authorization_id: number;
+      org_unit_id: number;
+      role: AskCoreEducationRole;
+      subject_id?: number | null;
+    }>;
+    status: 'assigned' | 'unassigned';
+  };
+  invitation: {
+    pending_directed_count: number;
+    pending_open_count: number;
+    statuses: string[];
+  };
+  person: Omit<AskCoreDirectoryPerson, 'better_auth_user_id' | 'registration_status'> & {
+    gender?: string | null;
+    pinyin_name?: string | null;
+    source: string;
+    staff_number?: string | null;
+    student_number?: string | null;
+  };
 }
 
 export interface AskCoreDirectoryInvitation {
@@ -268,56 +372,7 @@ export interface AskCoreDirectoryMemberSummary {
   email?: string | null;
   member_id: string;
   name?: string | null;
-  organization_role?: AskCoreOrganizationRole | string | null;
-}
-
-export interface AskCoreOrganizationPersonProfilePerson {
-  display_name: string;
-  email?: string | null;
-  gender?: string | null;
-  id: number;
-  lifecycle_status: string;
-  org_id: string;
-  phone?: string | null;
-  pinyin_name?: string | null;
-  primary_org_unit_id?: number | null;
-  source: string;
-  staff_number?: string | null;
-  student_number?: string | null;
-}
-
-export interface AskCoreOrganizationPersonProfileAccount {
-  email?: string | null;
-  member_id?: string | null;
-  name?: string | null;
-  organization_role?: AskCoreOrganizationRole | string | null;
-  phone?: string | null;
-  user_id: string;
-}
-
-export interface AskCoreOrganizationPersonProfileEducationRole {
-  authorization_id: number;
-  org_unit_id: number;
-  role: AskCoreEducationRole;
-  subject_id?: number | null;
-}
-
-export interface AskCoreOrganizationPersonProfileEducation {
-  roles: AskCoreOrganizationPersonProfileEducationRole[];
-  status: 'assigned' | 'unassigned';
-}
-
-export interface AskCoreOrganizationPersonProfileInvitation {
-  pending_directed_count: number;
-  pending_open_count: number;
-  statuses: string[];
-}
-
-export interface AskCoreOrganizationPersonProfile {
-  account: AskCoreOrganizationPersonProfileAccount | null;
-  education: AskCoreOrganizationPersonProfileEducation;
-  invitation: AskCoreOrganizationPersonProfileInvitation;
-  person: AskCoreOrganizationPersonProfilePerson;
+  organization_role?: AskCoreOrganizationRole | null;
 }
 
 export interface AskCoreOrganizationDirectoryPayload {
@@ -330,17 +385,27 @@ export interface AskCoreOrganizationDirectoryPayload {
   units: AskCoreEducationOrgUnit[];
 }
 
-export interface AskCoreDirectoryPersonCreateInput {
-  account_user_id?: string | null;
-  display_name: string;
-  education_org_unit_id?: number | null;
-  education_role?: AskCoreEducationRole;
+export interface AskCoreDirectoryBackedInviteInput {
+  channel?: AskCoreInviteChannel;
   email?: string | null;
-  gender?: string | null;
-  phone?: string | null;
-  pinyin_name?: string | null;
+  expiresIn?: AskCoreInviteExpiry;
+  invitation_kind: AskCoreDirectoryInvitationKind;
+  member_role?: Extract<AskCoreOrganizationRole, 'admin' | 'member'>;
+  person_id?: number | null;
+  preset_roles?: AskCoreEducationRole[];
   primary_org_unit_id?: number | null;
-  staff_number?: string | null;
+  roster_kind: AskCoreDirectoryRosterKind;
+}
+
+export interface AskCoreDirectoryPersonCreateInput {
+  better_auth_user_id?: string | null;
+  display_name: string;
+  education_org_unit_id: number;
+  education_role: AskCoreEducationRole;
+  email?: string | null;
+  phone?: string | null;
+  primary_org_unit_id?: number | null;
+  roster_kind?: AskCoreDirectoryRosterKind | null;
   student_number?: string | null;
   teacher_number?: string | null;
 }
@@ -393,6 +458,7 @@ export interface AskCoreDirectoryImportInput {
   };
   default_role?: AskCoreEducationRole | null;
   primary_org_unit_id?: number | null;
+  roster_kind?: AskCoreDirectoryRosterKind | null;
   scope: 'organization' | 'unit';
 }
 

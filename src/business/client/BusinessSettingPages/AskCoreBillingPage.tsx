@@ -45,7 +45,6 @@ import { useParams } from 'react-router-dom';
 import { ProductLogo } from '@/components/Branding';
 
 export const ASKCORE_BILLING_OPEN_URL_MESSAGE = 'askcore-billing:open-url';
-export const ASKCORE_BILLING_CLEAR_REFERRAL_QUERY_MESSAGE = 'askcore-billing:clear-referral-query';
 
 export const ASKCORE_BILLING_PAGE_KEYS = [
   'billing',
@@ -66,10 +65,7 @@ export interface AskCoreBillingPlan {
   benefits?: {
     advanced?: Record<string, boolean>;
     cloud?: Record<string, boolean>;
-    credits?: {
-      examples?: { messages?: number; model: string }[];
-      monthly_credits?: number;
-    };
+    credits?: { examples?: { messages?: number; model: string }[]; monthly_credits?: number };
     knowledge_base?: {
       enabled?: boolean;
       file_storage_gb?: number;
@@ -482,18 +478,11 @@ const enCopy = {
     programRules: 'Program Rules',
     registrationTime: 'Registration Time',
     rules: {
-      expiry: 'Credit validity: Referral credits expire after {{days}} days.',
-      priority:
-        'Deduction priority: free credits, subscription credits, referral credits, then top-up credits.',
       registration:
         'Registration method: Invited users register via referral link or enter referral code on registration page',
-      reward: 'Reward: referrer and invitee each receive {{reward}}.',
+      reward: 'Reward: Referrer and invitee each receive {{reward}}M credits',
       rewardDelay:
-        'Reward processing: credits are issued after verification, within {{hours}} hours.',
-      validAction: 'Valid action: {{action}}.',
-      validActions: {
-        firstBillableUsage: 'first billable usage',
-      },
+        'Reward processing: Credits will be distributed after verification, which may take up to 6 hours',
     },
     status: 'Status',
     totalInvites: 'Total Invites',
@@ -503,6 +492,7 @@ const enCopy = {
     active: 'Active',
     canceled: 'Canceled',
     cancelled: 'Canceled',
+    canary: 'Canary',
     enforce: 'Enforce',
     free: 'Free',
     paid: 'Paid',
@@ -536,6 +526,7 @@ const enCopy = {
     messages: 'messages',
     month: 'month',
     oneTime: 'one time',
+    perCredit: '/ Credit',
     perMillionCredits: '/ 1M Credits',
   },
   usage: {
@@ -688,15 +679,9 @@ const zhCopy: typeof enCopy = {
     programRules: '计划规则',
     registrationTime: '注册时间',
     rules: {
-      expiry: '积分有效期：推荐奖励积分将在 {{days}} 天后过期。',
-      priority: '扣减优先级：免费积分、订阅积分、推荐奖励积分、充值积分。',
       registration: '注册方式：被邀请用户通过推荐链接注册或在注册页输入推荐码',
-      reward: '奖励：邀请人和被邀请人各获得 {{reward}}',
-      rewardDelay: '奖励处理：积分将在审核通过后发放，最多需要 {{hours}} 小时',
-      validAction: '有效动作：{{action}}',
-      validActions: {
-        firstBillableUsage: '首次产生可计费用量',
-      },
+      reward: '奖励：邀请人和被邀请人各获得 {{reward}}M 积分',
+      rewardDelay: '奖励处理：积分将在审核通过后发放，审核最多需要 6 小时',
     },
     status: '状态',
     totalInvites: '邀请总数',
@@ -706,6 +691,7 @@ const zhCopy: typeof enCopy = {
     active: '有效',
     canceled: '已取消',
     cancelled: '已取消',
+    canary: '灰度模式',
     enforce: '正式模式',
     free: '免费版',
     paid: '已支付',
@@ -739,6 +725,7 @@ const zhCopy: typeof enCopy = {
     messages: '条消息',
     month: '月',
     oneTime: '一次性',
+    perCredit: '/ 积分',
     perMillionCredits: '/ 100 万积分',
   },
   usage: {
@@ -757,8 +744,7 @@ type BillingCopy = typeof enCopy;
 
 type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
 
-const REFERRAL_DAYS_TEMPLATE_TOKEN = '__ASKCORE_REFERRAL_DAYS__';
-const REFERRAL_ACTION_TEMPLATE_TOKEN = '__ASKCORE_REFERRAL_ACTION__';
+const REFERRAL_REWARD_TEMPLATE_TOKEN = '__ASKCORE_REFERRAL_REWARD__';
 
 export const getBillingCopy = (language?: string): BillingCopy =>
   isChineseLanguage(language) ? zhCopy : enCopy;
@@ -770,10 +756,7 @@ const translatedCopy = (
   options: Record<string, unknown> = {},
 ) => t(key, { ...options, defaultValue });
 
-export const createLocalizedBillingCopy = (
-  language: string | undefined,
-  t: TranslateFn,
-): BillingCopy => {
+const createLocalizedBillingCopy = (language: string | undefined, t: TranslateFn): BillingCopy => {
   const base = getBillingCopy(language);
   const shortInterval =
     isChineseLanguage(language) || language?.toLowerCase().startsWith('en') || !language;
@@ -809,32 +792,19 @@ export const createLocalizedBillingCopy = (
       ...base.referral,
       programRules: translatedCopy(t, 'referral.rules.title', base.referral.programRules),
       rules: {
-        ...base.referral.rules,
-        expiry: translatedCopy(t, 'referral.rules.expiry', base.referral.rules.expiry, {
-          days: REFERRAL_DAYS_TEMPLATE_TOKEN,
-        }).replaceAll(REFERRAL_DAYS_TEMPLATE_TOKEN, '{{days}}'),
-        priority: translatedCopy(t, 'referral.rules.priority', base.referral.rules.priority),
         registration: translatedCopy(
           t,
           'referral.rules.registration',
           base.referral.rules.registration,
         ),
-        reward: base.referral.rules.reward,
-        rewardDelay: base.referral.rules.rewardDelay,
-        validAction: translatedCopy(
+        reward: translatedCopy(t, 'referral.rules.reward', base.referral.rules.reward, {
+          reward: REFERRAL_REWARD_TEMPLATE_TOKEN,
+        }).replaceAll(REFERRAL_REWARD_TEMPLATE_TOKEN, '{{reward}}'),
+        rewardDelay: translatedCopy(
           t,
-          'referral.rules.validAction',
-          base.referral.rules.validAction,
-          { action: REFERRAL_ACTION_TEMPLATE_TOKEN },
-        ).replaceAll(REFERRAL_ACTION_TEMPLATE_TOKEN, '{{action}}'),
-        validActions: {
-          ...base.referral.rules.validActions,
-          firstBillableUsage: translatedCopy(
-            t,
-            'referral.rules.validActions.firstBillableUsage',
-            base.referral.rules.validActions.firstBillableUsage,
-          ),
-        },
+          'referral.rules.rewardDelay',
+          base.referral.rules.rewardDelay,
+        ),
       },
     },
     statuses: {
@@ -883,12 +853,9 @@ export const formatBillingStatus = (
 const applyCopyTemplate = (template: string, values: Record<string, string>) =>
   template.replaceAll(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => values[key] || '');
 
-const formatReferralValidAction = (value: string | number | undefined, copy: BillingCopy) => {
-  const normalized = String(value || '').trim();
-  if (normalized === 'first_billable_usage') {
-    return copy.referral.rules.validActions.firstBillableUsage;
-  }
-  return normalized || '-';
+const formatReferralRewardMillions = (credits: number | null | undefined) => {
+  const value = Number(credits || 0) / 1_000_000;
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value);
 };
 
 export const localizeReferralRules = (
@@ -897,41 +864,18 @@ export const localizeReferralRules = (
   copy: BillingCopy,
 ) => {
   const knownRules = new Set<string>();
-  const rawEntries = Object.entries(rules || {});
-  const normalizedRuleValue = (id: string) => {
-    const entry = rawEntries.find(([key]) => key.toLowerCase().replaceAll(/[\s_-]/g, '') === id);
-    if (entry) knownRules.add(entry[0]);
-    return entry?.[1];
-  };
-
   const localized = [
     { id: 'registration', text: copy.referral.rules.registration },
     {
       id: 'reward',
       text: applyCopyTemplate(copy.referral.rules.reward, {
-        reward: formatCredits(rewardCredits, copy),
+        reward: formatReferralRewardMillions(rewardCredits),
       }),
     },
-    {
-      id: 'rewarddelayhours',
-      text: applyCopyTemplate(copy.referral.rules.rewardDelay, {
-        hours: String(normalizedRuleValue('rewarddelayhours') || 6),
-      }),
-    },
-    {
-      id: 'expirydays',
-      text: applyCopyTemplate(copy.referral.rules.expiry, {
-        days: String(normalizedRuleValue('expirydays') || 0),
-      }),
-    },
-    { id: 'priority', text: copy.referral.rules.priority },
-    {
-      id: 'validaction',
-      text: applyCopyTemplate(copy.referral.rules.validAction, {
-        action: formatReferralValidAction(normalizedRuleValue('validaction'), copy),
-      }),
-    },
+    { id: 'rewardDelay', text: copy.referral.rules.rewardDelay },
   ];
+
+  const rawEntries = Object.entries(rules || {});
   const result = localized.filter((item) => {
     const hasRule =
       rawEntries.length === 0 ||
@@ -947,9 +891,7 @@ export const localizeReferralRules = (
   });
 
   for (const [key, value] of rawEntries) {
-    if (!knownRules.has(key) && key.startsWith('rule_')) {
-      result.push({ id: key, text: String(value) });
-    }
+    if (!knownRules.has(key)) result.push({ id: key, text: String(value) });
   }
 
   return result;
@@ -1093,9 +1035,7 @@ const billingJson = async <T,>(
 };
 
 const useBillingJson = <T,>(path: string | null, publicEndpoint = false, refreshKey = 0) => {
-  const [state, setState] = useState<ResourceState<T>>({
-    loading: Boolean(path),
-  });
+  const [state, setState] = useState<ResourceState<T>>({ loading: Boolean(path) });
 
   useEffect(() => {
     if (!path) {
@@ -1155,15 +1095,11 @@ export const buildAskCoreBillingEmbedUrl = ({
   origin,
   page,
   checkoutId,
-  referralCallbackUrl,
-  referralCode,
 }: {
   checkoutId?: string;
   language?: string;
   origin: string;
   page: AskCoreBillingPageKey;
-  referralCallbackUrl?: string;
-  referralCode?: string;
 }) => {
   const rawBase = process.env.NEXT_PUBLIC_ASKCORE_BILLING_EMBED_URL?.trim();
   const base = rawBase ? new URL(rawBase, origin) : new URL(origin);
@@ -1177,9 +1113,6 @@ export const buildAskCoreBillingEmbedUrl = ({
   base.hash = '';
   if (language) base.searchParams.set('hl', language);
   if (checkoutId) base.searchParams.set('p33_checkout', checkoutId);
-  if (page === 'referral' && referralCode) base.searchParams.set('referral', referralCode);
-  if (page === 'referral' && referralCallbackUrl)
-    base.searchParams.set('callbackUrl', referralCallbackUrl);
   return base.toString();
 };
 
@@ -1215,16 +1148,6 @@ const requestParentOpenUrl = (url: string) => {
     return;
   }
   window.open(url, '_blank', 'noopener,noreferrer');
-};
-
-const requestParentClearReferralQuery = () => {
-  if (typeof window === 'undefined') return;
-  if (window.parent && window.parent !== window) {
-    window.parent.postMessage(
-      { type: ASKCORE_BILLING_CLEAR_REFERRAL_QUERY_MESSAGE },
-      window.location.origin,
-    );
-  }
 };
 
 const WECHAT_PAYMENT_POLL_INTERVAL_MS = 2500;
@@ -1407,7 +1330,7 @@ const PaymentReturnAlert = memo<{
   return (
     <Alert
       showIcon
-      message={copy.payment.returnTitle}
+      title={copy.payment.returnTitle}
       type={paymentAlertType(checkout?.status)}
       description={
         checkout?.amount?.display
@@ -1450,6 +1373,17 @@ const moneyValue = (
   cnyValue: number | null | undefined,
   isChinese: boolean,
 ) => Number((isChinese ? cnyValue : usdValue) ?? usdValue ?? cnyValue ?? 0);
+
+export const formatPlanTopupUnitPrice = (
+  plan: Pick<AskCoreBillingPlan, 'topup_unit_price_cny' | 'topup_unit_price_usd'>,
+  isChinese: boolean,
+  copy: BillingCopy,
+) => {
+  const unitPrice = moneyValue(plan.topup_unit_price_usd, plan.topup_unit_price_cny, isChinese);
+  return unitPrice
+    ? `${createMoneyFormatter(isChinese).format(unitPrice)} ${copy.units.perCredit}`
+    : copy.credits.unitPriceFallback;
+};
 
 const planPrice = (
   plan: AskCoreBillingPlan,
@@ -1701,9 +1635,7 @@ const PlansView = memo<{
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [wechatCheckout, setWechatCheckout] = useState<CheckoutResponse | null>(null);
   const currentPlanId = account?.personal?.plan_id || 'free';
-  const provider = resolveDefaultProvider(plansPayload?.providers, {
-    isChinese,
-  });
+  const provider = resolveDefaultProvider(plansPayload?.providers, { isChinese });
   const handleBrowsePlans = useCallback(() => {
     if (typeof document === 'undefined') return;
     document
@@ -1959,14 +1891,7 @@ const PlansView = memo<{
                         if (row.label === 'Support Channels')
                           return localPlanSupport(plan, isChinese, copy);
                         if (row.label === 'Top up Credits') {
-                          const unitPrice = moneyValue(
-                            plan.topup_unit_price_usd,
-                            plan.topup_unit_price_cny,
-                            isChinese,
-                          );
-                          return unitPrice
-                            ? `${moneyFormatter.format(unitPrice)} ${copy.units.perMillionCredits}`
-                            : copy.credits.unitPriceFallback;
+                          return formatPlanTopupUnitPrice(plan, isChinese, copy);
                         }
                         const value = row.values[plan.id];
                         if (typeof value === 'number') {
@@ -2009,11 +1934,7 @@ const UsageView = memo<{
   const plan = plansPayload?.plans.find((item) => item.id === account?.personal.plan_id);
   const columns: ColumnsType<AskCoreUsageRow> = useMemo(
     () => [
-      {
-        dataIndex: 'created_at',
-        render: formatDate,
-        title: copy.tables.createdAt,
-      },
+      { dataIndex: 'created_at', render: formatDate, title: copy.tables.createdAt },
       { dataIndex: 'type', title: copy.tables.type },
       { dataIndex: 'trigger', title: copy.tables.trigger },
       { dataIndex: 'model', title: copy.tables.model },
@@ -2133,9 +2054,7 @@ const CreditsView = memo<{
   const [wechatCheckout, setWechatCheckout] = useState<CheckoutResponse | null>(null);
   const [savingAutoTopup, setSavingAutoTopup] = useState(false);
   const [form] = Form.useForm<AskCoreAutoTopupPayload>();
-  const provider = resolveDefaultProvider(plansPayload?.providers, {
-    isChinese,
-  });
+  const provider = resolveDefaultProvider(plansPayload?.providers, { isChinese });
   const account = accountState.data;
   const plan = plansPayload?.plans.find((item) => item.id === account?.personal.plan_id);
   const isPaid = account?.personal.plan_id && account.personal.plan_id !== 'free';
@@ -2207,22 +2126,14 @@ const CreditsView = memo<{
     : plansPayload?.credit_packs || [];
 
   const packageColumns: ColumnsType<AskCoreCreditPackageRow> = [
-    {
-      dataIndex: 'purchased_at',
-      render: formatDate,
-      title: copy.credits.purchasedOn,
-    },
+    { dataIndex: 'purchased_at', render: formatDate, title: copy.credits.purchasedOn },
     { dataIndex: 'source', title: copy.credits.source },
     {
       dataIndex: 'remaining_credits',
       render: (value: number) => formatCredits(value, copy),
       title: copy.credits.balance,
     },
-    {
-      dataIndex: 'expires_at',
-      render: formatDate,
-      title: copy.credits.expiresAt,
-    },
+    { dataIndex: 'expires_at', render: formatDate, title: copy.credits.expiresAt },
     {
       dataIndex: 'status',
       render: (value: string) => (
@@ -2346,12 +2257,10 @@ const CreditsView = memo<{
         <Table
           columns={packageColumns}
           dataSource={creditState.data?.items || []}
+          locale={{ emptyText: <Empty description={copy.credits.noPackages} /> }}
           pagination={false}
           rowKey="id"
           scroll={{ x: true }}
-          locale={{
-            emptyText: <Empty description={copy.credits.noPackages} />,
-          }}
         />
       </Card>
     </Flexbox>
@@ -2385,11 +2294,7 @@ const BillingView = memo<{
         moneyFormatter.format(moneyValue(row.amount_paid_usd, row.amount_paid_cny, isChinese)),
       title: copy.billing.amount,
     },
-    {
-      dataIndex: 'created_at',
-      render: formatDate,
-      title: copy.billing.paymentDate,
-    },
+    { dataIndex: 'created_at', render: formatDate, title: copy.billing.paymentDate },
     {
       dataIndex: 'status',
       render: (value: string) => (
@@ -2464,12 +2369,10 @@ const BillingView = memo<{
         <Table
           columns={columns}
           dataSource={historyState.data?.items || []}
+          locale={{ emptyText: <Empty description={copy.billing.billingHistory} /> }}
           pagination={false}
           rowKey={'id'}
           scroll={{ x: true }}
-          locale={{
-            emptyText: <Empty description={copy.billing.billingHistory} />,
-          }}
         />
       </Card>
     </Flexbox>
@@ -2484,67 +2387,11 @@ const ReferralView = memo<{ copy: BillingCopy }>(({ copy }) => {
   const [editForm] = Form.useForm<{ referral_code: string }>();
   const [backfillForm] = Form.useForm<{ referral_code: string }>();
   const [saving, setSaving] = useState(false);
-  const [autoBackfillAttempted, setAutoBackfillAttempted] = useState(false);
-  const autoBackfillReferralCode = useMemo(() => {
-    if (typeof window === 'undefined') return '';
-    return new URLSearchParams(window.location.search).get('referral')?.trim() || '';
-  }, []);
 
   useEffect(() => {
     if (state.data?.referral_code)
       editForm.setFieldsValue({ referral_code: state.data.referral_code });
   }, [editForm, state.data?.referral_code]);
-
-  useEffect(() => {
-    if (
-      autoBackfillAttempted ||
-      !autoBackfillReferralCode ||
-      state.loading ||
-      !state.data?.enabled
-    ) {
-      return;
-    }
-
-    setAutoBackfillAttempted(true);
-    if (state.data.referral_code === autoBackfillReferralCode) {
-      requestParentClearReferralQuery();
-      return;
-    }
-
-    let closed = false;
-    setSaving(true);
-
-    const bindReferral = async () => {
-      try {
-        await billingJson('/referrals/backfill', {
-          body: JSON.stringify({ referral_code: autoBackfillReferralCode }),
-          method: 'POST',
-        });
-        if (closed) return;
-        message.success(copy.messages.bindSuccess);
-        setRefreshKey((key) => key + 1);
-        requestParentClearReferralQuery();
-      } catch (error) {
-        if (!closed) message.error(error instanceof Error ? error.message : copy.errors.bindFailed);
-      } finally {
-        if (!closed) setSaving(false);
-      }
-    };
-
-    void bindReferral();
-
-    return () => {
-      closed = true;
-    };
-  }, [
-    autoBackfillAttempted,
-    autoBackfillReferralCode,
-    copy.errors.bindFailed,
-    copy.messages.bindSuccess,
-    state.data?.enabled,
-    state.data?.referral_code,
-    state.loading,
-  ]);
 
   const copyText = useCallback(
     async (value?: string) => {
@@ -2598,11 +2445,7 @@ const ReferralView = memo<{ copy: BillingCopy }>(({ copy }) => {
 
   const data = state.data;
   const columns: ColumnsType<AskCoreReferralPayload['items'][number]> = [
-    {
-      dataIndex: 'created_at',
-      render: formatDate,
-      title: copy.referral.registrationTime,
-    },
+    { dataIndex: 'created_at', render: formatDate, title: copy.referral.registrationTime },
     { dataIndex: 'invitee_email', title: copy.referral.inviteeEmail },
     {
       dataIndex: 'reward_credits',
@@ -2708,12 +2551,10 @@ const ReferralView = memo<{ copy: BillingCopy }>(({ copy }) => {
         <Table
           columns={columns}
           dataSource={data.items}
+          locale={{ emptyText: <Empty description={copy.referral.noHistory} /> }}
           pagination={false}
           rowKey={(row) => row.invitee_user_id}
           scroll={{ x: true }}
-          locale={{
-            emptyText: <Empty description={copy.referral.noHistory} />,
-          }}
         />
       </Card>
     </Flexbox>

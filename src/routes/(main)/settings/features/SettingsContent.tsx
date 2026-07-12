@@ -33,7 +33,7 @@ interface SettingsContentProps {
 }
 
 const SettingsContent = ({ mobile, activeTab }: SettingsContentProps) => {
-  const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
+  const enableAskCoreBilling = useServerConfigStore(serverConfigSelectors.enableAskCoreBilling);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -42,12 +42,12 @@ const SettingsContent = ({ mobile, activeTab }: SettingsContentProps) => {
     }
     if (
       activeTab &&
-      !enableBusinessFeatures &&
+      !enableAskCoreBilling &&
       BUSINESS_SETTINGS_TABS.includes(activeTab as SettingsTabs)
     ) {
       navigate(mobile ? '/me/settings' : '/settings/profile', { replace: true });
     }
-  }, [activeTab, enableBusinessFeatures, mobile, navigate]);
+  }, [activeTab, enableAskCoreBilling, mobile, navigate]);
 
   const renderComponent = (tab: string) => {
     const Component = componentMap[tab as keyof typeof componentMap] || componentMap.appearance;
@@ -63,7 +63,7 @@ const SettingsContent = ({ mobile, activeTab }: SettingsContentProps) => {
         SettingsTabs.Stats,
         SettingsTabs.Usage,
         SettingsTabs.Security,
-        ...(enableBusinessFeatures ? BUSINESS_SETTINGS_TABS : []),
+        ...(enableAskCoreBilling ? BUSINESS_SETTINGS_TABS : []),
       ].includes(tab as any)
     ) {
       componentProps.mobile = mobile;
@@ -75,7 +75,7 @@ const SettingsContent = ({ mobile, activeTab }: SettingsContentProps) => {
   if (activeTab && REDIRECT_MAP[activeTab]) return null;
   if (
     activeTab &&
-    !enableBusinessFeatures &&
+    !enableAskCoreBilling &&
     BUSINESS_SETTINGS_TABS.includes(activeTab as SettingsTabs)
   ) {
     return null;

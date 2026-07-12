@@ -18,7 +18,6 @@ import {
   createAskCoreOrganization,
   createAskCoreSchoolUnit,
   deleteAskCoreEducationRoleAssignment,
-  deleteAskCoreOrganization,
   fetchAskCoreEducationIdentityClaims,
   fetchAskCoreEducationOrgUnits,
   fetchAskCoreEducationRoleAssignments,
@@ -26,7 +25,6 @@ import {
   rejectAskCoreEducationIdentityClaim,
   removeAskCoreOrganizationMember,
   setActiveAskCoreOrganization,
-  transferAskCoreOrganizationOwnership,
   unbindAskCoreEducationIdentity,
   updateAskCoreOrganization,
   updateAskCoreOrganizationMemberRole,
@@ -34,7 +32,6 @@ import {
 import { ASKCORE_ORGANIZATION_CHANGED_EVENT } from '../events';
 import {
   type AskCoreEducationIdentityClaim,
-  type AskCoreEducationIdentityRosterKind,
   type AskCoreEducationOrgUnit,
   type AskCoreEducationOrgUnitPayload,
   type AskCoreEducationRoleAssignment,
@@ -57,8 +54,6 @@ export const useOrganization = () => {
   const [creating, setCreating] = useState(false);
 
   const [savingMeta, setSavingMeta] = useState(false);
-  const [deletingOrganization, setDeletingOrganization] = useState(false);
-  const [transferringOwnership, setTransferringOwnership] = useState(false);
 
   const [inviteChannel, setInviteChannel] = useState<AskCoreInviteChannel>('email');
   const [inviteResult, setInviteResult] = useState<AskCoreInvitePayload | null>(null);
@@ -229,7 +224,7 @@ export const useOrganization = () => {
     setInviteLoading(true);
     try {
       setInviteResult(null);
-      message.warning('请在组织架构中使用带教师/学生身份预设的邀请');
+      message.warning('请在组织架构中使用带教师/学生名册预设的邀请');
     } finally {
       setInviteLoading(false);
     }
@@ -339,9 +334,11 @@ export const useOrganization = () => {
         org_unit_id: values.org_unit_id,
         role: values.role,
         subject:
-          subjectKind === 'member'
-            ? { kind: 'member', userId: String(subjectValue) }
-            : { kind: 'person', personId: Number(subjectValue) },
+          subjectKind === 'teacher'
+            ? { kind: 'teacher', teacherId: Number(subjectValue) }
+            : subjectKind === 'student'
+              ? { kind: 'student', studentId: Number(subjectValue) }
+              : { kind: 'member', userId: String(subjectValue) },
       });
       orgRoleForm.resetFields(['subject_value']);
       await reloadEducationRoleAssignments();
@@ -438,7 +435,7 @@ export const useOrganization = () => {
   );
 
   const handleUnbindEducationIdentity = useCallback(
-    async (rosterKind: AskCoreEducationIdentityRosterKind, rosterId: number) => {
+    async (rosterKind: 'student' | 'teacher', rosterId: number) => {
       setBindingIdentity(true);
       try {
         await unbindAskCoreEducationIdentity(rosterKind, rosterId);
@@ -473,53 +470,6 @@ export const useOrganization = () => {
     [current],
   );
 
-  const handleTransferOwnership = useCallback(
-    async (memberId: string) => {
-      if (!current) return;
-      setTransferringOwnership(true);
-      try {
-        const next = await transferAskCoreOrganizationOwnership(current.id, memberId);
-        setPayload((previous) => {
-          if (!previous) return previous;
-          const organizations = previous.organizations.map((item) =>
-            item.id === current.id ? { ...item, role: 'admin' as const } : item,
-          );
-          return {
-            ...previous,
-            current: previous.current ? { ...previous.current, role: 'admin' } : previous.current,
-            members: next.members,
-            organizations,
-            permissions: {
-              ...previous.permissions,
-              canInvite: true,
-              canManageMembers: true,
-              canUpdateMeta: true,
-            },
-          };
-        });
-        notifyAskCoreOrganizationChanged();
-        message.success('所有者已移交，你已变为管理员');
-      } finally {
-        setTransferringOwnership(false);
-      }
-    },
-    [current],
-  );
-
-  const handleDeleteOrganization = useCallback(async () => {
-    if (!current) return;
-    setDeletingOrganization(true);
-    try {
-      const next = await deleteAskCoreOrganization(current.id);
-      setPayload(next);
-      setInviteResult(null);
-      notifyAskCoreOrganizationChanged();
-      message.success('组织已删除');
-    } finally {
-      setDeletingOrganization(false);
-    }
-  }, [current]);
-
   const organizations = payload?.organizations || [];
   const members = payload?.members || [];
 
@@ -546,10 +496,6 @@ export const useOrganization = () => {
     savingMeta,
     metaForm,
     handleSaveMeta,
-    deletingOrganization,
-    transferringOwnership,
-    handleDeleteOrganization,
-    handleTransferOwnership,
 
     // Switch org
     handleActiveChange,
