@@ -203,6 +203,30 @@ describe('Home sidebar body', () => {
     expect(screen.getByText('学校')).toBeInTheDocument();
   });
 
+  it.each([
+    ['teaching-center', '教学中心', 'learning-space', '学习空间'],
+    ['learning-space', '学习空间', 'teaching-center', '教学中心'],
+  ] as const)(
+    'injects the live %s role entry when persisted sidebar items predate it',
+    (visibleKey, visibleTitle, hiddenKey, hiddenTitle) => {
+      mocks.navLayout = {
+        bottomMenuItems: [],
+        topNavItems: [
+          { key: 'school', title: '学校', url: '/school' },
+          { key: visibleKey, title: visibleTitle, url: `/school/${visibleKey}` },
+          { hidden: true, key: hiddenKey, title: hiddenTitle, url: `/school/${hiddenKey}` },
+        ],
+      };
+      mocks.globalState.status.sidebarItems = ['recents', 'agent'];
+
+      render(<Body />);
+
+      expect(screen.getByText('学校')).toBeInTheDocument();
+      expect(screen.getByText(visibleTitle)).toBeInTheDocument();
+      expect(screen.queryByText(hiddenTitle)).not.toBeInTheDocument();
+    },
+  );
+
   it('keeps a top item that was dragged past the spacer in its new position', () => {
     mocks.navLayout = {
       bottomMenuItems: [{ key: 'image', title: 'Image', url: '/image' }],

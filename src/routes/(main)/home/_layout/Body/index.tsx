@@ -35,7 +35,8 @@ const ACCORDION_KEYS = new Set<string>([GroupKey.Recents, GroupKey.Agent]);
 /** Keys rendered in the header — must be excluded from the body to avoid duplicates
  * when migrating users whose persisted sidebarItems still include them. */
 const HEADER_KEYS = new Set<string>(['home', 'search']);
-const REQUIRED_NAV_KEYS = new Set<string>(['school']);
+const REQUIRED_NAV_KEYS = ['school', 'teaching-center', 'learning-space'] as const;
+const REQUIRED_NAV_KEY_SET = new Set<string>(REQUIRED_NAV_KEYS);
 
 const accordionComponents: Record<string, (key: string) => ReactElement> = {
   [GroupKey.Agent]: (key) => <Agent itemKey={key} key={key} />,
@@ -107,20 +108,22 @@ const Body = memo(() => {
     (k: string) =>
       k === GroupKey.Agent ||
       k === SIDEBAR_SPACER_ID ||
-      REQUIRED_NAV_KEYS.has(k) ||
+      REQUIRED_NAV_KEY_SET.has(k) ||
       !hiddenSections.includes(k),
     [hiddenSections],
   );
 
   const visibleKeys = useMemo(() => {
     const keys = sidebarItems.filter((key) => !HEADER_KEYS.has(key) && isVisible(key));
-    const existingKeys = new Set(keys);
-
-    for (const key of REQUIRED_NAV_KEYS) {
-      if (navLinkItems.has(key) && !existingKeys.has(key)) keys.unshift(key);
-    }
-
-    return keys;
+    const requiredKeys = REQUIRED_NAV_KEYS.filter((key) => {
+      const item = navLinkItems.get(key);
+      return item && !item.hidden;
+    });
+    const firstRequiredIndex = keys.findIndex((key) => REQUIRED_NAV_KEY_SET.has(key));
+    const remainingKeys = keys.filter((key) => !REQUIRED_NAV_KEY_SET.has(key));
+    const insertionIndex = firstRequiredIndex < 0 ? 0 : firstRequiredIndex;
+    remainingKeys.splice(insertionIndex, 0, ...requiredKeys);
+    return remainingKeys;
   }, [isVisible, navLinkItems, sidebarItems]);
 
   const renderNavLink = useCallback(
