@@ -1,10 +1,17 @@
-import { HomeIcon, SchoolIcon, SearchIcon } from 'lucide-react';
+import {
+  BookOpenCheckIcon,
+  GraduationCapIcon,
+  HomeIcon,
+  SchoolIcon,
+  SearchIcon,
+} from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import useSWR from 'swr';
 
 import {
   fetchSchoolPortalManifest,
+  fetchSchoolSourceSession,
   SCHOOL_PORTAL_API,
 } from '@/business/client/AskCoreSchoolPortal/api';
 import { getRouteById } from '@/config/routes';
@@ -45,6 +52,21 @@ export const useNavLayout = (): NavLayout => {
     revalidateOnFocus: false,
     shouldRetryOnError: false,
   });
+  const sharedSchool = schoolPortal?.state === 'ready' ? schoolPortal.schools[0] : undefined;
+  const { data: schoolSession } = useSWR(
+    sharedSchool?.role_source_url ?? null,
+    fetchSchoolSourceSession,
+    {
+      refreshInterval: 30_000,
+      revalidateOnFocus: true,
+      shouldRetryOnError: false,
+    },
+  );
+  const teachingLaunchUrl = sharedSchool?.destinations.find(
+    (destination) => destination.key === 'teaching',
+  )?.launch_url;
+  const isEducator = schoolSession?.role === 'teacher' || schoolSession?.role === 'administrator';
+  const isLearner = schoolSession?.role === 'student';
 
   const topNavItems = useMemo(
     () =>
@@ -62,11 +84,24 @@ export const useNavLayout = (): NavLayout => {
           url: '/',
         },
         {
-          hidden: schoolPortal?.show_school_entry !== true,
           icon: SchoolIcon,
           key: 'school',
           title: '学校',
           url: '/school',
+        },
+        {
+          hidden: !isEducator || !teachingLaunchUrl,
+          icon: BookOpenCheckIcon,
+          key: 'teaching-center',
+          title: '教学中心',
+          url: teachingLaunchUrl,
+        },
+        {
+          hidden: !isLearner || !teachingLaunchUrl,
+          icon: GraduationCapIcon,
+          key: 'learning-space',
+          title: '学习空间',
+          url: teachingLaunchUrl,
         },
         {
           icon: getRouteById('tasks')!.icon,
@@ -81,7 +116,7 @@ export const useNavLayout = (): NavLayout => {
           url: '/page',
         },
       ] as NavItem[],
-    [schoolPortal?.show_school_entry, t, toggleCommandMenu],
+    [isEducator, isLearner, t, teachingLaunchUrl, toggleCommandMenu],
   );
 
   const bottomMenuItems = useMemo(

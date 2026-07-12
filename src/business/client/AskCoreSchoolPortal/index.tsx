@@ -16,6 +16,7 @@ import useSWR from 'swr';
 import {
   fetchSchoolIntegrationOperations,
   fetchSchoolPortalManifest,
+  fetchSchoolSourceSession,
   SCHOOL_OPERATIONS_API,
   SCHOOL_PORTAL_API,
 } from './api';
@@ -154,17 +155,9 @@ const stateCopy: Record<Exclude<SchoolPortalState, 'ready'>, { message: string; 
     message: '请联系学校管理员确认正确的学校连接后重试。',
     title: '学校连接存在冲突',
   },
-  revoked: {
-    message: '请从学校系统重新进入 AskCore，或使用新的学校邀请完成绑定。',
-    title: '学校访问已失效',
-  },
   unavailable: {
-    message: '连接配置正在维护，请稍后重试或联系学校管理员。',
+    message: '学校服务正在恢复，请稍后重试。个人空间仍可正常使用。',
     title: '学校连接暂不可用',
-  },
-  unlinked: {
-    message: '请从学校系统进入 AskCore，或打开学校管理员发出的绑定邀请。',
-    title: '尚未连接学校身份',
   },
 };
 
@@ -185,6 +178,12 @@ export const AskCoreSchoolPortalRoute = memo(() => {
     fetchSchoolIntegrationOperations,
     { revalidateOnFocus: false },
   );
+  const sharedSchool = data?.state === 'ready' ? data.schools[0] : undefined;
+  const { data: sourceSession } = useSWR(
+    sharedSchool?.role_source_url ?? null,
+    fetchSchoolSourceSession,
+    { revalidateOnFocus: true, shouldRetryOnError: false },
+  );
 
   const terminalState = data?.state && data.state !== 'ready' ? stateCopy[data.state] : undefined;
   const productionPreflightPassed = operations?.production_preflight?.preflight_status === 'passed';
@@ -199,7 +198,7 @@ export const AskCoreSchoolPortalRoute = memo(() => {
         </span>
         <div>
           <h1 className={styles.title}>学校</h1>
-          <div className={styles.subtitle}>进入已连接学校的教学与校务服务</div>
+          <div className={styles.subtitle}>AskCore 在线学校</div>
         </div>
       </header>
 
@@ -281,10 +280,6 @@ export const AskCoreSchoolPortalRoute = memo(() => {
         </Empty>
       ) : null}
 
-      {!error && data?.state === 'ready' && data.selection_required ? (
-        <Alert showIcon message="请选择要进入的学校" type="info" />
-      ) : null}
-
       {!error && data?.state === 'ready' ? (
         <div className={styles.grid}>
           {data.schools.map((school) => (
@@ -297,14 +292,22 @@ export const AskCoreSchoolPortalRoute = memo(() => {
                 <div className={styles.destination} key={destination.key}>
                   <span className={styles.destinationIcon}>{destinationIcon(destination)}</span>
                   <div className={styles.destinationCopy}>
-                    <div className={styles.destinationLabel}>{destination.label}</div>
+                    <div className={styles.destinationLabel}>
+                      {destination.key === 'teaching' && sourceSession?.role === 'student'
+                        ? '学习空间'
+                        : destination.label}
+                    </div>
                     <div className={styles.destinationDescription}>{destination.description}</div>
                   </div>
                   <Button
-                    aria-label={`进入${destination.label}`}
                     href={destination.launch_url}
                     icon={<ExternalLink size={15} />}
                     type="text"
+                    aria-label={`进入${
+                      destination.key === 'teaching' && sourceSession?.role === 'student'
+                        ? '学习空间'
+                        : destination.label
+                    }`}
                   />
                 </div>
               ))}
