@@ -216,14 +216,14 @@ const processingErrorMessage = (reason: unknown, fallback: string) => {
     return reason instanceof Error ? reason.message : fallback;
   }
 
-  if (reason.status === 401) return '登录状态已失效，请重新登录后从教学中心打开';
+  if (reason.status === 401) return '处理链接无效或会话已过期，请返回教学中心重新打开';
   if (reason.status === 403) return '你没有权限处理此内容，请返回教学中心确认课程权限';
   if (
     reason.status === 404 ||
     reason.status === 410 ||
     /verified processing context|processing context is required/i.test(reason.message)
   ) {
-    return '处理链接无效或已过期，请返回教学中心重新打开';
+    return '处理链接无效或会话已过期，请返回教学中心重新打开';
   }
   if (reason.status === 409) return '处理结果已被更新，请刷新后重试';
   if (reason.status >= 500) return '处理服务暂时不可用，请稍后重试';

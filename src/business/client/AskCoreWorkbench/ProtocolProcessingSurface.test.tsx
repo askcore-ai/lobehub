@@ -177,18 +177,23 @@ describe('ProtocolProcessingSurface', () => {
   it('shows an actionable message instead of a backend error for an invalid context', async () => {
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValue(
-          Response.json({ detail: 'Verified processing context is required' }, { status: 400 }),
+      vi.fn().mockResolvedValue(
+        Response.json(
+          { detail: 'Missing active organization in LobeHub assertion' },
+          {
+            status: 401,
+          },
         ),
+      ),
     );
 
     render(<ProtocolProcessingSurface />);
 
     expect(
-      await screen.findByText('处理链接无效或已过期，请返回教学中心重新打开'),
+      await screen.findByText('处理链接无效或会话已过期，请返回教学中心重新打开'),
     ).toBeInTheDocument();
-    expect(screen.queryByText('Verified processing context is required')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Missing active organization in LobeHub assertion'),
+    ).not.toBeInTheDocument();
   });
 });
