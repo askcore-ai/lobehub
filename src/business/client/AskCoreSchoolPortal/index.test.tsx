@@ -121,28 +121,14 @@ describe('AskCoreSchoolPortalRoute', () => {
     await waitFor(() => expect(screen.queryByText(/绑定邀请|当前组织/)).not.toBeInTheDocument());
   });
 
-  it('shows a redacted integration summary only when the backend grants system access', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
-        if (String(input).endsWith('/operations')) {
-          return Response.json({
-            production_preflight: {
-              active_deployments: 1,
-              preflight_status: 'passed',
-              status: 'succeeded',
-            },
-            redaction_passed: true,
-            roster_projection_rows: 0,
-            status: 'succeeded',
-          });
-        }
-        if (String(input).includes('/askcore/session.php')) {
-          return Response.json({ authenticated: true, role: 'administrator' });
-        }
-        return Response.json(readyPortal(true));
-      }),
-    );
+  it('keeps the Gibbon surface full-height and omits the system integration panel', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/askcore/session.php')) {
+        return Response.json({ authenticated: true, role: 'administrator' });
+      }
+      return Response.json(readyPortal(true));
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
     render(
       <SWRConfig value={{ provider: () => new Map() }}>
@@ -152,11 +138,12 @@ describe('AskCoreSchoolPortalRoute', () => {
       </SWRConfig>,
     );
 
-    expect(await screen.findByText('系统集成')).toBeInTheDocument();
-    expect(await screen.findAllByText('已就绪')).toHaveLength(1);
-    expect(screen.getByText('教学处理连接')).toBeInTheDocument();
-    expect(screen.getByText('已通过')).toBeInTheDocument();
-    expect(screen.getByText('未保存')).toBeInTheDocument();
-    expect(screen.queryByText(/client_id|deployment_id|issuer/i)).not.toBeInTheDocument();
+    expect(await screen.findByTitle('AskCore 在线学校 学校')).toHaveAttribute(
+      'src',
+      'about:blank#services-launch',
+    );
+    expect(screen.queryByText('系统集成')).not.toBeInTheDocument();
+    expect(screen.queryByText('教学处理连接')).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/askcore/school/operations', expect.anything());
   });
 });

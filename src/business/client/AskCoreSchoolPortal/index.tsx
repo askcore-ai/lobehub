@@ -1,69 +1,25 @@
 'use client';
 
-import { Alert, Button, Empty, Skeleton, Tag } from 'antd';
+import { Alert, Button, Empty, Skeleton } from 'antd';
 import { createStaticStyles, cssVar } from 'antd-style';
-import { BookOpenCheck, RefreshCw, School, ShieldCheck } from 'lucide-react';
+import { BookOpenCheck, RefreshCw, School } from 'lucide-react';
 import { memo } from 'react';
 import { useLocation } from 'react-router-dom';
 import useSWR from 'swr';
 
-import {
-  fetchSchoolIntegrationOperations,
-  fetchSchoolPortalManifest,
-  fetchSchoolSourceSession,
-  SCHOOL_OPERATIONS_API,
-  SCHOOL_PORTAL_API,
-} from './api';
+import { fetchSchoolPortalManifest, fetchSchoolSourceSession, SCHOOL_PORTAL_API } from './api';
 import { type SchoolPortalState } from './types';
 
 const styles = createStaticStyles(({ css }) => ({
-  card: css`
-    min-width: 0;
-    padding: 18px;
-    border: 1px solid ${cssVar.colorBorderSecondary};
-    border-radius: 8px;
-
-    background: ${cssVar.colorBgContainer};
-  `,
-  cardHeader: css`
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    margin-block-end: 16px;
-  `,
-  cardTitle: css`
-    margin: 0;
-
-    font-size: 16px;
-    font-weight: 650;
-    line-height: 1.4;
-    color: ${cssVar.colorText};
-    overflow-wrap: anywhere;
-  `,
   frame: css`
     display: block;
 
     width: 100%;
-    height: calc(100dvh - 154px);
-    min-height: 520px;
+    height: 100%;
+    min-height: 0;
     border: 0;
 
     background: ${cssVar.colorBgContainer};
-
-    @media (width <= 840px) {
-      height: calc(100dvh - 126px);
-      min-height: 420px;
-    }
-  `,
-  operationRow: css`
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-    justify-content: space-between;
-
-    min-height: 42px;
-    border-block-start: 1px solid ${cssVar.colorBorderSecondary};
   `,
   header: css`
     display: flex;
@@ -90,15 +46,23 @@ const styles = createStaticStyles(({ css }) => ({
     flex-direction: column;
     gap: 16px;
 
+    box-sizing: border-box;
     min-width: 0;
-    min-height: 100%;
-    padding-block: 16px 28px;
+    height: 100%;
+    min-height: 0;
+    padding-block: 16px;
     padding-inline: clamp(12px, 2vw, 28px);
+
+    @media (width <= 840px) {
+      height: 100dvh;
+    }
   `,
   surface: css`
     overflow: hidden;
+    flex: 1;
 
     min-width: 0;
+    min-height: 0;
     border: 1px solid ${cssVar.colorBorderSecondary};
     border-radius: 8px;
 
@@ -136,16 +100,6 @@ export const AskCoreSchoolPortalRoute = memo(() => {
   const { data, error, isLoading, mutate } = useSWR(SCHOOL_PORTAL_API, fetchSchoolPortalManifest, {
     revalidateOnFocus: false,
   });
-  const {
-    data: operations,
-    error: operationsError,
-    isLoading: operationsLoading,
-    mutate: refreshOperations,
-  } = useSWR(
-    data?.can_manage_integrations ? SCHOOL_OPERATIONS_API : null,
-    fetchSchoolIntegrationOperations,
-    { revalidateOnFocus: false },
-  );
   const sharedSchool = data?.state === 'ready' ? data.schools[0] : undefined;
   const { data: sourceSession } = useSWR(
     sharedSchool?.role_source_url ?? null,
@@ -164,9 +118,6 @@ export const AskCoreSchoolPortalRoute = memo(() => {
       : '教学中心'
     : '学校';
   const SurfaceIcon = isTeachingSurface ? BookOpenCheck : School;
-  const productionPreflightPassed = operations?.production_preflight?.preflight_status === 'passed';
-  const processingConnectionReady =
-    productionPreflightPassed && (operations?.production_preflight?.active_deployments || 0) > 0;
 
   return (
     <main className={styles.page}>
@@ -211,53 +162,6 @@ export const AskCoreSchoolPortalRoute = memo(() => {
             刷新连接状态
           </Button>
         </Empty>
-      ) : null}
-
-      {!isTeachingSurface && !error && data?.can_manage_integrations ? (
-        <section className={styles.card}>
-          <div className={styles.cardHeader}>
-            <ShieldCheck size={18} />
-            <h2 className={styles.cardTitle}>系统集成</h2>
-          </div>
-          {operationsLoading ? <Skeleton active paragraph={{ rows: 2 }} /> : null}
-          {operationsError ? (
-            <Alert
-              showIcon
-              message="集成状态暂不可用"
-              type="error"
-              action={
-                <Button size="small" onClick={() => void refreshOperations()}>
-                  重试
-                </Button>
-              }
-            />
-          ) : null}
-          {operations ? (
-            <>
-              <div className={styles.operationRow}>
-                <span>教学处理连接</span>
-                <Tag color={processingConnectionReady ? 'green' : 'gold'}>
-                  {processingConnectionReady ? '已就绪' : '需处理'}
-                </Tag>
-              </div>
-              <div className={styles.operationRow}>
-                <span>生产运行检查</span>
-                <Tag color={productionPreflightPassed ? 'green' : 'gold'}>
-                  {productionPreflightPassed ? '已通过' : '需处理'}
-                </Tag>
-              </div>
-              <div className={styles.operationRow}>
-                <span>学校数据副本</span>
-                <Tag color={operations.roster_projection_rows === 0 ? 'green' : 'red'}>
-                  {operations.roster_projection_rows === 0 ? '未保存' : '发现异常'}
-                </Tag>
-              </div>
-              <Button icon={<RefreshCw size={14} />} onClick={() => void refreshOperations()}>
-                刷新状态
-              </Button>
-            </>
-          ) : null}
-        </section>
       ) : null}
 
       {!error && terminalState ? (
