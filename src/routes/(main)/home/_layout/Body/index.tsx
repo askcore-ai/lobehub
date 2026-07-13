@@ -6,7 +6,7 @@ import { EyeOffIcon, MoreHorizontalIcon, SlidersHorizontalIcon } from 'lucide-re
 import type { Key, ReactElement } from 'react';
 import { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import NavItem from '@/features/NavPanel/components/NavItem';
 import { useActiveTabKey } from '@/hooks/useActiveTabKey';
@@ -62,6 +62,7 @@ const mergeSidebarExpandedKeys = (
 const Body = memo(() => {
   const { t } = useTranslation('common');
   const tab = useActiveTabKey();
+  const { pathname } = useLocation();
   const navigate = useNavigate();
   const { topNavItems, bottomMenuItems } = useNavLayout();
   const sidebarItems = useGlobalStore(systemStatusSelectors.sidebarItems);
@@ -103,6 +104,13 @@ const Body = memo(() => {
     return map;
   }, [topNavItems, bottomMenuItems]);
 
+  const activeNavKey = useMemo(() => {
+    for (const [key, item] of navLinkItems) {
+      if (!item.hidden && item.url === pathname) return key;
+    }
+    return tab;
+  }, [navLinkItems, pathname, tab]);
+
   // Items that must always be visible regardless of hiddenSections
   const isVisible = useCallback(
     (k: string) =>
@@ -141,7 +149,7 @@ const Body = memo(() => {
           }}
         >
           <NavItem
-            active={tab === key}
+            active={activeNavKey === key}
             contextMenuItems={getContextMenuItems(key)}
             icon={navItem.icon}
             title={navItem.title}
@@ -154,7 +162,7 @@ const Body = memo(() => {
         </Link>
       );
     },
-    [navLinkItems, tab, getContextMenuItems, navigate],
+    [activeNavKey, navLinkItems, getContextMenuItems, navigate],
   );
 
   const handleAccordionExpandedChange = useCallback(

@@ -15,12 +15,14 @@ interface MockGlobalState {
 type MockNavItem = { hidden?: boolean; key: string; title: string; url: string };
 
 const mocks = vi.hoisted(() => ({
+  activeTabKey: 'home',
   globalState: undefined as unknown as MockGlobalState,
   navLayout: {
     bottomMenuItems: [] as MockNavItem[],
     topNavItems: [] as MockNavItem[],
   },
   navigate: vi.fn(),
+  pathname: '/',
   updateSystemStatus: vi.fn(),
 }));
 
@@ -65,15 +67,18 @@ vi.mock('react-router-dom', () => ({
       {children}
     </a>
   ),
+  useLocation: () => ({ pathname: mocks.pathname }),
   useNavigate: () => mocks.navigate,
 }));
 
 vi.mock('@/features/NavPanel/components/NavItem', () => ({
-  default: ({ title }: { title: string }) => <div>{title}</div>,
+  default: ({ active, title }: { active?: boolean; title: string }) => (
+    <div data-active={active ? 'true' : undefined}>{title}</div>
+  ),
 }));
 
 vi.mock('@/hooks/useActiveTabKey', () => ({
-  useActiveTabKey: () => 'home',
+  useActiveTabKey: () => mocks.activeTabKey,
 }));
 
 vi.mock('@/hooks/useNavLayout', () => ({
@@ -101,8 +106,10 @@ vi.mock('@/store/global', () => ({
 }));
 
 beforeEach(() => {
+  mocks.activeTabKey = 'home';
   mocks.updateSystemStatus.mockReset();
   mocks.navigate.mockReset();
+  mocks.pathname = '/';
   mocks.navLayout = {
     bottomMenuItems: [],
     topNavItems: [],
@@ -240,6 +247,33 @@ describe('Home sidebar body', () => {
     fireEvent.click(screen.getByRole('link', { name: '教学中心' }));
 
     expect(mocks.navigate).toHaveBeenCalledWith('/school/teaching-center');
+  });
+
+  it.each([
+    ['/school', '学校'],
+    ['/school/teaching-center', '教学中心'],
+    ['/school/learning-space', '学习空间'],
+  ] as const)('marks only the exact %s school navigation item active', (pathname, activeTitle) => {
+    mocks.activeTabKey = 'school';
+    mocks.pathname = pathname;
+    mocks.navLayout = {
+      bottomMenuItems: [],
+      topNavItems: [
+        { key: 'school', title: '学校', url: '/school' },
+        { key: 'teaching-center', title: '教学中心', url: '/school/teaching-center' },
+        { key: 'learning-space', title: '学习空间', url: '/school/learning-space' },
+      ],
+    };
+    mocks.globalState.status.sidebarItems = ['school', 'teaching-center', 'learning-space'];
+
+    render(<Body />);
+
+    expect(screen.getByText(activeTitle)).toHaveAttribute('data-active', 'true');
+    expect(
+      screen
+        .getAllByText(/^(学校|教学中心|学习空间)$/)
+        .filter((item) => item.getAttribute('data-active') === 'true'),
+    ).toHaveLength(1);
   });
 
   it('keeps a top item that was dragged past the spacer in its new position', () => {
