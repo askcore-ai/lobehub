@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import BusinessGlobalProvider from './BusinessGlobalProvider';
@@ -46,6 +47,15 @@ const markSessionReady = (frame: HTMLIFrameElement) => {
   frame.contentDocument!.head.append(marker);
 };
 
+const renderProvider = (initialEntry = '/') =>
+  render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <BusinessGlobalProvider>
+        <div>personal workspace</div>
+      </BusinessGlobalProvider>
+    </MemoryRouter>,
+  );
+
 vi.mock('swr', () => ({
   default: (key: string | null) => ({ data: key ? portal : undefined }),
   useSWRConfig: () => ({ mutate }),
@@ -78,11 +88,7 @@ describe('BusinessGlobalProvider', () => {
   });
 
   it('warms Gibbon and Moodle sessions without replacing the personal workspace', () => {
-    render(
-      <BusinessGlobalProvider>
-        <div>personal workspace</div>
-      </BusinessGlobalProvider>,
-    );
+    renderProvider();
 
     expect(screen.getByText('personal workspace')).toBeInTheDocument();
     let frames = document.querySelectorAll<HTMLIFrameElement>(
@@ -110,11 +116,7 @@ describe('BusinessGlobalProvider', () => {
 
   it('continues after Gibbon establishes a source role on its native dashboard', async () => {
     fetchSchoolSourceSession.mockResolvedValue({ authenticated: true, role: 'teacher' });
-    render(
-      <BusinessGlobalProvider>
-        <div>personal workspace</div>
-      </BusinessGlobalProvider>,
-    );
+    renderProvider();
 
     const gibbonFrame = document.querySelector<HTMLIFrameElement>(
       'iframe[data-askcore-school-session="school-services"]',
@@ -140,11 +142,7 @@ describe('BusinessGlobalProvider', () => {
   it('does not contact school sources before Better Auth is authenticated', () => {
     state.authenticated = false;
 
-    render(
-      <BusinessGlobalProvider>
-        <div>sign in</div>
-      </BusinessGlobalProvider>,
-    );
+    renderProvider();
 
     expect(document.querySelector('iframe[data-askcore-school-session]')).toBeNull();
   });
@@ -156,22 +154,21 @@ describe('BusinessGlobalProvider', () => {
       '/askcore/workbench?protocol=identity-link&token=opaque-invitation',
     );
 
-    render(
-      <BusinessGlobalProvider>
-        <div>link identity first</div>
-      </BusinessGlobalProvider>,
-    );
+    renderProvider('/askcore/workbench?protocol=identity-link&token=opaque-invitation');
 
-    expect(screen.getByText('link identity first')).toBeInTheDocument();
+    expect(screen.getByText('personal workspace')).toBeInTheDocument();
+    expect(document.querySelector('iframe[data-askcore-school-session]')).toBeNull();
+  });
+
+  it('does not race a visible school surface with a hidden source login', () => {
+    renderProvider('/school');
+
+    expect(screen.getByText('personal workspace')).toBeInTheDocument();
     expect(document.querySelector('iframe[data-askcore-school-session]')).toBeNull();
   });
 
   it('stops a source flow that never reports a ready session', () => {
-    render(
-      <BusinessGlobalProvider>
-        <div>personal workspace</div>
-      </BusinessGlobalProvider>,
-    );
+    renderProvider();
 
     const frame = document.querySelector<HTMLIFrameElement>('iframe[data-askcore-school-session]');
     expect(frame?.dataset.askcoreSchoolSession).toBe('school-services');

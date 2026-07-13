@@ -1,6 +1,7 @@
 'use client';
 
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import useSWR, { useSWRConfig } from 'swr';
 
 import {
@@ -21,14 +22,18 @@ const sourceSessionReady = (frame: HTMLIFrameElement) => {
 };
 
 const SchoolSessionWarmup = () => {
+  const { pathname } = useLocation();
   const { data: accountSession } = useSession();
   const accountUserId = accountSession?.user.id;
+  const schoolRouteActive = pathname === '/school' || pathname.startsWith('/school/');
   const identityLinkPending =
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).get('protocol') === 'identity-link';
   const { mutate } = useSWRConfig();
   const { data: portal } = useSWR(
-    accountUserId && !identityLinkPending ? ([SCHOOL_PORTAL_API, accountUserId] as const) : null,
+    accountUserId && !identityLinkPending && !schoolRouteActive
+      ? ([SCHOOL_PORTAL_API, accountUserId] as const)
+      : null,
     () => fetchSchoolPortalManifest(),
     { revalidateOnFocus: false, shouldRetryOnError: false },
   );
@@ -51,7 +56,9 @@ const SchoolSessionWarmup = () => {
     return () => window.clearTimeout(timer);
   }, [activeWarmup, warmups.length]);
 
-  if (!accountSession || identityLinkPending || warmups.length === 0) return null;
+  if (!accountSession || identityLinkPending || schoolRouteActive || warmups.length === 0) {
+    return null;
+  }
   const roleSourceUrl = portal?.schools[0]?.role_source_url;
   const roleSourceKey =
     roleSourceUrl && accountUserId ? ([roleSourceUrl, accountUserId] as const) : null;
