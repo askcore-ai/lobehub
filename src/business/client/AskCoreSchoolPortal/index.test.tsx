@@ -1,9 +1,13 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { SWRConfig } from 'swr';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AskCoreSchoolPortalRoute } from './index';
+
+vi.mock('@/libs/better-auth/auth-client', () => ({
+  useSession: () => ({ data: { user: { id: 'user-1' } } }),
+}));
 
 const readyPortal = (canManageIntegrations = false) => ({
   can_manage_integrations: canManageIntegrations,
@@ -42,14 +46,12 @@ afterEach(() => {
 
 describe('AskCoreSchoolPortalRoute', () => {
   it('renders the Gibbon school surface directly without destination cards', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL) =>
-        String(input).includes('/askcore/session.php')
-          ? Response.json({ authenticated: true, role: 'student' })
-          : Response.json(readyPortal()),
-      ),
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
+      String(input).includes('/askcore/session.php')
+        ? Response.json({ authenticated: true, role: 'student' })
+        : Response.json(readyPortal()),
     );
+    vi.stubGlobal('fetch', fetchMock);
 
     render(
       <SWRConfig value={{ provider: () => new Map() }}>
@@ -59,13 +61,19 @@ describe('AskCoreSchoolPortalRoute', () => {
       </SWRConfig>,
     );
 
-    expect(await screen.findByTitle('AskCore 在线学校 学校')).toHaveAttribute(
-      'src',
-      'about:blank#services-launch',
-    );
+    const frame = await screen.findByTitle('AskCore 在线学校 学校');
+    expect(frame).toHaveAttribute('src', 'about:blank#services-launch');
     expect(screen.queryByLabelText('进入学习空间')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('进入校务中心')).not.toBeInTheDocument();
     expect(screen.queryByText(/deployment|actor_hash|account_user_id/i)).not.toBeInTheDocument();
+
+    const sourceRequestCount = () =>
+      fetchMock.mock.calls.filter(([input]) => String(input).includes('/askcore/session.php'))
+        .length;
+    const sourceRequestsBeforeLoad = sourceRequestCount();
+
+    fireEvent.load(frame);
+    await waitFor(() => expect(sourceRequestCount()).toBeGreaterThan(sourceRequestsBeforeLoad));
   });
 
   it('renders the live-role Moodle surface directly for a student', async () => {

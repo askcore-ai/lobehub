@@ -7,6 +7,8 @@ import { memo } from 'react';
 import { useLocation } from 'react-router-dom';
 import useSWR from 'swr';
 
+import { useSession } from '@/libs/better-auth/auth-client';
+
 import { fetchSchoolPortalManifest, fetchSchoolSourceSession, SCHOOL_PORTAL_API } from './api';
 import { type SchoolPortalState } from './types';
 
@@ -97,13 +99,19 @@ const stateCopy: Record<Exclude<SchoolPortalState, 'ready'>, { message: string; 
 
 export const AskCoreSchoolPortalRoute = memo(() => {
   const { pathname } = useLocation();
+  const { data: accountSession } = useSession();
+  const accountUserId = accountSession?.user.id;
   const { data, error, isLoading, mutate } = useSWR(SCHOOL_PORTAL_API, fetchSchoolPortalManifest, {
     revalidateOnFocus: false,
   });
   const sharedSchool = data?.state === 'ready' ? data.schools[0] : undefined;
-  const { data: sourceSession } = useSWR(
-    sharedSchool?.role_source_url ?? null,
-    fetchSchoolSourceSession,
+  const roleSourceKey =
+    sharedSchool?.role_source_url && accountUserId
+      ? ([sharedSchool.role_source_url, accountUserId] as const)
+      : null;
+  const { data: sourceSession, mutate: mutateSourceSession } = useSWR(
+    roleSourceKey,
+    ([url]) => fetchSchoolSourceSession(url),
     { revalidateOnFocus: true, shouldRetryOnError: false },
   );
 
@@ -152,6 +160,10 @@ export const AskCoreSchoolPortalRoute = memo(() => {
             className={styles.frame}
             src={destination.launch_url}
             title={`${sharedSchool?.name || 'AskCore 在线学校'} ${surfaceTitle}`}
+            onLoad={() => {
+              if (destinationKey !== 'school-services') return;
+              void mutateSourceSession().catch(() => {});
+            }}
           />
         </section>
       ) : null}
