@@ -30,7 +30,7 @@ const SchoolSessionWarmup = () => {
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).get('protocol') === 'identity-link';
   const { mutate } = useSWRConfig();
-  const { data: portal } = useSWR(
+  const { data: portal, isValidating: portalIsValidating } = useSWR(
     accountUserId && !identityLinkPending && !schoolRouteActive
       ? ([SCHOOL_PORTAL_API, accountUserId] as const)
       : null,
@@ -38,12 +38,12 @@ const SchoolSessionWarmup = () => {
     { revalidateOnFocus: false, shouldRetryOnError: false },
   );
   const warmups = useMemo(() => {
-    if (portal?.state !== 'ready') return [];
+    if (portalIsValidating || portal?.state !== 'ready') return [];
     const destinations = portal.schools[0]?.destinations ?? [];
     return [...destinations]
       .sort((left, right) => Number(left.key === 'teaching') - Number(right.key === 'teaching'))
       .map((destination) => ({ key: destination.key, url: destination.session_launch_url }));
-  }, [portal]);
+  }, [portal, portalIsValidating]);
   const [activeWarmup, setActiveWarmup] = useState(0);
 
   useEffect(() => {

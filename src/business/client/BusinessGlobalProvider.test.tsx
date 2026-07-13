@@ -5,7 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import BusinessGlobalProvider from './BusinessGlobalProvider';
 
-const state = vi.hoisted(() => ({ authenticated: true, userId: 'user-1' }));
+const state = vi.hoisted(() => ({
+  authenticated: true,
+  portalValidating: false,
+  userId: 'user-1',
+}));
 const mutate = vi.hoisted(() => vi.fn());
 const fetchSchoolSourceSession = vi.hoisted(() => vi.fn());
 
@@ -57,7 +61,10 @@ const renderProvider = (initialEntry = '/') =>
   );
 
 vi.mock('swr', () => ({
-  default: (key: string | null) => ({ data: key ? portal : undefined }),
+  default: (key: string | null) => ({
+    data: key ? portal : undefined,
+    isValidating: state.portalValidating,
+  }),
   useSWRConfig: () => ({ mutate }),
 }));
 
@@ -77,6 +84,7 @@ describe('BusinessGlobalProvider', () => {
     fetchSchoolSourceSession.mockReset();
     fetchSchoolSourceSession.mockRejectedValue(new Error('source session is not ready'));
     state.authenticated = true;
+    state.portalValidating = false;
     state.userId = 'user-1';
     window.history.replaceState({}, '', '/');
   });
@@ -141,6 +149,14 @@ describe('BusinessGlobalProvider', () => {
 
   it('does not contact school sources before Better Auth is authenticated', () => {
     state.authenticated = false;
+
+    renderProvider();
+
+    expect(document.querySelector('iframe[data-askcore-school-session]')).toBeNull();
+  });
+
+  it('does not launch cached source-session tokens while the portal is refreshing', () => {
+    state.portalValidating = true;
 
     renderProvider();
 

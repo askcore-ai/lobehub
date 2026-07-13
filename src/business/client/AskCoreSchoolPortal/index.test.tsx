@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { SWRConfig } from 'swr';
+import { SWRConfig, unstable_serialize } from 'swr';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { SCHOOL_PORTAL_API } from './api';
 import { AskCoreSchoolPortalRoute } from './index';
 
 vi.mock('@/libs/better-auth/auth-client', () => ({
@@ -45,6 +46,66 @@ afterEach(() => {
 });
 
 describe('AskCoreSchoolPortalRoute', () => {
+  it.each([
+    {
+      destinationIndex: 1,
+      destinationKey: 'school-services',
+      path: '/school',
+      title: 'AskCore 在线学校 学校',
+    },
+    {
+      destinationIndex: 0,
+      destinationKey: 'teaching',
+      path: '/school/learning-space',
+      title: 'AskCore 在线学校 学习空间',
+    },
+  ])(
+    'waits for a fresh $destinationKey manifest instead of launching a cached expired token',
+    async ({ destinationIndex, destinationKey, path, title }) => {
+      const stalePortal = readyPortal();
+      stalePortal.schools[0].destinations[destinationIndex].launch_url =
+        `about:blank#expired-${destinationKey}-launch`;
+      const freshPortal = readyPortal();
+      freshPortal.schools[0].destinations[destinationIndex].launch_url =
+        `about:blank#fresh-${destinationKey}-launch`;
+      let resolvePortal!: (response: Response) => void;
+      const portalRequest = new Promise<Response>((resolve) => {
+        resolvePortal = resolve;
+      });
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((input: RequestInfo | URL) =>
+          String(input).includes('/askcore/session.php')
+            ? Promise.resolve(Response.json({ authenticated: true, role: 'student' }))
+            : portalRequest,
+        ),
+      );
+
+      render(
+        <SWRConfig
+          value={{
+            fallback: {
+              [unstable_serialize([SCHOOL_PORTAL_API, 'user-1', destinationKey])]: stalePortal,
+            },
+            provider: () => new Map(),
+          }}
+        >
+          <MemoryRouter initialEntries={[path]}>
+            <AskCoreSchoolPortalRoute />
+          </MemoryRouter>
+        </SWRConfig>,
+      );
+
+      expect(screen.queryByTitle(title)).not.toBeInTheDocument();
+
+      await act(async () => resolvePortal(Response.json(freshPortal)));
+      expect(await screen.findByTitle(title)).toHaveAttribute(
+        'src',
+        `about:blank#fresh-${destinationKey}-launch`,
+      );
+    },
+  );
+
   it('renders the Gibbon school surface directly without destination cards', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
       String(input).includes('/askcore/session.php')

@@ -101,9 +101,20 @@ export const AskCoreSchoolPortalRoute = memo(() => {
   const { pathname } = useLocation();
   const { data: accountSession } = useSession();
   const accountUserId = accountSession?.user.id;
-  const { data, error, isLoading, mutate } = useSWR(SCHOOL_PORTAL_API, fetchSchoolPortalManifest, {
-    revalidateOnFocus: false,
-  });
+  const isTeachingSurface =
+    pathname === '/school/teaching-center' || pathname === '/school/learning-space';
+  const destinationKey = isTeachingSurface ? 'teaching' : 'school-services';
+  const portalCacheKey = accountUserId
+    ? ([SCHOOL_PORTAL_API, accountUserId, destinationKey] as const)
+    : null;
+  const { data, error, isLoading, isValidating, mutate } = useSWR(
+    portalCacheKey,
+    fetchSchoolPortalManifest,
+    {
+      revalidateOnFocus: false,
+      revalidateOnMount: true,
+    },
+  );
   const sharedSchool = data?.state === 'ready' ? data.schools[0] : undefined;
   const roleSourceKey =
     sharedSchool?.role_source_url && accountUserId
@@ -116,9 +127,6 @@ export const AskCoreSchoolPortalRoute = memo(() => {
   );
 
   const terminalState = data?.state && data.state !== 'ready' ? stateCopy[data.state] : undefined;
-  const isTeachingSurface =
-    pathname === '/school/teaching-center' || pathname === '/school/learning-space';
-  const destinationKey = isTeachingSurface ? 'teaching' : 'school-services';
   const destination = sharedSchool?.destinations.find((item) => item.key === destinationKey);
   const surfaceTitle = isTeachingSurface
     ? sourceSession?.role === 'student' || pathname === '/school/learning-space'
@@ -139,7 +147,9 @@ export const AskCoreSchoolPortalRoute = memo(() => {
         </div>
       </header>
 
-      {isLoading ? <Skeleton active paragraph={{ rows: 4 }} /> : null}
+      {!accountUserId || isLoading || isValidating ? (
+        <Skeleton active paragraph={{ rows: 4 }} />
+      ) : null}
 
       {error ? (
         <Alert
@@ -154,7 +164,7 @@ export const AskCoreSchoolPortalRoute = memo(() => {
         />
       ) : null}
 
-      {!error && data?.state === 'ready' && destination ? (
+      {!error && !isValidating && data?.state === 'ready' && destination ? (
         <section className={styles.surface}>
           <iframe
             className={styles.frame}
@@ -168,7 +178,7 @@ export const AskCoreSchoolPortalRoute = memo(() => {
         </section>
       ) : null}
 
-      {!error && data?.state === 'ready' && !destination ? (
+      {!error && !isValidating && data?.state === 'ready' && !destination ? (
         <Empty description="学校服务暂不可用" image={Empty.PRESENTED_IMAGE_SIMPLE}>
           <Button icon={<RefreshCw size={14} />} onClick={() => void mutate()}>
             刷新连接状态
@@ -176,7 +186,7 @@ export const AskCoreSchoolPortalRoute = memo(() => {
         </Empty>
       ) : null}
 
-      {!error && terminalState ? (
+      {!error && !isValidating && terminalState ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description={
