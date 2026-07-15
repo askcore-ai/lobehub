@@ -34,12 +34,24 @@ const SchoolSessionWarmup = () => {
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).get('protocol') === 'identity-link';
   const enabled = !!sessionGeneration && !identityLinkPending && !schoolRouteActive;
+  const [schoolLifecycleEpoch, setSchoolLifecycleEpoch] = useState(0);
+
+  useEffect(() => {
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) setSchoolLifecycleEpoch((current) => current + 1);
+    };
+    window.addEventListener('pageshow', onPageShow);
+    return () => window.removeEventListener('pageshow', onPageShow);
+  }, []);
+
   const { data: portal, isValidating: portalIsValidating } = useSWR(
-    enabled ? ([SCHOOL_PORTAL_API, sessionGeneration] as const) : null,
+    enabled ? ([SCHOOL_PORTAL_API, sessionGeneration, schoolLifecycleEpoch] as const) : null,
     fetchSchoolPortalManifest,
     { revalidateOnFocus: false, shouldRetryOnError: false },
   );
-  const roleKey = enabled ? ([SCHOOL_ROLE_SOURCE_URL, sessionGeneration] as const) : null;
+  const roleKey = enabled
+    ? ([SCHOOL_ROLE_SOURCE_URL, sessionGeneration, schoolLifecycleEpoch] as const)
+    : null;
   const {
     data: liveRole,
     error: roleError,
@@ -62,9 +74,9 @@ const SchoolSessionWarmup = () => {
     () => destinations.find((destination) => destination.key === 'teaching'),
     [destinations],
   );
-  const flowKey = `${sessionGeneration || ''}:${gibbonWarmup?.session_launch_url || ''}:${
-    moodleWarmup?.session_launch_url || ''
-  }`;
+  const flowKey = `${sessionGeneration || ''}:${schoolLifecycleEpoch}:${
+    gibbonWarmup?.session_launch_url || ''
+  }:${moodleWarmup?.session_launch_url || ''}`;
   const [stage, setStage] = useState<WarmupStage>(null);
   const gibbonProbeInFlight = useRef(false);
   const gibbonRoleConfirmedFor = useRef<string | null>(null);

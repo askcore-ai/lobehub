@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({
 }));
 const fetchSchoolSourceSession = vi.hoisted(() => vi.fn());
 const mutateRole = vi.hoisted(() => vi.fn());
+const requestedKeys = vi.hoisted(() => [] as (readonly string[])[]);
 
 const portal = {
   can_manage_integrations: false,
@@ -66,6 +67,7 @@ const renderProvider = (initialEntry = '/') =>
 vi.mock('swr', () => ({
   default: (key: readonly string[] | null) => {
     if (!key) return { data: undefined, isValidating: false, mutate: vi.fn() };
+    requestedKeys.push(key);
     if (key[0] === '/api/askcore/school/portal') {
       return { data: portal, isValidating: state.portalValidating, mutate: vi.fn() };
     }
@@ -106,6 +108,7 @@ describe('BusinessGlobalProvider', () => {
     state.roleError = true;
     state.sessionId = 'session-1';
     state.userId = 'user-1';
+    requestedKeys.length = 0;
     window.history.replaceState({}, '', '/');
   });
 
@@ -127,6 +130,11 @@ describe('BusinessGlobalProvider', () => {
     expect(frames[0]?.dataset.askcoreSchoolSession).toBe('school-services');
     expect(frames[0]?.getAttribute('src')).toBe('about:blank#services-session');
     expect(frames[0]?.hidden).toBe(true);
+    expect(requestedKeys).toContainEqual([
+      '/school/services/askcore/session.php',
+      'user-1:session-1',
+      0,
+    ]);
 
     markSessionReady(frames[0]!);
     await act(async () => {
@@ -141,6 +149,21 @@ describe('BusinessGlobalProvider', () => {
     markSessionReady(frames[0]!);
     fireEvent.load(frames[0]!);
     expect(document.querySelectorAll('iframe[data-askcore-school-session]')).toHaveLength(0);
+  });
+
+  it('moves the shared source-session cache generation after a BFCache restore', () => {
+    renderProvider();
+
+    const pageshow = new Event('pageshow') as PageTransitionEvent;
+    Object.defineProperty(pageshow, 'persisted', { value: true });
+    act(() => window.dispatchEvent(pageshow));
+
+    expect(requestedKeys).toContainEqual([
+      '/school/services/askcore/session.php',
+      'user-1:session-1',
+      1,
+    ]);
+    expect(requestedKeys).toContainEqual(['/api/askcore/school/portal', 'user-1:session-1', 1]);
   });
 
   it('continues after Gibbon establishes a source role on its native dashboard', async () => {
