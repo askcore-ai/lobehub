@@ -4,6 +4,7 @@ import {
   ASKCORE_WORKBENCH_TABS,
   askCoreProtocolMode,
   askCoreWorkbenchTabsForProfile,
+  isAskCoreIdentityLinkCallback,
 } from './config';
 
 describe('AskCoreWorkbench config', () => {
@@ -13,6 +14,19 @@ describe('AskCoreWorkbench config', () => {
     expect(askCoreProtocolMode('deep_linking')).toBeNull();
     expect(askCoreProtocolMode('resource_link')).toBeNull();
     expect(askCoreProtocolMode(null)).toBeNull();
+  });
+
+  it('identifies only the directed identity-link callback that must precede onboarding', () => {
+    expect(
+      isAskCoreIdentityLinkCallback(
+        '/askcore/workbench',
+        '?protocol=identity-link&token=one-time-secret',
+      ),
+    ).toBe(true);
+    expect(
+      isAskCoreIdentityLinkCallback('/askcore/workbench', '?protocol=processing'),
+    ).toBe(false);
+    expect(isAskCoreIdentityLinkCallback('/', '?protocol=identity-link')).toBe(false);
   });
 
   it('keeps organization-owned roster resources out of first-class workbench tabs', () => {

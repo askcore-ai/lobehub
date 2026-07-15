@@ -14,6 +14,10 @@ export type AskCoreProtocolMode = 'identity-link' | 'processing';
 export const askCoreProtocolMode = (value?: string | null): AskCoreProtocolMode | null =>
   value === 'identity-link' || value === 'processing' ? value : null;
 
+export const isAskCoreIdentityLinkCallback = (pathname: string, search: string) =>
+  pathname === ASKCORE_WORKBENCH_PATH &&
+  askCoreProtocolMode(new URLSearchParams(search).get('protocol')) === 'identity-link';
+
 export const ASKCORE_WORKBENCH_TABS: AskCoreWorkbenchTabConfig[] = [
   { key: 'overview', label: '总览' },
   {
