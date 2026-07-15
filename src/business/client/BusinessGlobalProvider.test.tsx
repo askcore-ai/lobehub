@@ -7,11 +7,14 @@ import BusinessGlobalProvider from './BusinessGlobalProvider';
 
 const state = vi.hoisted(() => ({
   authenticated: true,
+  liveRole: undefined as { authenticated: true; role: 'student' | 'teacher' } | undefined,
   portalValidating: false,
+  roleError: true,
+  sessionId: 'session-1',
   userId: 'user-1',
 }));
-const mutate = vi.hoisted(() => vi.fn());
 const fetchSchoolSourceSession = vi.hoisted(() => vi.fn());
+const mutateRole = vi.hoisted(() => vi.fn());
 
 const portal = {
   can_manage_integrations: false,
@@ -61,15 +64,26 @@ const renderProvider = (initialEntry = '/') =>
   );
 
 vi.mock('swr', () => ({
-  default: (key: string | null) => ({
-    data: key ? portal : undefined,
-    isValidating: state.portalValidating,
-  }),
-  useSWRConfig: () => ({ mutate }),
+  default: (key: readonly string[] | null) => {
+    if (!key) return { data: undefined, isValidating: false, mutate: vi.fn() };
+    if (key[0] === '/api/askcore/school/portal') {
+      return { data: portal, isValidating: state.portalValidating, mutate: vi.fn() };
+    }
+    return {
+      data: state.liveRole,
+      error: state.roleError ? new Error('source session is not ready') : undefined,
+      isValidating: false,
+      mutate: mutateRole,
+    };
+  },
 }));
 
 vi.mock('@/libs/better-auth/auth-client', () => ({
-  useSession: () => ({ data: state.authenticated ? { user: { id: state.userId } } : null }),
+  useSession: () => ({
+    data: state.authenticated
+      ? { session: { id: state.sessionId }, user: { id: state.userId } }
+      : null,
+  }),
 }));
 
 vi.mock('@/business/client/AskCoreSchoolPortal/api', async (importOriginal) => ({
@@ -80,11 +94,17 @@ vi.mock('@/business/client/AskCoreSchoolPortal/api', async (importOriginal) => (
 describe('BusinessGlobalProvider', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    mutate.mockReset();
     fetchSchoolSourceSession.mockReset();
     fetchSchoolSourceSession.mockRejectedValue(new Error('source session is not ready'));
+    mutateRole.mockReset();
+    mutateRole.mockImplementation(() =>
+      fetchSchoolSourceSession('/school/services/askcore/session.php'),
+    );
     state.authenticated = true;
+    state.liveRole = undefined;
     state.portalValidating = false;
+    state.roleError = true;
+    state.sessionId = 'session-1';
     state.userId = 'user-1';
     window.history.replaceState({}, '', '/');
   });
@@ -95,7 +115,8 @@ describe('BusinessGlobalProvider', () => {
     vi.useRealTimers();
   });
 
-  it('warms Gibbon and Moodle sessions without replacing the personal workspace', () => {
+  it('warms Gibbon and Moodle sessions without replacing the personal workspace', async () => {
+    fetchSchoolSourceSession.mockResolvedValue({ authenticated: true, role: 'student' });
     renderProvider();
 
     expect(screen.getByText('personal workspace')).toBeInTheDocument();
@@ -108,11 +129,11 @@ describe('BusinessGlobalProvider', () => {
     expect(frames[0]?.hidden).toBe(true);
 
     markSessionReady(frames[0]!);
-    fireEvent.load(frames[0]!);
-    expect(mutate).toHaveBeenCalledWith([
-      'https://askcore.cn/school/services/askcore/session.php',
-      'user-1',
-    ]);
+    await act(async () => {
+      fireEvent.load(frames[0]!);
+      await Promise.resolve();
+    });
+    expect(mutateRole).toHaveBeenCalledTimes(1);
 
     frames = document.querySelectorAll<HTMLIFrameElement>('iframe[data-askcore-school-session]');
     expect(frames).toHaveLength(1);
@@ -134,14 +155,8 @@ describe('BusinessGlobalProvider', () => {
       await Promise.resolve();
     });
 
-    expect(fetchSchoolSourceSession).toHaveBeenCalledWith(
-      'https://askcore.cn/school/services/askcore/session.php',
-    );
-    expect(mutate).toHaveBeenCalledWith(
-      ['https://askcore.cn/school/services/askcore/session.php', 'user-1'],
-      { authenticated: true, role: 'teacher' },
-      { revalidate: false },
-    );
+    expect(fetchSchoolSourceSession).toHaveBeenCalledWith('/school/services/askcore/session.php');
+    expect(mutateRole).toHaveBeenCalledTimes(1);
     expect(
       document.querySelector<HTMLIFrameElement>('iframe[data-askcore-school-session="teaching"]'),
     ).not.toBeNull();
@@ -161,6 +176,17 @@ describe('BusinessGlobalProvider', () => {
     renderProvider();
 
     expect(document.querySelector('iframe[data-askcore-school-session]')).toBeNull();
+  });
+
+  it('does not trust a cached positive role after the live role probe fails', () => {
+    state.liveRole = { authenticated: true, role: 'student' };
+    state.roleError = true;
+
+    renderProvider();
+
+    const frame = document.querySelector<HTMLIFrameElement>('iframe[data-askcore-school-session]');
+    expect(frame?.dataset.askcoreSchoolSession).toBe('school-services');
+    expect(document.querySelector('iframe[data-askcore-school-session="teaching"]')).toBeNull();
   });
 
   it('does not warm source sessions until a directed identity invitation is accepted', () => {
@@ -189,7 +215,7 @@ describe('BusinessGlobalProvider', () => {
     const frame = document.querySelector<HTMLIFrameElement>('iframe[data-askcore-school-session]');
     expect(frame?.dataset.askcoreSchoolSession).toBe('school-services');
     fireEvent.load(frame!);
-    expect(mutate).not.toHaveBeenCalled();
+    expect(mutateRole).toHaveBeenCalledTimes(1);
 
     act(() => vi.advanceTimersByTime(30_000));
     expect(document.querySelector('iframe[data-askcore-school-session]')).toBeNull();

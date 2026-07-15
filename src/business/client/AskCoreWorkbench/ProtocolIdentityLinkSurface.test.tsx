@@ -1,14 +1,27 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ProtocolIdentityLinkSurface } from './ProtocolIdentityLinkSurface';
+
+const updateOnboarding = vi.hoisted(() => vi.fn());
+const refreshUserState = vi.hoisted(() => vi.fn());
+
+vi.mock('@/services/user', () => ({
+  userService: { updateOnboarding },
+}));
+vi.mock('@/store/user', () => ({
+  useUserStore: (selector: (state: unknown) => unknown) =>
+    selector({ agentOnboarding: undefined, onboarding: undefined, refreshUserState }),
+}));
 
 describe('ProtocolIdentityLinkSurface', () => {
   afterEach(() => {
     window.sessionStorage.clear();
     window.history.replaceState(null, '', '/');
     vi.unstubAllGlobals();
+    updateOnboarding.mockReset();
+    refreshUserState.mockReset();
   });
 
   it('accepts the one-time token without exposing it after mount', async () => {
@@ -28,15 +41,25 @@ describe('ProtocolIdentityLinkSurface', () => {
       }),
     );
     vi.stubGlobal('fetch', fetchMock);
+    updateOnboarding.mockResolvedValue({ success: true });
+    refreshUserState.mockResolvedValue(undefined);
 
     render(
-      <MemoryRouter>
-        <ProtocolIdentityLinkSurface invitationToken="one-time-secret" />
+      <MemoryRouter
+        initialEntries={['/askcore/workbench?protocol=identity-link&token=one-time-secret']}
+      >
+        <Routes>
+          <Route
+            element={<ProtocolIdentityLinkSurface invitationToken="one-time-secret" />}
+            path="/askcore/workbench"
+          />
+          <Route element={<div>school landing</div>} path="/school" />
+        </Routes>
       </MemoryRouter>,
     );
 
     expect(window.location.search).toBe('?protocol=identity-link');
-    expect(await screen.findByText('学校身份已关联')).toBeInTheDocument();
+    expect(await screen.findByText('school landing')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/askcore/lti/identity-links/accept',
@@ -46,6 +69,10 @@ describe('ProtocolIdentityLinkSurface', () => {
       }),
     );
     expect(window.sessionStorage.getItem('askcore.lti.identity-link.invitation')).toBeNull();
+    expect(updateOnboarding).toHaveBeenCalledWith(
+      expect.objectContaining({ finishedAt: expect.any(String), version: expect.any(Number) }),
+    );
+    expect(refreshUserState).toHaveBeenCalledTimes(1);
   });
 
   it('fails closed when neither the URL nor the current tab has a token', async () => {

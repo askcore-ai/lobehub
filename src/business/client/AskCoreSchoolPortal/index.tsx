@@ -3,14 +3,60 @@
 import { Alert, Button, Empty, Skeleton } from 'antd';
 import { createStaticStyles, cssVar } from 'antd-style';
 import { BookOpenCheck, RefreshCw, School } from 'lucide-react';
-import { memo } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import useSWR from 'swr';
 
 import { useSession } from '@/libs/better-auth/auth-client';
 
-import { fetchSchoolPortalManifest, fetchSchoolSourceSession, SCHOOL_PORTAL_API } from './api';
+import {
+  fetchSchoolPortalManifest,
+  fetchSchoolSourceSession,
+  SCHOOL_PORTAL_API,
+  SCHOOL_ROLE_SOURCE_URL,
+  schoolSessionGeneration,
+} from './api';
 import { type SchoolPortalState } from './types';
+
+const ROLE_RECOVERY_TIMEOUT_MS = 30_000;
+const SOURCE_FRAME_TIMEOUT_MS = 30_000;
+
+type SourceFrameStatus = 'failed' | 'loading' | 'ready';
+
+const sourceFrameStatus = (
+  frame: HTMLIFrameElement,
+  destinationKey: 'school-services' | 'teaching',
+): SourceFrameStatus => {
+  try {
+    const path = frame.contentWindow?.location.pathname || '';
+    const body = frame.contentDocument?.body;
+    const text = (body?.innerText || body?.textContent || '').trim();
+    const marker = frame.contentDocument?.querySelector<HTMLMetaElement>(
+      'meta[name="askcore-session"]',
+    );
+    if (
+      (text.startsWith('{') && text.slice(0, 500).includes('"detail"')) ||
+      text.includes('School destination is unavailable') ||
+      text.includes('学校目标不可用') ||
+      path === '/signin' ||
+      path.includes('/login.php') ||
+      path.includes('/login/index.php')
+    ) {
+      return 'failed';
+    }
+    if (marker?.content === 'ready') return 'ready';
+    const sourcePrefix = destinationKey === 'teaching' ? '/school/teaching/' : '/school/services/';
+    const transient =
+      path.includes('/local/askcore/warmup.php') ||
+      path.includes('/askcore/warmup.php') ||
+      path.includes('/auth/oauth2/login.php') ||
+      path.includes('/admin/oauth2callback.php');
+    const atSourceDestination = path === sourcePrefix.slice(0, -1) || path.startsWith(sourcePrefix);
+    return atSourceDestination && !transient ? 'ready' : 'loading';
+  } catch {
+    return 'loading';
+  }
+};
 
 const styles = createStaticStyles(({ css }) => ({
   frame: css`
@@ -100,12 +146,12 @@ const stateCopy: Record<Exclude<SchoolPortalState, 'ready'>, { message: string; 
 export const AskCoreSchoolPortalRoute = memo(() => {
   const { pathname } = useLocation();
   const { data: accountSession } = useSession();
-  const accountUserId = accountSession?.user.id;
+  const sessionGeneration = schoolSessionGeneration(accountSession);
   const isTeachingSurface =
     pathname === '/school/teaching-center' || pathname === '/school/learning-space';
   const destinationKey = isTeachingSurface ? 'teaching' : 'school-services';
-  const portalCacheKey = accountUserId
-    ? ([SCHOOL_PORTAL_API, accountUserId, destinationKey] as const)
+  const portalCacheKey = sessionGeneration
+    ? ([SCHOOL_PORTAL_API, sessionGeneration, destinationKey] as const)
     : null;
   const { data, error, isLoading, isValidating, mutate } = useSWR(
     portalCacheKey,
@@ -115,25 +161,142 @@ export const AskCoreSchoolPortalRoute = memo(() => {
       revalidateOnMount: true,
     },
   );
+  const roleSourceKey = sessionGeneration
+    ? ([SCHOOL_ROLE_SOURCE_URL, sessionGeneration] as const)
+    : null;
+  const {
+    data: liveSourceSession,
+    error: sourceSessionError,
+    isLoading: sourceSessionLoading,
+    isValidating: sourceSessionValidating,
+    mutate: mutateSourceSession,
+  } = useSWR(roleSourceKey, ([url]) => fetchSchoolSourceSession(url), {
+    revalidateOnFocus: true,
+    shouldRetryOnError: false,
+  });
   const sharedSchool = data?.state === 'ready' ? data.schools[0] : undefined;
-  const roleSourceKey =
-    sharedSchool?.role_source_url && accountUserId
-      ? ([sharedSchool.role_source_url, accountUserId] as const)
-      : null;
-  const { data: sourceSession, mutate: mutateSourceSession } = useSWR(
-    roleSourceKey,
-    ([url]) => fetchSchoolSourceSession(url),
-    { revalidateOnFocus: true, shouldRetryOnError: false },
-  );
-
-  const terminalState = data?.state && data.state !== 'ready' ? stateCopy[data.state] : undefined;
   const destination = sharedSchool?.destinations.find((item) => item.key === destinationKey);
-  const surfaceTitle = isTeachingSurface
-    ? sourceSession?.role === 'student' || pathname === '/school/learning-space'
+  const gibbonWarmup = sharedSchool?.destinations.find((item) => item.key === 'school-services');
+  const terminalState = data?.state && data.state !== 'ready' ? stateCopy[data.state] : undefined;
+  const trustedSourceSession =
+    !sourceSessionError && !sourceSessionValidating ? liveSourceSession : undefined;
+  const sourceRole = trustedSourceSession?.role;
+  const roleAllowed =
+    pathname === '/school/learning-space'
+      ? sourceRole === 'student'
+      : pathname === '/school/teaching-center'
+        ? sourceRole === 'teacher' || sourceRole === 'administrator'
+        : true;
+  const surfaceTitle =
+    pathname === '/school/learning-space'
       ? '学习空间'
-      : '教学中心'
-    : '学校';
+      : pathname === '/school/teaching-center'
+        ? '教学中心'
+        : '学校';
   const SurfaceIcon = isTeachingSurface ? BookOpenCheck : School;
+  const [lifecycleEpoch, setLifecycleEpoch] = useState(0);
+  const [trustedGeneration, setTrustedGeneration] = useState(sessionGeneration);
+  const [covered, setCovered] = useState(false);
+  const [recoveryFailed, setRecoveryFailed] = useState(false);
+  const [activeRecoveryKey, setActiveRecoveryKey] = useState<string>();
+  const [sourceFrameLifecycle, setSourceFrameLifecycle] = useState<{
+    key: string;
+    status: SourceFrameStatus;
+  }>({ key: '', status: 'loading' });
+  const activeGeneration = useRef(sessionGeneration);
+  const roleProbeInFlight = useRef(false);
+  const surfaceRef = useRef<HTMLElement>(null);
+  activeGeneration.current = sessionGeneration;
+  const recoveryKey = `${sessionGeneration || ''}:${lifecycleEpoch}:${
+    gibbonWarmup?.session_launch_url || ''
+  }`;
+
+  const refreshLifecycle = useCallback(async () => {
+    const expectedGeneration = sessionGeneration;
+    setCovered(true);
+    setTrustedGeneration(undefined);
+    setLifecycleEpoch((current) => current + 1);
+    await Promise.allSettled([mutate(), mutateSourceSession()]);
+    if (activeGeneration.current !== expectedGeneration) return;
+    setTrustedGeneration(expectedGeneration);
+    setCovered(false);
+  }, [mutate, mutateSourceSession, sessionGeneration]);
+
+  useEffect(() => {
+    if (trustedGeneration === sessionGeneration) return;
+    void refreshLifecycle();
+  }, [refreshLifecycle, sessionGeneration, trustedGeneration]);
+
+  useEffect(() => {
+    const onPageHide = () => {
+      surfaceRef.current?.setAttribute('hidden', '');
+      setCovered(true);
+    };
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      void refreshLifecycle();
+    };
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('pageshow', onPageShow);
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('pageshow', onPageShow);
+    };
+  }, [refreshLifecycle]);
+
+  const shouldStartRoleRecovery =
+    !!sessionGeneration &&
+    isTeachingSurface &&
+    !sourceSessionLoading &&
+    !sourceSessionValidating &&
+    !!sourceSessionError &&
+    !!gibbonWarmup &&
+    !recoveryFailed;
+
+  useEffect(() => {
+    roleProbeInFlight.current = false;
+    setActiveRecoveryKey(undefined);
+    setRecoveryFailed(false);
+  }, [recoveryKey]);
+
+  useEffect(() => {
+    if (shouldStartRoleRecovery) setActiveRecoveryKey(recoveryKey);
+  }, [recoveryKey, shouldStartRoleRecovery]);
+
+  const recoveringRole =
+    activeRecoveryKey === recoveryKey && !recoveryFailed && !trustedSourceSession;
+
+  useEffect(() => {
+    if (!recoveringRole) return;
+    const timer = window.setTimeout(() => setRecoveryFailed(true), ROLE_RECOVERY_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [recoveringRole, recoveryKey]);
+
+  const generationReady = !!sessionGeneration && trustedGeneration === sessionGeneration;
+  const canLaunchFrame =
+    generationReady &&
+    !covered &&
+    !error &&
+    !isValidating &&
+    data?.state === 'ready' &&
+    !!destination &&
+    (!isTeachingSurface || roleAllowed);
+  const sourceFrameKey = canLaunchFrame
+    ? `${sessionGeneration}:${lifecycleEpoch}:${destinationKey}:${destination?.launch_url}`
+    : '';
+  const currentSourceFrameStatus =
+    sourceFrameLifecycle.key === sourceFrameKey ? sourceFrameLifecycle.status : 'loading';
+
+  useEffect(() => {
+    if (!sourceFrameKey) return;
+    setSourceFrameLifecycle({ key: sourceFrameKey, status: 'loading' });
+    const timer = window.setTimeout(() => {
+      setSourceFrameLifecycle((current) =>
+        current.key === sourceFrameKey ? { ...current, status: 'failed' } : current,
+      );
+    }, SOURCE_FRAME_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [sourceFrameKey]);
 
   return (
     <main className={styles.page}>
@@ -147,7 +310,13 @@ export const AskCoreSchoolPortalRoute = memo(() => {
         </div>
       </header>
 
-      {!accountUserId || isLoading || isValidating ? (
+      {!sessionGeneration ||
+      isLoading ||
+      isValidating ||
+      sourceSessionLoading ||
+      recoveringRole ||
+      covered ||
+      (canLaunchFrame && currentSourceFrameStatus === 'loading') ? (
         <Skeleton active paragraph={{ rows: 4 }} />
       ) : null}
 
@@ -157,33 +326,97 @@ export const AskCoreSchoolPortalRoute = memo(() => {
           message="学校连接暂不可用"
           type="error"
           action={
-            <Button icon={<RefreshCw size={14} />} size="small" onClick={() => void mutate()}>
+            <Button
+              icon={<RefreshCw size={14} />}
+              size="small"
+              onClick={() => void refreshLifecycle()}
+            >
               重试
             </Button>
           }
         />
       ) : null}
 
-      {!error && !isValidating && data?.state === 'ready' && destination ? (
-        <section className={styles.surface}>
+      {recoveringRole && gibbonWarmup ? (
+        <iframe
+          hidden
+          data-askcore-school-session="school-services"
+          key={`${sessionGeneration}:role-recovery:${lifecycleEpoch}`}
+          src={gibbonWarmup.session_launch_url}
+          title="askcore-school-role-recovery"
+          onLoad={() => {
+            if (roleProbeInFlight.current) return;
+            roleProbeInFlight.current = true;
+            void mutateSourceSession()
+              .then((sourceSession) => {
+                if (sourceSession?.authenticated) setActiveRecoveryKey(undefined);
+              })
+              .catch(() => {})
+              .finally(() => {
+                roleProbeInFlight.current = false;
+              });
+          }}
+        />
+      ) : null}
+
+      {canLaunchFrame ? (
+        <section
+          className={styles.surface}
+          hidden={currentSourceFrameStatus !== 'ready'}
+          ref={surfaceRef}
+        >
           <iframe
             className={styles.frame}
+            key={sourceFrameKey}
             src={destination.launch_url}
             title={`${sharedSchool?.name || 'AskCore 在线学校'} ${surfaceTitle}`}
-            onLoad={() => {
-              if (destinationKey !== 'school-services') return;
-              void mutateSourceSession().catch(() => {});
+            onLoad={(event) => {
+              const status = sourceFrameStatus(event.currentTarget, destinationKey);
+              if (status !== 'loading') {
+                setSourceFrameLifecycle((current) =>
+                  current.key === sourceFrameKey ? { ...current, status } : current,
+                );
+              }
+              if (destinationKey === 'school-services') {
+                void mutateSourceSession().catch(() => {});
+              }
             }}
           />
         </section>
       ) : null}
 
-      {!error && !isValidating && data?.state === 'ready' && !destination ? (
+      {!error && !isValidating && canLaunchFrame && currentSourceFrameStatus === 'failed' ? (
         <Empty description="学校服务暂不可用" image={Empty.PRESENTED_IMAGE_SIMPLE}>
-          <Button icon={<RefreshCw size={14} />} onClick={() => void mutate()}>
+          <Button icon={<RefreshCw size={14} />} onClick={() => void refreshLifecycle()}>
             刷新连接状态
           </Button>
         </Empty>
+      ) : null}
+
+      {!error && !isValidating && data?.state === 'ready' && !destination ? (
+        <Empty description="学校服务暂不可用" image={Empty.PRESENTED_IMAGE_SIMPLE}>
+          <Button icon={<RefreshCw size={14} />} onClick={() => void refreshLifecycle()}>
+            刷新连接状态
+          </Button>
+        </Empty>
+      ) : null}
+
+      {!error && !isValidating && isTeachingSurface && recoveryFailed ? (
+        <Empty description="学校服务暂不可用" image={Empty.PRESENTED_IMAGE_SIMPLE}>
+          <Button
+            icon={<RefreshCw size={14} />}
+            onClick={() => {
+              setRecoveryFailed(false);
+              void refreshLifecycle();
+            }}
+          >
+            刷新连接状态
+          </Button>
+        </Empty>
+      ) : null}
+
+      {!error && !isValidating && isTeachingSurface && trustedSourceSession && !roleAllowed ? (
+        <Empty description="当前学校身份无权访问此页面" image={Empty.PRESENTED_IMAGE_SIMPLE} />
       ) : null}
 
       {!error && !isValidating && terminalState ? (
@@ -196,7 +429,7 @@ export const AskCoreSchoolPortalRoute = memo(() => {
             </div>
           }
         >
-          <Button icon={<RefreshCw size={14} />} onClick={() => void mutate()}>
+          <Button icon={<RefreshCw size={14} />} onClick={() => void refreshLifecycle()}>
             刷新连接状态
           </Button>
         </Empty>

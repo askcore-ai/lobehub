@@ -5,7 +5,7 @@ import {
   SchoolIcon,
   SearchIcon,
 } from 'lucide-react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import useSWR from 'swr';
 
@@ -13,6 +13,8 @@ import {
   fetchSchoolPortalManifest,
   fetchSchoolSourceSession,
   SCHOOL_PORTAL_API,
+  SCHOOL_ROLE_SOURCE_URL,
+  schoolSessionGeneration,
 } from '@/business/client/AskCoreSchoolPortal/api';
 import { getRouteById } from '@/config/routes';
 import { useSession } from '@/libs/better-auth/auth-client';
@@ -50,9 +52,21 @@ export const useNavLayout = (): NavLayout => {
   const toggleCommandMenu = useGlobalStore((s) => s.toggleCommandMenu);
   const { showMarket, hideGitHub } = useServerConfigStore(featureFlagsSelectors);
   const { data: accountSession } = useSession();
-  const accountUserId = accountSession?.user.id;
+  const sessionGeneration = schoolSessionGeneration(accountSession);
+  const [schoolLifecycleEpoch, setSchoolLifecycleEpoch] = useState(0);
+
+  useEffect(() => {
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) setSchoolLifecycleEpoch((current) => current + 1);
+    };
+    window.addEventListener('pageshow', onPageShow);
+    return () => window.removeEventListener('pageshow', onPageShow);
+  }, []);
+
   const { data: schoolPortal } = useSWR(
-    accountUserId ? ([SCHOOL_PORTAL_API, accountUserId] as const) : null,
+    sessionGeneration
+      ? ([SCHOOL_PORTAL_API, sessionGeneration, schoolLifecycleEpoch] as const)
+      : null,
     () => fetchSchoolPortalManifest(),
     {
       revalidateOnFocus: false,
@@ -60,9 +74,13 @@ export const useNavLayout = (): NavLayout => {
     },
   );
   const sharedSchool = schoolPortal?.state === 'ready' ? schoolPortal.schools[0] : undefined;
-  const { data: schoolSession } = useSWR(
-    sharedSchool?.role_source_url && accountUserId
-      ? ([sharedSchool.role_source_url, accountUserId] as const)
+  const {
+    data: liveSchoolSession,
+    error: schoolSessionError,
+    isValidating: schoolSessionValidating,
+  } = useSWR(
+    sessionGeneration
+      ? ([SCHOOL_ROLE_SOURCE_URL, sessionGeneration, schoolLifecycleEpoch] as const)
       : null,
     ([url]) => fetchSchoolSourceSession(url),
     {
@@ -71,6 +89,8 @@ export const useNavLayout = (): NavLayout => {
       shouldRetryOnError: false,
     },
   );
+  const schoolSession =
+    !schoolSessionError && !schoolSessionValidating ? liveSchoolSession : undefined;
   const hasTeachingDestination = sharedSchool?.destinations.some(
     (destination) => destination.key === 'teaching',
   );

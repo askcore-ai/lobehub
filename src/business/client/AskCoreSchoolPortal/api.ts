@@ -6,6 +6,32 @@ import {
 
 export const SCHOOL_PORTAL_API = '/api/askcore/school/portal';
 export const SCHOOL_OPERATIONS_API = '/api/askcore/school/operations';
+export const SCHOOL_ROLE_SOURCE_URL = '/school/services/askcore/session.php';
+const SCHOOL_REQUEST_TIMEOUT_MS = 8_000;
+
+type BetterAuthSchoolSession = {
+  session?: { id?: string | null } | null;
+  user?: { id?: string | null } | null;
+};
+
+export const schoolSessionGeneration = (session?: BetterAuthSchoolSession | null) => {
+  const userId = session?.user?.id?.trim();
+  const sessionId = session?.session?.id?.trim();
+  return userId && sessionId ? `${userId}:${sessionId}` : undefined;
+};
+
+const fetchSchoolResource = async (input: RequestInfo | URL, init: RequestInit) => {
+  const controller = new AbortController();
+  const timer = window.setTimeout(
+    () => controller.abort(new DOMException('School request timed out', 'TimeoutError')),
+    SCHOOL_REQUEST_TIMEOUT_MS,
+  );
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+};
 
 export class SchoolPortalApiError extends Error {
   status: number;
@@ -18,7 +44,7 @@ export class SchoolPortalApiError extends Error {
 }
 
 export const fetchSchoolPortalManifest = async (): Promise<SchoolPortalManifest> => {
-  const response = await fetch(SCHOOL_PORTAL_API, {
+  const response = await fetchSchoolResource(SCHOOL_PORTAL_API, {
     cache: 'no-store',
     credentials: 'same-origin',
     headers: { accept: 'application/json' },
@@ -34,7 +60,7 @@ export const fetchSchoolSourceSession = async (url: string): Promise<SchoolSourc
   if (target.origin !== window.location.origin) {
     throw new SchoolPortalApiError(400, '学校身份地址无效');
   }
-  const response = await fetch(target, {
+  const response = await fetchSchoolResource(target, {
     cache: 'no-store',
     credentials: 'include',
     headers: { accept: 'application/json' },
@@ -53,7 +79,7 @@ export const fetchSchoolSourceSession = async (url: string): Promise<SchoolSourc
 };
 
 export const fetchSchoolIntegrationOperations = async (): Promise<SchoolIntegrationOperations> => {
-  const response = await fetch(SCHOOL_OPERATIONS_API, {
+  const response = await fetchSchoolResource(SCHOOL_OPERATIONS_API, {
     cache: 'no-store',
     credentials: 'same-origin',
     headers: { accept: 'application/json' },

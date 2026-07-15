@@ -1,14 +1,18 @@
 'use client';
 
+import { CURRENT_ONBOARDING_VERSION } from '@lobechat/const';
 import { Alert, Button, Result, Skeleton, Space } from 'antd';
 import { createStaticStyles, cssVar } from 'antd-style';
 import { Home, LogIn, RefreshCw } from 'lucide-react';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { acceptProtocolIdentityLinkInvitation, AskCoreWorkbenchApiError } from './api';
+import { userService } from '@/services/user';
+import { useUserStore } from '@/store/user';
+import { onboardingSelectors } from '@/store/user/selectors';
 
-const TOKEN_STORAGE_KEY = 'askcore.lti.identity-link.invitation';
+import { acceptProtocolIdentityLinkInvitation, AskCoreWorkbenchApiError } from './api';
+import { ASKCORE_IDENTITY_LINK_TOKEN_STORAGE_KEY } from './config';
 
 const styles = createStaticStyles(({ css }) => ({
   page: css`
@@ -29,7 +33,7 @@ const styles = createStaticStyles(({ css }) => ({
 
 const invitationTokenFromSession = () => {
   try {
-    return window.sessionStorage.getItem(TOKEN_STORAGE_KEY)?.trim() || '';
+    return window.sessionStorage.getItem(ASKCORE_IDENTITY_LINK_TOKEN_STORAGE_KEY)?.trim() || '';
   } catch {
     return '';
   }
@@ -37,7 +41,7 @@ const invitationTokenFromSession = () => {
 
 const preserveInvitationToken = (token: string) => {
   try {
-    window.sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+    window.sessionStorage.setItem(ASKCORE_IDENTITY_LINK_TOKEN_STORAGE_KEY, token);
   } catch {
     // The in-memory prop remains available when browser storage is disabled.
   }
@@ -45,7 +49,7 @@ const preserveInvitationToken = (token: string) => {
 
 const discardInvitationToken = () => {
   try {
-    window.sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    window.sessionStorage.removeItem(ASKCORE_IDENTITY_LINK_TOKEN_STORAGE_KEY);
   } catch {
     // Nothing else needs cleanup when browser storage is disabled.
   }
@@ -84,6 +88,9 @@ const identityLinkErrorMessage = (reason: unknown) => {
 export const ProtocolIdentityLinkSurface = memo(
   ({ invitationToken }: { invitationToken?: string }) => {
     const navigate = useNavigate();
+    const currentOnboardingStep = useUserStore(onboardingSelectors.currentStep);
+    const needsOnboarding = useUserStore(onboardingSelectors.needsOnboarding);
+    const refreshUserState = useUserStore((state) => state.refreshUserState);
     const started = useRef(false);
     const [state, setState] = useState<IdentityLinkState>('loading');
     const [error, setError] = useState('');
@@ -104,8 +111,17 @@ export const ProtocolIdentityLinkSurface = memo(
       setState('loading');
       try {
         await acceptProtocolIdentityLinkInvitation(token);
+        if (needsOnboarding) {
+          await userService.updateOnboarding({
+            currentStep: currentOnboardingStep,
+            finishedAt: new Date().toISOString(),
+            version: CURRENT_ONBOARDING_VERSION,
+          });
+        }
+        await refreshUserState();
         discardInvitationToken();
         setState('success');
+        navigate('/school', { replace: true });
       } catch (reason) {
         setAuthenticationRequired(
           reason instanceof AskCoreWorkbenchApiError && reason.status === 401,
@@ -113,7 +129,7 @@ export const ProtocolIdentityLinkSurface = memo(
         setError(identityLinkErrorMessage(reason));
         setState('error');
       }
-    }, [invitationToken]);
+    }, [currentOnboardingStep, invitationToken, navigate, needsOnboarding, refreshUserState]);
 
     useEffect(() => {
       if (started.current) return;
@@ -135,11 +151,6 @@ export const ProtocolIdentityLinkSurface = memo(
             status="success"
             subTitle="当前 AskCore 账号已完成关联"
             title="学校身份已关联"
-            extra={
-              <Button icon={<Home size={16} />} onClick={() => navigate('/')}>
-                返回首页
-              </Button>
-            }
           />
         ) : (
           <Result

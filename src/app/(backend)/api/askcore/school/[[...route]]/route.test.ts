@@ -161,6 +161,32 @@ describe('AskCore school portal proxy', () => {
     expect(response.status).toBe(502);
   });
 
+  it('bounds an upstream request that never responds', async () => {
+    vi.useFakeTimers();
+    vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'school-portal-secret');
+    authApi.getSession.mockResolvedValue({
+      user: { email: 'student@askcore.cn', id: 'user-1', role: 'user' },
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url, init) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+          }),
+      ),
+    );
+    const { GET } = await loadRoute();
+    const pending = GET(
+      new NextRequest('https://askcore.cn/api/askcore/school/portal'),
+      routeContext(['portal']),
+    );
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect((await pending).status).toBe(502);
+    vi.useRealTimers();
+  });
+
   it.each([
     'https://askcore.cn/school/teaching/local/askcore/warmup.php?destination=2',
     'https://askcore.cn/school/services/askcore/warmup.php?destination=1&next=/admin',

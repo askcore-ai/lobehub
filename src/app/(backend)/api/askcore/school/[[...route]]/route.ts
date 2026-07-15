@@ -16,6 +16,7 @@ type RouteContext = {
 
 const DEFAULT_API_BASE_URL = 'http://api:8000';
 const LAUNCH_TOKEN_PATTERN = /^[\w-]{40,4096}$/;
+const UPSTREAM_TIMEOUT_MS = 8_000;
 
 const jsonError = (status: number, detail: string) => NextResponse.json({ detail }, { status });
 
@@ -84,6 +85,11 @@ const forwardSchoolPortalRequest = async (request: NextRequest, context: RouteCo
   }
 
   let upstream: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(new DOMException('School portal upstream timed out', 'TimeoutError')),
+    UPSTREAM_TIMEOUT_MS,
+  );
   try {
     upstream = await fetch(buildSchoolPortalAuthorityUrl(route), {
       cache: 'no-store',
@@ -93,9 +99,12 @@ const forwardSchoolPortalRequest = async (request: NextRequest, context: RouteCo
       },
       method: 'GET',
       redirect: 'manual',
+      signal: controller.signal,
     });
   } catch {
     return jsonError(502, 'School portal is unavailable');
+  } finally {
+    clearTimeout(timer);
   }
 
   const location = upstream.headers.get('location');

@@ -2,7 +2,10 @@
 
 import { useCallback } from 'react';
 
-import { isAskCoreIdentityLinkCallback } from '@/business/client/AskCoreWorkbench/config';
+import {
+  hasPendingAskCoreIdentityLink,
+  isAskCoreIdentityLinkCallback,
+} from '@/business/client/AskCoreWorkbench/config';
 import { isDesktop } from '@/const/version';
 import { onboardingSelectors } from '@/store/user/selectors';
 import { type UserInitializationState } from '@/types/user';
@@ -27,7 +30,7 @@ export const useWebUserStateRedirect = () =>
 
     // The one-time school identity must be accepted before a new account leaves
     // its registration callback. Normal routes still enter onboarding first.
-    if (isAskCoreIdentityLinkCallback(pathname, search)) return;
+    if (isAskCoreIdentityLinkCallback(pathname, search, hasPendingAskCoreIdentityLink())) return;
 
     // Skip onboarding when the user lands on any agent page with a message param
     // (e.g. "Try in LobeHub" links from Skills Marketplace). The /agent/inbox slug

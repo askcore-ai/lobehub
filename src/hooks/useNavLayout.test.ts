@@ -1,4 +1,4 @@
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useNavLayout } from './useNavLayout';
@@ -26,15 +26,23 @@ vi.mock('@/store/serverConfig', () => ({
 
 const swrState = vi.hoisted(() => ({
   accountUserId: 'user-1',
+  accountSessionId: 'session-1',
   portalAvailable: true,
   role: undefined as 'administrator' | 'student' | 'teacher' | undefined,
+  roleError: false,
+  roleValidating: false,
   schoolState: 'ready' as 'ready' | 'unavailable',
 }));
 
 const requestedRoleKeys = vi.hoisted(() => [] as unknown[]);
 
 vi.mock('@/libs/better-auth/auth-client', () => ({
-  useSession: () => ({ data: { user: { id: swrState.accountUserId } } }),
+  useSession: () => ({
+    data: {
+      session: { id: swrState.accountSessionId },
+      user: { id: swrState.accountUserId },
+    },
+  }),
 }));
 
 vi.mock('swr', () => ({
@@ -62,9 +70,13 @@ vi.mock('swr', () => ({
         },
       };
     }
-    if (Array.isArray(key) && key[0] === 'https://askcore.cn/school/services/askcore/session.php') {
+    if (Array.isArray(key) && key[0] === '/school/services/askcore/session.php') {
       requestedRoleKeys.push(key);
-      return { data: swrState.role ? { authenticated: true, role: swrState.role } : undefined };
+      return {
+        data: swrState.role ? { authenticated: true, role: swrState.role } : undefined,
+        error: swrState.roleError ? new Error('role unavailable') : undefined,
+        isValidating: swrState.roleValidating,
+      };
     }
     return { data: undefined };
   },
@@ -73,9 +85,12 @@ vi.mock('swr', () => ({
 beforeEach(() => {
   requestedRoleKeys.length = 0;
   swrState.accountUserId = 'user-1';
+  swrState.accountSessionId = 'session-1';
   swrState.portalAvailable = true;
   swrState.schoolState = 'ready';
   swrState.role = undefined;
+  swrState.roleError = false;
+  swrState.roleValidating = false;
 });
 
 afterEach(() => vi.unstubAllGlobals());
@@ -117,9 +132,41 @@ describe('useNavLayout source-role school navigation', () => {
     expect(items.map((item) => item.title)).not.toContain('教学中心');
     expect(items.find((item) => item.title === '学习空间')?.url).toBe('/school/learning-space');
     expect(requestedRoleKeys).toContainEqual([
-      'https://askcore.cn/school/services/askcore/session.php',
-      'user-1',
+      '/school/services/askcore/session.php',
+      'user-1:session-1',
+      0,
     ]);
+  });
+
+  it('invalidates portal and role cache generations after a BFCache restore', () => {
+    swrState.role = 'student';
+    const { result } = renderHook(() => useNavLayout());
+
+    expect(result.current.topNavItems.find((item) => item.title === '学习空间')?.hidden).toBe(
+      false,
+    );
+
+    const pageshow = new Event('pageshow') as PageTransitionEvent;
+    Object.defineProperty(pageshow, 'persisted', { value: true });
+    act(() => window.dispatchEvent(pageshow));
+
+    expect(requestedRoleKeys).toContainEqual([
+      '/school/services/askcore/session.php',
+      'user-1:session-1',
+      1,
+    ]);
+  });
+
+  it.each(['validating', 'failed'] as const)('hides a stale positive role while %s', (state) => {
+    swrState.role = 'student';
+    swrState.roleValidating = state === 'validating';
+    swrState.roleError = state === 'failed';
+
+    const items = visibleItems();
+
+    expect(items.map((item) => item.title)).toContain('学校');
+    expect(items.map((item) => item.title)).not.toContain('学习空间');
+    expect(items.map((item) => item.title)).not.toContain('教学中心');
   });
 
   it.each(['teacher', 'administrator'] as const)(

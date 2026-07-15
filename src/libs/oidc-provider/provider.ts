@@ -38,6 +38,21 @@ export const isSchoolOIDCClient = (client: ResourceIndicatorClient) =>
 export const useGrantedResourceForClient = (ctx: KoaContextWithOIDC) =>
   !isSchoolOIDCClient(ctx.oidc.client);
 
+export const resolveOIDCAccountId = ({
+  clientId,
+  externalAccountId,
+  providerSessionAccountId,
+  requestedAccountId,
+}: {
+  clientId?: string;
+  externalAccountId?: string;
+  providerSessionAccountId?: string;
+  requestedAccountId: string;
+}) =>
+  clientId && SCHOOL_OIDC_CLIENT_IDS.has(clientId)
+    ? requestedAccountId
+    : externalAccountId || providerSessionAccountId || requestedAccountId;
+
 const SCHOOL_SUBJECT_PATTERN = /^[\w.-]{8,40}$/;
 
 export const resolveSchoolOIDCSubject = async ({
@@ -232,22 +247,27 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
         logProvider('Found externalAccountId in context: %s', externalAccountId);
       }
 
-      // Determine the account ID to look up
-      // Priority: 1. externalAccountId 2. ctx.oidc.session?.accountId 3. passed-in id
-      const accountIdToFind = externalAccountId || ctx.oidc?.session?.accountId || id;
-
       const clientId = ctx.oidc?.client?.clientId;
+
+      const accountIdToFind = resolveOIDCAccountId({
+        clientId,
+        externalAccountId,
+        providerSessionAccountId: ctx.oidc?.session?.accountId,
+        requestedAccountId: id,
+      });
 
       logProvider('OIDC request client id: %s', clientId);
 
       logProvider(
         'Attempting to find account with ID: %s (source: %s)',
         accountIdToFind,
-        externalAccountId
-          ? 'externalAccountId'
-          : ctx.oidc?.session?.accountId
-            ? 'oidc_session'
-            : 'parameter_id',
+        clientId && SCHOOL_OIDC_CLIENT_IDS.has(clientId)
+          ? 'current_authorization'
+          : externalAccountId
+            ? 'externalAccountId'
+            : ctx.oidc?.session?.accountId
+              ? 'oidc_session'
+              : 'parameter_id',
       );
 
       // Return undefined if no account ID is available
@@ -323,7 +343,8 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
         // Read the ui_locales parameter from the OIDC request (space-separated language priorities)
         // https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
         const uiLocalesRaw = (interaction.params?.ui_locales || ctx.oidc?.params?.ui_locales) as
-          string | undefined;
+          | string
+          | undefined;
 
         let query = '';
         if (uiLocalesRaw) {

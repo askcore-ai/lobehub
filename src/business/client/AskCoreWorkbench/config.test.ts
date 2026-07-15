@@ -23,10 +23,14 @@ describe('AskCoreWorkbench config', () => {
         '?protocol=identity-link&token=one-time-secret',
       ),
     ).toBe(true);
-    expect(
-      isAskCoreIdentityLinkCallback('/askcore/workbench', '?protocol=processing'),
-    ).toBe(false);
+    expect(isAskCoreIdentityLinkCallback('/askcore/workbench', '?protocol=processing')).toBe(false);
     expect(isAskCoreIdentityLinkCallback('/', '?protocol=identity-link')).toBe(false);
+    expect(isAskCoreIdentityLinkCallback('/askcore/workbench', '?protocol=identity-link')).toBe(
+      false,
+    );
+    expect(
+      isAskCoreIdentityLinkCallback('/askcore/workbench', '?protocol=identity-link', true),
+    ).toBe(true);
   });
 
   it('keeps organization-owned roster resources out of first-class workbench tabs', () => {

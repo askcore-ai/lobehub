@@ -67,6 +67,9 @@ describe('OIDC Provider - Market Client Integration', () => {
       ]),
     );
     expect(schoolOIDCClientsFromEnvironment({})).toEqual([]);
+    expect(clients.every((client) => client.grant_types?.join(' ') === 'authorization_code')).toBe(
+      true,
+    );
   });
 
   describe('Market Client Logic', () => {
@@ -140,7 +143,8 @@ describe('OIDC Provider - Market Client Integration', () => {
     }, 10000);
 
     it('issues UserInfo tokens for school clients and API tokens for Lobe clients', async () => {
-      const { isSchoolOIDCClient, useGrantedResourceForClient } = await import('./provider');
+      const { isSchoolOIDCClient, resolveOIDCAccountId, useGrantedResourceForClient } =
+        await import('./provider');
 
       const moodleClient = { clientId: 'askcore-moodle' };
       const gibbonClient = { clientId: 'askcore-gibbon' };
@@ -151,6 +155,22 @@ describe('OIDC Provider - Market Client Integration', () => {
       expect(isSchoolOIDCClient(desktopClient)).toBe(false);
       expect(useGrantedResourceForClient({ oidc: { client: moodleClient } } as never)).toBe(false);
       expect(useGrantedResourceForClient({ oidc: { client: desktopClient } } as never)).toBe(true);
+      expect(
+        resolveOIDCAccountId({
+          clientId: 'askcore-moodle',
+          externalAccountId: 'external-a',
+          providerSessionAccountId: 'stale-a',
+          requestedAccountId: 'current-b',
+        }),
+      ).toBe('current-b');
+      expect(
+        resolveOIDCAccountId({
+          clientId: 'lobehub-desktop',
+          externalAccountId: 'external-a',
+          providerSessionAccountId: 'stale-a',
+          requestedAccountId: 'current-b',
+        }),
+      ).toBe('external-a');
     });
 
     it('resolves a principal-scoped pseudonymous subject for school clients', async () => {

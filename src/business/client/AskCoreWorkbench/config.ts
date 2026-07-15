@@ -8,15 +8,33 @@ import {
 
 export const ASKCORE_WORKBENCH_PATH = '/askcore/workbench';
 export const ASKCORE_WORKBENCH_PLUGIN_ID = 'aitutor-suite';
+export const ASKCORE_IDENTITY_LINK_TOKEN_STORAGE_KEY = 'askcore.lti.identity-link.invitation';
 
 export type AskCoreProtocolMode = 'identity-link' | 'processing';
 
 export const askCoreProtocolMode = (value?: string | null): AskCoreProtocolMode | null =>
   value === 'identity-link' || value === 'processing' ? value : null;
 
-export const isAskCoreIdentityLinkCallback = (pathname: string, search: string) =>
-  pathname === ASKCORE_WORKBENCH_PATH &&
-  askCoreProtocolMode(new URLSearchParams(search).get('protocol')) === 'identity-link';
+export const hasPendingAskCoreIdentityLink = () => {
+  try {
+    return !!window.sessionStorage.getItem(ASKCORE_IDENTITY_LINK_TOKEN_STORAGE_KEY)?.trim();
+  } catch {
+    return false;
+  }
+};
+
+export const isAskCoreIdentityLinkCallback = (
+  pathname: string,
+  search: string,
+  hasPendingToken = false,
+) => {
+  const params = new URLSearchParams(search);
+  return (
+    pathname === ASKCORE_WORKBENCH_PATH &&
+    askCoreProtocolMode(params.get('protocol')) === 'identity-link' &&
+    (!!params.get('token')?.trim() || hasPendingToken)
+  );
+};
 
 export const ASKCORE_WORKBENCH_TABS: AskCoreWorkbenchTabConfig[] = [
   { key: 'overview', label: '总览' },
