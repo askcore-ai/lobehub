@@ -64,6 +64,7 @@ export const fetchSchoolSourceSession = async (url: string): Promise<SchoolSourc
     cache: 'no-store',
     credentials: 'include',
     headers: { accept: 'application/json' },
+    redirect: 'manual',
   });
   if (!response.ok) {
     throw new SchoolPortalApiError(response.status, '学校身份暂不可用');

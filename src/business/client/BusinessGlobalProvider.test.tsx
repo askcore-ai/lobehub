@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import BusinessGlobalProvider from './BusinessGlobalProvider';
+import BusinessGlobalProvider, { isGibbonSessionProbeSurface } from './BusinessGlobalProvider';
 
 const state = vi.hoisted(() => ({
   authenticated: true,
@@ -151,6 +151,14 @@ describe('BusinessGlobalProvider', () => {
     expect(document.querySelectorAll('iframe[data-askcore-school-session]')).toHaveLength(0);
   });
 
+  it('probes only a completed Gibbon session surface', () => {
+    expect(isGibbonSessionProbeSurface('/oidc/auth/interaction', false)).toBe(false);
+    expect(isGibbonSessionProbeSurface('/school/services/login.php', false)).toBe(false);
+    expect(isGibbonSessionProbeSurface('/school/services/askcore/warmup.php', false)).toBe(false);
+    expect(isGibbonSessionProbeSurface('/school/services/index.php', false)).toBe(true);
+    expect(isGibbonSessionProbeSurface('/school/services/askcore/warmup.php', true)).toBe(true);
+  });
+
   it('moves the shared source-session cache generation after a BFCache restore', () => {
     renderProvider();
 
@@ -173,6 +181,7 @@ describe('BusinessGlobalProvider', () => {
     const gibbonFrame = document.querySelector<HTMLIFrameElement>(
       'iframe[data-askcore-school-session="school-services"]',
     );
+    markSessionReady(gibbonFrame!);
     await act(async () => {
       fireEvent.load(gibbonFrame!);
       await Promise.resolve();
@@ -238,7 +247,7 @@ describe('BusinessGlobalProvider', () => {
     const frame = document.querySelector<HTMLIFrameElement>('iframe[data-askcore-school-session]');
     expect(frame?.dataset.askcoreSchoolSession).toBe('school-services');
     fireEvent.load(frame!);
-    expect(mutateRole).toHaveBeenCalledTimes(1);
+    expect(mutateRole).not.toHaveBeenCalled();
 
     act(() => vi.advanceTimersByTime(30_000));
     expect(document.querySelector('iframe[data-askcore-school-session]')).toBeNull();

@@ -23,6 +23,25 @@ const sourceSessionReady = (frame: HTMLIFrameElement) => {
   }
 };
 
+export const isGibbonSessionProbeSurface = (pathname: string, sessionReady: boolean) => {
+  if (sessionReady) return true;
+  const normalized = pathname.toLowerCase();
+  return (
+    normalized.startsWith('/school/services/') &&
+    !normalized.startsWith('/school/services/askcore/') &&
+    !normalized.endsWith('/login.php')
+  );
+};
+
+const gibbonSessionProbeReady = (frame: HTMLIFrameElement) => {
+  if (sourceSessionReady(frame)) return true;
+  try {
+    return isGibbonSessionProbeSurface(frame.contentWindow?.location.pathname || '', false);
+  } catch {
+    return false;
+  }
+};
+
 type WarmupStage = 'complete' | 'gibbon' | 'moodle' | 'stopped' | null;
 
 const SchoolSessionWarmup = () => {
@@ -139,6 +158,7 @@ const SchoolSessionWarmup = () => {
           if (sourceSessionReady(event.currentTarget)) setStage('complete');
           return;
         }
+        if (!gibbonSessionProbeReady(event.currentTarget)) return;
         if (gibbonProbeInFlight.current || gibbonRoleConfirmedFor.current === flowKey) return;
         gibbonProbeInFlight.current = true;
         void mutateRole()

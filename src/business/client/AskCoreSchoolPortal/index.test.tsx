@@ -153,6 +153,10 @@ describe('AskCoreSchoolPortalRoute', () => {
       fetchMock.mock.calls.filter(([input]) => String(input).includes('/askcore/session.php'))
         .length;
     const sourceRequestsBeforeLoad = sourceRequestCount();
+    const sourceRequest = fetchMock.mock.calls.find(([input]) =>
+      String(input).includes('/askcore/session.php'),
+    );
+    expect(sourceRequest?.[1]).toEqual(expect.objectContaining({ redirect: 'manual' }));
 
     await markFrameReady(frame);
     expect(frame.closest('section')).not.toHaveAttribute('hidden');
