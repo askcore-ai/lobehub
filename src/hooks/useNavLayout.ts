@@ -5,10 +5,10 @@ import {
   SchoolIcon,
   SearchIcon,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
-import useSWR from 'swr';
+import useSWR, { type SWRConfiguration } from 'swr';
 
 import {
   fetchSchoolPortalManifestForGeneration,
@@ -17,8 +17,8 @@ import {
   schoolPortalAuthorizationDenied,
   schoolPortalManifestCacheKey,
   schoolPortalManifestScope,
-  stableSchoolSessionGeneration,
   schoolSourceSessionCacheKey,
+  stableSchoolSessionGeneration,
 } from '@/business/client/AskCoreSchoolPortal/api';
 import type {
   SchoolPortalManifest,
@@ -55,6 +55,10 @@ export interface NavLayout {
   };
 }
 
+const SCHOOL_BOOTSTRAP_RETRY_LIMIT = 2;
+const SCHOOL_BOOTSTRAP_RETRY_DELAY_MS = 250;
+const shouldRetrySchoolBootstrap = (error: unknown) => !schoolPortalAuthorizationDenied(error);
+
 export const useNavLayout = (): NavLayout => {
   const { t } = useTranslation('common');
   const { pathname } = useLocation();
@@ -69,6 +73,34 @@ export const useNavLayout = (): NavLayout => {
     isPending: accountSessionPending,
     isRefetching: accountSessionRefetching,
   });
+  const retryLifecycleRef = useRef({ epoch: 0, generation: sessionGeneration });
+  if (retryLifecycleRef.current.generation !== sessionGeneration) {
+    retryLifecycleRef.current = {
+      epoch: retryLifecycleRef.current.epoch + 1,
+      generation: sessionGeneration,
+    };
+  }
+  const retrySchoolBootstrap = useCallback<NonNullable<SWRConfiguration['onErrorRetry']>>(
+    (error, _key, _config, revalidate, { retryCount }) => {
+      if (!shouldRetrySchoolBootstrap(error) || retryCount > SCHOOL_BOOTSTRAP_RETRY_LIMIT) return;
+      const lifecycleEpoch = retryLifecycleRef.current.epoch;
+      const delay = SCHOOL_BOOTSTRAP_RETRY_DELAY_MS * 2 ** Math.max(0, retryCount - 1);
+      window.setTimeout(() => {
+        if (retryLifecycleRef.current.epoch !== lifecycleEpoch) return;
+        void revalidate({ retryCount });
+      }, delay);
+    },
+    [],
+  );
+  useEffect(
+    () => () => {
+      retryLifecycleRef.current = {
+        epoch: retryLifecycleRef.current.epoch + 1,
+        generation: undefined,
+      };
+    },
+    [],
+  );
   const portalScope = schoolPortalManifestScope(pathname);
   const bootstrapSnapshot = sessionGeneration
     ? readSchoolPortalBootstrapSnapshot(sessionGeneration)
@@ -83,8 +115,9 @@ export const useNavLayout = (): NavLayout => {
     ([, generation]) => fetchSchoolPortalManifestForGeneration(generation),
     {
       fallbackData: bootstrapSnapshot?.portal,
+      onErrorRetry: retrySchoolBootstrap,
       revalidateOnFocus: false,
-      shouldRetryOnError: false,
+      shouldRetryOnError: shouldRetrySchoolBootstrap,
     },
   );
   const {
@@ -96,9 +129,10 @@ export const useNavLayout = (): NavLayout => {
     ([url, generation]) => fetchSchoolSourceSessionForGeneration(url, generation),
     {
       fallbackData: bootstrapSnapshot?.sourceSession,
+      onErrorRetry: retrySchoolBootstrap,
       refreshInterval: 30_000,
       revalidateOnFocus: true,
-      shouldRetryOnError: false,
+      shouldRetryOnError: shouldRetrySchoolBootstrap,
     },
   );
   const exactBootstrapPair =

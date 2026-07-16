@@ -73,6 +73,8 @@ const portalPayloads = vi.hoisted(() => ({
 
 const requestedRoleKeys = vi.hoisted(() => [] as unknown[]);
 const requestedPortalKeys = vi.hoisted(() => [] as unknown[]);
+const requestedRoleOptions = vi.hoisted(() => [] as Record<string, unknown>[]);
+const requestedPortalOptions = vi.hoisted(() => [] as Record<string, unknown>[]);
 
 vi.mock('@/libs/better-auth/auth-client', () => ({
   useSession: () => ({
@@ -97,9 +99,14 @@ vi.mock('@/business/client/AskCoreSchoolPortal/api', async (importOriginal) => (
 }));
 
 vi.mock('swr', () => ({
-  default: (key: readonly string[] | string | null) => {
+  default: (
+    key: readonly string[] | string | null,
+    _fetcher: unknown,
+    options: Record<string, unknown> = {},
+  ) => {
     if (Array.isArray(key) && key[0] === '/api/askcore/school/portal') {
       requestedPortalKeys.push(key);
+      requestedPortalOptions.push(options);
       if (!swrState.portalAvailable) return { data: undefined, error: new Error('unavailable') };
       return {
         data: portalPayloads[swrState.schoolState],
@@ -108,6 +115,7 @@ vi.mock('swr', () => ({
     }
     if (Array.isArray(key) && key[0] === '/school/services/askcore/session.php') {
       requestedRoleKeys.push(key);
+      requestedRoleOptions.push(options);
       const roleError = swrState.roleError ? new Error('role unavailable') : undefined;
       if (roleError && swrState.roleErrorStatus) {
         Object.assign(roleError, { status: swrState.roleErrorStatus });
@@ -129,6 +137,8 @@ vi.mock('swr', () => ({
 beforeEach(() => {
   requestedRoleKeys.length = 0;
   requestedPortalKeys.length = 0;
+  requestedRoleOptions.length = 0;
+  requestedPortalOptions.length = 0;
   swrState.accountUserId = 'user-1';
   swrState.accountSessionId = 'session-1';
   swrState.bootstrapPortal = false;
@@ -176,6 +186,72 @@ describe('useNavLayout source-role school navigation', () => {
 
     expect(items.map((item) => item.title)).toContain('学校');
     swrState.portalAvailable = true;
+  });
+
+  it('retries initial transient school bootstrap failures without retrying authorization loss', () => {
+    vi.useFakeTimers();
+    try {
+      renderHook(() => useNavLayout(), { wrapper: SchoolRouter });
+      const transientError = Object.assign(new Error('unavailable'), { status: 503 });
+      const deniedError = Object.assign(new Error('denied'), { status: 401 });
+
+      for (const rawOptions of [requestedPortalOptions.at(-1), requestedRoleOptions.at(-1)]) {
+        const options = rawOptions as {
+          onErrorRetry: (
+            error: unknown,
+            key: unknown,
+            config: unknown,
+            revalidate: (options: { retryCount: number }) => void,
+            context: { retryCount: number },
+          ) => void;
+          shouldRetryOnError: (error: unknown) => boolean;
+        };
+        const revalidate = vi.fn();
+
+        expect(options.shouldRetryOnError(transientError)).toBe(true);
+        expect(options.shouldRetryOnError(deniedError)).toBe(false);
+
+        options.onErrorRetry(transientError, [], {}, revalidate, { retryCount: 1 });
+        act(() => vi.runOnlyPendingTimers());
+        expect(revalidate).toHaveBeenCalledWith({ retryCount: 1 });
+
+        revalidate.mockClear();
+        options.onErrorRetry(deniedError, [], {}, revalidate, { retryCount: 1 });
+        options.onErrorRetry(transientError, [], {}, revalidate, { retryCount: 3 });
+        act(() => vi.runOnlyPendingTimers());
+        expect(revalidate).not.toHaveBeenCalled();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cancels a scheduled school bootstrap retry after the account session changes', () => {
+    vi.useFakeTimers();
+    try {
+      const view = renderHook(() => useNavLayout(), { wrapper: SchoolRouter });
+      const options = requestedRoleOptions.at(-1) as {
+        onErrorRetry: (
+          error: unknown,
+          key: unknown,
+          config: unknown,
+          revalidate: (options: { retryCount: number }) => void,
+          context: { retryCount: number },
+        ) => void;
+      };
+      const revalidate = vi.fn();
+
+      options.onErrorRetry(new Error('unavailable'), [], {}, revalidate, { retryCount: 1 });
+      swrState.accountSessionId = 'session-2';
+      view.rerender();
+      swrState.accountSessionId = 'session-1';
+      view.rerender();
+      act(() => vi.runOnlyPendingTimers());
+
+      expect(revalidate).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('always shows school while the shared source is unavailable', () => {
