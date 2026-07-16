@@ -20,6 +20,33 @@ export const schoolSessionGeneration = (session?: BetterAuthSchoolSession | null
   return userId && sessionId ? `${userId}:${sessionId}` : undefined;
 };
 
+export const sourceSessionReady = (frame: HTMLIFrameElement) => {
+  try {
+    return !!frame.contentDocument?.querySelector('meta[name="askcore-session"][content="ready"]');
+  } catch {
+    return false;
+  }
+};
+
+export const isGibbonSessionProbeSurface = (pathname: string, sessionReady: boolean) => {
+  if (sessionReady) return true;
+  const normalized = pathname.toLowerCase();
+  return (
+    normalized.startsWith('/school/services/') &&
+    !normalized.startsWith('/school/services/askcore/') &&
+    !normalized.endsWith('/login.php')
+  );
+};
+
+export const gibbonSessionProbeReady = (frame: HTMLIFrameElement) => {
+  if (sourceSessionReady(frame)) return true;
+  try {
+    return isGibbonSessionProbeSurface(frame.contentWindow?.location.pathname || '', false);
+  } catch {
+    return false;
+  }
+};
+
 const fetchSchoolResource = async (input: RequestInfo | URL, init: RequestInit) => {
   const controller = new AbortController();
   const timer = window.setTimeout(

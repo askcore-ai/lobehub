@@ -1,9 +1,11 @@
 'use client';
 
-import { Alert, Button, Empty, Skeleton } from 'antd';
+import { Button } from '@lobehub/ui';
+import { Alert, Empty, Skeleton } from 'antd';
 import { createStaticStyles, cssVar } from 'antd-style';
 import { BookOpenCheck, RefreshCw, School } from 'lucide-react';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 import useSWR from 'swr';
 
@@ -12,11 +14,11 @@ import { useSession } from '@/libs/better-auth/auth-client';
 import {
   fetchSchoolPortalManifest,
   fetchSchoolSourceSession,
+  gibbonSessionProbeReady,
   SCHOOL_PORTAL_API,
   SCHOOL_ROLE_SOURCE_URL,
   schoolSessionGeneration,
 } from './api';
-import { type SchoolPortalState } from './types';
 
 const ROLE_RECOVERY_TIMEOUT_MS = 30_000;
 const SOURCE_FRAME_TIMEOUT_MS = 30_000;
@@ -132,18 +134,8 @@ const styles = createStaticStyles(({ css }) => ({
   `,
 }));
 
-const stateCopy: Record<Exclude<SchoolPortalState, 'ready'>, { message: string; title: string }> = {
-  conflict: {
-    message: '请联系学校管理员确认正确的学校连接后重试。',
-    title: '学校连接存在冲突',
-  },
-  unavailable: {
-    message: '学校服务正在恢复，请稍后重试。个人空间仍可正常使用。',
-    title: '学校连接暂不可用',
-  },
-};
-
 export const AskCoreSchoolPortalRoute = memo(() => {
+  const { t } = useTranslation('common');
   const { pathname } = useLocation();
   const { data: accountSession } = useSession();
   const sessionGeneration = schoolSessionGeneration(accountSession);
@@ -177,7 +169,13 @@ export const AskCoreSchoolPortalRoute = memo(() => {
   const sharedSchool = data?.state === 'ready' ? data.schools[0] : undefined;
   const destination = sharedSchool?.destinations.find((item) => item.key === destinationKey);
   const gibbonWarmup = sharedSchool?.destinations.find((item) => item.key === 'school-services');
-  const terminalState = data?.state && data.state !== 'ready' ? stateCopy[data.state] : undefined;
+  const terminalState =
+    data?.state && data.state !== 'ready'
+      ? {
+          message: t(`schoolPortal.state.${data.state}.message`),
+          title: t(`schoolPortal.state.${data.state}.title`),
+        }
+      : undefined;
   const trustedSourceSession =
     !sourceSessionError && !sourceSessionValidating ? liveSourceSession : undefined;
   const sourceRole = trustedSourceSession?.role;
@@ -189,10 +187,11 @@ export const AskCoreSchoolPortalRoute = memo(() => {
         : true;
   const surfaceTitle =
     pathname === '/school/learning-space'
-      ? '学习空间'
+      ? t('schoolPortal.surface.learningSpace')
       : pathname === '/school/teaching-center'
-        ? '教学中心'
-        : '学校';
+        ? t('schoolPortal.surface.teachingCenter')
+        : t('schoolPortal.surface.school');
+  const schoolName = sharedSchool?.name || t('schoolPortal.name');
   const SurfaceIcon = isTeachingSurface ? BookOpenCheck : School;
   const [lifecycleEpoch, setLifecycleEpoch] = useState(0);
   const [trustedGeneration, setTrustedGeneration] = useState(sessionGeneration);
@@ -205,6 +204,7 @@ export const AskCoreSchoolPortalRoute = memo(() => {
   }>({ key: '', status: 'loading' });
   const activeGeneration = useRef(sessionGeneration);
   const roleProbeInFlight = useRef(false);
+  const visibleRoleProbeKey = useRef('');
   const surfaceRef = useRef<HTMLElement>(null);
   activeGeneration.current = sessionGeneration;
   const recoveryKey = `${sessionGeneration || ''}:${lifecycleEpoch}:${
@@ -306,7 +306,7 @@ export const AskCoreSchoolPortalRoute = memo(() => {
         </span>
         <div>
           <h1 className={styles.title}>{surfaceTitle}</h1>
-          <div className={styles.subtitle}>{sharedSchool?.name || 'AskCore 在线学校'}</div>
+          <div className={styles.subtitle}>{schoolName}</div>
         </div>
       </header>
 
@@ -323,7 +323,7 @@ export const AskCoreSchoolPortalRoute = memo(() => {
       {error ? (
         <Alert
           showIcon
-          message="学校连接暂不可用"
+          message={t('schoolPortal.connection.unavailable')}
           type="error"
           action={
             <Button
@@ -331,7 +331,7 @@ export const AskCoreSchoolPortalRoute = memo(() => {
               size="small"
               onClick={() => void refreshLifecycle()}
             >
-              重试
+              {t('retry')}
             </Button>
           }
         />
@@ -344,7 +344,8 @@ export const AskCoreSchoolPortalRoute = memo(() => {
           key={`${sessionGeneration}:role-recovery:${lifecycleEpoch}`}
           src={gibbonWarmup.session_launch_url}
           title="askcore-school-role-recovery"
-          onLoad={() => {
+          onLoad={(event) => {
+            if (!gibbonSessionProbeReady(event.currentTarget)) return;
             if (roleProbeInFlight.current) return;
             roleProbeInFlight.current = true;
             void mutateSourceSession()
@@ -369,7 +370,7 @@ export const AskCoreSchoolPortalRoute = memo(() => {
             className={styles.frame}
             key={sourceFrameKey}
             src={destination.launch_url}
-            title={`${sharedSchool?.name || 'AskCore 在线学校'} ${surfaceTitle}`}
+            title={`${schoolName} ${surfaceTitle}`}
             onLoad={(event) => {
               const status = sourceFrameStatus(event.currentTarget, destinationKey);
               if (status !== 'loading') {
@@ -377,7 +378,12 @@ export const AskCoreSchoolPortalRoute = memo(() => {
                   current.key === sourceFrameKey ? { ...current, status } : current,
                 );
               }
-              if (destinationKey === 'school-services') {
+              if (
+                destinationKey === 'school-services' &&
+                gibbonSessionProbeReady(event.currentTarget) &&
+                visibleRoleProbeKey.current !== sourceFrameKey
+              ) {
+                visibleRoleProbeKey.current = sourceFrameKey;
                 void mutateSourceSession().catch(() => {});
               }
             }}
@@ -386,23 +392,32 @@ export const AskCoreSchoolPortalRoute = memo(() => {
       ) : null}
 
       {!error && !isValidating && canLaunchFrame && currentSourceFrameStatus === 'failed' ? (
-        <Empty description="学校服务暂不可用" image={Empty.PRESENTED_IMAGE_SIMPLE}>
+        <Empty
+          description={t('schoolPortal.connection.unavailable')}
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+        >
           <Button icon={<RefreshCw size={14} />} onClick={() => void refreshLifecycle()}>
-            刷新连接状态
+            {t('schoolPortal.connection.refresh')}
           </Button>
         </Empty>
       ) : null}
 
       {!error && !isValidating && data?.state === 'ready' && !destination ? (
-        <Empty description="学校服务暂不可用" image={Empty.PRESENTED_IMAGE_SIMPLE}>
+        <Empty
+          description={t('schoolPortal.connection.unavailable')}
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+        >
           <Button icon={<RefreshCw size={14} />} onClick={() => void refreshLifecycle()}>
-            刷新连接状态
+            {t('schoolPortal.connection.refresh')}
           </Button>
         </Empty>
       ) : null}
 
       {!error && !isValidating && isTeachingSurface && recoveryFailed ? (
-        <Empty description="学校服务暂不可用" image={Empty.PRESENTED_IMAGE_SIMPLE}>
+        <Empty
+          description={t('schoolPortal.connection.unavailable')}
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+        >
           <Button
             icon={<RefreshCw size={14} />}
             onClick={() => {
@@ -410,13 +425,16 @@ export const AskCoreSchoolPortalRoute = memo(() => {
               void refreshLifecycle();
             }}
           >
-            刷新连接状态
+            {t('schoolPortal.connection.refresh')}
           </Button>
         </Empty>
       ) : null}
 
       {!error && !isValidating && isTeachingSurface && trustedSourceSession && !roleAllowed ? (
-        <Empty description="当前学校身份无权访问此页面" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <Empty
+          description={t('schoolPortal.identity.denied')}
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+        />
       ) : null}
 
       {!error && !isValidating && terminalState ? (
@@ -430,7 +448,7 @@ export const AskCoreSchoolPortalRoute = memo(() => {
           }
         >
           <Button icon={<RefreshCw size={14} />} onClick={() => void refreshLifecycle()}>
-            刷新连接状态
+            {t('schoolPortal.connection.refresh')}
           </Button>
         </Empty>
       ) : null}

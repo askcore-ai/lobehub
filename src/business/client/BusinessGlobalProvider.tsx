@@ -7,40 +7,15 @@ import useSWR from 'swr';
 import {
   fetchSchoolPortalManifest,
   fetchSchoolSourceSession,
+  gibbonSessionProbeReady,
   SCHOOL_PORTAL_API,
   SCHOOL_ROLE_SOURCE_URL,
   schoolSessionGeneration,
+  sourceSessionReady,
 } from '@/business/client/AskCoreSchoolPortal/api';
 import { useSession } from '@/libs/better-auth/auth-client';
 
 const WARMUP_TIMEOUT_MS = 30_000;
-
-const sourceSessionReady = (frame: HTMLIFrameElement) => {
-  try {
-    return !!frame.contentDocument?.querySelector('meta[name="askcore-session"][content="ready"]');
-  } catch {
-    return false;
-  }
-};
-
-export const isGibbonSessionProbeSurface = (pathname: string, sessionReady: boolean) => {
-  if (sessionReady) return true;
-  const normalized = pathname.toLowerCase();
-  return (
-    normalized.startsWith('/school/services/') &&
-    !normalized.startsWith('/school/services/askcore/') &&
-    !normalized.endsWith('/login.php')
-  );
-};
-
-const gibbonSessionProbeReady = (frame: HTMLIFrameElement) => {
-  if (sourceSessionReady(frame)) return true;
-  try {
-    return isGibbonSessionProbeSurface(frame.contentWindow?.location.pathname || '', false);
-  } catch {
-    return false;
-  }
-};
 
 type WarmupStage = 'complete' | 'gibbon' | 'moodle' | 'stopped' | null;
 

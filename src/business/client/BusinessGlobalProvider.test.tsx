@@ -3,7 +3,8 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import BusinessGlobalProvider, { isGibbonSessionProbeSurface } from './BusinessGlobalProvider';
+import { isGibbonSessionProbeSurface } from './AskCoreSchoolPortal/api';
+import BusinessGlobalProvider from './BusinessGlobalProvider';
 
 const state = vi.hoisted(() => ({
   authenticated: true,

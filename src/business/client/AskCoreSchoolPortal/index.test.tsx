@@ -8,6 +8,25 @@ import { AskCoreSchoolPortalRoute } from './index';
 
 const authState = vi.hoisted(() => ({ sessionId: 'session-1', userId: 'user-1' }));
 
+const commonTranslations = vi.hoisted<Record<string, string>>(() => ({
+  'retry': '重试',
+  'schoolPortal.connection.refresh': '刷新连接状态',
+  'schoolPortal.connection.unavailable': '学校服务暂不可用',
+  'schoolPortal.identity.denied': '当前学校身份无权访问此页面',
+  'schoolPortal.name': 'AskCore 在线学校',
+  'schoolPortal.state.conflict.message': '请联系学校管理员确认正确的学校连接后重试。',
+  'schoolPortal.state.conflict.title': '学校连接存在冲突',
+  'schoolPortal.state.unavailable.message': '学校服务正在恢复，请稍后重试。个人空间仍可正常使用。',
+  'schoolPortal.state.unavailable.title': '学校连接暂不可用',
+  'schoolPortal.surface.learningSpace': '学习空间',
+  'schoolPortal.surface.school': '学校',
+  'schoolPortal.surface.teachingCenter': '教学中心',
+}));
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (key: string) => commonTranslations[key] || key }),
+}));
+
 vi.mock('@/libs/better-auth/auth-client', () => ({
   useSession: () => ({
     data: { session: { id: authState.sessionId }, user: { id: authState.userId } },
@@ -25,14 +44,14 @@ const readyPortal = (canManageIntegrations = false) => ({
           key: 'teaching',
           label: '教学中心',
           launch_url: 'about:blank#teaching-launch',
-          session_launch_url: '/api/askcore/school/launch/opaque-teaching-session',
+          session_launch_url: 'about:blank#teaching-session',
         },
         {
           description: '校务资料与学校服务',
           key: 'school-services',
           label: '校务中心',
           launch_url: 'about:blank#services-launch',
-          session_launch_url: '/api/askcore/school/launch/opaque-services-session',
+          session_launch_url: 'about:blank#services-session',
         },
       ],
       key: 'askcore-online-school',
@@ -128,7 +147,7 @@ describe('AskCoreSchoolPortalRoute', () => {
   );
 
   it('renders the Gibbon school surface directly without destination cards', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) =>
       String(input).includes('/askcore/session.php')
         ? Response.json({ authenticated: true, role: 'student' })
         : Response.json(readyPortal()),
@@ -158,9 +177,22 @@ describe('AskCoreSchoolPortalRoute', () => {
     );
     expect(sourceRequest?.[1]).toEqual(expect.objectContaining({ redirect: 'manual' }));
 
+    await act(async () => {
+      fireEvent.load(frame);
+      await Promise.resolve();
+    });
+    expect(sourceRequestCount()).toBe(sourceRequestsBeforeLoad);
+
     await markFrameReady(frame);
     expect(frame.closest('section')).not.toHaveAttribute('hidden');
     await waitFor(() => expect(sourceRequestCount()).toBeGreaterThan(sourceRequestsBeforeLoad));
+    const sourceRequestsAfterReady = sourceRequestCount();
+
+    await act(async () => {
+      fireEvent.load(frame);
+      await Promise.resolve();
+    });
+    expect(sourceRequestCount()).toBe(sourceRequestsAfterReady);
   });
 
   it('renders the live-role Moodle surface directly for a student', async () => {
@@ -186,6 +218,45 @@ describe('AskCoreSchoolPortalRoute', () => {
     expect(frame).toHaveAttribute('src', 'about:blank#teaching-launch');
     await markFrameReady(frame);
     expect(frame.closest('section')).not.toHaveAttribute('hidden');
+  });
+
+  it('waits for the final Gibbon recovery surface before probing the source role', async () => {
+    let sourceAttempts = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/askcore/session.php')) {
+        sourceAttempts += 1;
+        if (sourceAttempts === 1) return new Response(null, { status: 503 });
+        return Response.json({ authenticated: true, role: 'student' });
+      }
+      return Response.json(readyPortal());
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <MemoryRouter initialEntries={['/school/learning-space']}>
+          <AskCoreSchoolPortalRoute />
+        </MemoryRouter>
+      </SWRConfig>,
+    );
+
+    const recoveryFrame = (await screen.findByTitle(
+      'askcore-school-role-recovery',
+    )) as HTMLIFrameElement;
+    expect(sourceAttempts).toBe(1);
+
+    await act(async () => {
+      fireEvent.load(recoveryFrame);
+      await Promise.resolve();
+    });
+    expect(sourceAttempts).toBe(1);
+
+    await markFrameReady(recoveryFrame);
+    expect(await screen.findByTitle('AskCore 在线学校 学习空间')).toHaveAttribute(
+      'src',
+      'about:blank#teaching-launch',
+    );
+    expect(sourceAttempts).toBe(2);
   });
 
   it('covers and replaces the source iframe when the Better Auth account session changes', async () => {
