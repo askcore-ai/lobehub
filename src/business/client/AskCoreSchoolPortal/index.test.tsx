@@ -16,6 +16,8 @@ import {
 import { AskCoreSchoolPortalRoute } from './index';
 
 const authState = vi.hoisted(() => ({
+  isPending: false,
+  isRefetching: false,
   sessionId: 'session-1' as string | undefined,
   userId: 'user-1' as string | undefined,
 }));
@@ -42,6 +44,8 @@ vi.mock('react-i18next', () => ({
 vi.mock('@/libs/better-auth/auth-client', () => ({
   useSession: () => ({
     data: { session: { id: authState.sessionId }, user: { id: authState.userId } },
+    isPending: authState.isPending,
+    isRefetching: authState.isRefetching,
   }),
 }));
 
@@ -102,6 +106,8 @@ const markFrameReady = async (frame: HTMLElement) => {
 beforeEach(() => invalidateSchoolPortalBootstrap());
 
 afterEach(() => {
+  authState.isPending = false;
+  authState.isRefetching = false;
   authState.sessionId = 'session-1';
   authState.userId = 'user-1';
   vi.useRealTimers();
@@ -788,6 +794,39 @@ describe('AskCoreSchoolPortalRoute', () => {
     expect(screen.getByTitle('AskCore 在线学校 学校')).not.toBe(accountAFrame);
   });
 
+  it('retains the mounted source iframe while Better Auth refetches the same session', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes('/askcore/session.php')
+          ? Response.json({ authenticated: true, role: 'student' })
+          : Response.json(readyPortal()),
+      ),
+    );
+
+    const view = render(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <MemoryRouter initialEntries={['/school']}>
+          <AskCoreSchoolPortalRoute />
+        </MemoryRouter>
+      </SWRConfig>,
+    );
+    const originalFrame = await screen.findByTitle('AskCore 在线学校 学校');
+    await markFrameReady(originalFrame);
+
+    authState.isRefetching = true;
+    view.rerender(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <MemoryRouter initialEntries={['/school']}>
+          <AskCoreSchoolPortalRoute />
+        </MemoryRouter>
+      </SWRConfig>,
+    );
+
+    expect(screen.getByTitle('AskCore 在线学校 学校')).toBe(originalFrame);
+    expect(originalFrame.closest('section')).not.toHaveAttribute('hidden');
+  });
+
   it('covers and remounts the source iframe after a BFCache restore', async () => {
     const firstPortal = readyPortal();
     const restoredPortal = readyPortal();
@@ -831,6 +870,112 @@ describe('AskCoreSchoolPortalRoute', () => {
     expect(restoredFrame).not.toBe(originalFrame);
     await markFrameReady(restoredFrame);
     expect(restoredFrame.closest('section')).not.toHaveAttribute('hidden');
+  });
+
+  it('keeps the mounted source page across bootstrap expiry and background refresh', async () => {
+    vi.useFakeTimers();
+    const firstPortal = cacheablePortal();
+    const refreshedPortal = cacheablePortal();
+    refreshedPortal.schools[0].destinations[1].launch_url =
+      `/api/askcore/school/launch/school-services-${'c'.repeat(40)}`;
+    let portalRequests = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).includes('/askcore/session.php')) {
+          return Response.json({ authenticated: true, role: 'student' });
+        }
+        portalRequests += 1;
+        return Response.json(portalRequests <= 2 ? firstPortal : refreshedPortal);
+      }),
+    );
+
+    await Promise.all([
+      fetchSchoolPortalManifestForGeneration('user-1:session-1'),
+      fetchSchoolSourceSessionForGeneration(
+        '/school/services/askcore/session.php',
+        'user-1:session-1',
+      ),
+    ]);
+    render(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <MemoryRouter initialEntries={['/school']}>
+          <AskCoreSchoolPortalRoute />
+        </MemoryRouter>
+      </SWRConfig>,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const originalFrame = screen.getByTitle('AskCore 在线学校 学校') as HTMLIFrameElement;
+    await markFrameReady(originalFrame);
+    originalFrame.contentDocument!.body.dataset.currentPage = 'student-profile';
+    const originalSrc = originalFrame.getAttribute('src');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(35_000);
+      await Promise.resolve();
+    });
+
+    const retainedFrame = screen.getByTitle('AskCore 在线学校 学校') as HTMLIFrameElement;
+    expect(retainedFrame).toBe(originalFrame);
+    expect(retainedFrame).toHaveAttribute('src', originalSrc);
+    expect(retainedFrame.contentDocument?.body.dataset.currentPage).toBe('student-profile');
+  });
+
+  it('covers the source iframe when a completed role refresh becomes unauthenticated', async () => {
+    vi.useFakeTimers();
+    const portal = cacheablePortal();
+    let sourceRequests = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).includes('/askcore/session.php')) {
+          sourceRequests += 1;
+          return Response.json(
+            sourceRequests === 1
+              ? { authenticated: true, role: 'student' }
+              : { authenticated: false },
+          );
+        }
+        return Response.json(portal);
+      }),
+    );
+
+    await Promise.all([
+      fetchSchoolPortalManifestForGeneration('user-1:session-1'),
+      fetchSchoolSourceSessionForGeneration(
+        '/school/services/askcore/session.php',
+        'user-1:session-1',
+      ),
+    ]);
+    render(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <MemoryRouter initialEntries={['/school']}>
+          <AskCoreSchoolPortalRoute />
+        </MemoryRouter>
+      </SWRConfig>,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+      await Promise.resolve();
+    });
+    const originalFrame = screen.getByTitle('AskCore 在线学校 学校');
+    await markFrameReady(originalFrame);
+    expect(sourceRequests).toBe(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_001);
+      await vi.advanceTimersByTimeAsync(100);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(sourceRequests).toBeGreaterThanOrEqual(2);
+    await vi.waitFor(() => expect(screen.queryByTitle('AskCore 在线学校 学校')).toBeNull());
   });
 
   it('keeps a source error document hidden and renders the bounded failure state', async () => {
@@ -956,5 +1101,17 @@ describe('personalized SPA shell', () => {
     );
 
     expect(source).toContain("export const dynamic = 'force-dynamic';");
+  });
+
+  it('anchors bootstrap trust to a private no-store exact-session digest', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const source = await readFile(
+      path.join(process.cwd(), 'src/app/spa/[variants]/[[...path]]/route.ts'),
+      'utf8',
+    );
+
+    expect(source).toContain('schoolSessionGenerationHash');
+    expect(source).toContain("createHash('sha256')");
+    expect(source).toContain("'Cache-Control': 'private, no-store'");
   });
 });

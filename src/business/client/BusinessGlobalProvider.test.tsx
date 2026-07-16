@@ -8,10 +8,14 @@ import BusinessGlobalProvider from './BusinessGlobalProvider';
 
 const state = vi.hoisted(() => ({
   authenticated: true,
-  liveRole: undefined as { authenticated: true; role: 'student' | 'teacher' } | undefined,
+  liveRole: undefined as
+    | { authenticated: false }
+    | { authenticated: true; role: 'student' | 'teacher' }
+    | undefined,
   portalValidating: false,
   roleError: true,
   sessionPending: false,
+  sessionRefetching: false,
   sessionId: 'session-1',
   userId: 'user-1',
 }));
@@ -89,6 +93,7 @@ vi.mock('@/libs/better-auth/auth-client', () => ({
         ? { session: { id: state.sessionId }, user: { id: state.userId } }
         : null,
     isPending: state.sessionPending,
+    isRefetching: state.sessionRefetching,
   }),
 }));
 
@@ -111,6 +116,7 @@ describe('BusinessGlobalProvider', () => {
     state.portalValidating = false;
     state.roleError = true;
     state.sessionPending = false;
+    state.sessionRefetching = false;
     state.sessionId = 'session-1';
     state.userId = 'user-1';
     requestedKeys.length = 0;
@@ -240,6 +246,37 @@ describe('BusinessGlobalProvider', () => {
     renderProvider();
 
     expect(document.querySelector('iframe[data-askcore-school-session]')).toBeNull();
+  });
+
+  it('starts Gibbon recovery when the source explicitly reports an unauthenticated session', () => {
+    state.roleError = false;
+    state.liveRole = { authenticated: false };
+
+    renderProvider();
+
+    expect(
+      document.querySelector<HTMLIFrameElement>(
+        'iframe[data-askcore-school-session="school-services"]',
+      ),
+    ).not.toBeNull();
+  });
+
+  it('retains the same-generation source warmup while Better Auth is refetching', () => {
+    state.roleError = false;
+    state.liveRole = { authenticated: true, role: 'student' };
+    const view = renderProvider();
+    expect(document.querySelector('iframe[data-askcore-school-session]')).not.toBeNull();
+
+    state.sessionRefetching = true;
+    view.rerender(
+      <MemoryRouter>
+        <BusinessGlobalProvider>
+          <div>personal workspace</div>
+        </BusinessGlobalProvider>
+      </MemoryRouter>,
+    );
+
+    expect(document.querySelector('iframe[data-askcore-school-session]')).not.toBeNull();
   });
 
   it('clears the school bootstrap after Better Auth confirms logout', () => {

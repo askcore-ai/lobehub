@@ -25,10 +25,9 @@ export interface SchoolPortalManifest {
   state: SchoolPortalState;
 }
 
-export interface SchoolSourceSession {
-  authenticated: true;
-  role: SchoolSourceRole;
-}
+export type SchoolSourceSession =
+  | { authenticated: false }
+  | { authenticated: true; role: SchoolSourceRole };
 
 export interface SchoolIntegrationOperations {
   production_preflight?: {

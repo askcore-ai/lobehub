@@ -3,6 +3,7 @@ import { sha256 } from 'js-sha256';
 import {
   type SchoolIntegrationOperations,
   type SchoolPortalManifest,
+  type SchoolSourceRole,
   type SchoolSourceSession,
 } from './types';
 
@@ -20,11 +21,21 @@ type BetterAuthSchoolSession = {
   user?: { id?: string | null } | null;
 };
 
+type BetterAuthSchoolSessionState = {
+  isPending?: boolean;
+  isRefetching?: boolean;
+};
+
 export const schoolSessionGeneration = (session?: BetterAuthSchoolSession | null) => {
   const userId = session?.user?.id?.trim();
   const sessionId = session?.session?.id?.trim();
   return userId && sessionId ? `${userId}:${sessionId}` : undefined;
 };
+
+export const stableSchoolSessionGeneration = (
+  session: BetterAuthSchoolSession | null | undefined,
+  state: BetterAuthSchoolSessionState,
+) => (state.isPending ? undefined : schoolSessionGeneration(session));
 
 export const schoolSourceSessionCacheKey = (sessionGeneration?: string) =>
   sessionGeneration ? ([SCHOOL_ROLE_SOURCE_URL, sessionGeneration] as const) : null;
@@ -92,6 +103,12 @@ export class SchoolPortalApiError extends Error {
   }
 }
 
+export const schoolPortalAuthorizationDenied = (error: unknown) => {
+  if (!error || typeof error !== 'object') return false;
+  const status = Number((error as { status?: unknown }).status);
+  return status === 401 || status === 403;
+};
+
 export const fetchSchoolPortalManifest = async (): Promise<SchoolPortalManifest> => {
   const response = await fetchSchoolResource(SCHOOL_PORTAL_API, {
     cache: 'no-store',
@@ -118,14 +135,17 @@ export const fetchSchoolSourceSession = async (url: string): Promise<SchoolSourc
   if (!response.ok) {
     throw new SchoolPortalApiError(response.status, '学校身份暂不可用');
   }
-  const payload = (await response.json()) as Partial<SchoolSourceSession>;
+  const payload = (await response.json()) as Record<string, unknown>;
+  if (payload.authenticated === false && Object.keys(payload).length === 1) {
+    return { authenticated: false };
+  }
   if (
     payload.authenticated !== true ||
     !['administrator', 'guardian', 'student', 'teacher'].includes(String(payload.role))
   ) {
     throw new SchoolPortalApiError(502, '学校身份响应无效');
   }
-  return payload as SchoolSourceSession;
+  return { authenticated: true, role: payload.role as SchoolSourceRole };
 };
 
 type SchoolPortalBootstrapEntry = {
@@ -152,6 +172,15 @@ let bootstrapEpoch = 0;
 
 const currentTimestamp = () => Date.now();
 const schoolSessionGenerationHash = (sessionGeneration: string) => sha256(sessionGeneration);
+const SCHOOL_SESSION_GENERATION_HASH_PATTERN = /^[a-f0-9]{64}$/;
+
+const serverSchoolSessionGenerationHash = () => {
+  if (typeof window === 'undefined') return undefined;
+  const value = window.__SERVER_CONFIG__?.schoolSessionGenerationHash;
+  return typeof value === 'string' && SCHOOL_SESSION_GENERATION_HASH_PATTERN.test(value)
+    ? value
+    : undefined;
+};
 
 const freshTimestamp = (value: unknown, now: number): value is number =>
   typeof value === 'number' &&
@@ -286,7 +315,7 @@ const sanitizeSourceSession = (value: unknown): SchoolSourceSession | undefined 
   ) {
     return undefined;
   }
-  return { authenticated: true, role: role as SchoolSourceSession['role'] };
+  return { authenticated: true, role: role as SchoolSourceRole };
 };
 
 const persistSchoolPortalBootstrapSnapshot = (snapshot?: SchoolPortalBootstrapSnapshot) => {
@@ -396,7 +425,12 @@ export const readSchoolPortalBootstrapSnapshot = (sessionGeneration: string) => 
     const serialized = window.localStorage.getItem(SCHOOL_BOOTSTRAP_STORAGE_KEY);
     if (!serialized) return undefined;
     const parsed = JSON.parse(serialized) as Partial<SchoolPortalBootstrapSnapshot>;
-    if (parsed.generationHash !== generationHash) {
+    const serverGenerationHash = serverSchoolSessionGenerationHash();
+    if (
+      !serverGenerationHash ||
+      parsed.generationHash !== generationHash ||
+      serverGenerationHash !== generationHash
+    ) {
       if (typeof parsed.generationHash === 'string') {
         bootstrapSnapshots.delete(parsed.generationHash);
       }

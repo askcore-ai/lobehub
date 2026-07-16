@@ -6,7 +6,7 @@ import { createStaticStyles, cssVar } from 'antd-style';
 import { BookOpenCheck, RefreshCw, School } from 'lucide-react';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import useSWR from 'swr';
 
 import { useSession } from '@/libs/better-auth/auth-client';
@@ -18,11 +18,13 @@ import {
   invalidateSchoolPortalBootstrap,
   readSchoolPortalBootstrapSnapshot,
   recoverSchoolSourceSession,
+  schoolPortalAuthorizationDenied,
   schoolPortalBootstrapExpiresAt,
   schoolPortalManifestCacheKey,
-  schoolSessionGeneration,
   schoolSourceSessionCacheKey,
+  stableSchoolSessionGeneration,
 } from './api';
+import type { SchoolPortalManifest, SchoolSourceSession } from './types';
 
 const ROLE_RECOVERY_TIMEOUT_MS = 30_000;
 const SOURCE_FRAME_TIMEOUT_MS = 30_000;
@@ -141,8 +143,16 @@ const styles = createStaticStyles(({ css }) => ({
 export const AskCoreSchoolPortalRoute = memo(() => {
   const { t } = useTranslation('common');
   const { pathname } = useLocation();
-  const { data: accountSession } = useSession();
-  const sessionGeneration = schoolSessionGeneration(accountSession);
+  const navigate = useNavigate();
+  const {
+    data: accountSession,
+    isPending: accountSessionPending,
+    isRefetching: accountSessionRefetching,
+  } = useSession();
+  const sessionGeneration = stableSchoolSessionGeneration(accountSession, {
+    isPending: accountSessionPending,
+    isRefetching: accountSessionRefetching,
+  });
   const isTeachingSurface =
     pathname === '/school/teaching-center' || pathname === '/school/learning-space';
   const destinationKey = isTeachingSurface ? 'teaching' : 'school-services';
@@ -178,11 +188,67 @@ export const AskCoreSchoolPortalRoute = memo(() => {
   );
   const exactBootstrapPair =
     bootstrapSnapshot?.portal === data && bootstrapSnapshot?.sourceSession === liveSourceSession;
-  const pairTrusted =
+  const livePairConfirmed =
     !error &&
     !sourceSessionError &&
-    ((!isValidating && !sourceSessionValidating) || exactBootstrapPair);
-  const trustedPortal = pairTrusted ? data : undefined;
+    !isValidating &&
+    !sourceSessionValidating &&
+    data?.state === 'ready' &&
+    liveSourceSession?.authenticated === true;
+  const bootstrapPairTrusted =
+    !error &&
+    !sourceSessionError &&
+    exactBootstrapPair &&
+    data?.state === 'ready' &&
+    liveSourceSession?.authenticated === true;
+  const authorizationDenied =
+    schoolPortalAuthorizationDenied(error) || schoolPortalAuthorizationDenied(sourceSessionError);
+  const sourceSessionUnauthenticated =
+    !sourceSessionError &&
+    !sourceSessionValidating &&
+    !!liveSourceSession &&
+    liveSourceSession.authenticated !== true;
+  const authorizationLost = authorizationDenied || sourceSessionUnauthenticated;
+  const [confirmedPair, setConfirmedPair] = useState<{
+    generation: string;
+    portal: SchoolPortalManifest;
+    sourceSession: SchoolSourceSession;
+  }>();
+
+  useEffect(() => {
+    if (!sessionGeneration || authorizationLost) {
+      setConfirmedPair(undefined);
+      return;
+    }
+    if (data && liveSourceSession && livePairConfirmed) {
+      setConfirmedPair({
+        generation: sessionGeneration,
+        portal: data,
+        sourceSession: liveSourceSession,
+      });
+      return;
+    }
+    if (!error && !isValidating && data && data.state !== 'ready') {
+      setConfirmedPair(undefined);
+    }
+  }, [
+    authorizationLost,
+    data,
+    error,
+    isValidating,
+    livePairConfirmed,
+    liveSourceSession,
+    sessionGeneration,
+  ]);
+
+  const activePair = livePairConfirmed
+    ? { portal: data, sourceSession: liveSourceSession }
+    : bootstrapPairTrusted
+      ? { portal: data, sourceSession: liveSourceSession }
+      : confirmedPair?.generation === sessionGeneration && !authorizationLost
+        ? confirmedPair
+        : undefined;
+  const trustedPortal = activePair?.portal;
   const validatedPortal = !error && (!isValidating || exactBootstrapPair) ? data : undefined;
   const recoveryPortal = validatedPortal?.state === 'ready' ? validatedPortal : undefined;
   const sharedSchool = trustedPortal?.state === 'ready' ? trustedPortal.schools[0] : undefined;
@@ -196,8 +262,8 @@ export const AskCoreSchoolPortalRoute = memo(() => {
           title: t(`schoolPortal.state.${validatedPortal.state}.title`),
         }
       : undefined;
-  const trustedSourceSession = pairTrusted ? liveSourceSession : undefined;
-  const sourceRole = trustedSourceSession?.role;
+  const trustedSourceSession = activePair?.sourceSession;
+  const sourceRole = trustedSourceSession?.authenticated ? trustedSourceSession.role : undefined;
   const roleAllowed =
     pathname === '/school/learning-space'
       ? sourceRole === 'student'
@@ -222,23 +288,31 @@ export const AskCoreSchoolPortalRoute = memo(() => {
     status: SourceFrameStatus;
   }>({ key: '', status: 'loading' });
   const [visibleGibbonReadyKey, setVisibleGibbonReadyKey] = useState('');
+  const [frameLaunch, setFrameLaunch] = useState<{ key: string; url: string }>();
   const activeGeneration = useRef(sessionGeneration);
   const refreshQueue = useRef<Promise<unknown>>(Promise.resolve());
   const refreshRequestEpoch = useRef(0);
   const roleProbeInFlight = useRef(false);
   const visibleRoleProbeKey = useRef('');
+  const visibleFrameConfirmed = useRef(false);
   const surfaceRef = useRef<HTMLElement>(null);
   activeGeneration.current = sessionGeneration;
   const recoveryKey = `${sessionGeneration || ''}:${lifecycleEpoch}:${
     gibbonWarmup?.session_launch_url || ''
   }`;
 
+  const refreshSchoolData = useCallback(async () => {
+    invalidateSchoolPortalBootstrap();
+    await Promise.allSettled([mutate(), mutateSourceSession()]);
+  }, [mutate, mutateSourceSession]);
+
   const refreshLifecycle = useCallback(async () => {
     const expectedGeneration = sessionGeneration;
     const expectedRefreshEpoch = refreshRequestEpoch.current + 1;
     refreshRequestEpoch.current = expectedRefreshEpoch;
     setCovered(true);
-    setTrustedGeneration(undefined);
+    visibleFrameConfirmed.current = false;
+    setFrameLaunch(undefined);
     invalidateSchoolPortalBootstrap();
     setLifecycleEpoch((current) => current + 1);
     const validation = refreshQueue.current.then(() =>
@@ -259,16 +333,34 @@ export const AskCoreSchoolPortalRoute = memo(() => {
   useEffect(() => {
     if (!bootstrapExpiresAt) return;
     const timer = window.setTimeout(
-      () => void refreshLifecycle(),
+      () =>
+        void (confirmedPair?.generation === sessionGeneration || visibleFrameConfirmed.current
+          ? refreshSchoolData()
+          : refreshLifecycle()),
       Math.max(0, bootstrapExpiresAt - Date.now()),
     );
     return () => window.clearTimeout(timer);
-  }, [bootstrapExpiresAt, refreshLifecycle]);
+  }, [
+    bootstrapExpiresAt,
+    confirmedPair?.generation,
+    refreshLifecycle,
+    refreshSchoolData,
+    sessionGeneration,
+  ]);
 
   useEffect(() => {
     if (trustedGeneration === sessionGeneration) return;
+    if (!sessionGeneration) {
+      setCovered(true);
+      visibleFrameConfirmed.current = false;
+      setFrameLaunch(undefined);
+      setTrustedGeneration(undefined);
+      invalidateSchoolPortalBootstrap();
+      return;
+    }
     if (!trustedGeneration && sessionGeneration) {
       setTrustedGeneration(sessionGeneration);
+      setCovered(false);
       return;
     }
     void refreshLifecycle();
@@ -296,8 +388,9 @@ export const AskCoreSchoolPortalRoute = memo(() => {
     !!sessionGeneration &&
     !sourceSessionLoading &&
     !sourceSessionValidating &&
-    !!sourceSessionError &&
+    (!!sourceSessionError || sourceSessionUnauthenticated) &&
     !!gibbonWarmup &&
+    !trustedSourceSession &&
     !recoveryFailed;
 
   useEffect(() => {
@@ -320,18 +413,25 @@ export const AskCoreSchoolPortalRoute = memo(() => {
   }, [recoveringRole, recoveryKey]);
 
   const generationReady = !!sessionGeneration && trustedGeneration === sessionGeneration;
-  const canLaunchFrame =
+  const canLaunchCandidate =
     generationReady &&
     !covered &&
-    !error &&
-    pairTrusted &&
     trustedPortal?.state === 'ready' &&
     !!destination &&
     trustedSourceSession?.authenticated === true &&
     (!isTeachingSurface || roleAllowed);
-  const sourceFrameKey = canLaunchFrame
-    ? `${sessionGeneration}:${lifecycleEpoch}:${destinationKey}:${destination?.launch_url}`
+  const sourceFrameKey = canLaunchCandidate
+    ? `${sessionGeneration}:${destinationKey}:${lifecycleEpoch}`
     : '';
+  useEffect(() => {
+    if (!sourceFrameKey || !destination) return;
+    setFrameLaunch((current) =>
+      current?.key === sourceFrameKey
+        ? current
+        : { key: sourceFrameKey, url: destination.launch_url },
+    );
+  }, [destination, sourceFrameKey]);
+  const canLaunchFrame = canLaunchCandidate && frameLaunch?.key === sourceFrameKey;
   const currentSourceFrameStatus =
     sourceFrameLifecycle.key === sourceFrameKey ? sourceFrameLifecycle.status : 'loading';
 
@@ -345,6 +445,12 @@ export const AskCoreSchoolPortalRoute = memo(() => {
     }, SOURCE_FRAME_TIMEOUT_MS);
     return () => window.clearTimeout(timer);
   }, [sourceFrameKey]);
+
+  useEffect(() => {
+    if (!isTeachingSurface || !trustedSourceSession || roleAllowed) return;
+    setCovered(true);
+    void navigate('/school', { replace: true });
+  }, [isTeachingSurface, navigate, roleAllowed, trustedSourceSession]);
 
   useEffect(() => {
     if (
@@ -385,16 +491,17 @@ export const AskCoreSchoolPortalRoute = memo(() => {
 
       {!sessionGeneration ||
       isLoading ||
-      (isValidating && !exactBootstrapPair) ||
+      (!canLaunchFrame && isValidating && !exactBootstrapPair) ||
       sourceSessionLoading ||
-      (sourceSessionValidating && !exactBootstrapPair) ||
+      (!canLaunchFrame && sourceSessionValidating && !exactBootstrapPair) ||
+      (canLaunchCandidate && !canLaunchFrame) ||
       recoveringRole ||
       covered ||
       (canLaunchFrame && currentSourceFrameStatus === 'loading') ? (
         <Skeleton active paragraph={{ rows: 4 }} />
       ) : null}
 
-      {error ? (
+      {error && !activePair ? (
         <Alert
           showIcon
           message={t('schoolPortal.connection.unavailable')}
@@ -454,11 +561,21 @@ export const AskCoreSchoolPortalRoute = memo(() => {
           <iframe
             className={styles.frame}
             key={sourceFrameKey}
-            src={destination.launch_url}
+            src={frameLaunch?.url}
             title={`${schoolName} ${surfaceTitle}`}
             onLoad={(event) => {
               const status = sourceFrameStatus(event.currentTarget, destinationKey);
               if (status !== 'loading') {
+                if (status === 'ready') {
+                  visibleFrameConfirmed.current = true;
+                  if (sessionGeneration && trustedPortal && trustedSourceSession) {
+                    setConfirmedPair({
+                      generation: sessionGeneration,
+                      portal: trustedPortal,
+                      sourceSession: trustedSourceSession,
+                    });
+                  }
+                }
                 setSourceFrameLifecycle((current) =>
                   current.key === sourceFrameKey ? { ...current, status } : current,
                 );

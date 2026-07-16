@@ -14,7 +14,7 @@ import {
   schoolPortalBootstrapExpiresAt,
   schoolPortalManifestCacheKey,
   schoolPortalManifestScope,
-  schoolSessionGeneration,
+  stableSchoolSessionGeneration,
   schoolSourceSessionCacheKey,
   sourceSessionReady,
 } from '@/business/client/AskCoreSchoolPortal/api';
@@ -26,8 +26,15 @@ type WarmupStage = 'complete' | 'gibbon' | 'moodle' | 'stopped' | null;
 
 const SchoolSessionWarmup = () => {
   const { pathname } = useLocation();
-  const { data: accountSession, isPending: accountSessionPending } = useSession();
-  const sessionGeneration = schoolSessionGeneration(accountSession);
+  const {
+    data: accountSession,
+    isPending: accountSessionPending,
+    isRefetching: accountSessionRefetching,
+  } = useSession();
+  const sessionGeneration = stableSchoolSessionGeneration(accountSession, {
+    isPending: accountSessionPending,
+    isRefetching: accountSessionRefetching,
+  });
   const schoolRouteActive = pathname === '/school' || pathname.startsWith('/school/');
   const identityLinkPending =
     typeof window !== 'undefined' &&
@@ -143,7 +150,9 @@ const SchoolSessionWarmup = () => {
       });
       return;
     }
-    if (roleError && gibbonWarmup) setStage((current) => current ?? 'gibbon');
+    if ((roleError || liveRole?.authenticated === false) && gibbonWarmup) {
+      setStage((current) => current ?? 'gibbon');
+    }
   }, [enabled, gibbonWarmup, trustedLiveRole, moodleWarmup, recoveryPortal?.state, roleError]);
 
   useEffect(() => {
@@ -193,7 +202,9 @@ const SchoolSessionWarmup = () => {
           })
           .catch(() => {})
           .finally(() => {
-            gibbonProbeInFlight.current = false;
+            if (activeFlowKey.current === expectedFlowKey) {
+              gibbonProbeInFlight.current = false;
+            }
           });
       }}
     />

@@ -5,7 +5,7 @@ import {
   SchoolIcon,
   SearchIcon,
 } from 'lucide-react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 import useSWR from 'swr';
@@ -14,11 +14,16 @@ import {
   fetchSchoolPortalManifestForGeneration,
   fetchSchoolSourceSessionForGeneration,
   readSchoolPortalBootstrapSnapshot,
+  schoolPortalAuthorizationDenied,
   schoolPortalManifestCacheKey,
   schoolPortalManifestScope,
-  schoolSessionGeneration,
+  stableSchoolSessionGeneration,
   schoolSourceSessionCacheKey,
 } from '@/business/client/AskCoreSchoolPortal/api';
+import type {
+  SchoolPortalManifest,
+  SchoolSourceSession,
+} from '@/business/client/AskCoreSchoolPortal/types';
 import { getRouteById } from '@/config/routes';
 import { useSession } from '@/libs/better-auth/auth-client';
 import { useGlobalStore } from '@/store/global';
@@ -55,8 +60,15 @@ export const useNavLayout = (): NavLayout => {
   const { pathname } = useLocation();
   const toggleCommandMenu = useGlobalStore((s) => s.toggleCommandMenu);
   const { showMarket, hideGitHub } = useServerConfigStore(featureFlagsSelectors);
-  const { data: accountSession } = useSession();
-  const sessionGeneration = schoolSessionGeneration(accountSession);
+  const {
+    data: accountSession,
+    isPending: accountSessionPending,
+    isRefetching: accountSessionRefetching,
+  } = useSession();
+  const sessionGeneration = stableSchoolSessionGeneration(accountSession, {
+    isPending: accountSessionPending,
+    isRefetching: accountSessionRefetching,
+  });
   const portalScope = schoolPortalManifestScope(pathname);
   const bootstrapSnapshot = sessionGeneration
     ? readSchoolPortalBootstrapSnapshot(sessionGeneration)
@@ -92,18 +104,81 @@ export const useNavLayout = (): NavLayout => {
   const exactBootstrapPair =
     bootstrapSnapshot?.portal === liveSchoolPortal &&
     bootstrapSnapshot?.sourceSession === liveSchoolSession;
-  const pairTrusted =
+  const livePairConfirmed =
     !schoolPortalError &&
     !schoolSessionError &&
-    ((!schoolPortalValidating && !schoolSessionValidating) || exactBootstrapPair);
-  const schoolPortal = pairTrusted ? liveSchoolPortal : undefined;
-  const schoolSession = pairTrusted ? liveSchoolSession : undefined;
+    !schoolPortalValidating &&
+    !schoolSessionValidating &&
+    liveSchoolPortal?.state === 'ready' &&
+    liveSchoolSession?.authenticated === true;
+  const bootstrapPairTrusted =
+    !schoolPortalError &&
+    !schoolSessionError &&
+    exactBootstrapPair &&
+    liveSchoolPortal?.state === 'ready' &&
+    liveSchoolSession?.authenticated === true;
+  const authorizationDenied =
+    schoolPortalAuthorizationDenied(schoolPortalError) ||
+    schoolPortalAuthorizationDenied(schoolSessionError);
+  const sourceSessionUnauthenticated =
+    !schoolSessionError &&
+    !schoolSessionValidating &&
+    !!liveSchoolSession &&
+    liveSchoolSession.authenticated !== true;
+  const authorizationLost = authorizationDenied || sourceSessionUnauthenticated;
+  const [confirmedPair, setConfirmedPair] = useState<{
+    generation: string;
+    portal: SchoolPortalManifest;
+    sourceSession: SchoolSourceSession;
+  }>();
+
+  useEffect(() => {
+    if (!sessionGeneration || authorizationLost) {
+      setConfirmedPair(undefined);
+      return;
+    }
+    if (liveSchoolPortal && liveSchoolSession && livePairConfirmed) {
+      setConfirmedPair({
+        generation: sessionGeneration,
+        portal: liveSchoolPortal,
+        sourceSession: liveSchoolSession,
+      });
+      return;
+    }
+    if (
+      !schoolPortalError &&
+      !schoolPortalValidating &&
+      liveSchoolPortal &&
+      liveSchoolPortal.state !== 'ready'
+    ) {
+      setConfirmedPair(undefined);
+    }
+  }, [
+    authorizationLost,
+    livePairConfirmed,
+    liveSchoolPortal,
+    liveSchoolSession,
+    schoolPortalError,
+    schoolPortalValidating,
+    sessionGeneration,
+  ]);
+
+  const activePair = livePairConfirmed
+    ? { portal: liveSchoolPortal, sourceSession: liveSchoolSession }
+    : bootstrapPairTrusted
+      ? { portal: liveSchoolPortal, sourceSession: liveSchoolSession }
+      : confirmedPair?.generation === sessionGeneration && !authorizationLost
+        ? confirmedPair
+        : undefined;
+  const schoolPortal = activePair?.portal;
+  const schoolSession = activePair?.sourceSession;
   const sharedSchool = schoolPortal?.state === 'ready' ? schoolPortal.schools[0] : undefined;
   const hasTeachingDestination = sharedSchool?.destinations.some(
     (destination) => destination.key === 'teaching',
   );
-  const isEducator = schoolSession?.role === 'teacher' || schoolSession?.role === 'administrator';
-  const isLearner = schoolSession?.role === 'student';
+  const sourceRole = schoolSession?.authenticated ? schoolSession.role : undefined;
+  const isEducator = sourceRole === 'teacher' || sourceRole === 'administrator';
+  const isLearner = sourceRole === 'student';
 
   const topNavItems = useMemo(
     () =>

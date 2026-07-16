@@ -34,14 +34,19 @@ const swrState = vi.hoisted(() => ({
   portalAvailable: true,
   portalValidating: false,
   role: undefined as 'administrator' | 'student' | 'teacher' | undefined,
+  roleAuthenticated: true,
   roleError: false,
+  roleErrorStatus: undefined as number | undefined,
   roleValidating: false,
   schoolState: 'ready' as 'ready' | 'unavailable',
+  sessionPending: false,
+  sessionRefetching: false,
 }));
 const rolePayloads = vi.hoisted(() => ({
   administrator: { authenticated: true as const, role: 'administrator' as const },
   student: { authenticated: true as const, role: 'student' as const },
   teacher: { authenticated: true as const, role: 'teacher' as const },
+  unauthenticated: { authenticated: false as const },
 }));
 const portalPayloads = vi.hoisted(() => ({
   ready: {
@@ -75,6 +80,8 @@ vi.mock('@/libs/better-auth/auth-client', () => ({
       session: { id: swrState.accountSessionId },
       user: { id: swrState.accountUserId },
     },
+    isPending: swrState.sessionPending,
+    isRefetching: swrState.sessionRefetching,
   }),
 }));
 
@@ -101,9 +108,17 @@ vi.mock('swr', () => ({
     }
     if (Array.isArray(key) && key[0] === '/school/services/askcore/session.php') {
       requestedRoleKeys.push(key);
+      const roleError = swrState.roleError ? new Error('role unavailable') : undefined;
+      if (roleError && swrState.roleErrorStatus) {
+        Object.assign(roleError, { status: swrState.roleErrorStatus });
+      }
       return {
-        data: swrState.role ? rolePayloads[swrState.role] : undefined,
-        error: swrState.roleError ? new Error('role unavailable') : undefined,
+        data: swrState.role
+          ? swrState.roleAuthenticated
+            ? rolePayloads[swrState.role]
+            : rolePayloads.unauthenticated
+          : undefined,
+        error: roleError,
         isValidating: swrState.roleValidating,
       };
     }
@@ -121,8 +136,12 @@ beforeEach(() => {
   swrState.portalAvailable = true;
   swrState.portalValidating = false;
   swrState.schoolState = 'ready';
+  swrState.sessionPending = false;
+  swrState.sessionRefetching = false;
   swrState.role = undefined;
+  swrState.roleAuthenticated = true;
   swrState.roleError = false;
+  swrState.roleErrorStatus = undefined;
   swrState.roleValidating = false;
 });
 
@@ -244,15 +263,73 @@ describe('useNavLayout source-role school navigation', () => {
     expect(items.map((item) => item.title)).not.toContain('教学中心');
   });
 
+  it('keeps a previously live-confirmed role during same-generation source revalidation', () => {
+    swrState.role = 'student';
+    const view = renderHook(() => useNavLayout(), { wrapper: Router });
+    expect(view.result.current.topNavItems.find((item) => item.title === '学习空间')?.hidden).toBe(
+      false,
+    );
+
+    swrState.roleValidating = true;
+    view.rerender();
+
+    expect(view.result.current.topNavItems.find((item) => item.title === '学习空间')?.hidden).toBe(
+      false,
+    );
+  });
+
+  it('keeps a previously live-confirmed role during a transient same-generation source error', () => {
+    swrState.role = 'student';
+    const view = renderHook(() => useNavLayout(), { wrapper: Router });
+
+    swrState.roleError = true;
+    view.rerender();
+
+    expect(view.result.current.topNavItems.find((item) => item.title === '学习空间')?.hidden).toBe(
+      false,
+    );
+  });
+
+  it('keeps a confirmed role while Better Auth refetches the same account session', () => {
+    swrState.role = 'student';
+    const view = renderHook(() => useNavLayout(), { wrapper: Router });
+    expect(view.result.current.topNavItems.find((item) => item.title === '学习空间')?.hidden).toBe(
+      false,
+    );
+
+    swrState.sessionRefetching = true;
+    view.rerender();
+
+    expect(view.result.current.topNavItems.find((item) => item.title === '学习空间')?.hidden).toBe(
+      false,
+    );
+  });
+
   it('hides a stale positive role when its live validation fails', () => {
     swrState.role = 'student';
     swrState.roleError = true;
+    swrState.roleErrorStatus = 401;
 
     const items = visibleItems();
 
     expect(items.map((item) => item.title)).toContain('学校');
     expect(items.map((item) => item.title)).not.toContain('学习空间');
     expect(items.map((item) => item.title)).not.toContain('教学中心');
+  });
+
+  it('clears a confirmed role when the source explicitly becomes unauthenticated', () => {
+    swrState.role = 'student';
+    const view = renderHook(() => useNavLayout(), { wrapper: Router });
+    expect(view.result.current.topNavItems.find((item) => item.title === '学习空间')?.hidden).toBe(
+      false,
+    );
+
+    swrState.roleAuthenticated = false;
+    view.rerender();
+
+    expect(view.result.current.topNavItems.find((item) => item.title === '学习空间')?.hidden).toBe(
+      true,
+    );
   });
 
   it.each(['teacher', 'administrator'] as const)(
