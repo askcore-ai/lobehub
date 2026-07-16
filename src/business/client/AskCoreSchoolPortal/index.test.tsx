@@ -1,12 +1,21 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { SWRConfig, unstable_serialize } from 'swr';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { SCHOOL_PORTAL_API } from './api';
+import {
+  fetchSchoolPortalManifestForGeneration,
+  fetchSchoolSourceSessionForGeneration,
+  invalidateSchoolPortalBootstrap,
+  primeSchoolPortalBootstrap,
+  SCHOOL_PORTAL_API,
+} from './api';
 import { AskCoreSchoolPortalRoute } from './index';
 
-const authState = vi.hoisted(() => ({ sessionId: 'session-1', userId: 'user-1' }));
+const authState = vi.hoisted(() => ({
+  sessionId: 'session-1' as string | undefined,
+  userId: 'user-1' as string | undefined,
+}));
 
 const commonTranslations = vi.hoisted<Record<string, string>>(() => ({
   'retry': '重试',
@@ -77,14 +86,129 @@ const markFrameReady = async (frame: HTMLElement) => {
   });
 };
 
+beforeEach(() => invalidateSchoolPortalBootstrap());
+
 afterEach(() => {
   authState.sessionId = 'session-1';
   authState.userId = 'user-1';
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  invalidateSchoolPortalBootstrap();
+});
+
+describe('school portal bootstrap', () => {
+  it('starts account, portal, and source-role probes together and binds them to one session', async () => {
+    const portal = readyPortal();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/auth/get-session')) {
+        return Response.json({ session: { id: 'session-1' }, user: { id: 'user-1' } });
+      }
+      if (url.includes('/askcore/session.php')) {
+        return Response.json({ authenticated: true, role: 'student' });
+      }
+      return Response.json(portal);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const bootstrap = primeSchoolPortalBootstrap();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await bootstrap;
+
+    await expect(fetchSchoolPortalManifestForGeneration('user-1:session-1')).resolves.toEqual(
+      portal,
+    );
+    await expect(
+      fetchSchoolSourceSessionForGeneration(
+        '/school/services/askcore/session.php',
+        'user-1:session-1',
+      ),
+    ).resolves.toEqual({ authenticated: true, role: 'student' });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('discards prefetched source data when the Better Auth generation differs', async () => {
+    let portalRequests = 0;
+    let sourceRequests = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/auth/get-session')) {
+        return Response.json({ session: { id: 'session-a' }, user: { id: 'user-a' } });
+      }
+      if (url.includes('/askcore/session.php')) {
+        sourceRequests += 1;
+        return Response.json({
+          authenticated: true,
+          role: sourceRequests === 1 ? 'student' : 'teacher',
+        });
+      }
+      portalRequests += 1;
+      const response = readyPortal();
+      response.schools[0].name = portalRequests === 1 ? 'Account A' : 'Account B';
+      return Response.json(response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await primeSchoolPortalBootstrap();
+    await expect(fetchSchoolPortalManifestForGeneration('user-b:session-b')).resolves.toMatchObject(
+      {
+        schools: [{ name: 'Account B' }],
+      },
+    );
+    await expect(
+      fetchSchoolSourceSessionForGeneration(
+        '/school/services/askcore/session.php',
+        'user-b:session-b',
+      ),
+    ).resolves.toEqual({ authenticated: true, role: 'teacher' });
+    expect(portalRequests).toBe(2);
+    expect(sourceRequests).toBe(2);
+  });
 });
 
 describe('AskCoreSchoolPortalRoute', () => {
+  it('adopts the first authenticated generation without repeating portal and role reads', async () => {
+    authState.sessionId = undefined;
+    authState.userId = undefined;
+    let portalRequests = 0;
+    let sourceRequests = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).includes('/askcore/session.php')) {
+          sourceRequests += 1;
+          return Response.json({ authenticated: true, role: 'student' });
+        }
+        portalRequests += 1;
+        return Response.json(readyPortal());
+      }),
+    );
+    const view = render(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <MemoryRouter initialEntries={['/school']}>
+          <AskCoreSchoolPortalRoute />
+        </MemoryRouter>
+      </SWRConfig>,
+    );
+
+    authState.sessionId = 'session-1';
+    authState.userId = 'user-1';
+    view.rerender(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <MemoryRouter initialEntries={['/school']}>
+          <AskCoreSchoolPortalRoute />
+        </MemoryRouter>
+      </SWRConfig>,
+    );
+
+    expect(await screen.findByTitle('AskCore 在线学校 学校')).toHaveAttribute(
+      'src',
+      'about:blank#services-launch',
+    );
+    expect(portalRequests).toBe(1);
+    expect(sourceRequests).toBe(1);
+  });
+
   it.each([
     {
       destinationIndex: 1,

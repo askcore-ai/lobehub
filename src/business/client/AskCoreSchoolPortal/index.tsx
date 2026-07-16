@@ -12,10 +12,10 @@ import useSWR from 'swr';
 import { useSession } from '@/libs/better-auth/auth-client';
 
 import {
-  fetchSchoolPortalManifest,
-  fetchSchoolSourceSession,
+  fetchSchoolPortalManifestForGeneration,
+  fetchSchoolSourceSessionForGeneration,
   gibbonSessionProbeReady,
-  SCHOOL_PORTAL_API,
+  schoolPortalManifestCacheKey,
   schoolSessionGeneration,
   schoolSourceSessionCacheKey,
 } from './api';
@@ -142,12 +142,10 @@ export const AskCoreSchoolPortalRoute = memo(() => {
   const isTeachingSurface =
     pathname === '/school/teaching-center' || pathname === '/school/learning-space';
   const destinationKey = isTeachingSurface ? 'teaching' : 'school-services';
-  const portalCacheKey = sessionGeneration
-    ? ([SCHOOL_PORTAL_API, sessionGeneration, destinationKey] as const)
-    : null;
+  const portalCacheKey = schoolPortalManifestCacheKey(sessionGeneration, destinationKey);
   const { data, error, isLoading, isValidating, mutate } = useSWR(
     portalCacheKey,
-    fetchSchoolPortalManifest,
+    ([, generation]) => fetchSchoolPortalManifestForGeneration(generation),
     {
       revalidateOnFocus: false,
       revalidateOnMount: true,
@@ -160,10 +158,14 @@ export const AskCoreSchoolPortalRoute = memo(() => {
     isLoading: sourceSessionLoading,
     isValidating: sourceSessionValidating,
     mutate: mutateSourceSession,
-  } = useSWR(roleSourceKey, ([url]) => fetchSchoolSourceSession(url), {
-    revalidateOnFocus: true,
-    shouldRetryOnError: false,
-  });
+  } = useSWR(
+    roleSourceKey,
+    ([url, generation]) => fetchSchoolSourceSessionForGeneration(url, generation),
+    {
+      revalidateOnFocus: true,
+      shouldRetryOnError: false,
+    },
+  );
   const sharedSchool = data?.state === 'ready' ? data.schools[0] : undefined;
   const destination = sharedSchool?.destinations.find((item) => item.key === destinationKey);
   const gibbonWarmup = sharedSchool?.destinations.find((item) => item.key === 'school-services');
@@ -223,6 +225,10 @@ export const AskCoreSchoolPortalRoute = memo(() => {
 
   useEffect(() => {
     if (trustedGeneration === sessionGeneration) return;
+    if (!trustedGeneration && sessionGeneration) {
+      setTrustedGeneration(sessionGeneration);
+      return;
+    }
     void refreshLifecycle();
   }, [refreshLifecycle, sessionGeneration, trustedGeneration]);
 

@@ -5,14 +5,17 @@ import {
   SchoolIcon,
   SearchIcon,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router-dom';
 import useSWR from 'swr';
 
 import {
-  fetchSchoolPortalManifest,
-  fetchSchoolSourceSession,
-  SCHOOL_PORTAL_API,
+  fetchSchoolPortalManifestForGeneration,
+  fetchSchoolSourceSessionForGeneration,
+  primeSchoolPortalBootstrap,
+  schoolPortalManifestCacheKey,
+  schoolPortalManifestScope,
   schoolSessionGeneration,
   schoolSourceSessionCacheKey,
 } from '@/business/client/AskCoreSchoolPortal/api';
@@ -48,26 +51,20 @@ export interface NavLayout {
 }
 
 export const useNavLayout = (): NavLayout => {
+  useEffect(() => {
+    void primeSchoolPortalBootstrap();
+  }, []);
   const { t } = useTranslation('common');
+  const { pathname } = useLocation();
   const toggleCommandMenu = useGlobalStore((s) => s.toggleCommandMenu);
   const { showMarket, hideGitHub } = useServerConfigStore(featureFlagsSelectors);
   const { data: accountSession } = useSession();
   const sessionGeneration = schoolSessionGeneration(accountSession);
-  const [schoolLifecycleEpoch, setSchoolLifecycleEpoch] = useState(0);
-
-  useEffect(() => {
-    const onPageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) setSchoolLifecycleEpoch((current) => current + 1);
-    };
-    window.addEventListener('pageshow', onPageShow);
-    return () => window.removeEventListener('pageshow', onPageShow);
-  }, []);
+  const portalScope = schoolPortalManifestScope(pathname);
 
   const { data: schoolPortal } = useSWR(
-    sessionGeneration
-      ? ([SCHOOL_PORTAL_API, sessionGeneration, schoolLifecycleEpoch] as const)
-      : null,
-    () => fetchSchoolPortalManifest(),
+    schoolPortalManifestCacheKey(sessionGeneration, portalScope),
+    ([, generation]) => fetchSchoolPortalManifestForGeneration(generation),
     {
       revalidateOnFocus: false,
       shouldRetryOnError: false,
@@ -80,7 +77,7 @@ export const useNavLayout = (): NavLayout => {
     isValidating: schoolSessionValidating,
   } = useSWR(
     schoolSourceSessionCacheKey(sessionGeneration),
-    ([url]) => fetchSchoolSourceSession(url),
+    ([url, generation]) => fetchSchoolSourceSessionForGeneration(url, generation),
     {
       refreshInterval: 30_000,
       revalidateOnFocus: true,

@@ -5,10 +5,11 @@ import { useLocation } from 'react-router-dom';
 import useSWR from 'swr';
 
 import {
-  fetchSchoolPortalManifest,
-  fetchSchoolSourceSession,
+  fetchSchoolPortalManifestForGeneration,
+  fetchSchoolSourceSessionForGeneration,
   gibbonSessionProbeReady,
-  SCHOOL_PORTAL_API,
+  schoolPortalManifestCacheKey,
+  schoolPortalManifestScope,
   schoolSessionGeneration,
   schoolSourceSessionCacheKey,
   sourceSessionReady,
@@ -30,17 +31,15 @@ const SchoolSessionWarmup = () => {
   const enabled = !!sessionGeneration && !identityLinkPending && !schoolRouteActive;
   const [schoolLifecycleEpoch, setSchoolLifecycleEpoch] = useState(0);
 
-  useEffect(() => {
-    const onPageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) setSchoolLifecycleEpoch((current) => current + 1);
-    };
-    window.addEventListener('pageshow', onPageShow);
-    return () => window.removeEventListener('pageshow', onPageShow);
-  }, []);
-
-  const { data: portal, isValidating: portalIsValidating } = useSWR(
-    enabled ? ([SCHOOL_PORTAL_API, sessionGeneration, schoolLifecycleEpoch] as const) : null,
-    fetchSchoolPortalManifest,
+  const {
+    data: portal,
+    isValidating: portalIsValidating,
+    mutate: mutatePortal,
+  } = useSWR(
+    enabled
+      ? schoolPortalManifestCacheKey(sessionGeneration, schoolPortalManifestScope(pathname))
+      : null,
+    ([, generation]) => fetchSchoolPortalManifestForGeneration(generation),
     { revalidateOnFocus: false, shouldRetryOnError: false },
   );
   const roleKey = enabled ? schoolSourceSessionCacheKey(sessionGeneration) : null;
@@ -49,15 +48,24 @@ const SchoolSessionWarmup = () => {
     error: roleError,
     isValidating: roleIsValidating,
     mutate: mutateRole,
-  } = useSWR(roleKey, ([url]) => fetchSchoolSourceSession(url), {
-    revalidateOnFocus: true,
-    shouldRetryOnError: false,
-  });
+  } = useSWR(
+    roleKey,
+    ([url, generation]) => fetchSchoolSourceSessionForGeneration(url, generation),
+    {
+      revalidateOnFocus: true,
+      shouldRetryOnError: false,
+    },
+  );
 
   useEffect(() => {
-    if (!enabled || schoolLifecycleEpoch === 0) return;
-    void mutateRole().catch(() => {});
-  }, [enabled, mutateRole, schoolLifecycleEpoch]);
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted || !enabled) return;
+      setSchoolLifecycleEpoch((current) => current + 1);
+      void Promise.allSettled([mutatePortal(), mutateRole()]);
+    };
+    window.addEventListener('pageshow', onPageShow);
+    return () => window.removeEventListener('pageshow', onPageShow);
+  }, [enabled, mutatePortal, mutateRole]);
   const trustedLiveRole = !roleError && !roleIsValidating ? liveRole : undefined;
   const destinations = useMemo(
     () => (portal?.state === 'ready' ? (portal.schools[0]?.destinations ?? []) : []),

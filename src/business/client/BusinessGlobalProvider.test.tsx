@@ -176,7 +176,12 @@ describe('BusinessGlobalProvider', () => {
     expect(
       requestedKeys.filter(([url]) => url === '/school/services/askcore/session.php'),
     ).not.toContainEqual(['/school/services/askcore/session.php', 'user-1:session-1', 1]);
-    expect(requestedKeys).toContainEqual(['/api/askcore/school/portal', 'user-1:session-1', 1]);
+    expect(requestedKeys).toContainEqual([
+      '/api/askcore/school/portal',
+      'user-1:session-1',
+      'navigation',
+    ]);
+    expect(requestedKeys).not.toContainEqual(['/api/askcore/school/portal', 'user-1:session-1', 1]);
     expect(mutateRole).toHaveBeenCalledTimes(1);
   });
 

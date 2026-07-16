@@ -1,4 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
+import { createElement, type PropsWithChildren } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useNavLayout } from './useNavLayout';
@@ -35,6 +37,13 @@ const swrState = vi.hoisted(() => ({
 }));
 
 const requestedRoleKeys = vi.hoisted(() => [] as unknown[]);
+const requestedPortalKeys = vi.hoisted(() => [] as unknown[]);
+const primeSchoolPortalBootstrap = vi.hoisted(() => vi.fn());
+
+vi.mock('@/business/client/AskCoreSchoolPortal/api', async (importOriginal) => ({
+  ...(await importOriginal()),
+  primeSchoolPortalBootstrap,
+}));
 
 vi.mock('@/libs/better-auth/auth-client', () => ({
   useSession: () => ({
@@ -48,6 +57,7 @@ vi.mock('@/libs/better-auth/auth-client', () => ({
 vi.mock('swr', () => ({
   default: (key: readonly string[] | string | null) => {
     if (Array.isArray(key) && key[0] === '/api/askcore/school/portal') {
+      requestedPortalKeys.push(key);
       if (!swrState.portalAvailable) return { data: undefined, error: new Error('unavailable') };
       return {
         data: {
@@ -84,6 +94,8 @@ vi.mock('swr', () => ({
 
 beforeEach(() => {
   requestedRoleKeys.length = 0;
+  requestedPortalKeys.length = 0;
+  primeSchoolPortalBootstrap.mockReset();
   swrState.accountUserId = 'user-1';
   swrState.accountSessionId = 'session-1';
   swrState.portalAvailable = true;
@@ -96,11 +108,27 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 const visibleItems = () => {
-  const { result } = renderHook(() => useNavLayout());
+  const { result } = renderHook(() => useNavLayout(), { wrapper: Router });
   return result.current.topNavItems.filter((item) => !item.hidden);
 };
 
+const Router = ({ children }: PropsWithChildren) => createElement(MemoryRouter, null, children);
+
+const SchoolRouter = ({ children }: PropsWithChildren) =>
+  createElement(MemoryRouter, { initialEntries: ['/school'] }, children);
+
 describe('useNavLayout source-role school navigation', () => {
+  it('primes school data and shares the visible school portal cache scope', () => {
+    renderHook(() => useNavLayout(), { wrapper: SchoolRouter });
+
+    expect(primeSchoolPortalBootstrap).toHaveBeenCalled();
+    expect(requestedPortalKeys).toContainEqual([
+      '/api/askcore/school/portal',
+      'user-1:session-1',
+      'school-services',
+    ]);
+  });
+
   it('keeps school visible while the portal request is unavailable', () => {
     swrState.portalAvailable = false;
     swrState.role = undefined;
@@ -139,7 +167,7 @@ describe('useNavLayout source-role school navigation', () => {
 
   it('keeps the account-session role cache key stable after a BFCache restore', () => {
     swrState.role = 'student';
-    const { result } = renderHook(() => useNavLayout());
+    const { result } = renderHook(() => useNavLayout(), { wrapper: Router });
 
     expect(result.current.topNavItems.find((item) => item.title === '学习空间')?.hidden).toBe(
       false,
@@ -149,7 +177,6 @@ describe('useNavLayout source-role school navigation', () => {
     Object.defineProperty(pageshow, 'persisted', { value: true });
     act(() => window.dispatchEvent(pageshow));
 
-    expect(requestedRoleKeys.length).toBeGreaterThanOrEqual(2);
     expect(requestedRoleKeys).not.toContainEqual([
       '/school/services/askcore/session.php',
       'user-1:session-1',
