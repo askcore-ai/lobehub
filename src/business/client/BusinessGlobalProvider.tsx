@@ -9,8 +9,8 @@ import {
   fetchSchoolSourceSession,
   gibbonSessionProbeReady,
   SCHOOL_PORTAL_API,
-  SCHOOL_ROLE_SOURCE_URL,
   schoolSessionGeneration,
+  schoolSourceSessionCacheKey,
   sourceSessionReady,
 } from '@/business/client/AskCoreSchoolPortal/api';
 import { useSession } from '@/libs/better-auth/auth-client';
@@ -43,9 +43,7 @@ const SchoolSessionWarmup = () => {
     fetchSchoolPortalManifest,
     { revalidateOnFocus: false, shouldRetryOnError: false },
   );
-  const roleKey = enabled
-    ? ([SCHOOL_ROLE_SOURCE_URL, sessionGeneration, schoolLifecycleEpoch] as const)
-    : null;
+  const roleKey = enabled ? schoolSourceSessionCacheKey(sessionGeneration) : null;
   const {
     data: liveRole,
     error: roleError,
@@ -55,6 +53,11 @@ const SchoolSessionWarmup = () => {
     revalidateOnFocus: true,
     shouldRetryOnError: false,
   });
+
+  useEffect(() => {
+    if (!enabled || schoolLifecycleEpoch === 0) return;
+    void mutateRole().catch(() => {});
+  }, [enabled, mutateRole, schoolLifecycleEpoch]);
   const trustedLiveRole = !roleError && !roleIsValidating ? liveRole : undefined;
   const destinations = useMemo(
     () => (portal?.state === 'ready' ? (portal.schools[0]?.destinations ?? []) : []),

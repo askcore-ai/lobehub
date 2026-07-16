@@ -13,8 +13,8 @@ import {
   fetchSchoolPortalManifest,
   fetchSchoolSourceSession,
   SCHOOL_PORTAL_API,
-  SCHOOL_ROLE_SOURCE_URL,
   schoolSessionGeneration,
+  schoolSourceSessionCacheKey,
 } from '@/business/client/AskCoreSchoolPortal/api';
 import { getRouteById } from '@/config/routes';
 import { useSession } from '@/libs/better-auth/auth-client';
@@ -79,9 +79,7 @@ export const useNavLayout = (): NavLayout => {
     error: schoolSessionError,
     isValidating: schoolSessionValidating,
   } = useSWR(
-    sessionGeneration
-      ? ([SCHOOL_ROLE_SOURCE_URL, sessionGeneration, schoolLifecycleEpoch] as const)
-      : null,
+    schoolSourceSessionCacheKey(sessionGeneration),
     ([url]) => fetchSchoolSourceSession(url),
     {
       refreshInterval: 30_000,

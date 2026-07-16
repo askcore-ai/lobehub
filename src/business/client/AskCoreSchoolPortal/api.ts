@@ -20,6 +20,9 @@ export const schoolSessionGeneration = (session?: BetterAuthSchoolSession | null
   return userId && sessionId ? `${userId}:${sessionId}` : undefined;
 };
 
+export const schoolSourceSessionCacheKey = (sessionGeneration?: string) =>
+  sessionGeneration ? ([SCHOOL_ROLE_SOURCE_URL, sessionGeneration] as const) : null;
+
 export const sourceSessionReady = (frame: HTMLIFrameElement) => {
   try {
     return !!frame.contentDocument?.querySelector('meta[name="askcore-session"][content="ready"]');

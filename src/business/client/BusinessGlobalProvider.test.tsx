@@ -134,7 +134,6 @@ describe('BusinessGlobalProvider', () => {
     expect(requestedKeys).toContainEqual([
       '/school/services/askcore/session.php',
       'user-1:session-1',
-      0,
     ]);
 
     markSessionReady(frames[0]!);
@@ -160,19 +159,25 @@ describe('BusinessGlobalProvider', () => {
     expect(isGibbonSessionProbeSurface('/school/services/askcore/warmup.php', true)).toBe(true);
   });
 
-  it('moves the shared source-session cache generation after a BFCache restore', () => {
+  it('revalidates the stable account-session role cache after a BFCache restore', async () => {
     renderProvider();
 
     const pageshow = new Event('pageshow') as PageTransitionEvent;
     Object.defineProperty(pageshow, 'persisted', { value: true });
-    act(() => window.dispatchEvent(pageshow));
+    await act(async () => {
+      window.dispatchEvent(pageshow);
+      await Promise.resolve();
+    });
 
     expect(requestedKeys).toContainEqual([
       '/school/services/askcore/session.php',
       'user-1:session-1',
-      1,
     ]);
+    expect(
+      requestedKeys.filter(([url]) => url === '/school/services/askcore/session.php'),
+    ).not.toContainEqual(['/school/services/askcore/session.php', 'user-1:session-1', 1]);
     expect(requestedKeys).toContainEqual(['/api/askcore/school/portal', 'user-1:session-1', 1]);
+    expect(mutateRole).toHaveBeenCalledTimes(1);
   });
 
   it('continues after Gibbon establishes a source role on its native dashboard', async () => {

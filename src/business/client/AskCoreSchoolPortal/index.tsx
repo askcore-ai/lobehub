@@ -16,8 +16,8 @@ import {
   fetchSchoolSourceSession,
   gibbonSessionProbeReady,
   SCHOOL_PORTAL_API,
-  SCHOOL_ROLE_SOURCE_URL,
   schoolSessionGeneration,
+  schoolSourceSessionCacheKey,
 } from './api';
 
 const ROLE_RECOVERY_TIMEOUT_MS = 30_000;
@@ -153,9 +153,7 @@ export const AskCoreSchoolPortalRoute = memo(() => {
       revalidateOnMount: true,
     },
   );
-  const roleSourceKey = sessionGeneration
-    ? ([SCHOOL_ROLE_SOURCE_URL, sessionGeneration] as const)
-    : null;
+  const roleSourceKey = schoolSourceSessionCacheKey(sessionGeneration);
   const {
     data: liveSourceSession,
     error: sourceSessionError,
@@ -202,6 +200,7 @@ export const AskCoreSchoolPortalRoute = memo(() => {
     key: string;
     status: SourceFrameStatus;
   }>({ key: '', status: 'loading' });
+  const [visibleGibbonReadyKey, setVisibleGibbonReadyKey] = useState('');
   const activeGeneration = useRef(sessionGeneration);
   const roleProbeInFlight = useRef(false);
   const visibleRoleProbeKey = useRef('');
@@ -298,6 +297,25 @@ export const AskCoreSchoolPortalRoute = memo(() => {
     return () => window.clearTimeout(timer);
   }, [sourceFrameKey]);
 
+  useEffect(() => {
+    if (
+      destinationKey !== 'school-services' ||
+      visibleGibbonReadyKey !== sourceFrameKey ||
+      sourceSessionValidating ||
+      visibleRoleProbeKey.current === sourceFrameKey
+    ) {
+      return;
+    }
+    visibleRoleProbeKey.current = sourceFrameKey;
+    void mutateSourceSession().catch(() => {});
+  }, [
+    destinationKey,
+    mutateSourceSession,
+    sourceFrameKey,
+    sourceSessionValidating,
+    visibleGibbonReadyKey,
+  ]);
+
   return (
     <main className={styles.page}>
       <header className={styles.header}>
@@ -380,11 +398,9 @@ export const AskCoreSchoolPortalRoute = memo(() => {
               }
               if (
                 destinationKey === 'school-services' &&
-                gibbonSessionProbeReady(event.currentTarget) &&
-                visibleRoleProbeKey.current !== sourceFrameKey
+                gibbonSessionProbeReady(event.currentTarget)
               ) {
-                visibleRoleProbeKey.current = sourceFrameKey;
-                void mutateSourceSession().catch(() => {});
+                setVisibleGibbonReadyKey(sourceFrameKey);
               }
             }}
           />

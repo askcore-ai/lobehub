@@ -134,11 +134,10 @@ describe('useNavLayout source-role school navigation', () => {
     expect(requestedRoleKeys).toContainEqual([
       '/school/services/askcore/session.php',
       'user-1:session-1',
-      0,
     ]);
   });
 
-  it('invalidates portal and role cache generations after a BFCache restore', () => {
+  it('keeps the account-session role cache key stable after a BFCache restore', () => {
     swrState.role = 'student';
     const { result } = renderHook(() => useNavLayout());
 
@@ -150,11 +149,15 @@ describe('useNavLayout source-role school navigation', () => {
     Object.defineProperty(pageshow, 'persisted', { value: true });
     act(() => window.dispatchEvent(pageshow));
 
-    expect(requestedRoleKeys).toContainEqual([
+    expect(requestedRoleKeys.length).toBeGreaterThanOrEqual(2);
+    expect(requestedRoleKeys).not.toContainEqual([
       '/school/services/askcore/session.php',
       'user-1:session-1',
       1,
     ]);
+    expect(requestedRoleKeys).toEqual(
+      expect.arrayContaining([['/school/services/askcore/session.php', 'user-1:session-1']]),
+    );
   });
 
   it.each(['validating', 'failed'] as const)('hides a stale positive role while %s', (state) => {
