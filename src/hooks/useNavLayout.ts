@@ -5,7 +5,7 @@ import {
   SchoolIcon,
   SearchIcon,
 } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 import useSWR from 'swr';
@@ -13,7 +13,6 @@ import useSWR from 'swr';
 import {
   fetchSchoolPortalManifestForGeneration,
   fetchSchoolSourceSessionForGeneration,
-  primeSchoolPortalBootstrap,
   schoolPortalManifestCacheKey,
   schoolPortalManifestScope,
   schoolSessionGeneration,
@@ -51,9 +50,6 @@ export interface NavLayout {
 }
 
 export const useNavLayout = (): NavLayout => {
-  useEffect(() => {
-    void primeSchoolPortalBootstrap();
-  }, []);
   const { t } = useTranslation('common');
   const { pathname } = useLocation();
   const toggleCommandMenu = useGlobalStore((s) => s.toggleCommandMenu);

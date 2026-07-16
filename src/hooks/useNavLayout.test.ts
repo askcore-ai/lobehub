@@ -38,12 +38,6 @@ const swrState = vi.hoisted(() => ({
 
 const requestedRoleKeys = vi.hoisted(() => [] as unknown[]);
 const requestedPortalKeys = vi.hoisted(() => [] as unknown[]);
-const primeSchoolPortalBootstrap = vi.hoisted(() => vi.fn());
-
-vi.mock('@/business/client/AskCoreSchoolPortal/api', async (importOriginal) => ({
-  ...(await importOriginal()),
-  primeSchoolPortalBootstrap,
-}));
 
 vi.mock('@/libs/better-auth/auth-client', () => ({
   useSession: () => ({
@@ -95,7 +89,6 @@ vi.mock('swr', () => ({
 beforeEach(() => {
   requestedRoleKeys.length = 0;
   requestedPortalKeys.length = 0;
-  primeSchoolPortalBootstrap.mockReset();
   swrState.accountUserId = 'user-1';
   swrState.accountSessionId = 'session-1';
   swrState.portalAvailable = true;
@@ -118,10 +111,9 @@ const SchoolRouter = ({ children }: PropsWithChildren) =>
   createElement(MemoryRouter, { initialEntries: ['/school'] }, children);
 
 describe('useNavLayout source-role school navigation', () => {
-  it('primes school data and shares the visible school portal cache scope', () => {
+  it('shares the visible school portal cache scope', () => {
     renderHook(() => useNavLayout(), { wrapper: SchoolRouter });
 
-    expect(primeSchoolPortalBootstrap).toHaveBeenCalled();
     expect(requestedPortalKeys).toContainEqual([
       '/api/askcore/school/portal',
       'user-1:session-1',

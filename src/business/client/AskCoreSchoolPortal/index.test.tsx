@@ -7,7 +7,7 @@ import {
   fetchSchoolPortalManifestForGeneration,
   fetchSchoolSourceSessionForGeneration,
   invalidateSchoolPortalBootstrap,
-  primeSchoolPortalBootstrap,
+  recoverSchoolSourceSession,
   SCHOOL_PORTAL_API,
 } from './api';
 import { AskCoreSchoolPortalRoute } from './index';
@@ -97,13 +97,10 @@ afterEach(() => {
 });
 
 describe('school portal bootstrap', () => {
-  it('starts account, portal, and source-role probes together and binds them to one session', async () => {
+  it('starts one portal and source-role probe for the authenticated session generation', async () => {
     const portal = readyPortal();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes('/api/auth/get-session')) {
-        return Response.json({ session: { id: 'session-1' }, user: { id: 'user-1' } });
-      }
       if (url.includes('/askcore/session.php')) {
         return Response.json({ authenticated: true, role: 'student' });
       }
@@ -111,20 +108,16 @@ describe('school portal bootstrap', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const bootstrap = primeSchoolPortalBootstrap();
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    await bootstrap;
-
-    await expect(fetchSchoolPortalManifestForGeneration('user-1:session-1')).resolves.toEqual(
-      portal,
-    );
+    const bootstrap = fetchSchoolPortalManifestForGeneration('user-1:session-1');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await expect(bootstrap).resolves.toEqual(portal);
     await expect(
       fetchSchoolSourceSessionForGeneration(
         '/school/services/askcore/session.php',
         'user-1:session-1',
       ),
     ).resolves.toEqual({ authenticated: true, role: 'student' });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('discards prefetched source data when the Better Auth generation differs', async () => {
@@ -132,9 +125,6 @@ describe('school portal bootstrap', () => {
     let sourceRequests = 0;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes('/api/auth/get-session')) {
-        return Response.json({ session: { id: 'session-a' }, user: { id: 'user-a' } });
-      }
       if (url.includes('/askcore/session.php')) {
         sourceRequests += 1;
         return Response.json({
@@ -149,7 +139,7 @@ describe('school portal bootstrap', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    await primeSchoolPortalBootstrap();
+    await fetchSchoolPortalManifestForGeneration('user-a:session-a');
     await expect(fetchSchoolPortalManifestForGeneration('user-b:session-b')).resolves.toMatchObject(
       {
         schools: [{ name: 'Account B' }],
@@ -163,6 +153,69 @@ describe('school portal bootstrap', () => {
     ).resolves.toEqual({ authenticated: true, role: 'teacher' });
     expect(portalRequests).toBe(2);
     expect(sourceRequests).toBe(2);
+  });
+
+  it('shares unresolved bootstrap results across concurrent consumers', async () => {
+    let resolvePortal!: (response: Response) => void;
+    const portalResponse = new Promise<Response>((resolve) => {
+      resolvePortal = resolve;
+    });
+    const fetchMock = vi.fn((input: RequestInfo | URL) =>
+      String(input).includes('/askcore/session.php')
+        ? Promise.resolve(Response.json({ authenticated: true, role: 'student' }))
+        : portalResponse,
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = fetchSchoolPortalManifestForGeneration('user-1:session-1');
+    const second = fetchSchoolPortalManifestForGeneration('user-1:session-1');
+    resolvePortal(Response.json(readyPortal()));
+
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        String(input).includes('/api/askcore/school/portal'),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('does not hold the portal response behind a pending source-role probe', async () => {
+    let resolveSource!: (response: Response) => void;
+    const sourceResponse = new Promise<Response>((resolve) => {
+      resolveSource = resolve;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) =>
+        String(input).includes('/askcore/session.php')
+          ? sourceResponse
+          : Promise.resolve(Response.json(readyPortal())),
+      ),
+    );
+
+    await expect(fetchSchoolPortalManifestForGeneration('user-1:session-1')).resolves.toMatchObject(
+      { state: 'ready' },
+    );
+    resolveSource(Response.json({ authenticated: true, role: 'student' }));
+    await expect(
+      fetchSchoolSourceSessionForGeneration(
+        '/school/services/askcore/session.php',
+        'user-1:session-1',
+      ),
+    ).resolves.toMatchObject({ authenticated: true, role: 'student' });
+  });
+
+  it('retries a source-role probe after Gibbon finishes establishing its session', async () => {
+    const refresh = vi
+      .fn<() => Promise<{ authenticated: true; role: 'student' }>>()
+      .mockRejectedValueOnce(new Error('source session is still redirecting'))
+      .mockResolvedValue({ authenticated: true, role: 'student' });
+
+    await expect(recoverSchoolSourceSession(refresh, { retryDelayMs: 0 })).resolves.toMatchObject({
+      authenticated: true,
+      role: 'student',
+    });
+    expect(refresh).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -309,14 +362,41 @@ describe('AskCoreSchoolPortalRoute', () => {
 
     await markFrameReady(frame);
     expect(frame.closest('section')).not.toHaveAttribute('hidden');
-    await waitFor(() => expect(sourceRequestCount()).toBeGreaterThan(sourceRequestsBeforeLoad));
-    const sourceRequestsAfterReady = sourceRequestCount();
+    expect(sourceRequestCount()).toBe(sourceRequestsBeforeLoad);
 
     await act(async () => {
       fireEvent.load(frame);
       await Promise.resolve();
     });
-    expect(sourceRequestCount()).toBe(sourceRequestsAfterReady);
+    expect(sourceRequestCount()).toBe(sourceRequestsBeforeLoad);
+  });
+
+  it('recovers the visible Gibbon role only when its bootstrap probe failed', async () => {
+    let sourceAttempts = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).includes('/askcore/session.php')) {
+          sourceAttempts += 1;
+          if (sourceAttempts < 3) return new Response(null, { status: 503 });
+          return Response.json({ authenticated: true, role: 'teacher' });
+        }
+        return Response.json(readyPortal());
+      }),
+    );
+
+    render(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <MemoryRouter initialEntries={['/school']}>
+          <AskCoreSchoolPortalRoute />
+        </MemoryRouter>
+      </SWRConfig>,
+    );
+
+    const frame = await screen.findByTitle('AskCore 在线学校 学校');
+    expect(sourceAttempts).toBe(1);
+    await markFrameReady(frame);
+    await waitFor(() => expect(sourceAttempts).toBe(3), { timeout: 2000 });
   });
 
   it('renders the live-role Moodle surface directly for a student', async () => {

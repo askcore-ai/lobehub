@@ -8,6 +8,7 @@ import {
   fetchSchoolPortalManifestForGeneration,
   fetchSchoolSourceSessionForGeneration,
   gibbonSessionProbeReady,
+  recoverSchoolSourceSession,
   schoolPortalManifestCacheKey,
   schoolPortalManifestScope,
   schoolSessionGeneration,
@@ -85,6 +86,8 @@ const SchoolSessionWarmup = () => {
   const [stage, setStage] = useState<WarmupStage>(null);
   const gibbonProbeInFlight = useRef(false);
   const gibbonRoleConfirmedFor = useRef<string | null>(null);
+  const activeFlowKey = useRef(flowKey);
+  activeFlowKey.current = flowKey;
 
   useEffect(() => {
     gibbonProbeInFlight.current = false;
@@ -146,10 +149,13 @@ const SchoolSessionWarmup = () => {
         }
         if (!gibbonSessionProbeReady(event.currentTarget)) return;
         if (gibbonProbeInFlight.current || gibbonRoleConfirmedFor.current === flowKey) return;
+        const expectedFlowKey = flowKey;
         gibbonProbeInFlight.current = true;
-        void mutateRole()
+        void recoverSchoolSourceSession(() => mutateRole(), {
+          isCurrent: () => activeFlowKey.current === expectedFlowKey,
+        })
           .then((sourceSession) => {
-            if (!sourceSession?.authenticated) return;
+            if (!sourceSession?.authenticated || activeFlowKey.current !== expectedFlowKey) return;
             gibbonRoleConfirmedFor.current = flowKey;
             setStage(moodleWarmup ? 'moodle' : 'complete');
           })

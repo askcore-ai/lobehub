@@ -205,6 +205,28 @@ describe('BusinessGlobalProvider', () => {
     ).not.toBeNull();
   });
 
+  it('retries the source role while a newly established Gibbon session settles', async () => {
+    fetchSchoolSourceSession
+      .mockRejectedValueOnce(new Error('source session is still redirecting'))
+      .mockResolvedValue({ authenticated: true, role: 'teacher' });
+    renderProvider();
+
+    const gibbonFrame = document.querySelector<HTMLIFrameElement>(
+      'iframe[data-askcore-school-session="school-services"]',
+    );
+    markSessionReady(gibbonFrame!);
+    await act(async () => {
+      fireEvent.load(gibbonFrame!);
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    expect(mutateRole).toHaveBeenCalledTimes(2);
+    expect(
+      document.querySelector<HTMLIFrameElement>('iframe[data-askcore-school-session="teaching"]'),
+    ).not.toBeNull();
+  });
+
   it('does not contact school sources before Better Auth is authenticated', () => {
     state.authenticated = false;
 

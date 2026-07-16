@@ -7,8 +7,9 @@ import {
 export const SCHOOL_PORTAL_API = '/api/askcore/school/portal';
 export const SCHOOL_OPERATIONS_API = '/api/askcore/school/operations';
 export const SCHOOL_ROLE_SOURCE_URL = '/school/services/askcore/session.php';
-const BETTER_AUTH_SESSION_API = '/api/auth/get-session';
 const SCHOOL_REQUEST_TIMEOUT_MS = 8_000;
+const SCHOOL_SOURCE_RECOVERY_ATTEMPTS = 3;
+const SCHOOL_SOURCE_RECOVERY_DELAY_MS = 250;
 
 type BetterAuthSchoolSession = {
   session?: { id?: string | null } | null;
@@ -123,71 +124,52 @@ export const fetchSchoolSourceSession = async (url: string): Promise<SchoolSourc
   return payload as SchoolSourceSession;
 };
 
-type SchoolPortalBootstrap = {
-  generation?: string;
-  portal?: SchoolPortalManifest;
-  portalError?: unknown;
-  sourceError?: unknown;
-  sourceSession?: SchoolSourceSession;
+type SchoolPortalBootstrapEntry = {
+  portalConsumed: boolean;
+  portalPromise: Promise<PromiseSettledResult<SchoolPortalManifest>>;
+  sourceConsumed: boolean;
+  sourcePromise: Promise<PromiseSettledResult<SchoolSourceSession>>;
 };
 
-let bootstrapPromise: Promise<SchoolPortalBootstrap | undefined> | undefined;
-let portalBootstrapClaimed = false;
-let sourceBootstrapClaimed = false;
+const bootstrapEntries = new Map<string, SchoolPortalBootstrapEntry>();
 
-const fetchSchoolAccountSession = async (): Promise<BetterAuthSchoolSession | null> => {
-  const response = await fetchSchoolResource(BETTER_AUTH_SESSION_API, {
-    cache: 'no-store',
-    credentials: 'same-origin',
-    headers: { accept: 'application/json' },
-  });
-  if (!response.ok) throw new SchoolPortalApiError(response.status, '账号会话暂不可用');
-  const payload = (await response.json()) as
-    | BetterAuthSchoolSession
-    | { data?: BetterAuthSchoolSession | null }
-    | null;
-  if (!payload) return null;
-  if ('data' in payload) return payload.data ?? null;
-  return payload as BetterAuthSchoolSession;
-};
-
-export const primeSchoolPortalBootstrap = () => {
-  if (typeof window === 'undefined') return undefined;
-  if (!bootstrapPromise) {
-    bootstrapPromise = Promise.allSettled([
-      fetchSchoolAccountSession(),
-      fetchSchoolPortalManifest(),
-      fetchSchoolSourceSession(SCHOOL_ROLE_SOURCE_URL),
-    ]).then(([account, portal, sourceSession]) => {
-      if (account.status !== 'fulfilled') return undefined;
-      const generation = schoolSessionGeneration(account.value);
-      if (!generation) return undefined;
-      return {
-        generation,
-        portal: portal.status === 'fulfilled' ? portal.value : undefined,
-        portalError: portal.status === 'rejected' ? portal.reason : undefined,
-        sourceError: sourceSession.status === 'rejected' ? sourceSession.reason : undefined,
-        sourceSession: sourceSession.status === 'fulfilled' ? sourceSession.value : undefined,
-      };
-    });
+const settled = async <T>(promise: Promise<T>): Promise<PromiseSettledResult<T>> => {
+  try {
+    return { status: 'fulfilled', value: await promise };
+  } catch (reason) {
+    return { reason, status: 'rejected' };
   }
-  return bootstrapPromise;
+};
+
+const schoolPortalBootstrapEntry = (sessionGeneration: string) => {
+  const current = bootstrapEntries.get(sessionGeneration);
+  if (current) return current;
+  const entry: SchoolPortalBootstrapEntry = {
+    portalConsumed: false,
+    portalPromise: settled(fetchSchoolPortalManifest()),
+    sourceConsumed: false,
+    sourcePromise: settled(fetchSchoolSourceSession(SCHOOL_ROLE_SOURCE_URL)),
+  };
+  bootstrapEntries.set(sessionGeneration, entry);
+  while (bootstrapEntries.size > 4) {
+    const oldestGeneration = bootstrapEntries.keys().next().value;
+    if (!oldestGeneration) break;
+    bootstrapEntries.delete(oldestGeneration);
+  }
+  return entry;
 };
 
 export const invalidateSchoolPortalBootstrap = () => {
-  bootstrapPromise = undefined;
-  portalBootstrapClaimed = false;
-  sourceBootstrapClaimed = false;
+  bootstrapEntries.clear();
 };
 
 export const fetchSchoolPortalManifestForGeneration = async (sessionGeneration: string) => {
-  if (!portalBootstrapClaimed && bootstrapPromise) {
-    portalBootstrapClaimed = true;
-    const bootstrap = await bootstrapPromise;
-    if (bootstrap?.generation === sessionGeneration) {
-      if (bootstrap.portal) return bootstrap.portal;
-      if (bootstrap.portalError) throw bootstrap.portalError;
-    }
+  const bootstrap = schoolPortalBootstrapEntry(sessionGeneration);
+  if (!bootstrap.portalConsumed) {
+    const portal = await bootstrap.portalPromise;
+    bootstrap.portalConsumed = true;
+    if (portal.status === 'fulfilled') return portal.value;
+    throw portal.reason;
   }
   return fetchSchoolPortalManifest();
 };
@@ -196,15 +178,41 @@ export const fetchSchoolSourceSessionForGeneration = async (
   url: string,
   sessionGeneration: string,
 ) => {
-  if (!sourceBootstrapClaimed && bootstrapPromise) {
-    sourceBootstrapClaimed = true;
-    const bootstrap = await bootstrapPromise;
-    if (bootstrap?.generation === sessionGeneration) {
-      if (bootstrap.sourceSession) return bootstrap.sourceSession;
-      if (bootstrap.sourceError) throw bootstrap.sourceError;
-    }
+  const bootstrap = schoolPortalBootstrapEntry(sessionGeneration);
+  if (!bootstrap.sourceConsumed) {
+    const sourceSession = await bootstrap.sourcePromise;
+    bootstrap.sourceConsumed = true;
+    if (sourceSession.status === 'fulfilled') return sourceSession.value;
+    throw sourceSession.reason;
   }
   return fetchSchoolSourceSession(url);
+};
+
+export const recoverSchoolSourceSession = async (
+  refresh: () => Promise<SchoolSourceSession | undefined>,
+  options: {
+    attempts?: number;
+    isCurrent?: () => boolean;
+    retryDelayMs?: number;
+  } = {},
+) => {
+  const attempts = Math.max(1, options.attempts ?? SCHOOL_SOURCE_RECOVERY_ATTEMPTS);
+  const isCurrent = options.isCurrent ?? (() => true);
+  const retryDelayMs = Math.max(0, options.retryDelayMs ?? SCHOOL_SOURCE_RECOVERY_DELAY_MS);
+  let lastError: unknown = new Error('学校身份会话未就绪');
+  for (let attempt = 0; attempt < attempts && isCurrent(); attempt += 1) {
+    try {
+      const sourceSession = await refresh();
+      if (sourceSession?.authenticated) return sourceSession;
+      lastError = new Error('学校身份会话未就绪');
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt + 1 < attempts && isCurrent()) {
+      await new Promise((resolve) => window.setTimeout(resolve, retryDelayMs));
+    }
+  }
+  throw lastError;
 };
 
 export const fetchSchoolIntegrationOperations = async (): Promise<SchoolIntegrationOperations> => {

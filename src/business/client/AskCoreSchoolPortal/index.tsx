@@ -15,6 +15,7 @@ import {
   fetchSchoolPortalManifestForGeneration,
   fetchSchoolSourceSessionForGeneration,
   gibbonSessionProbeReady,
+  recoverSchoolSourceSession,
   schoolPortalManifestCacheKey,
   schoolSessionGeneration,
   schoolSourceSessionCacheKey,
@@ -308,17 +309,23 @@ export const AskCoreSchoolPortalRoute = memo(() => {
       destinationKey !== 'school-services' ||
       visibleGibbonReadyKey !== sourceFrameKey ||
       sourceSessionValidating ||
+      trustedSourceSession?.authenticated ||
       visibleRoleProbeKey.current === sourceFrameKey
     ) {
       return;
     }
+    const expectedGeneration = sessionGeneration;
     visibleRoleProbeKey.current = sourceFrameKey;
-    void mutateSourceSession().catch(() => {});
+    void recoverSchoolSourceSession(() => mutateSourceSession(), {
+      isCurrent: () => activeGeneration.current === expectedGeneration,
+    }).catch(() => {});
   }, [
     destinationKey,
     mutateSourceSession,
+    sessionGeneration,
     sourceFrameKey,
     sourceSessionValidating,
+    trustedSourceSession,
     visibleGibbonReadyKey,
   ]);
 
@@ -371,10 +378,18 @@ export const AskCoreSchoolPortalRoute = memo(() => {
           onLoad={(event) => {
             if (!gibbonSessionProbeReady(event.currentTarget)) return;
             if (roleProbeInFlight.current) return;
+            const expectedGeneration = sessionGeneration;
             roleProbeInFlight.current = true;
-            void mutateSourceSession()
+            void recoverSchoolSourceSession(() => mutateSourceSession(), {
+              isCurrent: () => activeGeneration.current === expectedGeneration,
+            })
               .then((sourceSession) => {
-                if (sourceSession?.authenticated) setActiveRecoveryKey(undefined);
+                if (
+                  sourceSession?.authenticated &&
+                  activeGeneration.current === expectedGeneration
+                ) {
+                  setActiveRecoveryKey(undefined);
+                }
               })
               .catch(() => {})
               .finally(() => {
