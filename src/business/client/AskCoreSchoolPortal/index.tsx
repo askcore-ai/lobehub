@@ -440,7 +440,9 @@ export const AskCoreSchoolPortalRoute = memo(() => {
     setSourceFrameLifecycle({ key: sourceFrameKey, status: 'loading' });
     const timer = window.setTimeout(() => {
       setSourceFrameLifecycle((current) =>
-        current.key === sourceFrameKey ? { ...current, status: 'failed' } : current,
+        current.key === sourceFrameKey && current.status === 'loading'
+          ? { ...current, status: 'failed' }
+          : current,
       );
     }, SOURCE_FRAME_TIMEOUT_MS);
     return () => window.clearTimeout(timer);

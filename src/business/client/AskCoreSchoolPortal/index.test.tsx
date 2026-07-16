@@ -876,8 +876,7 @@ describe('AskCoreSchoolPortalRoute', () => {
     vi.useFakeTimers();
     const firstPortal = cacheablePortal();
     const refreshedPortal = cacheablePortal();
-    refreshedPortal.schools[0].destinations[1].launch_url =
-      `/api/askcore/school/launch/school-services-${'c'.repeat(40)}`;
+    refreshedPortal.schools[0].destinations[1].launch_url = `/api/askcore/school/launch/school-services-${'c'.repeat(40)}`;
     let portalRequests = 0;
     vi.stubGlobal(
       'fetch',
@@ -922,7 +921,9 @@ describe('AskCoreSchoolPortalRoute', () => {
     const retainedFrame = screen.getByTitle('AskCore 在线学校 学校') as HTMLIFrameElement;
     expect(retainedFrame).toBe(originalFrame);
     expect(retainedFrame).toHaveAttribute('src', originalSrc);
+    expect(retainedFrame.closest('section')).not.toHaveAttribute('hidden');
     expect(retainedFrame.contentDocument?.body.dataset.currentPage).toBe('student-profile');
+    expect(screen.queryByText('学校服务暂不可用')).not.toBeInTheDocument();
   });
 
   it('covers the source iframe when a completed role refresh becomes unauthenticated', async () => {
