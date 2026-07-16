@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { SWRConfig, unstable_serialize } from 'swr';
@@ -7,6 +9,7 @@ import {
   fetchSchoolPortalManifestForGeneration,
   fetchSchoolSourceSessionForGeneration,
   invalidateSchoolPortalBootstrap,
+  readSchoolPortalBootstrapSnapshot,
   recoverSchoolSourceSession,
   SCHOOL_PORTAL_API,
 } from './api';
@@ -73,6 +76,16 @@ const readyPortal = (canManageIntegrations = false) => ({
   state: 'ready',
 });
 
+const cacheablePortal = () => {
+  const portal = readyPortal();
+  portal.schools[0].role_source_url = `${window.location.origin}/school/services/askcore/session.php`;
+  for (const destination of portal.schools[0].destinations) {
+    destination.launch_url = `/api/askcore/school/launch/${destination.key}-${'a'.repeat(40)}`;
+    destination.session_launch_url = `/api/askcore/school/launch/${destination.key}-${'b'.repeat(40)}`;
+  }
+  return portal;
+};
+
 const markFrameReady = async (frame: HTMLElement) => {
   const iframe = frame as HTMLIFrameElement;
   const marker = iframe.contentDocument?.createElement('meta');
@@ -92,13 +105,14 @@ afterEach(() => {
   authState.sessionId = 'session-1';
   authState.userId = 'user-1';
   vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   invalidateSchoolPortalBootstrap();
 });
 
 describe('school portal bootstrap', () => {
   it('starts one portal and source-role probe for the authenticated session generation', async () => {
-    const portal = readyPortal();
+    const portal = cacheablePortal();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes('/askcore/session.php')) {
@@ -118,6 +132,187 @@ describe('school portal bootstrap', () => {
       ),
     ).resolves.toEqual({ authenticated: true, role: 'student' });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('persists a short-lived bootstrap snapshot only for the exact account session', async () => {
+    const portal = cacheablePortal();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes('/askcore/session.php')
+          ? Response.json({ authenticated: true, role: 'student' })
+          : Response.json(portal),
+      ),
+    );
+
+    await Promise.all([
+      fetchSchoolPortalManifestForGeneration('user-1:session-1'),
+      fetchSchoolSourceSessionForGeneration(
+        '/school/services/askcore/session.php',
+        'user-1:session-1',
+      ),
+    ]);
+
+    const firstRead = readSchoolPortalBootstrapSnapshot('user-1:session-1');
+    expect(firstRead).toMatchObject({
+      portal: { state: 'ready' },
+      sourceSession: { authenticated: true, role: 'student' },
+    });
+    expect(readSchoolPortalBootstrapSnapshot('user-1:session-1')).toBe(firstRead);
+    expect(window.localStorage.getItem('askcore.school-bootstrap.v1')).not.toContain('user-1');
+    expect(window.localStorage.getItem('askcore.school-bootstrap.v1')).not.toContain('session-1');
+    expect(readSchoolPortalBootstrapSnapshot('user-2:session-2')).toBeUndefined();
+    expect(window.localStorage.getItem('askcore.school-bootstrap.v1')).toBeNull();
+  });
+
+  it('accepts the canonical same-origin role endpoint in relative form', async () => {
+    const portal = cacheablePortal();
+    portal.schools[0].role_source_url = '/school/services/askcore/session.php';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes('/askcore/session.php')
+          ? Response.json({ authenticated: true, role: 'student' })
+          : Response.json(portal),
+      ),
+    );
+
+    await Promise.all([
+      fetchSchoolPortalManifestForGeneration('user-1:session-1'),
+      fetchSchoolSourceSessionForGeneration(
+        '/school/services/askcore/session.php',
+        'user-1:session-1',
+      ),
+    ]);
+
+    expect(readSchoolPortalBootstrapSnapshot('user-1:session-1')).toMatchObject({
+      portal: { schools: [{ role_source_url: '/school/services/askcore/session.php' }] },
+      sourceSession: { role: 'student' },
+    });
+  });
+
+  it('does not let disabled browser storage break bootstrap invalidation', () => {
+    vi.spyOn(window.localStorage, 'removeItem').mockImplementation(() => {
+      throw new DOMException('Storage disabled', 'SecurityError');
+    });
+
+    expect(() => invalidateSchoolPortalBootstrap()).not.toThrow();
+  });
+
+  it('expires the bootstrap snapshot before a portal launch token can expire', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes('/askcore/session.php')
+          ? Response.json({ authenticated: true, role: 'student' })
+          : Response.json(cacheablePortal()),
+      ),
+    );
+    const cachedAt = 1_000_000;
+    const now = vi.spyOn(Date, 'now').mockReturnValue(cachedAt);
+    await Promise.all([
+      fetchSchoolPortalManifestForGeneration('user-1:session-1'),
+      fetchSchoolSourceSessionForGeneration(
+        '/school/services/askcore/session.php',
+        'user-1:session-1',
+      ),
+    ]);
+
+    now.mockReturnValue(cachedAt + 30_001);
+
+    expect(readSchoolPortalBootstrapSnapshot('user-1:session-1')).toBeUndefined();
+  });
+
+  it('never persists an incomplete portal-only bootstrap', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) =>
+        String(input).includes('/askcore/session.php')
+          ? new Promise<Response>(() => {})
+          : Promise.resolve(Response.json(cacheablePortal())),
+      ),
+    );
+
+    await fetchSchoolPortalManifestForGeneration('user-1:session-1');
+
+    expect(readSchoolPortalBootstrapSnapshot('user-1:session-1')).toBeUndefined();
+    expect(window.localStorage.getItem('askcore.school-bootstrap.v1')).toBeNull();
+  });
+
+  it('rejects an entire bootstrap generation when either source contains unknown fields', async () => {
+    const portal = Object.assign(cacheablePortal(), { external_id: 'must-not-persist' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes('/askcore/session.php')
+          ? Response.json({ authenticated: true, external_id: 'must-not-persist', role: 'student' })
+          : Response.json(portal),
+      ),
+    );
+
+    await Promise.all([
+      fetchSchoolPortalManifestForGeneration('user-1:session-1'),
+      fetchSchoolSourceSessionForGeneration(
+        '/school/services/askcore/session.php',
+        'user-1:session-1',
+      ),
+    ]);
+
+    expect(readSchoolPortalBootstrapSnapshot('user-1:session-1')).toBeUndefined();
+    expect(window.localStorage.getItem('askcore.school-bootstrap.v1')).toBeNull();
+  });
+
+  it('ignores a superseded bootstrap promise after lifecycle invalidation', async () => {
+    let resolveOldPortal!: (response: Response) => void;
+    let resolveOldSource!: (response: Response) => void;
+    let portalRequests = 0;
+    let sourceRequests = 0;
+    const oldPortal = new Promise<Response>((resolve) => {
+      resolveOldPortal = resolve;
+    });
+    const oldSource = new Promise<Response>((resolve) => {
+      resolveOldSource = resolve;
+    });
+    const freshPortal = cacheablePortal();
+    freshPortal.schools[0].name = 'Fresh school';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        if (String(input).includes('/askcore/session.php')) {
+          sourceRequests += 1;
+          return sourceRequests === 1
+            ? oldSource
+            : Promise.resolve(Response.json({ authenticated: true, role: 'teacher' }));
+        }
+        portalRequests += 1;
+        return portalRequests === 1 ? oldPortal : Promise.resolve(Response.json(freshPortal));
+      }),
+    );
+
+    const superseded = Promise.all([
+      fetchSchoolPortalManifestForGeneration('user-1:session-1'),
+      fetchSchoolSourceSessionForGeneration(
+        '/school/services/askcore/session.php',
+        'user-1:session-1',
+      ),
+    ]);
+    invalidateSchoolPortalBootstrap();
+    await Promise.all([
+      fetchSchoolPortalManifestForGeneration('user-1:session-1'),
+      fetchSchoolSourceSessionForGeneration(
+        '/school/services/askcore/session.php',
+        'user-1:session-1',
+      ),
+    ]);
+
+    resolveOldPortal(Response.json(cacheablePortal()));
+    resolveOldSource(Response.json({ authenticated: true, role: 'student' }));
+    await superseded;
+
+    expect(readSchoolPortalBootstrapSnapshot('user-1:session-1')).toMatchObject({
+      portal: { schools: [{ name: 'Fresh school' }] },
+      sourceSession: { role: 'teacher' },
+    });
   });
 
   it('discards prefetched source data when the Better Auth generation differs', async () => {
@@ -323,6 +518,90 @@ describe('AskCoreSchoolPortalRoute', () => {
     },
   );
 
+  it('launches a fresh exact-generation snapshot while its live validation is pending', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes('/askcore/session.php')
+          ? Response.json({ authenticated: true, role: 'student' })
+          : Response.json(cacheablePortal()),
+      ),
+    );
+    await Promise.all([
+      fetchSchoolPortalManifestForGeneration('user-1:session-1'),
+      fetchSchoolSourceSessionForGeneration(
+        '/school/services/askcore/session.php',
+        'user-1:session-1',
+      ),
+    ]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+
+    vi.useFakeTimers();
+    render(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <MemoryRouter initialEntries={['/school']}>
+          <AskCoreSchoolPortalRoute />
+        </MemoryRouter>
+      </SWRConfig>,
+    );
+
+    expect(screen.getByTitle('AskCore 在线学校 学校')).toHaveAttribute(
+      'src',
+      `/api/askcore/school/launch/school-services-${'a'.repeat(40)}`,
+    );
+    await act(async () => vi.advanceTimersByTimeAsync(30_001));
+    expect(screen.queryByTitle('AskCore 在线学校 学校')).toBeNull();
+  });
+
+  it('covers an exact snapshot when only one half has completed live validation', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes('/askcore/session.php')
+          ? Response.json({ authenticated: true, role: 'student' })
+          : Response.json(cacheablePortal()),
+      ),
+    );
+    await Promise.all([
+      fetchSchoolPortalManifestForGeneration('user-1:session-1'),
+      fetchSchoolSourceSessionForGeneration(
+        '/school/services/askcore/session.php',
+        'user-1:session-1',
+      ),
+    ]);
+    let resolvePortal!: (response: Response) => void;
+    const portalRequest = new Promise<Response>((resolve) => {
+      resolvePortal = resolve;
+    });
+    const liveFetch = vi.fn((input: RequestInfo | URL) =>
+      String(input).includes('/askcore/session.php')
+        ? Promise.resolve(Response.json({ authenticated: true, role: 'student' }))
+        : portalRequest,
+    );
+    vi.stubGlobal('fetch', liveFetch);
+
+    render(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <MemoryRouter initialEntries={['/school']}>
+          <AskCoreSchoolPortalRoute />
+        </MemoryRouter>
+      </SWRConfig>,
+    );
+
+    await waitFor(() =>
+      expect(
+        liveFetch.mock.calls.some(([input]) => String(input).includes('/askcore/session.php')),
+      ).toBe(true),
+    );
+    expect(screen.queryByTitle('AskCore 在线学校 学校')).toBeNull();
+
+    await act(async () => resolvePortal(Response.json(cacheablePortal())));
+    expect(await screen.findByTitle('AskCore 在线学校 学校')).toBeInTheDocument();
+  });
+
   it('renders the Gibbon school surface directly without destination cards', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) =>
       String(input).includes('/askcore/session.php')
@@ -371,7 +650,7 @@ describe('AskCoreSchoolPortalRoute', () => {
     expect(sourceRequestCount()).toBe(sourceRequestsBeforeLoad);
   });
 
-  it('recovers the visible Gibbon role only when its bootstrap probe failed', async () => {
+  it('keeps Gibbon hidden until a failed bootstrap role probe is recovered', async () => {
     let sourceAttempts = 0;
     vi.stubGlobal(
       'fetch',
@@ -393,10 +672,12 @@ describe('AskCoreSchoolPortalRoute', () => {
       </SWRConfig>,
     );
 
-    const frame = await screen.findByTitle('AskCore 在线学校 学校');
+    const recoveryFrame = await screen.findByTitle('askcore-school-role-recovery');
     expect(sourceAttempts).toBe(1);
-    await markFrameReady(frame);
+    expect(screen.queryByTitle('AskCore 在线学校 学校')).toBeNull();
+    await markFrameReady(recoveryFrame);
     await waitFor(() => expect(sourceAttempts).toBe(3), { timeout: 2000 });
+    expect(await screen.findByTitle('AskCore 在线学校 学校')).toBeInTheDocument();
   });
 
   it('renders the live-role Moodle surface directly for a student', async () => {
@@ -663,5 +944,17 @@ describe('AskCoreSchoolPortalRoute', () => {
     expect(screen.queryByText('系统集成')).not.toBeInTheDocument();
     expect(screen.queryByText('教学处理连接')).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalledWith('/api/askcore/school/operations', expect.anything());
+  });
+});
+
+describe('personalized SPA shell', () => {
+  it('is explicitly dynamic so production never writes a prerender cache', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const source = await readFile(
+      path.join(process.cwd(), 'src/app/spa/[variants]/[[...path]]/route.ts'),
+      'utf8',
+    );
+
+    expect(source).toContain("export const dynamic = 'force-dynamic';");
   });
 });

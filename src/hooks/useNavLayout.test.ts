@@ -29,11 +29,41 @@ vi.mock('@/store/serverConfig', () => ({
 const swrState = vi.hoisted(() => ({
   accountUserId: 'user-1',
   accountSessionId: 'session-1',
+  bootstrapPortal: false,
+  bootstrapRole: false,
   portalAvailable: true,
+  portalValidating: false,
   role: undefined as 'administrator' | 'student' | 'teacher' | undefined,
   roleError: false,
   roleValidating: false,
   schoolState: 'ready' as 'ready' | 'unavailable',
+}));
+const rolePayloads = vi.hoisted(() => ({
+  administrator: { authenticated: true as const, role: 'administrator' as const },
+  student: { authenticated: true as const, role: 'student' as const },
+  teacher: { authenticated: true as const, role: 'teacher' as const },
+}));
+const portalPayloads = vi.hoisted(() => ({
+  ready: {
+    schools: [
+      {
+        destinations: [
+          {
+            key: 'teaching',
+            launch_url: '/api/askcore/school/launch/teaching',
+          },
+        ],
+        role_source_url: 'https://askcore.cn/school/services/askcore/session.php',
+      },
+    ],
+    show_school_entry: true,
+    state: 'ready' as const,
+  },
+  unavailable: {
+    schools: [],
+    show_school_entry: true,
+    state: 'unavailable' as const,
+  },
 }));
 
 const requestedRoleKeys = vi.hoisted(() => [] as unknown[]);
@@ -48,36 +78,31 @@ vi.mock('@/libs/better-auth/auth-client', () => ({
   }),
 }));
 
+vi.mock('@/business/client/AskCoreSchoolPortal/api', async (importOriginal) => ({
+  ...(await importOriginal()),
+  readSchoolPortalBootstrapSnapshot: () =>
+    (swrState.bootstrapPortal || swrState.bootstrapRole) && swrState.role
+      ? {
+          portal: swrState.bootstrapPortal ? portalPayloads[swrState.schoolState] : undefined,
+          sourceSession: swrState.bootstrapRole ? rolePayloads[swrState.role] : undefined,
+        }
+      : undefined,
+}));
+
 vi.mock('swr', () => ({
   default: (key: readonly string[] | string | null) => {
     if (Array.isArray(key) && key[0] === '/api/askcore/school/portal') {
       requestedPortalKeys.push(key);
       if (!swrState.portalAvailable) return { data: undefined, error: new Error('unavailable') };
       return {
-        data: {
-          schools:
-            swrState.schoolState === 'ready'
-              ? [
-                  {
-                    destinations: [
-                      {
-                        key: 'teaching',
-                        launch_url: '/api/askcore/school/launch/teaching',
-                      },
-                    ],
-                    role_source_url: 'https://askcore.cn/school/services/askcore/session.php',
-                  },
-                ]
-              : [],
-          show_school_entry: true,
-          state: swrState.schoolState,
-        },
+        data: portalPayloads[swrState.schoolState],
+        isValidating: swrState.portalValidating,
       };
     }
     if (Array.isArray(key) && key[0] === '/school/services/askcore/session.php') {
       requestedRoleKeys.push(key);
       return {
-        data: swrState.role ? { authenticated: true, role: swrState.role } : undefined,
+        data: swrState.role ? rolePayloads[swrState.role] : undefined,
         error: swrState.roleError ? new Error('role unavailable') : undefined,
         isValidating: swrState.roleValidating,
       };
@@ -91,7 +116,10 @@ beforeEach(() => {
   requestedPortalKeys.length = 0;
   swrState.accountUserId = 'user-1';
   swrState.accountSessionId = 'session-1';
+  swrState.bootstrapPortal = false;
+  swrState.bootstrapRole = false;
   swrState.portalAvailable = true;
+  swrState.portalValidating = false;
   swrState.schoolState = 'ready';
   swrState.role = undefined;
   swrState.roleError = false;
@@ -179,10 +207,46 @@ describe('useNavLayout source-role school navigation', () => {
     );
   });
 
-  it.each(['validating', 'failed'] as const)('hides a stale positive role while %s', (state) => {
+  it('keeps an exact portal-role snapshot visible while live validation is pending', () => {
+    swrState.bootstrapPortal = true;
+    swrState.bootstrapRole = true;
     swrState.role = 'student';
-    swrState.roleValidating = state === 'validating';
-    swrState.roleError = state === 'failed';
+    swrState.portalValidating = true;
+    swrState.roleValidating = true;
+
+    const items = visibleItems();
+
+    expect(items.map((item) => item.title)).toContain('学校');
+    expect(items.map((item) => item.title)).toContain('学习空间');
+    expect(items.map((item) => item.title)).not.toContain('教学中心');
+  });
+
+  it('hides a partial bootstrap role while the paired portal is validating', () => {
+    swrState.bootstrapRole = true;
+    swrState.role = 'student';
+    swrState.portalValidating = true;
+
+    const items = visibleItems();
+
+    expect(items.map((item) => item.title)).toContain('学校');
+    expect(items.map((item) => item.title)).not.toContain('学习空间');
+    expect(items.map((item) => item.title)).not.toContain('教学中心');
+  });
+
+  it('hides an arbitrary SWR role while its live validation is pending', () => {
+    swrState.role = 'student';
+    swrState.roleValidating = true;
+
+    const items = visibleItems();
+
+    expect(items.map((item) => item.title)).toContain('学校');
+    expect(items.map((item) => item.title)).not.toContain('学习空间');
+    expect(items.map((item) => item.title)).not.toContain('教学中心');
+  });
+
+  it('hides a stale positive role when its live validation fails', () => {
+    swrState.role = 'student';
+    swrState.roleError = true;
 
     const items = visibleItems();
 

@@ -13,6 +13,7 @@ import useSWR from 'swr';
 import {
   fetchSchoolPortalManifestForGeneration,
   fetchSchoolSourceSessionForGeneration,
+  readSchoolPortalBootstrapSnapshot,
   schoolPortalManifestCacheKey,
   schoolPortalManifestScope,
   schoolSessionGeneration,
@@ -57,16 +58,23 @@ export const useNavLayout = (): NavLayout => {
   const { data: accountSession } = useSession();
   const sessionGeneration = schoolSessionGeneration(accountSession);
   const portalScope = schoolPortalManifestScope(pathname);
+  const bootstrapSnapshot = sessionGeneration
+    ? readSchoolPortalBootstrapSnapshot(sessionGeneration)
+    : undefined;
 
-  const { data: schoolPortal } = useSWR(
+  const {
+    data: liveSchoolPortal,
+    error: schoolPortalError,
+    isValidating: schoolPortalValidating,
+  } = useSWR(
     schoolPortalManifestCacheKey(sessionGeneration, portalScope),
     ([, generation]) => fetchSchoolPortalManifestForGeneration(generation),
     {
+      fallbackData: bootstrapSnapshot?.portal,
       revalidateOnFocus: false,
       shouldRetryOnError: false,
     },
   );
-  const sharedSchool = schoolPortal?.state === 'ready' ? schoolPortal.schools[0] : undefined;
   const {
     data: liveSchoolSession,
     error: schoolSessionError,
@@ -75,13 +83,22 @@ export const useNavLayout = (): NavLayout => {
     schoolSourceSessionCacheKey(sessionGeneration),
     ([url, generation]) => fetchSchoolSourceSessionForGeneration(url, generation),
     {
+      fallbackData: bootstrapSnapshot?.sourceSession,
       refreshInterval: 30_000,
       revalidateOnFocus: true,
       shouldRetryOnError: false,
     },
   );
-  const schoolSession =
-    !schoolSessionError && !schoolSessionValidating ? liveSchoolSession : undefined;
+  const exactBootstrapPair =
+    bootstrapSnapshot?.portal === liveSchoolPortal &&
+    bootstrapSnapshot?.sourceSession === liveSchoolSession;
+  const pairTrusted =
+    !schoolPortalError &&
+    !schoolSessionError &&
+    ((!schoolPortalValidating && !schoolSessionValidating) || exactBootstrapPair);
+  const schoolPortal = pairTrusted ? liveSchoolPortal : undefined;
+  const schoolSession = pairTrusted ? liveSchoolSession : undefined;
+  const sharedSchool = schoolPortal?.state === 'ready' ? schoolPortal.schools[0] : undefined;
   const hasTeachingDestination = sharedSchool?.destinations.some(
     (destination) => destination.key === 'teaching',
   );

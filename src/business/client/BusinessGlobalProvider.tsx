@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import useSWR from 'swr';
 
@@ -8,7 +8,10 @@ import {
   fetchSchoolPortalManifestForGeneration,
   fetchSchoolSourceSessionForGeneration,
   gibbonSessionProbeReady,
+  invalidateSchoolPortalBootstrap,
+  readSchoolPortalBootstrapSnapshot,
   recoverSchoolSourceSession,
+  schoolPortalBootstrapExpiresAt,
   schoolPortalManifestCacheKey,
   schoolPortalManifestScope,
   schoolSessionGeneration,
@@ -23,17 +26,22 @@ type WarmupStage = 'complete' | 'gibbon' | 'moodle' | 'stopped' | null;
 
 const SchoolSessionWarmup = () => {
   const { pathname } = useLocation();
-  const { data: accountSession } = useSession();
+  const { data: accountSession, isPending: accountSessionPending } = useSession();
   const sessionGeneration = schoolSessionGeneration(accountSession);
   const schoolRouteActive = pathname === '/school' || pathname.startsWith('/school/');
   const identityLinkPending =
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).get('protocol') === 'identity-link';
   const enabled = !!sessionGeneration && !identityLinkPending && !schoolRouteActive;
+  const bootstrapSnapshot = sessionGeneration
+    ? readSchoolPortalBootstrapSnapshot(sessionGeneration)
+    : undefined;
+  const bootstrapExpiresAt = schoolPortalBootstrapExpiresAt(bootstrapSnapshot);
   const [schoolLifecycleEpoch, setSchoolLifecycleEpoch] = useState(0);
 
   const {
     data: portal,
+    error: portalError,
     isValidating: portalIsValidating,
     mutate: mutatePortal,
   } = useSWR(
@@ -41,7 +49,11 @@ const SchoolSessionWarmup = () => {
       ? schoolPortalManifestCacheKey(sessionGeneration, schoolPortalManifestScope(pathname))
       : null,
     ([, generation]) => fetchSchoolPortalManifestForGeneration(generation),
-    { revalidateOnFocus: false, shouldRetryOnError: false },
+    {
+      fallbackData: bootstrapSnapshot?.portal,
+      revalidateOnFocus: false,
+      shouldRetryOnError: false,
+    },
   );
   const roleKey = enabled ? schoolSourceSessionCacheKey(sessionGeneration) : null;
   const {
@@ -53,24 +65,51 @@ const SchoolSessionWarmup = () => {
     roleKey,
     ([url, generation]) => fetchSchoolSourceSessionForGeneration(url, generation),
     {
+      fallbackData: bootstrapSnapshot?.sourceSession,
       revalidateOnFocus: true,
       shouldRetryOnError: false,
     },
   );
 
+  const refreshSchoolLifecycle = useCallback(() => {
+    invalidateSchoolPortalBootstrap();
+    setSchoolLifecycleEpoch((current) => current + 1);
+    return Promise.allSettled([mutatePortal(), mutateRole()]);
+  }, [mutatePortal, mutateRole]);
+
   useEffect(() => {
     const onPageShow = (event: PageTransitionEvent) => {
       if (!event.persisted || !enabled) return;
-      setSchoolLifecycleEpoch((current) => current + 1);
-      void Promise.allSettled([mutatePortal(), mutateRole()]);
+      void refreshSchoolLifecycle();
     };
     window.addEventListener('pageshow', onPageShow);
     return () => window.removeEventListener('pageshow', onPageShow);
-  }, [enabled, mutatePortal, mutateRole]);
-  const trustedLiveRole = !roleError && !roleIsValidating ? liveRole : undefined;
+  }, [enabled, refreshSchoolLifecycle]);
+  useEffect(() => {
+    if (!enabled) return;
+    if (!bootstrapExpiresAt) return;
+    const timer = window.setTimeout(
+      () => void refreshSchoolLifecycle(),
+      Math.max(0, bootstrapExpiresAt - Date.now()),
+    );
+    return () => window.clearTimeout(timer);
+  }, [bootstrapExpiresAt, enabled, refreshSchoolLifecycle]);
+  useEffect(() => {
+    if (!accountSessionPending && !sessionGeneration) invalidateSchoolPortalBootstrap();
+  }, [accountSessionPending, sessionGeneration]);
+  const exactBootstrapPair =
+    bootstrapSnapshot?.portal === portal && bootstrapSnapshot?.sourceSession === liveRole;
+  const pairTrusted =
+    !portalError &&
+    !roleError &&
+    ((!portalIsValidating && !roleIsValidating) || exactBootstrapPair);
+  const trustedLiveRole = pairTrusted ? liveRole : undefined;
+  const recoveryPortal =
+    !portalError && (!portalIsValidating || exactBootstrapPair) ? portal : undefined;
   const destinations = useMemo(
-    () => (portal?.state === 'ready' ? (portal.schools[0]?.destinations ?? []) : []),
-    [portal],
+    () =>
+      recoveryPortal?.state === 'ready' ? (recoveryPortal.schools[0]?.destinations ?? []) : [],
+    [recoveryPortal],
   );
   const gibbonWarmup = useMemo(
     () => destinations.find((destination) => destination.key === 'school-services'),
@@ -96,7 +135,7 @@ const SchoolSessionWarmup = () => {
   }, [flowKey]);
 
   useEffect(() => {
-    if (!enabled || portalIsValidating || portal?.state !== 'ready' || roleIsValidating) return;
+    if (!enabled || recoveryPortal?.state !== 'ready') return;
     if (trustedLiveRole?.authenticated) {
       setStage((current) => {
         if (current === 'complete' || current === 'gibbon' || current === 'stopped') return current;
@@ -105,16 +144,7 @@ const SchoolSessionWarmup = () => {
       return;
     }
     if (roleError && gibbonWarmup) setStage((current) => current ?? 'gibbon');
-  }, [
-    enabled,
-    gibbonWarmup,
-    trustedLiveRole,
-    moodleWarmup,
-    portal?.state,
-    portalIsValidating,
-    roleError,
-    roleIsValidating,
-  ]);
+  }, [enabled, gibbonWarmup, trustedLiveRole, moodleWarmup, recoveryPortal?.state, roleError]);
 
   useEffect(() => {
     if (!stage) return;
@@ -124,8 +154,7 @@ const SchoolSessionWarmup = () => {
 
   if (
     !enabled ||
-    portalIsValidating ||
-    portal?.state !== 'ready' ||
+    recoveryPortal?.state !== 'ready' ||
     !stage ||
     stage === 'complete' ||
     stage === 'stopped'
@@ -151,11 +180,14 @@ const SchoolSessionWarmup = () => {
         if (gibbonProbeInFlight.current || gibbonRoleConfirmedFor.current === flowKey) return;
         const expectedFlowKey = flowKey;
         gibbonProbeInFlight.current = true;
+        invalidateSchoolPortalBootstrap();
         void recoverSchoolSourceSession(() => mutateRole(), {
           isCurrent: () => activeFlowKey.current === expectedFlowKey,
         })
-          .then((sourceSession) => {
+          .then(async (sourceSession) => {
             if (!sourceSession?.authenticated || activeFlowKey.current !== expectedFlowKey) return;
+            await mutatePortal();
+            if (activeFlowKey.current !== expectedFlowKey) return;
             gibbonRoleConfirmedFor.current = flowKey;
             setStage(moodleWarmup ? 'moodle' : 'complete');
           })

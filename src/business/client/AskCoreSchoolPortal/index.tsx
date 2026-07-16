@@ -15,7 +15,10 @@ import {
   fetchSchoolPortalManifestForGeneration,
   fetchSchoolSourceSessionForGeneration,
   gibbonSessionProbeReady,
+  invalidateSchoolPortalBootstrap,
+  readSchoolPortalBootstrapSnapshot,
   recoverSchoolSourceSession,
+  schoolPortalBootstrapExpiresAt,
   schoolPortalManifestCacheKey,
   schoolSessionGeneration,
   schoolSourceSessionCacheKey,
@@ -143,11 +146,16 @@ export const AskCoreSchoolPortalRoute = memo(() => {
   const isTeachingSurface =
     pathname === '/school/teaching-center' || pathname === '/school/learning-space';
   const destinationKey = isTeachingSurface ? 'teaching' : 'school-services';
+  const bootstrapSnapshot = sessionGeneration
+    ? readSchoolPortalBootstrapSnapshot(sessionGeneration)
+    : undefined;
+  const bootstrapExpiresAt = schoolPortalBootstrapExpiresAt(bootstrapSnapshot);
   const portalCacheKey = schoolPortalManifestCacheKey(sessionGeneration, destinationKey);
   const { data, error, isLoading, isValidating, mutate } = useSWR(
     portalCacheKey,
     ([, generation]) => fetchSchoolPortalManifestForGeneration(generation),
     {
+      fallbackData: bootstrapSnapshot?.portal,
       revalidateOnFocus: false,
       revalidateOnMount: true,
     },
@@ -163,22 +171,32 @@ export const AskCoreSchoolPortalRoute = memo(() => {
     roleSourceKey,
     ([url, generation]) => fetchSchoolSourceSessionForGeneration(url, generation),
     {
+      fallbackData: bootstrapSnapshot?.sourceSession,
       revalidateOnFocus: true,
       shouldRetryOnError: false,
     },
   );
-  const sharedSchool = data?.state === 'ready' ? data.schools[0] : undefined;
+  const exactBootstrapPair =
+    bootstrapSnapshot?.portal === data && bootstrapSnapshot?.sourceSession === liveSourceSession;
+  const pairTrusted =
+    !error &&
+    !sourceSessionError &&
+    ((!isValidating && !sourceSessionValidating) || exactBootstrapPair);
+  const trustedPortal = pairTrusted ? data : undefined;
+  const validatedPortal = !error && (!isValidating || exactBootstrapPair) ? data : undefined;
+  const recoveryPortal = validatedPortal?.state === 'ready' ? validatedPortal : undefined;
+  const sharedSchool = trustedPortal?.state === 'ready' ? trustedPortal.schools[0] : undefined;
+  const recoverySchool = recoveryPortal?.schools[0];
   const destination = sharedSchool?.destinations.find((item) => item.key === destinationKey);
-  const gibbonWarmup = sharedSchool?.destinations.find((item) => item.key === 'school-services');
+  const gibbonWarmup = recoverySchool?.destinations.find((item) => item.key === 'school-services');
   const terminalState =
-    data?.state && data.state !== 'ready'
+    validatedPortal?.state && validatedPortal.state !== 'ready'
       ? {
-          message: t(`schoolPortal.state.${data.state}.message`),
-          title: t(`schoolPortal.state.${data.state}.title`),
+          message: t(`schoolPortal.state.${validatedPortal.state}.message`),
+          title: t(`schoolPortal.state.${validatedPortal.state}.title`),
         }
       : undefined;
-  const trustedSourceSession =
-    !sourceSessionError && !sourceSessionValidating ? liveSourceSession : undefined;
+  const trustedSourceSession = pairTrusted ? liveSourceSession : undefined;
   const sourceRole = trustedSourceSession?.role;
   const roleAllowed =
     pathname === '/school/learning-space'
@@ -205,6 +223,8 @@ export const AskCoreSchoolPortalRoute = memo(() => {
   }>({ key: '', status: 'loading' });
   const [visibleGibbonReadyKey, setVisibleGibbonReadyKey] = useState('');
   const activeGeneration = useRef(sessionGeneration);
+  const refreshQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const refreshRequestEpoch = useRef(0);
   const roleProbeInFlight = useRef(false);
   const visibleRoleProbeKey = useRef('');
   const surfaceRef = useRef<HTMLElement>(null);
@@ -215,14 +235,35 @@ export const AskCoreSchoolPortalRoute = memo(() => {
 
   const refreshLifecycle = useCallback(async () => {
     const expectedGeneration = sessionGeneration;
+    const expectedRefreshEpoch = refreshRequestEpoch.current + 1;
+    refreshRequestEpoch.current = expectedRefreshEpoch;
     setCovered(true);
     setTrustedGeneration(undefined);
+    invalidateSchoolPortalBootstrap();
     setLifecycleEpoch((current) => current + 1);
-    await Promise.allSettled([mutate(), mutateSourceSession()]);
-    if (activeGeneration.current !== expectedGeneration) return;
+    const validation = refreshQueue.current.then(() =>
+      Promise.allSettled([mutate(), mutateSourceSession()]),
+    );
+    refreshQueue.current = validation;
+    await validation;
+    if (
+      activeGeneration.current !== expectedGeneration ||
+      refreshRequestEpoch.current !== expectedRefreshEpoch
+    ) {
+      return;
+    }
     setTrustedGeneration(expectedGeneration);
     setCovered(false);
   }, [mutate, mutateSourceSession, sessionGeneration]);
+
+  useEffect(() => {
+    if (!bootstrapExpiresAt) return;
+    const timer = window.setTimeout(
+      () => void refreshLifecycle(),
+      Math.max(0, bootstrapExpiresAt - Date.now()),
+    );
+    return () => window.clearTimeout(timer);
+  }, [bootstrapExpiresAt, refreshLifecycle]);
 
   useEffect(() => {
     if (trustedGeneration === sessionGeneration) return;
@@ -235,6 +276,7 @@ export const AskCoreSchoolPortalRoute = memo(() => {
 
   useEffect(() => {
     const onPageHide = () => {
+      refreshRequestEpoch.current += 1;
       surfaceRef.current?.setAttribute('hidden', '');
       setCovered(true);
     };
@@ -252,7 +294,6 @@ export const AskCoreSchoolPortalRoute = memo(() => {
 
   const shouldStartRoleRecovery =
     !!sessionGeneration &&
-    isTeachingSurface &&
     !sourceSessionLoading &&
     !sourceSessionValidating &&
     !!sourceSessionError &&
@@ -283,9 +324,10 @@ export const AskCoreSchoolPortalRoute = memo(() => {
     generationReady &&
     !covered &&
     !error &&
-    !isValidating &&
-    data?.state === 'ready' &&
+    pairTrusted &&
+    trustedPortal?.state === 'ready' &&
     !!destination &&
+    trustedSourceSession?.authenticated === true &&
     (!isTeachingSurface || roleAllowed);
   const sourceFrameKey = canLaunchFrame
     ? `${sessionGeneration}:${lifecycleEpoch}:${destinationKey}:${destination?.launch_url}`
@@ -343,8 +385,9 @@ export const AskCoreSchoolPortalRoute = memo(() => {
 
       {!sessionGeneration ||
       isLoading ||
-      isValidating ||
+      (isValidating && !exactBootstrapPair) ||
       sourceSessionLoading ||
+      (sourceSessionValidating && !exactBootstrapPair) ||
       recoveringRole ||
       covered ||
       (canLaunchFrame && currentSourceFrameStatus === 'loading') ? (
@@ -380,14 +423,17 @@ export const AskCoreSchoolPortalRoute = memo(() => {
             if (roleProbeInFlight.current) return;
             const expectedGeneration = sessionGeneration;
             roleProbeInFlight.current = true;
+            invalidateSchoolPortalBootstrap();
             void recoverSchoolSourceSession(() => mutateSourceSession(), {
               isCurrent: () => activeGeneration.current === expectedGeneration,
             })
-              .then((sourceSession) => {
+              .then(async (sourceSession) => {
                 if (
                   sourceSession?.authenticated &&
                   activeGeneration.current === expectedGeneration
                 ) {
+                  await mutate();
+                  if (activeGeneration.current !== expectedGeneration) return;
                   setActiveRecoveryKey(undefined);
                 }
               })
@@ -439,7 +485,7 @@ export const AskCoreSchoolPortalRoute = memo(() => {
         </Empty>
       ) : null}
 
-      {!error && !isValidating && data?.state === 'ready' && !destination ? (
+      {!error && !isValidating && trustedPortal?.state === 'ready' && !destination ? (
         <Empty
           description={t('schoolPortal.connection.unavailable')}
           image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -450,7 +496,7 @@ export const AskCoreSchoolPortalRoute = memo(() => {
         </Empty>
       ) : null}
 
-      {!error && !isValidating && isTeachingSurface && recoveryFailed ? (
+      {!error && !isValidating && recoveryFailed ? (
         <Empty
           description={t('schoolPortal.connection.unavailable')}
           image={Empty.PRESENTED_IMAGE_SIMPLE}

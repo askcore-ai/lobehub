@@ -11,6 +11,7 @@ const state = vi.hoisted(() => ({
   liveRole: undefined as { authenticated: true; role: 'student' | 'teacher' } | undefined,
   portalValidating: false,
   roleError: true,
+  sessionPending: false,
   sessionId: 'session-1',
   userId: 'user-1',
 }));
@@ -83,9 +84,11 @@ vi.mock('swr', () => ({
 
 vi.mock('@/libs/better-auth/auth-client', () => ({
   useSession: () => ({
-    data: state.authenticated
-      ? { session: { id: state.sessionId }, user: { id: state.userId } }
-      : null,
+    data:
+      state.authenticated && !state.sessionPending
+        ? { session: { id: state.sessionId }, user: { id: state.userId } }
+        : null,
+    isPending: state.sessionPending,
   }),
 }));
 
@@ -107,9 +110,11 @@ describe('BusinessGlobalProvider', () => {
     state.liveRole = undefined;
     state.portalValidating = false;
     state.roleError = true;
+    state.sessionPending = false;
     state.sessionId = 'session-1';
     state.userId = 'user-1';
     requestedKeys.length = 0;
+    window.localStorage.clear();
     window.history.replaceState({}, '', '/');
   });
 
@@ -161,6 +166,7 @@ describe('BusinessGlobalProvider', () => {
 
   it('revalidates the stable account-session role cache after a BFCache restore', async () => {
     renderProvider();
+    window.localStorage.setItem('askcore.school-bootstrap.v1', '{"generationHash":"stale"}');
 
     const pageshow = new Event('pageshow') as PageTransitionEvent;
     Object.defineProperty(pageshow, 'persisted', { value: true });
@@ -183,6 +189,7 @@ describe('BusinessGlobalProvider', () => {
     ]);
     expect(requestedKeys).not.toContainEqual(['/api/askcore/school/portal', 'user-1:session-1', 1]);
     expect(mutateRole).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.getItem('askcore.school-bootstrap.v1')).toBeNull();
   });
 
   it('continues after Gibbon establishes a source role on its native dashboard', async () => {
@@ -233,6 +240,25 @@ describe('BusinessGlobalProvider', () => {
     renderProvider();
 
     expect(document.querySelector('iframe[data-askcore-school-session]')).toBeNull();
+  });
+
+  it('clears the school bootstrap after Better Auth confirms logout', () => {
+    window.localStorage.setItem('askcore.school-bootstrap.v1', '{"generationHash":"stale"}');
+    state.authenticated = false;
+
+    renderProvider();
+
+    expect(window.localStorage.getItem('askcore.school-bootstrap.v1')).toBeNull();
+  });
+
+  it('does not clear the school bootstrap while Better Auth is still loading', () => {
+    const snapshot = '{"generationHash":"pending"}';
+    window.localStorage.setItem('askcore.school-bootstrap.v1', snapshot);
+    state.sessionPending = true;
+
+    renderProvider();
+
+    expect(window.localStorage.getItem('askcore.school-bootstrap.v1')).toBe(snapshot);
   });
 
   it('does not launch cached source-session tokens while the portal is refreshing', () => {
