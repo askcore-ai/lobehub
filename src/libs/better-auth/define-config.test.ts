@@ -135,4 +135,22 @@ describe('defineConfig', () => {
 
     expect(mocks.emailHarmony).toHaveBeenCalledWith(mocks.businessEmailHarmonyOptions);
   });
+
+  it('keeps session discovery available behind a shared school NAT', async () => {
+    const { defineConfig } = await import('./define-config');
+
+    defineConfig({ plugins: [] });
+
+    expect(mocks.betterAuth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rateLimit: {
+          customRules: {
+            '/get-session': { max: 1000, window: 1 },
+            '/request-password-reset': { max: 3, window: 60 },
+            '/send-verification-email': { max: 3, window: 60 },
+          },
+        },
+      }),
+    );
+  });
 });
