@@ -4,6 +4,7 @@ import {
   HomeIcon,
   SchoolIcon,
   SearchIcon,
+  ShieldCheckIcon,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -211,7 +212,8 @@ export const useNavLayout = (): NavLayout => {
     (destination) => destination.key === 'teaching',
   );
   const sourceRole = schoolSession?.authenticated ? schoolSession.role : undefined;
-  const isEducator = sourceRole === 'teacher' || sourceRole === 'administrator';
+  const isAdministrator = sourceRole === 'administrator';
+  const isTeacher = sourceRole === 'teacher';
   const isLearner = sourceRole === 'student';
 
   const topNavItems = useMemo(
@@ -236,11 +238,18 @@ export const useNavLayout = (): NavLayout => {
           url: '/school',
         },
         {
-          hidden: !isEducator || !hasTeachingDestination,
+          hidden: !isTeacher || !hasTeachingDestination,
           icon: BookOpenCheckIcon,
           key: 'teaching-center',
           title: '教学中心',
           url: '/school/teaching-center',
+        },
+        {
+          hidden: !isAdministrator || !hasTeachingDestination,
+          icon: ShieldCheckIcon,
+          key: 'operations-center',
+          title: '运维中心',
+          url: '/school/operations-center',
         },
         {
           hidden: !isLearner || !hasTeachingDestination,
@@ -262,7 +271,7 @@ export const useNavLayout = (): NavLayout => {
           url: '/page',
         },
       ] as NavItem[],
-    [hasTeachingDestination, isEducator, isLearner, t, toggleCommandMenu],
+    [hasTeachingDestination, isAdministrator, isLearner, isTeacher, t, toggleCommandMenu],
   );
 
   const bottomMenuItems = useMemo(

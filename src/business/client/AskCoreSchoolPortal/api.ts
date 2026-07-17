@@ -42,7 +42,11 @@ export const schoolSourceSessionCacheKey = (sessionGeneration?: string) =>
 
 export const schoolPortalManifestScope = (pathname: string) => {
   if (pathname === '/school') return 'school-services';
-  if (pathname === '/school/learning-space' || pathname === '/school/teaching-center') {
+  if (
+    pathname === '/school/learning-space' ||
+    pathname === '/school/teaching-center' ||
+    pathname === '/school/operations-center'
+  ) {
     return 'teaching';
   }
   return 'navigation';

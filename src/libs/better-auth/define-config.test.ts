@@ -114,6 +114,24 @@ vi.mock('@/server/services/user', () => ({
 }));
 
 describe('defineConfig', () => {
+  it('keeps native login methods linked to one Better Auth user', async () => {
+    const { defineConfig } = await import('./define-config');
+
+    defineConfig({ plugins: [] });
+
+    expect(mocks.betterAuth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account: {
+          accountLinking: {
+            allowDifferentEmails: true,
+            enabled: true,
+            trustedProviders: [],
+          },
+        },
+      }),
+    );
+  });
+
   it('should revoke existing sessions after password reset by default', async () => {
     const { defineConfig } = await import('./define-config');
 

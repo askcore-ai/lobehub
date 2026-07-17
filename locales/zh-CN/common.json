@@ -406,6 +406,7 @@
   "schoolPortal.state.unavailable.message": "学校服务正在恢复，请稍后重试。个人空间仍可正常使用。",
   "schoolPortal.state.unavailable.title": "学校连接暂不可用",
   "schoolPortal.surface.learningSpace": "学习空间",
+  "schoolPortal.surface.operationsCenter": "运维中心",
   "schoolPortal.surface.school": "学校",
   "schoolPortal.surface.teachingCenter": "教学中心",
   "send": "发送",

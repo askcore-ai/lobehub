@@ -12,6 +12,7 @@ import {
   readSchoolPortalBootstrapSnapshot,
   recoverSchoolSourceSession,
   SCHOOL_PORTAL_API,
+  schoolPortalManifestScope,
 } from './api';
 import { AskCoreSchoolPortalRoute } from './index';
 
@@ -33,6 +34,7 @@ const commonTranslations = vi.hoisted<Record<string, string>>(() => ({
   'schoolPortal.state.unavailable.message': '学校服务正在恢复，请稍后重试。个人空间仍可正常使用。',
   'schoolPortal.state.unavailable.title': '学校连接暂不可用',
   'schoolPortal.surface.learningSpace': '学习空间',
+  'schoolPortal.surface.operationsCenter': '运维中心',
   'schoolPortal.surface.school': '学校',
   'schoolPortal.surface.teachingCenter': '教学中心',
 }));
@@ -109,7 +111,10 @@ const SchoolRouteHarness = () => {
 
   return (
     <>
-      <button data-testid="open-teaching-center" onClick={() => navigate('/school/teaching-center')}>
+      <button
+        data-testid="open-teaching-center"
+        onClick={() => navigate('/school/teaching-center')}
+      >
         Open teaching center
       </button>
       <output data-testid="school-route-path">{pathname}</output>
@@ -132,6 +137,10 @@ afterEach(() => {
 });
 
 describe('school portal bootstrap', () => {
+  it('reuses the teaching destination cache scope for the operations center', () => {
+    expect(schoolPortalManifestScope('/school/operations-center')).toBe('teaching');
+  });
+
   it('starts one portal and source-role probe for the authenticated session generation', async () => {
     const portal = cacheablePortal();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -726,6 +735,54 @@ describe('AskCoreSchoolPortalRoute', () => {
     expect(frame.closest('section')).not.toHaveAttribute('hidden');
   });
 
+  it('renders the Moodle operations surface only from a live Gibbon administrator role', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes('/askcore/session.php')
+          ? Response.json({ authenticated: true, role: 'administrator' })
+          : Response.json(readyPortal()),
+      ),
+    );
+
+    render(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <MemoryRouter initialEntries={['/school/operations-center']}>
+          <SchoolRouteHarness />
+        </MemoryRouter>
+      </SWRConfig>,
+    );
+
+    expect(await screen.findByText('运维中心')).toBeInTheDocument();
+    expect(screen.getByTestId('school-route-path')).toHaveTextContent('/school/operations-center');
+    const frame = await screen.findByTitle('AskCore 在线学校 运维中心');
+    expect(frame).toHaveAttribute('src', 'about:blank?surface=operations#teaching-launch');
+  });
+
+  it('redirects a Gibbon administrator away from the teacher-only teaching center', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes('/askcore/session.php')
+          ? Response.json({ authenticated: true, role: 'administrator' })
+          : Response.json(readyPortal()),
+      ),
+    );
+
+    render(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <MemoryRouter initialEntries={['/school/teaching-center']}>
+          <SchoolRouteHarness />
+        </MemoryRouter>
+      </SWRConfig>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId('school-route-path')).toHaveTextContent('/school'),
+    );
+    expect(screen.queryByTitle('AskCore 在线学校 教学中心')).not.toBeInTheDocument();
+  });
+
   it('waits for the final Gibbon recovery surface before probing the source role', async () => {
     let sourceAttempts = 0;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -844,7 +901,9 @@ describe('AskCoreSchoolPortalRoute', () => {
     const recoveryFrame = await screen.findByTitle('askcore-school-role-recovery');
     accountBSourceReady = true;
     await markFrameReady(recoveryFrame);
-    await waitFor(() => expect(screen.getByTestId('school-route-path')).toHaveTextContent('/school'));
+    await waitFor(() =>
+      expect(screen.getByTestId('school-route-path')).toHaveTextContent('/school'),
+    );
     expect(accountAFrame).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId('open-teaching-center'));
     expect(screen.getByTestId('school-route-path')).toHaveTextContent('/school/teaching-center');

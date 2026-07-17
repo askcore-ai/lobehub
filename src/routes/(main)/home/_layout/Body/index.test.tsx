@@ -215,6 +215,7 @@ describe('Home sidebar body', () => {
   it.each([
     ['teaching-center', '教学中心', 'learning-space', '学习空间'],
     ['learning-space', '学习空间', 'teaching-center', '教学中心'],
+    ['operations-center', '运维中心', 'teaching-center', '教学中心'],
   ] as const)(
     'injects the live %s role entry when persisted sidebar items predate it',
     (visibleKey, visibleTitle, hiddenKey, hiddenTitle) => {
@@ -251,6 +252,7 @@ describe('Home sidebar body', () => {
 
   it.each([
     ['/school', '学校'],
+    ['/school/operations-center', '运维中心'],
     ['/school/teaching-center', '教学中心'],
     ['/school/learning-space', '学习空间'],
   ] as const)('marks only the exact %s school navigation item active', (pathname, activeTitle) => {
@@ -260,18 +262,24 @@ describe('Home sidebar body', () => {
       bottomMenuItems: [],
       topNavItems: [
         { key: 'school', title: '学校', url: '/school' },
+        { key: 'operations-center', title: '运维中心', url: '/school/operations-center' },
         { key: 'teaching-center', title: '教学中心', url: '/school/teaching-center' },
         { key: 'learning-space', title: '学习空间', url: '/school/learning-space' },
       ],
     };
-    mocks.globalState.status.sidebarItems = ['school', 'teaching-center', 'learning-space'];
+    mocks.globalState.status.sidebarItems = [
+      'school',
+      'operations-center',
+      'teaching-center',
+      'learning-space',
+    ];
 
     render(<Body />);
 
     expect(screen.getByText(activeTitle)).toHaveAttribute('data-active', 'true');
     expect(
       screen
-        .getAllByText(/^(学校|教学中心|学习空间)$/)
+        .getAllByText(/^(学校|运维中心|教学中心|学习空间)$/)
         .filter((item) => item.getAttribute('data-active') === 'true'),
     ).toHaveLength(1);
   });

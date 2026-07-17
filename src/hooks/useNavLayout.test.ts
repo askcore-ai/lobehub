@@ -263,6 +263,7 @@ describe('useNavLayout source-role school navigation', () => {
     expect(items.map((item) => item.title)).toContain('学校');
     expect(items.map((item) => item.title)).not.toContain('教学中心');
     expect(items.map((item) => item.title)).not.toContain('学习空间');
+    expect(items.map((item) => item.title)).not.toContain('运维中心');
   });
 
   it('shows learning space only for a live Gibbon student', () => {
@@ -273,6 +274,7 @@ describe('useNavLayout source-role school navigation', () => {
 
     expect(items.map((item) => item.title)).toEqual(expect.arrayContaining(['学校', '学习空间']));
     expect(items.map((item) => item.title)).not.toContain('教学中心');
+    expect(items.map((item) => item.title)).not.toContain('运维中心');
     expect(items.find((item) => item.title === '学习空间')?.url).toBe('/school/learning-space');
     expect(requestedRoleKeys).toContainEqual([
       '/school/services/askcore/session.php',
@@ -408,17 +410,27 @@ describe('useNavLayout source-role school navigation', () => {
     );
   });
 
-  it.each(['teacher', 'administrator'] as const)(
-    'shows teaching center only for a live Gibbon %s',
-    (role) => {
-      swrState.schoolState = 'ready';
-      swrState.role = role;
+  it('shows teaching center only for a live Gibbon teacher', () => {
+    swrState.schoolState = 'ready';
+    swrState.role = 'teacher';
 
-      const items = visibleItems();
+    const items = visibleItems();
 
-      expect(items.map((item) => item.title)).toEqual(expect.arrayContaining(['学校', '教学中心']));
-      expect(items.map((item) => item.title)).not.toContain('学习空间');
-      expect(items.find((item) => item.title === '教学中心')?.url).toBe('/school/teaching-center');
-    },
-  );
+    expect(items.map((item) => item.title)).toEqual(expect.arrayContaining(['学校', '教学中心']));
+    expect(items.map((item) => item.title)).not.toContain('学习空间');
+    expect(items.map((item) => item.title)).not.toContain('运维中心');
+    expect(items.find((item) => item.title === '教学中心')?.url).toBe('/school/teaching-center');
+  });
+
+  it('shows operations center only for a live Gibbon administrator', () => {
+    swrState.schoolState = 'ready';
+    swrState.role = 'administrator';
+
+    const items = visibleItems();
+
+    expect(items.map((item) => item.title)).toEqual(expect.arrayContaining(['学校', '运维中心']));
+    expect(items.map((item) => item.title)).not.toContain('教学中心');
+    expect(items.map((item) => item.title)).not.toContain('学习空间');
+    expect(items.find((item) => item.title === '运维中心')?.url).toBe('/school/operations-center');
+  });
 });

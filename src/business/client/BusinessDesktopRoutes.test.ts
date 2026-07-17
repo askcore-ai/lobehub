@@ -13,6 +13,7 @@ describe('BusinessDesktopRoutes', () => {
     expect(paths).toContain('school');
     expect(paths).toContain('school/teaching-center');
     expect(paths).toContain('school/learning-space');
+    expect(paths).toContain('school/operations-center');
     expect(paths).not.toContain('organization');
   });
 
@@ -22,6 +23,7 @@ describe('BusinessDesktopRoutes', () => {
     expect(paths).toContain('school');
     expect(paths).toContain('school/teaching-center');
     expect(paths).toContain('school/learning-space');
+    expect(paths).toContain('school/operations-center');
     expect(paths).not.toContain('organization');
   });
 

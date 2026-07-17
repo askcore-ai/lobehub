@@ -482,6 +482,7 @@ export default {
     'The school service is recovering. Try again later. Your personal workspace remains available.',
   'schoolPortal.state.unavailable.title': 'School connection is temporarily unavailable',
   'schoolPortal.surface.learningSpace': 'Learning Space',
+  'schoolPortal.surface.operationsCenter': 'Operations Center',
   'schoolPortal.surface.school': 'School',
   'schoolPortal.surface.teachingCenter': 'Teaching Center',
   'run': 'Run',

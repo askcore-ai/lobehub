@@ -3,7 +3,7 @@
 import { Button } from '@lobehub/ui';
 import { Alert, Empty, Skeleton } from 'antd';
 import { createStaticStyles, cssVar } from 'antd-style';
-import { BookOpenCheck, RefreshCw, School } from 'lucide-react';
+import { BookOpenCheck, RefreshCw, School, ShieldCheck } from 'lucide-react';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -30,6 +30,12 @@ const ROLE_RECOVERY_TIMEOUT_MS = 30_000;
 const SOURCE_FRAME_TIMEOUT_MS = 30_000;
 
 type SourceFrameStatus = 'failed' | 'loading' | 'ready';
+
+const operationsLaunchUrl = (launchUrl: string) => {
+  const [base, fragment] = launchUrl.split('#', 2);
+  const url = `${base}${base.includes('?') ? '&' : '?'}surface=operations`;
+  return fragment ? `${url}#${fragment}` : url;
+};
 
 const sourceFrameStatus = (
   frame: HTMLIFrameElement,
@@ -153,8 +159,11 @@ export const AskCoreSchoolPortalRoute = memo(() => {
     isPending: accountSessionPending,
     isRefetching: accountSessionRefetching,
   });
+  const isOperationsSurface = pathname === '/school/operations-center';
   const isTeachingSurface =
-    pathname === '/school/teaching-center' || pathname === '/school/learning-space';
+    pathname === '/school/teaching-center' ||
+    pathname === '/school/learning-space' ||
+    isOperationsSurface;
   const destinationKey = isTeachingSurface ? 'teaching' : 'school-services';
   const bootstrapSnapshot = sessionGeneration
     ? readSchoolPortalBootstrapSnapshot(sessionGeneration)
@@ -268,16 +277,24 @@ export const AskCoreSchoolPortalRoute = memo(() => {
     pathname === '/school/learning-space'
       ? sourceRole === 'student'
       : pathname === '/school/teaching-center'
-        ? sourceRole === 'teacher' || sourceRole === 'administrator'
-        : true;
+        ? sourceRole === 'teacher'
+        : isOperationsSurface
+          ? sourceRole === 'administrator'
+          : true;
   const surfaceTitle =
     pathname === '/school/learning-space'
       ? t('schoolPortal.surface.learningSpace')
       : pathname === '/school/teaching-center'
         ? t('schoolPortal.surface.teachingCenter')
-        : t('schoolPortal.surface.school');
+        : isOperationsSurface
+          ? t('schoolPortal.surface.operationsCenter')
+          : t('schoolPortal.surface.school');
   const schoolName = sharedSchool?.name || t('schoolPortal.name');
-  const SurfaceIcon = isTeachingSurface ? BookOpenCheck : School;
+  const SurfaceIcon = isOperationsSurface
+    ? ShieldCheck
+    : isTeachingSurface
+      ? BookOpenCheck
+      : School;
   const [lifecycleEpoch, setLifecycleEpoch] = useState(0);
   const [trustedGeneration, setTrustedGeneration] = useState(sessionGeneration);
   const [covered, setCovered] = useState(false);
@@ -428,9 +445,14 @@ export const AskCoreSchoolPortalRoute = memo(() => {
     setFrameLaunch((current) =>
       current?.key === sourceFrameKey
         ? current
-        : { key: sourceFrameKey, url: destination.launch_url },
+        : {
+            key: sourceFrameKey,
+            url: isOperationsSurface
+              ? operationsLaunchUrl(destination.launch_url)
+              : destination.launch_url,
+          },
     );
-  }, [destination, sourceFrameKey]);
+  }, [destination, isOperationsSurface, sourceFrameKey]);
   const canLaunchFrame = canLaunchCandidate && frameLaunch?.key === sourceFrameKey;
   const currentSourceFrameStatus =
     sourceFrameLifecycle.key === sourceFrameKey ? sourceFrameLifecycle.status : 'loading';
