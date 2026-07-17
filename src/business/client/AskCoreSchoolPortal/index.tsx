@@ -24,7 +24,11 @@ import {
   schoolSourceSessionCacheKey,
   stableSchoolSessionGeneration,
 } from './api';
-import type { SchoolPortalManifest, SchoolSourceSession } from './types';
+import {
+  type SchoolPortalManifest,
+  schoolRoleCanAccessWorkspace,
+  type SchoolSourceSession,
+} from './types';
 
 const ROLE_RECOVERY_TIMEOUT_MS = 30_000;
 const SOURCE_FRAME_TIMEOUT_MS = 30_000;
@@ -275,11 +279,11 @@ export const AskCoreSchoolPortalRoute = memo(() => {
   const sourceRole = trustedSourceSession?.authenticated ? trustedSourceSession.role : undefined;
   const roleAllowed =
     pathname === '/school/learning-space'
-      ? sourceRole === 'student'
+      ? schoolRoleCanAccessWorkspace(sourceRole, 'learning')
       : pathname === '/school/teaching-center'
-        ? sourceRole === 'teacher'
+        ? schoolRoleCanAccessWorkspace(sourceRole, 'teaching')
         : isOperationsSurface
-          ? sourceRole === 'administrator'
+          ? schoolRoleCanAccessWorkspace(sourceRole, 'operations')
           : true;
   const surfaceTitle =
     pathname === '/school/learning-space'

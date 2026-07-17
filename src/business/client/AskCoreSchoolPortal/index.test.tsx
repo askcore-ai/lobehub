@@ -15,6 +15,7 @@ import {
   schoolPortalManifestScope,
 } from './api';
 import { AskCoreSchoolPortalRoute } from './index';
+import { schoolRoleCanAccessWorkspace } from './types';
 
 const authState = vi.hoisted(() => ({
   isPending: false,
@@ -122,6 +123,24 @@ const SchoolRouteHarness = () => {
     </>
   );
 };
+
+describe('school source-role workspace access', () => {
+  it.each([
+    ['administrator', 'teaching', true],
+    ['administrator', 'operations', true],
+    ['administrator', 'learning', false],
+    ['teacher', 'teaching', true],
+    ['teacher', 'operations', false],
+    ['teacher', 'learning', false],
+    ['student', 'teaching', false],
+    ['student', 'operations', false],
+    ['student', 'learning', true],
+    ['guardian', 'teaching', false],
+    [undefined, 'teaching', false],
+  ] as const)('maps %s to %s access=%s', (role, workspace, expected) => {
+    expect(schoolRoleCanAccessWorkspace(role, workspace)).toBe(expected);
+  });
+});
 
 beforeEach(() => invalidateSchoolPortalBootstrap());
 
@@ -759,7 +778,7 @@ describe('AskCoreSchoolPortalRoute', () => {
     expect(frame).toHaveAttribute('src', 'about:blank?surface=operations#teaching-launch');
   });
 
-  it('redirects a Gibbon administrator away from the teacher-only teaching center', async () => {
+  it('allows a Gibbon administrator to open the teaching center', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) =>
@@ -777,10 +796,35 @@ describe('AskCoreSchoolPortalRoute', () => {
       </SWRConfig>,
     );
 
+    expect(await screen.findByText('教学中心')).toBeInTheDocument();
+    expect(screen.getByTestId('school-route-path')).toHaveTextContent('/school/teaching-center');
+    expect(screen.queryByText('当前学校身份无权访问此页面')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['student', '/school/teaching-center'],
+    ['teacher', '/school/operations-center'],
+  ] as const)('denies a Gibbon %s access to %s', async (role, initialEntry) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes('/askcore/session.php')
+          ? Response.json({ authenticated: true, role })
+          : Response.json(readyPortal()),
+      ),
+    );
+
+    render(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <MemoryRouter initialEntries={[initialEntry]}>
+          <SchoolRouteHarness />
+        </MemoryRouter>
+      </SWRConfig>,
+    );
+
     await waitFor(() =>
       expect(screen.getByTestId('school-route-path')).toHaveTextContent('/school'),
     );
-    expect(screen.queryByTitle('AskCore 在线学校 教学中心')).not.toBeInTheDocument();
   });
 
   it('waits for the final Gibbon recovery surface before probing the source role', async () => {

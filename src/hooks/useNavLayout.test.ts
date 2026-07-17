@@ -422,15 +422,17 @@ describe('useNavLayout source-role school navigation', () => {
     expect(items.find((item) => item.title === '教学中心')?.url).toBe('/school/teaching-center');
   });
 
-  it('shows operations center only for a live Gibbon administrator', () => {
+  it('shows teaching and operations centers for a live Gibbon administrator', () => {
     swrState.schoolState = 'ready';
     swrState.role = 'administrator';
 
     const items = visibleItems();
 
-    expect(items.map((item) => item.title)).toEqual(expect.arrayContaining(['学校', '运维中心']));
-    expect(items.map((item) => item.title)).not.toContain('教学中心');
+    expect(items.map((item) => item.title)).toEqual(
+      expect.arrayContaining(['学校', '教学中心', '运维中心']),
+    );
     expect(items.map((item) => item.title)).not.toContain('学习空间');
+    expect(items.find((item) => item.title === '教学中心')?.url).toBe('/school/teaching-center');
     expect(items.find((item) => item.title === '运维中心')?.url).toBe('/school/operations-center');
   });
 });

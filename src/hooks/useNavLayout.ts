@@ -21,9 +21,10 @@ import {
   schoolSourceSessionCacheKey,
   stableSchoolSessionGeneration,
 } from '@/business/client/AskCoreSchoolPortal/api';
-import type {
-  SchoolPortalManifest,
-  SchoolSourceSession,
+import {
+  type SchoolPortalManifest,
+  schoolRoleCanAccessWorkspace,
+  type SchoolSourceSession,
 } from '@/business/client/AskCoreSchoolPortal/types';
 import { getRouteById } from '@/config/routes';
 import { useSession } from '@/libs/better-auth/auth-client';
@@ -212,9 +213,9 @@ export const useNavLayout = (): NavLayout => {
     (destination) => destination.key === 'teaching',
   );
   const sourceRole = schoolSession?.authenticated ? schoolSession.role : undefined;
-  const isAdministrator = sourceRole === 'administrator';
-  const isTeacher = sourceRole === 'teacher';
-  const isLearner = sourceRole === 'student';
+  const canAccessTeaching = schoolRoleCanAccessWorkspace(sourceRole, 'teaching');
+  const canAccessOperations = schoolRoleCanAccessWorkspace(sourceRole, 'operations');
+  const canAccessLearning = schoolRoleCanAccessWorkspace(sourceRole, 'learning');
 
   const topNavItems = useMemo(
     () =>
@@ -238,21 +239,21 @@ export const useNavLayout = (): NavLayout => {
           url: '/school',
         },
         {
-          hidden: !isTeacher || !hasTeachingDestination,
+          hidden: !canAccessTeaching || !hasTeachingDestination,
           icon: BookOpenCheckIcon,
           key: 'teaching-center',
           title: '教学中心',
           url: '/school/teaching-center',
         },
         {
-          hidden: !isAdministrator || !hasTeachingDestination,
+          hidden: !canAccessOperations || !hasTeachingDestination,
           icon: ShieldCheckIcon,
           key: 'operations-center',
           title: '运维中心',
           url: '/school/operations-center',
         },
         {
-          hidden: !isLearner || !hasTeachingDestination,
+          hidden: !canAccessLearning || !hasTeachingDestination,
           icon: GraduationCapIcon,
           key: 'learning-space',
           title: '学习空间',
@@ -271,7 +272,14 @@ export const useNavLayout = (): NavLayout => {
           url: '/page',
         },
       ] as NavItem[],
-    [hasTeachingDestination, isAdministrator, isLearner, isTeacher, t, toggleCommandMenu],
+    [
+      canAccessLearning,
+      canAccessOperations,
+      canAccessTeaching,
+      hasTeachingDestination,
+      t,
+      toggleCommandMenu,
+    ],
   );
 
   const bottomMenuItems = useMemo(

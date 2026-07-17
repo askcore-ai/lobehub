@@ -1,5 +1,15 @@
 export type SchoolPortalState = 'conflict' | 'ready' | 'unavailable';
 export type SchoolSourceRole = 'administrator' | 'guardian' | 'student' | 'teacher';
+export type SchoolWorkspace = 'learning' | 'operations' | 'teaching';
+
+export const schoolRoleCanAccessWorkspace = (
+  role: SchoolSourceRole | undefined,
+  workspace: SchoolWorkspace,
+) => {
+  if (workspace === 'learning') return role === 'student';
+  if (workspace === 'operations') return role === 'administrator';
+  return role === 'teacher' || role === 'administrator';
+};
 
 export interface SchoolPortalDestination {
   description: string;
