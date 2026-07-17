@@ -1,7 +1,7 @@
 import path from 'node:path';
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { SWRConfig, unstable_serialize } from 'swr';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -101,6 +101,21 @@ const markFrameReady = async (frame: HTMLElement) => {
     fireEvent.load(iframe);
     await Promise.resolve();
   });
+};
+
+const SchoolRouteHarness = () => {
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+
+  return (
+    <>
+      <button data-testid="open-teaching-center" onClick={() => navigate('/school/teaching-center')}>
+        Open teaching center
+      </button>
+      <output data-testid="school-route-path">{pathname}</output>
+      <AskCoreSchoolPortalRoute />
+    </>
+  );
 };
 
 beforeEach(() => invalidateSchoolPortalBootstrap());
@@ -792,6 +807,51 @@ describe('AskCoreSchoolPortalRoute', () => {
       ),
     );
     expect(screen.getByTitle('AskCore 在线学校 学校')).not.toBe(accountAFrame);
+  });
+
+  it('launches the allowed teaching surface after an account switch redirects from learning', async () => {
+    const portal = readyPortal();
+    let accountBSourceReady = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (!String(input).includes('/askcore/session.php')) return Response.json(portal);
+        if (authState.userId === 'user-2' && !accountBSourceReady) {
+          return new Response(null, { status: 503 });
+        }
+        return Response.json({
+          authenticated: true,
+          role: authState.userId === 'user-2' ? 'teacher' : 'student',
+        });
+      }),
+    );
+    const swrCache = new Map();
+    const renderPortal = () => (
+      <SWRConfig value={{ provider: () => swrCache }}>
+        <MemoryRouter initialEntries={['/school/learning-space']}>
+          <SchoolRouteHarness />
+        </MemoryRouter>
+      </SWRConfig>
+    );
+    const view = render(renderPortal());
+    const accountAFrame = await screen.findByTitle('AskCore 在线学校 学习空间');
+    await markFrameReady(accountAFrame);
+
+    authState.sessionId = 'session-2';
+    authState.userId = 'user-2';
+    view.rerender(renderPortal());
+
+    const recoveryFrame = await screen.findByTitle('askcore-school-role-recovery');
+    accountBSourceReady = true;
+    await markFrameReady(recoveryFrame);
+    await waitFor(() => expect(screen.getByTestId('school-route-path')).toHaveTextContent('/school'));
+    expect(accountAFrame).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('open-teaching-center'));
+    expect(screen.getByTestId('school-route-path')).toHaveTextContent('/school/teaching-center');
+    expect(await screen.findByTitle('AskCore 在线学校 教学中心')).toHaveAttribute(
+      'src',
+      'about:blank#teaching-launch',
+    );
   });
 
   it('retains the mounted source iframe while Better Auth refetches the same session', async () => {

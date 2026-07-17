@@ -450,7 +450,6 @@ export const AskCoreSchoolPortalRoute = memo(() => {
 
   useEffect(() => {
     if (!isTeachingSurface || !trustedSourceSession || roleAllowed) return;
-    setCovered(true);
     void navigate('/school', { replace: true });
   }, [isTeachingSurface, navigate, roleAllowed, trustedSourceSession]);
 
