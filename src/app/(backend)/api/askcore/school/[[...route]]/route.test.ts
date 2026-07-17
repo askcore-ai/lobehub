@@ -114,6 +114,52 @@ describe('AskCore school portal proxy', () => {
     expect(response.headers.get('cache-control')).toBe('private, no-store');
   });
 
+  it('forwards the operations surface and its exact first-party redirect', async () => {
+    vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'school-portal-secret');
+    authApi.getSession.mockResolvedValue({
+      user: { email: 'admin@askcore.cn', id: 'system-1', role: 'super_admin' },
+    });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(null, {
+        headers: {
+          location:
+            'https://askcore.cn/school/teaching/local/askcore/warmup.php?destination=1&operations=1',
+        },
+        status: 303,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const { GET } = await loadRoute();
+
+    const response = await GET(
+      new NextRequest(`https://askcore.cn/api/askcore/school/launch/${token}?surface=operations`),
+      routeContext(['launch', token]),
+    );
+
+    expect(response.status).toBe(303);
+    expect((fetchMock.mock.calls[0]?.[0] as URL).toString()).toBe(
+      `http://api:8000/api/school/v1/launch/${token}?surface=operations`,
+    );
+    expect(response.headers.get('location')).toBe(
+      'https://askcore.cn/school/teaching/local/askcore/warmup.php?destination=1&operations=1',
+    );
+  });
+
+  it('rejects any other school portal query before contacting the authority', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { GET } = await loadRoute();
+
+    const response = await GET(
+      new NextRequest(`https://askcore.cn/api/askcore/school/launch/${token}?surface=teaching`),
+      routeContext(['launch', token]),
+    );
+
+    expect(response.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(authApi.getSession).not.toHaveBeenCalled();
+  });
+
   it('forwards the dedicated system operations path without restoring generic workbench access', async () => {
     vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'school-portal-secret');
     authApi.getSession.mockResolvedValue({
@@ -190,6 +236,8 @@ describe('AskCore school portal proxy', () => {
   it.each([
     'https://askcore.cn/school/teaching/local/askcore/warmup.php?destination=2',
     'https://askcore.cn/school/services/askcore/warmup.php?destination=1&next=/admin',
+    'https://askcore.cn/school/teaching/local/askcore/warmup.php?destination=1&operations=2',
+    'https://askcore.cn/school/teaching/local/askcore/warmup.php?destination=1&operations=1&operations=1',
     'https://askcore.cn/settings?destination=1',
   ])('blocks an unsafe first-party redirect: %s', async (location) => {
     vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'school-portal-secret');

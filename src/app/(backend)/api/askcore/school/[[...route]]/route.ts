@@ -34,11 +34,14 @@ const isFirstPartyRedirect = (value: string | null) => {
     const isSchoolSourcePath =
       url.pathname.startsWith('/school/teaching/') || url.pathname.startsWith('/school/services/');
     const queryEntries = [...url.searchParams.entries()];
+    const destinationValues = url.searchParams.getAll('destination');
+    const operationsValues = url.searchParams.getAll('operations');
+    const hasDestination = destinationValues.length === 1 && destinationValues[0] === '1';
+    const hasOperations = operationsValues.length === 1 && operationsValues[0] === '1';
     const hasSafeQuery =
       queryEntries.length === 0 ||
-      (queryEntries.length === 1 &&
-        queryEntries[0][0] === 'destination' &&
-        queryEntries[0][1] === '1');
+      (queryEntries.length === 1 && hasDestination) ||
+      (queryEntries.length === 2 && hasDestination && hasOperations);
     return (
       url.protocol === 'https:' &&
       (hostname === 'askcore.cn' || hostname.endsWith('.askcore.cn')) &&
@@ -54,20 +57,31 @@ const isFirstPartyRedirect = (value: string | null) => {
   }
 };
 
-export const buildSchoolPortalAuthorityUrl = (route: string[]) => {
+export const buildSchoolPortalAuthorityUrl = (route: string[], surface?: 'operations') => {
   const baseUrl =
     process.env.AITUTOR_API_BASE_URL?.trim() ||
     process.env.WORKBENCH_API_BASE_URL?.trim() ||
     DEFAULT_API_BASE_URL;
-  return new URL(
+  const url = new URL(
     `/api/school/v1/${route.map((segment) => encodeURIComponent(segment)).join('/')}`,
     baseUrl,
   );
+  if (surface) url.searchParams.set('surface', surface);
+  return url;
 };
 
 const forwardSchoolPortalRequest = async (request: NextRequest, context: RouteContext) => {
   const { route = [] } = await context.params;
   if (!isAllowedRoute(request.method, route) || !validateAskCoreRouteSegments(route.slice(0, 1))) {
+    return jsonError(404, 'School portal route is unavailable');
+  }
+  const queryEntries = [...request.nextUrl.searchParams.entries()];
+  const operationsSurface =
+    route[0] === 'launch' &&
+    queryEntries.length === 1 &&
+    queryEntries[0][0] === 'surface' &&
+    queryEntries[0][1] === 'operations';
+  if (queryEntries.length > 0 && !operationsSurface) {
     return jsonError(404, 'School portal route is unavailable');
   }
 
@@ -91,16 +105,19 @@ const forwardSchoolPortalRequest = async (request: NextRequest, context: RouteCo
     UPSTREAM_TIMEOUT_MS,
   );
   try {
-    upstream = await fetch(buildSchoolPortalAuthorityUrl(route), {
-      cache: 'no-store',
-      headers: {
-        accept: request.headers.get('accept') || 'application/json',
-        [askCoreAssertionHeaderName()]: assertion,
+    upstream = await fetch(
+      buildSchoolPortalAuthorityUrl(route, operationsSurface ? 'operations' : undefined),
+      {
+        cache: 'no-store',
+        headers: {
+          accept: request.headers.get('accept') || 'application/json',
+          [askCoreAssertionHeaderName()]: assertion,
+        },
+        method: 'GET',
+        redirect: 'manual',
+        signal: controller.signal,
       },
-      method: 'GET',
-      redirect: 'manual',
-      signal: controller.signal,
-    });
+    );
   } catch {
     return jsonError(502, 'School portal is unavailable');
   } finally {
