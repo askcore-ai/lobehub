@@ -15,12 +15,15 @@ import {
   type PluginInvocationArtifacts,
   type PresignUploadResponse,
   type PrinterDeviceListResponse,
+  type ProtocolCaptureStartInput,
+  type ProtocolCaptureStatus,
   type ProtocolIdentityLinkAcceptResult,
   type ProtocolProcessingContext,
   type ProtocolProcessingEditInput,
   type ProtocolProcessingEditResult,
   type ProtocolProcessingReportResult,
   type ProtocolProcessingSurface,
+  type ProtocolScannerList,
   type ResourceItemResponse,
   type ResourceKey,
   type ResourceListResponse,
@@ -180,6 +183,30 @@ export const generateCurrentProtocolProcessingReport = () =>
   protocolJson<ProtocolProcessingReportResult>(
     '/processing/current/report',
     protocolMutation('POST'),
+  );
+
+export const fetchProtocolCaptureScanners = () =>
+  protocolJson<ProtocolScannerList>('/processing/capture/scanners');
+
+export const startProtocolCapture = (payload: ProtocolCaptureStartInput) =>
+  protocolJson<ProtocolCaptureStatus>(
+    '/processing/capture/jobs',
+    protocolMutation('POST', payload),
+  );
+
+export const fetchProtocolCaptureStatus = (captureId: string) =>
+  protocolJson<ProtocolCaptureStatus>(`/processing/capture/jobs/${encodeURIComponent(captureId)}`);
+
+export const continueProtocolCapture = (captureId: string) =>
+  protocolJson<ProtocolCaptureStatus>(
+    `/processing/capture/jobs/${encodeURIComponent(captureId)}/continue`,
+    protocolMutation('POST', {}),
+  );
+
+export const cancelProtocolCapture = (captureId: string) =>
+  protocolJson<ProtocolCaptureStatus>(
+    `/processing/capture/jobs/${encodeURIComponent(captureId)}/cancel`,
+    protocolMutation('POST', {}),
   );
 
 export const askCoreWorkbenchResourceUrl = (resource: string, page: number, pageSize: number) =>

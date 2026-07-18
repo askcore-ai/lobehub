@@ -118,21 +118,75 @@ export type AskCoreOrganizationState = {
 };
 
 export type ProtocolProcessingCapabilities = {
+  can_capture_assignment_material?: boolean;
+  can_capture_paper_batch?: boolean;
+  can_capture_student_submission?: boolean;
   can_edit: boolean;
   can_generate_report: boolean;
   can_grade: boolean;
   can_link_account: boolean;
+  can_list_scanners?: boolean;
   can_preview: boolean;
   can_run_ocr: boolean;
+  can_start_capture?: boolean;
 };
 
 export type ProtocolProcessingContext = {
   account_link_required: boolean;
   account_linked: boolean;
   capabilities: ProtocolProcessingCapabilities;
-  context_kind: 'account_link_required' | 'processing';
+  context_kind: 'account_link_required' | 'capture' | 'processing';
   expires_at: string;
   processing_state: string;
+  purpose?: ProtocolCapturePurpose;
+  return_url?: string;
+  run_kind?: 'capture' | 'reference' | 'submission';
+};
+
+export type ProtocolCapturePurpose = 'assignment_material' | 'paper_batch' | 'student_submission';
+
+export type ProtocolCaptureInputSource = 'adf' | 'auto' | 'platen';
+export type ProtocolCaptureMedia = 'A3' | 'A4' | 'B4' | 'B5';
+
+export type ProtocolScanner = {
+  capabilities: {
+    document_formats: string[];
+    input_sources: Array<'adf_duplex' | 'adf_simplex' | 'platen'>;
+    media: ProtocolCaptureMedia[];
+  };
+  display_name: string;
+  online: boolean;
+  protocol: 'escl';
+  scanner_id: string;
+};
+
+export type ProtocolScannerList = {
+  scanners: ProtocolScanner[];
+};
+
+export type ProtocolCaptureStartInput = {
+  back_side_rotation_degrees: 0 | 180;
+  duplex: boolean;
+  input_source_mode: ProtocolCaptureInputSource;
+  media: ProtocolCaptureMedia;
+  rotation_degrees: 0 | 90 | 180 | 270;
+  scanner_id: string;
+};
+
+export type ProtocolCaptureStatus = {
+  capture_id: string;
+  capture_state: 'completed' | 'continuation_required' | null;
+  committed_page_count: number;
+  continuation: {
+    next_page_order: number;
+    next_segment_index: number;
+  } | null;
+  failure: { code: string; message: string } | null;
+  first_page_order: number;
+  purpose: ProtocolCapturePurpose;
+  receipt: string | null;
+  segment_index: number;
+  status: 'cancelled' | 'claimed' | 'completed' | 'failed' | 'pending';
 };
 
 export type ProtocolProcessingInput = {

@@ -18,6 +18,7 @@ import { type ColumnsType } from 'antd/es/table';
 import { createStaticStyles, cssVar } from 'antd-style';
 import { FileText, RefreshCw, Save, ScanText, WandSparkles } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { message } from '@/components/AntdStaticMethods';
 
@@ -28,6 +29,7 @@ import {
   fetchProtocolProcessingContext,
   generateCurrentProtocolProcessingReport,
 } from './api';
+import { ProtocolCaptureSurface } from './ProtocolCaptureSurface';
 import {
   type JsonRecord,
   type ProtocolProcessingContext,
@@ -192,11 +194,16 @@ type PreviewChoice =
   | { input: ProtocolProcessingInput; key: string; label: string; type: 'input' }
   | { key: 'report'; label: string; type: 'report' };
 
-const processingState = (value?: string) => {
-  if (value === 'succeeded') return { color: 'green', label: '处理完成' };
-  if (value === 'failed') return { color: 'red', label: '处理失败' };
-  if (value === 'cancelled') return { color: 'default', label: '已取消' };
-  return { color: 'blue', label: '处理中' };
+type Translate = (key: string, options?: Record<string, unknown>) => string;
+
+const processingState = (value: string | undefined, t: Translate) => {
+  if (value === 'succeeded')
+    return { color: 'green', label: t('askcoreProcessing.editor.state.succeeded') };
+  if (value === 'failed')
+    return { color: 'red', label: t('askcoreProcessing.editor.state.failed') };
+  if (value === 'cancelled')
+    return { color: 'default', label: t('askcoreProcessing.editor.state.cancelled') };
+  return { color: 'blue', label: t('askcoreProcessing.editor.state.running') };
 };
 
 const recordText = (value: JsonRecord | undefined) => {
@@ -211,22 +218,22 @@ const recordText = (value: JsonRecord | undefined) => {
 const cloneQuestions = (questions: ProtocolProcessingQuestion[] = []) =>
   questions.map((question) => ({ ...question }));
 
-const processingErrorMessage = (reason: unknown, fallback: string) => {
+const processingErrorMessage = (reason: unknown, fallback: string, t: Translate) => {
   if (!(reason instanceof AskCoreWorkbenchApiError)) {
-    return reason instanceof Error ? reason.message : fallback;
+    return fallback;
   }
 
-  if (reason.status === 401) return '处理链接无效或会话已过期，请返回教学中心重新打开';
-  if (reason.status === 403) return '你没有权限处理此内容，请返回教学中心确认课程权限';
+  if (reason.status === 401) return t('askcoreProcessing.editor.error.invalidContext');
+  if (reason.status === 403) return t('askcoreProcessing.editor.error.forbidden');
   if (
     reason.status === 404 ||
     reason.status === 410 ||
     /verified processing context|processing context is required/i.test(reason.message)
   ) {
-    return '处理链接无效或会话已过期，请返回教学中心重新打开';
+    return t('askcoreProcessing.editor.error.invalidContext');
   }
-  if (reason.status === 409) return '处理结果已被更新，请刷新后重试';
-  if (reason.status >= 500) return '处理服务暂时不可用，请稍后重试';
+  if (reason.status === 409) return t('askcoreProcessing.editor.error.conflict');
+  if (reason.status >= 500) return t('askcoreProcessing.editor.error.unavailable');
   return fallback;
 };
 
@@ -234,29 +241,38 @@ const PreviewPane = ({
   choice,
   choices,
   onChange,
+  t,
 }: {
   choice: PreviewChoice | undefined;
   choices: PreviewChoice[];
   onChange: (key: string) => void;
+  t: Translate;
 }) => (
   <section className={styles.preview}>
     <div className={styles.previewToolbar}>
       <Select
-        aria-label="预览内容"
+        aria-label={t('askcoreProcessing.editor.preview.aria')}
         options={choices.map((item) => ({ label: item.label, value: item.key }))}
         style={{ minWidth: 190 }}
         value={choice?.key}
         onChange={onChange}
       />
       {choice?.type === 'input' ? (
-        <Tag>{choice.input.content_type === 'application/pdf' ? 'PDF' : '图片'}</Tag>
+        <Tag>
+          {choice.input.content_type === 'application/pdf'
+            ? 'PDF'
+            : t('askcoreProcessing.editor.preview.image')}
+        </Tag>
       ) : choice?.type === 'report' ? (
-        <Tag color="green">反馈报告</Tag>
+        <Tag color="green">{t('askcoreProcessing.editor.report')}</Tag>
       ) : null}
     </div>
     <div className={styles.previewCanvas}>
       {!choice ? (
-        <Empty description="暂无可预览内容" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <Empty
+          description={t('askcoreProcessing.editor.preview.empty')}
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+        />
       ) : choice.type === 'report' || choice.input.content_type === 'application/pdf' ? (
         <iframe
           className={styles.previewFrame}
@@ -275,6 +291,7 @@ const PreviewPane = ({
 );
 
 export const ProtocolProcessingSurface = memo(() => {
+  const { t } = useTranslation('common');
   const [context, setContext] = useState<ProtocolProcessingContext | null>(null);
   const [surface, setSurface] = useState<ProtocolProcessingSurfacePayload | null>(null);
   const [questions, setQuestions] = useState<ProtocolProcessingQuestion[]>([]);
@@ -286,36 +303,53 @@ export const ProtocolProcessingSurface = memo(() => {
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string>();
 
-  const refresh = useCallback(async (quiet = false) => {
-    if (!quiet) setLoading(true);
-    setError(undefined);
-    try {
-      const nextContext = await fetchProtocolProcessingContext();
-      setContext(nextContext);
-      if (!nextContext.account_linked) {
-        setSurface(null);
-        setQuestions([]);
-        return;
+  const refresh = useCallback(
+    async (quiet = false) => {
+      if (!quiet) setLoading(true);
+      setError(undefined);
+      try {
+        const nextContext = await fetchProtocolProcessingContext();
+        setContext(nextContext);
+        if (!nextContext.account_linked) {
+          setSurface(null);
+          setQuestions([]);
+          return;
+        }
+        if (nextContext.context_kind === 'capture') {
+          setSurface(null);
+          setQuestions([]);
+          setTeacherSummary('');
+          setDirty(false);
+          return;
+        }
+        const nextSurface = await fetchCurrentProtocolProcessingSurface();
+        setSurface(nextSurface);
+        setContext(nextSurface.context);
+        setQuestions(cloneQuestions(nextSurface.result?.content.questions));
+        setTeacherSummary(nextSurface.result?.content.teacher_summary || '');
+        setDirty(false);
+      } catch (reason) {
+        setError(
+          processingErrorMessage(reason, t('askcoreProcessing.editor.error.load'), t as Translate),
+        );
+      } finally {
+        setLoading(false);
       }
-      const nextSurface = await fetchCurrentProtocolProcessingSurface();
-      setSurface(nextSurface);
-      setContext(nextSurface.context);
-      setQuestions(cloneQuestions(nextSurface.result?.content.questions));
-      setTeacherSummary(nextSurface.result?.content.teacher_summary || '');
-      setDirty(false);
-    } catch (reason) {
-      setError(processingErrorMessage(reason, '处理内容加载失败，请返回教学中心重新打开'));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    [t],
+  );
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   useEffect(() => {
-    if (!context || ['succeeded', 'failed', 'cancelled'].includes(context.processing_state)) return;
+    if (
+      !context ||
+      context.context_kind === 'capture' ||
+      ['succeeded', 'failed', 'cancelled'].includes(context.processing_state)
+    )
+      return;
     const timer = window.setInterval(() => void refresh(true), 3000);
     return () => window.clearInterval(timer);
   }, [context, refresh]);
@@ -324,14 +358,23 @@ export const ProtocolProcessingSurface = memo(() => {
     const inputs: PreviewChoice[] = (surface?.inputs || []).map((input) => ({
       input,
       key: `input:${input.slot_id}`,
-      label: `${input.kind === 'reference' ? '原稿' : '答卷'} ${input.page_order}`,
+      label: t(
+        input.kind === 'reference'
+          ? 'askcoreProcessing.editor.preview.referencePage'
+          : 'askcoreProcessing.editor.preview.responsePage',
+        { page: input.page_order },
+      ),
       type: 'input' as const,
     }));
     if (surface?.report?.available) {
-      inputs.push({ key: 'report', label: '反馈报告', type: 'report' });
+      inputs.push({
+        key: 'report',
+        label: t('askcoreProcessing.editor.report'),
+        type: 'report',
+      });
     }
     return inputs;
-  }, [surface]);
+  }, [surface, t]);
 
   useEffect(() => {
     if (!choices.length) {
@@ -360,14 +403,18 @@ export const ProtocolProcessingSurface = memo(() => {
       const score = question.score;
       const maximum = question.max_score;
       if (score != null && (score < 0 || (maximum != null && score > maximum))) {
-        return `第 ${question.question_number || question.order_index} 题得分超出范围`;
+        return t('askcoreProcessing.editor.validation.scoreRange', {
+          number: question.question_number || question.order_index,
+        });
       }
       if (maximum != null && maximum < 0) {
-        return `第 ${question.question_number || question.order_index} 题满分不能为负数`;
+        return t('askcoreProcessing.editor.validation.negativeMaximum', {
+          number: question.question_number || question.order_index,
+        });
       }
     }
     return null;
-  }, [questions]);
+  }, [questions, t]);
 
   const save = async () => {
     const artifactId = surface?.result?.artifact_id;
@@ -387,10 +434,12 @@ export const ProtocolProcessingSurface = memo(() => {
         })),
         teacher_summary: teacherSummary,
       });
-      message.success('批改结果已保存');
+      message.success(t('askcoreProcessing.editor.saved'));
       await refresh(true);
     } catch (reason) {
-      setError(processingErrorMessage(reason, '批改结果保存失败，请重试'));
+      setError(
+        processingErrorMessage(reason, t('askcoreProcessing.editor.error.save'), t as Translate),
+      );
     } finally {
       setSaving(false);
     }
@@ -401,11 +450,13 @@ export const ProtocolProcessingSurface = memo(() => {
     setError(undefined);
     try {
       await generateCurrentProtocolProcessingReport();
-      message.success('反馈报告已生成');
+      message.success(t('askcoreProcessing.editor.reportGenerated'));
       await refresh(true);
       setSelectedPreview('report');
     } catch (reason) {
-      setError(processingErrorMessage(reason, '反馈报告生成失败，请重试'));
+      setError(
+        processingErrorMessage(reason, t('askcoreProcessing.editor.error.report'), t as Translate),
+      );
     } finally {
       setReporting(false);
     }
@@ -418,87 +469,99 @@ export const ProtocolProcessingSurface = memo(() => {
         render: (_, row) => (
           <div>
             <strong>{row.question_number || row.order_index}</strong>
-            <div className={styles.meta}>{row.question_type || '题目'}</div>
+            <div className={styles.meta}>
+              {row.question_type || t('askcoreProcessing.editor.question.defaultType')}
+            </div>
             {recordText(row.question_content) ? (
               <Tooltip title={recordText(row.question_content)}>
-                <div className={styles.meta}>查看题干</div>
+                <div className={styles.meta}>{t('askcoreProcessing.editor.question.viewStem')}</div>
               </Tooltip>
             ) : null}
           </div>
         ),
-        title: '题号',
+        title: t('askcoreProcessing.editor.columns.number'),
         width: 92,
       },
       {
         render: (_, row) => (
           <Input.TextArea
-            aria-label={`第 ${row.question_number || row.order_index} 题 OCR 文本`}
             autoSize={{ maxRows: 8, minRows: 3 }}
             value={row.student_answer || ''}
+            aria-label={t('askcoreProcessing.editor.aria.ocr', {
+              number: row.question_number || row.order_index,
+            })}
             onChange={(event) =>
               updateQuestion(row.order_index, { student_answer: event.target.value })
             }
           />
         ),
-        title: 'OCR 文本',
+        title: t('askcoreProcessing.editor.columns.ocr'),
         width: 270,
       },
       {
         render: (_, row) => (
           <Space.Compact>
             <InputNumber
-              aria-label={`第 ${row.question_number || row.order_index} 题得分`}
               min={0}
               precision={2}
               style={{ width: 86 }}
               value={row.score}
+              aria-label={t('askcoreProcessing.editor.aria.score', {
+                number: row.question_number || row.order_index,
+              })}
               onChange={(value) => updateQuestion(row.order_index, { score: value })}
             />
             <InputNumber
-              aria-label={`第 ${row.question_number || row.order_index} 题满分`}
               min={0}
               precision={2}
               style={{ width: 86 }}
               value={row.max_score}
+              aria-label={t('askcoreProcessing.editor.aria.maximum', {
+                number: row.question_number || row.order_index,
+              })}
               onChange={(value) => updateQuestion(row.order_index, { max_score: value })}
             />
           </Space.Compact>
         ),
-        title: '得分 / 满分',
+        title: t('askcoreProcessing.editor.columns.score'),
         width: 185,
       },
       {
         align: 'center',
         render: (_, row) => (
           <Checkbox
-            aria-label={`第 ${row.question_number || row.order_index} 题正确`}
             checked={row.is_correct === true}
             indeterminate={row.is_correct == null}
+            aria-label={t('askcoreProcessing.editor.aria.correct', {
+              number: row.question_number || row.order_index,
+            })}
             onChange={(event) =>
               updateQuestion(row.order_index, { is_correct: event.target.checked })
             }
           />
         ),
-        title: '正确',
+        title: t('askcoreProcessing.editor.columns.correct'),
         width: 72,
       },
       {
         render: (_, row) => (
           <Input.TextArea
-            aria-label={`第 ${row.question_number || row.order_index} 题反馈`}
             autoSize={{ maxRows: 8, minRows: 3 }}
             value={row.feedback || ''}
+            aria-label={t('askcoreProcessing.editor.aria.feedback', {
+              number: row.question_number || row.order_index,
+            })}
             onChange={(event) => updateQuestion(row.order_index, { feedback: event.target.value })}
           />
         ),
-        title: '反馈',
+        title: t('askcoreProcessing.editor.columns.feedback'),
         width: 270,
       },
     ],
-    [updateQuestion],
+    [t, updateQuestion],
   );
 
-  const state = processingState(context?.processing_state);
+  const state = processingState(context?.processing_state, t as Translate);
   const score = surface?.result?.content.score;
   const total = surface?.result?.content.total_score;
   const selectedChoice = choices.find((item) => item.key === selectedPreview);
@@ -516,12 +579,16 @@ export const ProtocolProcessingSurface = memo(() => {
       <div className={styles.page}>
         <Alert
           showIcon
-          description="请通过学校发出的定向邀请完成账号绑定后重新打开。"
-          title="学校身份尚未绑定到当前账号"
+          description={t('askcoreProcessing.editor.accountLink.description')}
+          title={t('askcoreProcessing.editor.accountLink.title')}
           type="warning"
         />
       </div>
     );
+  }
+
+  if (context?.context_kind === 'capture') {
+    return <ProtocolCaptureSurface context={context} />;
   }
 
   return (
@@ -532,8 +599,8 @@ export const ProtocolProcessingSurface = memo(() => {
             <WandSparkles size={20} />
           </div>
           <div>
-            <h1 className={styles.title}>智能批改</h1>
-            <div className={styles.meta}>OCR、批改修订与反馈报告</div>
+            <h1 className={styles.title}>{t('askcoreProcessing.editor.title')}</h1>
+            <div className={styles.meta}>{t('askcoreProcessing.editor.subtitle')}</div>
           </div>
         </div>
         <div className={styles.actions}>
@@ -544,7 +611,7 @@ export const ProtocolProcessingSurface = memo(() => {
             </span>
           ) : null}
           <Button icon={<RefreshCw size={14} />} onClick={() => void refresh()}>
-            刷新
+            {t('askcoreProcessing.editor.refresh')}
           </Button>
         </div>
       </header>
@@ -553,13 +620,18 @@ export const ProtocolProcessingSurface = memo(() => {
       {validationError ? <Alert showIcon title={validationError} type="warning" /> : null}
 
       <div className={styles.body}>
-        <PreviewPane choice={selectedChoice} choices={choices} onChange={setSelectedPreview} />
+        <PreviewPane
+          choice={selectedChoice}
+          choices={choices}
+          t={t as Translate}
+          onChange={setSelectedPreview}
+        />
 
         <section className={styles.editor}>
           <div className={styles.editorHeader}>
             <div className={styles.heading}>
               <ScanText size={18} />
-              <strong>批改结果</strong>
+              <strong>{t('askcoreProcessing.editor.result')}</strong>
             </div>
             <div className={styles.actions}>
               <Button
@@ -568,7 +640,7 @@ export const ProtocolProcessingSurface = memo(() => {
                 loading={reporting}
                 onClick={() => void generateReport()}
               >
-                生成报告
+                {t('askcoreProcessing.editor.generateReport')}
               </Button>
               <Button
                 icon={<Save size={14} />}
@@ -579,7 +651,7 @@ export const ProtocolProcessingSurface = memo(() => {
                 }
                 onClick={() => void save()}
               >
-                保存修订
+                {t('askcoreProcessing.editor.saveRevision')}
               </Button>
             </div>
           </div>
@@ -596,9 +668,9 @@ export const ProtocolProcessingSurface = memo(() => {
               />
               <div className={styles.summary}>
                 <Input.TextArea
-                  aria-label="教师总结"
+                  aria-label={t('askcoreProcessing.editor.teacherSummary')}
                   autoSize={{ maxRows: 8, minRows: 3 }}
-                  placeholder="教师总结"
+                  placeholder={t('askcoreProcessing.editor.teacherSummary')}
                   value={teacherSummary}
                   onChange={(event) => {
                     setDirty(true);
@@ -608,7 +680,10 @@ export const ProtocolProcessingSurface = memo(() => {
               </div>
             </>
           ) : context?.processing_state === 'failed' ? (
-            <Empty description="处理失败" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            <Empty
+              description={t('askcoreProcessing.editor.state.failed')}
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+            />
           ) : (
             <Skeleton active paragraph={{ rows: 8 }} />
           )}

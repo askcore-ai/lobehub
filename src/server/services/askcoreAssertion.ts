@@ -350,6 +350,21 @@ export const resolveWorkbenchPrincipalClaims = (
     scopes: ['plugin.invoke', 'plugin.read'],
   });
 
+export const resolveAccountPrincipalClaims = (session: AskCoreAssertionSessionRecord) => {
+  const user = recordValue(session.user);
+  const userId = stringValue(user?.id);
+  const email = stringValue(user?.email);
+  if (!userId || !email) return null;
+
+  return compactClaims({
+    email,
+    is_super_admin: stringValue(user?.role) === 'super_admin',
+    roles: arrayValue(session.roles) ?? [stringValue(user?.role) || 'workbench_user'],
+    scopes: ['plugin.invoke', 'plugin.read'],
+    sub: userId,
+  });
+};
+
 export const buildAskCoreAssertion = async (claims: Record<string, unknown>) => {
   const secret = process.env.BILLING_LOBEHUB_ASSERTION_SECRET?.trim();
   if (!secret) throw new Error('BILLING_LOBEHUB_ASSERTION_SECRET is not configured');

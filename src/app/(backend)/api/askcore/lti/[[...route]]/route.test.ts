@@ -249,8 +249,39 @@ describe('AskCore processing proxy', () => {
       { audience: 'aitutor-billing', issuer: 'askcore-lobehub' },
     );
     expect(payload.sub).toBe('user-1');
+    expect(payload.org_id).toBeUndefined();
+    expect(payload.active_org_id).toBeUndefined();
+    expect(authApi.getFullOrganization).not.toHaveBeenCalled();
     expect(response.headers.get('set-cookie')).toContain('askcore_lti_processing=context-token');
     expect(response.headers.get('set-cookie')).not.toContain('unrelated_cookie');
+  });
+
+  it('forwards account-owned capture routes without resolving an organization', async () => {
+    vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'protocol-proxy-secret');
+    authApi.getSession.mockResolvedValue({
+      user: { email: 'student@askcore.cn', id: 'student-1' },
+    } as any);
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ scanners: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { GET } = await loadRoute();
+
+    const response = await GET(
+      new NextRequest('https://askcore.cn/api/askcore/lti/processing/capture/scanners'),
+      routeContext(['processing', 'capture', 'scanners']),
+    );
+
+    expect(response.status).toBe(200);
+    expect(authApi.getFullOrganization).not.toHaveBeenCalled();
+    const [target, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(target.toString()).toBe('http://api:8000/api/lti/v1/processing/capture/scanners');
+    const assertion = (init.headers as Headers).get('X-AskCore-Billing-Assertion');
+    const { payload } = await jwtVerify(
+      assertion!,
+      new TextEncoder().encode('protocol-proxy-secret'),
+      { audience: 'aitutor-billing', issuer: 'askcore-lobehub' },
+    );
+    expect(payload.sub).toBe('student-1');
+    expect(payload.org_id).toBeUndefined();
   });
 
   it('rejects empty, malformed, and retired teaching paths', async () => {

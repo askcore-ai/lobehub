@@ -6,6 +6,7 @@ import {
   buildWorkbenchAssertion,
   getAskCoreAssertionAuthApi,
   isAllowedAskCoreSameOriginWrite,
+  resolveAccountPrincipalClaims,
   resolveFullOrganizationForHeaders,
   resolveWorkbenchPrincipalClaims,
   validateAskCoreRouteSegments,
@@ -36,11 +37,19 @@ const isAllowedProcessingRoute = (method: string, route: string[]) => {
       path === 'processing/context' ||
       path === 'processing/current' ||
       path === 'processing/current/report/preview' ||
+      path === 'processing/capture/scanners' ||
+      /^processing\/capture\/jobs\/[\w.~-]+$/.test(path) ||
       /^processing\/current\/inputs\/[\w.~-]+\/preview$/.test(path)
     );
   }
   if (method === 'PATCH') return path === 'processing/current/result';
-  if (method === 'POST') return path === 'processing/current/report';
+  if (method === 'POST') {
+    return (
+      path === 'processing/current/report' ||
+      path === 'processing/capture/jobs' ||
+      /^processing\/capture\/jobs\/[\w.~-]+\/(?:continue|cancel)$/.test(path)
+    );
+  }
   return false;
 };
 
@@ -116,8 +125,12 @@ const forwardProtocolRequest = async (request: NextRequest, context: RouteContex
     const authApi = await getAskCoreAssertionAuthApi();
     const session = await authApi.getSession({ headers: request.headers });
     if (!session) return jsonError(401, 'AskCore session is required');
-    const fullOrganization = await resolveFullOrganizationForHeaders(request.headers, session);
-    const claims = resolveWorkbenchPrincipalClaims(session, fullOrganization);
+    const fullOrganization = identityLinkRoute
+      ? await resolveFullOrganizationForHeaders(request.headers, session)
+      : undefined;
+    const claims = processingRoute
+      ? resolveAccountPrincipalClaims(session)
+      : resolveWorkbenchPrincipalClaims(session, fullOrganization);
     if (!claims) return jsonError(401, 'AskCore session is required');
 
     let assertion: string;
