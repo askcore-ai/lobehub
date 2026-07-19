@@ -1,5 +1,6 @@
 import { ConfigProvider } from '@lobehub/ui';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import * as m from 'motion/react-m';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -274,14 +275,17 @@ describe('ProtocolProcessingSurface', () => {
   });
 
   it('renders only device-reported capture options with localized explanations and no page limit', async () => {
+    const user = userEvent.setup();
     localeState.messages = enUS;
     let scannerAvailable = true;
+    let scannerFetchCount = 0;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/askcore/lti/processing/context') {
         return Response.json(captureContextPayload);
       }
       if (url === '/api/askcore/lti/processing/capture/scanners') {
+        scannerFetchCount += 1;
         return Response.json({
           scanners: scannerAvailable
             ? [
@@ -291,10 +295,25 @@ describe('ProtocolProcessingSurface', () => {
                     input_sources: ['platen', 'adf_simplex', 'adf_duplex'],
                     media: ['A4', 'B5'],
                   },
+                  device_assistant_name: '办公室电脑',
                   display_name: '办公室扫描仪',
                   online: true,
                   protocol: 'escl',
-                  scanner_id: 'opaque-scanner',
+                  scanner_ref:
+                    scannerFetchCount === 1 ? 'opaque-scanner-ref' : 'opaque-scanner-ref-fresh',
+                },
+                {
+                  capabilities: {
+                    document_formats: ['image/jpeg'],
+                    input_sources: ['platen', 'adf_simplex', 'adf_duplex'],
+                    media: ['A4', 'B5'],
+                  },
+                  device_assistant_name: '备用笔记本',
+                  display_name: '办公室扫描仪',
+                  online: true,
+                  protocol: 'escl',
+                  scanner_ref:
+                    scannerFetchCount === 1 ? 'opaque-scanner-ref-2' : 'opaque-scanner-ref-2-fresh',
                 },
               ]
             : [],
@@ -375,6 +394,12 @@ describe('ProtocolProcessingSurface', () => {
     expect(await screen.findByRole('heading', { name: 'Scan assignment' })).toBeInTheDocument();
     expect(screen.getByText(/Scan source chooses the flatbed/)).toBeInTheDocument();
     expect(screen.getByText(/Back-side rotation corrects upside-down/)).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: 'Scanner' }));
+    expect(
+      await screen.findByRole('option', { name: '办公室扫描仪 · 办公室电脑' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '办公室扫描仪 · 备用笔记本' })).toBeInTheDocument();
+    await user.click(screen.getByRole('option', { name: '办公室扫描仪 · 备用笔记本' }));
     fireEvent.click(screen.getByRole('combobox', { name: 'Paper size' }));
     expect(await screen.findByRole('option', { name: 'A4' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'B5' })).toBeInTheDocument();
@@ -393,7 +418,10 @@ describe('ProtocolProcessingSurface', () => {
       ([input, init]) =>
         String(input) === '/api/askcore/lti/processing/capture/jobs' && init?.method === 'POST',
     );
-    expect(String(startCall?.[1]?.body || '')).not.toMatch(/max_pages/i);
+    const startBody = String(startCall?.[1]?.body || '');
+    expect(startBody).toContain('"scanner_ref":"opaque-scanner-ref-2"');
+    expect(startBody).not.toMatch(/scanner_id|max_pages/i);
+    expect(scannerFetchCount).toBe(1);
     expect(await screen.findByRole('button', { name: 'Continue scanning' })).toBeInTheDocument();
     await waitFor(() => {
       const persisted = localStorageText();
@@ -454,7 +482,7 @@ describe('ProtocolProcessingSurface', () => {
       '/api/askcore/lti/processing/capture/jobs/capture-2',
       expect.anything(),
     );
-  });
+  }, 15_000);
 
   it.each([
     [404, 'askcoreProcessing.capture.error.expired'],
@@ -478,10 +506,11 @@ describe('ProtocolProcessingSurface', () => {
                   input_sources: ['platen'],
                   media: ['A4'],
                 },
+                device_assistant_name: 'Test helper',
                 display_name: 'Test scanner',
                 online: true,
                 protocol: 'escl',
-                scanner_id: 'localized-error-scanner',
+                scanner_ref: 'localized-error-scanner-ref',
               },
             ],
           });
@@ -506,6 +535,80 @@ describe('ProtocolProcessingSurface', () => {
     },
   );
 
+  it('starts the exact opaque scanner reference when scanner labels are duplicated', async () => {
+    localeState.messages = enUS;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/askcore/lti/processing/context') {
+        return Response.json(captureContextPayload);
+      }
+      if (url === '/api/askcore/lti/processing/capture/scanners') {
+        const scanner = {
+          capabilities: {
+            document_formats: ['image/jpeg'],
+            input_sources: ['platen'],
+            media: ['A4'],
+          },
+          device_assistant_name: '共享电脑',
+          display_name: '同名扫描仪',
+          online: true,
+          protocol: 'escl',
+        };
+        return Response.json({
+          scanners: [
+            { ...scanner, scanner_ref: 'exact-ref-1' },
+            { ...scanner, scanner_ref: 'exact-ref-2' },
+          ],
+        });
+      }
+      if (url === '/api/askcore/lti/processing/capture/jobs' && init?.method === 'POST') {
+        return Response.json(
+          {
+            capture_id: 'duplicate-label-capture',
+            capture_state: 'capturing',
+            committed_page_count: 0,
+            continuation: null,
+            failure: null,
+            first_page_order: 1,
+            purpose: 'student_submission',
+            receipt: null,
+            segment_index: 1,
+            status: 'queued',
+          },
+          { status: 201 },
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <ConfigProvider motion={m}>
+        <ProtocolProcessingSurface />
+      </ConfigProvider>,
+    );
+
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Scanner' }));
+    const duplicateOptions = await screen.findAllByRole('option', {
+      name: '同名扫描仪 · 共享电脑',
+    });
+    await userEvent.click(duplicateOptions[1]);
+    const startButton = await screen.findByRole('button', { name: 'Start scan' });
+    fireEvent.click(startButton);
+
+    await waitFor(() => {
+      const startCall = fetchMock.mock.calls.find(
+        ([input, request]) =>
+          String(input) === '/api/askcore/lti/processing/capture/jobs' &&
+          request?.method === 'POST',
+      );
+      expect(String(startCall?.[1]?.body || '')).toContain('"scanner_ref":"exact-ref-2"');
+    });
+    expect(
+      screen.queryByText(enUS['askcoreProcessing.capture.error.start']),
+    ).not.toBeInTheDocument();
+  });
+
   it.each([
     ['scanner.paper_jam', 'askcoreProcessing.capture.failure.paperJam'],
     ['scanner.unmapped_failure', 'askcoreProcessing.capture.failure.generic'],
@@ -527,10 +630,11 @@ describe('ProtocolProcessingSurface', () => {
                   input_sources: ['platen'],
                   media: ['A4'],
                 },
+                device_assistant_name: 'Test helper',
                 display_name: 'Test scanner',
                 online: true,
                 protocol: 'escl',
-                scanner_id: 'failure-code-scanner',
+                scanner_ref: 'failure-code-scanner-ref',
               },
             ],
           });
@@ -596,10 +700,11 @@ describe('ProtocolProcessingSurface', () => {
                 input_sources: ['platen'],
                 media: ['A4'],
               },
+              device_assistant_name: '学生笔记本',
               display_name: '平板扫描仪',
               online: true,
               protocol: 'escl',
-              scanner_id: 'platen-scanner',
+              scanner_ref: 'platen-scanner-ref',
             },
           ],
         });

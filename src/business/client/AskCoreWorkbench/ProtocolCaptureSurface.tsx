@@ -306,12 +306,16 @@ const captureFailureMessage = (
 ) => t(CAPTURE_FAILURE_MESSAGE_KEYS[failure.code] || 'askcoreProcessing.capture.failure.generic');
 
 const terminalCaptureStatuses = new Set(['cancelled', 'completed', 'failed']);
+const fetchAvailableScanners = async () => {
+  const payload = await fetchProtocolCaptureScanners();
+  return payload.scanners.filter((scanner) => scanner.online);
+};
 
 export const ProtocolCaptureSurface = memo(
   ({ context }: { context: ProtocolProcessingContext }) => {
     const { t } = useTranslation('common');
     const [scanners, setScanners] = useState<ProtocolScanner[]>([]);
-    const [scannerId, setScannerId] = useState('');
+    const [scannerRef, setScannerRef] = useState('');
     const [media, setMedia] = useState<ProtocolCaptureMedia | undefined>();
     const [inputSource, setInputSource] = useState<ProtocolCaptureInputSource>('auto');
     const [duplex, setDuplex] = useState(false);
@@ -345,13 +349,12 @@ export const ProtocolCaptureSurface = memo(
       setLoading(true);
       setError(undefined);
       try {
-        const payload = await fetchProtocolCaptureScanners();
-        const available = payload.scanners.filter((scanner) => scanner.online);
+        const available = await fetchAvailableScanners();
         setScanners(available);
-        setScannerId((current) =>
-          available.some((scanner) => scanner.scanner_id === current)
+        setScannerRef((current) =>
+          available.some((scanner) => scanner.scanner_ref === current)
             ? current
-            : available[0]?.scanner_id || '',
+            : available[0]?.scanner_ref || '',
         );
       } catch (reason) {
         setError(
@@ -415,7 +418,7 @@ export const ProtocolCaptureSurface = memo(
       };
     }, [context, t]);
 
-    const scanner = scanners.find((item) => item.scanner_id === scannerId);
+    const scanner = scanners.find((item) => item.scanner_ref === scannerRef);
     const hasPlaten = scanner?.capabilities.input_sources.includes('platen') === true;
     const hasAdf =
       scanner?.capabilities.input_sources.some((source) => source.startsWith('adf_')) === true;
@@ -480,13 +483,29 @@ export const ProtocolCaptureSurface = memo(
       setMutating(true);
       setError(undefined);
       try {
+        const selectedHasPlaten = scanner.capabilities.input_sources.includes('platen');
+        const selectedHasAdf = scanner.capabilities.input_sources.some((source) =>
+          source.startsWith('adf_'),
+        );
+        const planIsStillSupported =
+          scanner.capabilities.media.includes(media) &&
+          (inputSource === 'auto' ||
+            (inputSource === 'platen' && selectedHasPlaten) ||
+            (inputSource === 'adf' && selectedHasAdf)) &&
+          (!duplex ||
+            (inputSource !== 'platen' &&
+              scanner.capabilities.input_sources.includes('adf_duplex')));
+        if (!planIsStillSupported) {
+          setError(t('askcoreProcessing.capture.error.start'));
+          return;
+        }
         const next = await startProtocolCapture({
           back_side_rotation_degrees: duplex ? backRotation : 0,
           duplex,
           input_source_mode: inputSource,
           media,
           rotation_degrees: rotation,
-          scanner_id: scanner.scanner_id,
+          scanner_ref: scanner.scanner_ref,
         });
         setCapture(next);
         persistCapture(resumeBinding, next.capture_id);
@@ -590,12 +609,12 @@ export const ProtocolCaptureSurface = memo(
                       </span>
                       <Select
                         aria-label={t('askcoreProcessing.capture.scanner')}
-                        value={scannerId}
+                        value={scannerRef}
                         options={scanners.map((item) => ({
-                          label: item.display_name,
-                          value: item.scanner_id,
+                          label: `${item.display_name} · ${item.device_assistant_name}`,
+                          value: item.scanner_ref,
                         }))}
-                        onChange={setScannerId}
+                        onChange={setScannerRef}
                       />
                     </label>
                     <label className={styles.field}>

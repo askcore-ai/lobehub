@@ -154,10 +154,11 @@ export type ProtocolScanner = {
     input_sources: Array<'adf_duplex' | 'adf_simplex' | 'platen'>;
     media: ProtocolCaptureMedia[];
   };
+  device_assistant_name: string;
   display_name: string;
   online: boolean;
   protocol: 'escl';
-  scanner_id: string;
+  scanner_ref: string;
 };
 
 export type ProtocolScannerList = {
@@ -170,7 +171,7 @@ export type ProtocolCaptureStartInput = {
   input_source_mode: ProtocolCaptureInputSource;
   media: ProtocolCaptureMedia;
   rotation_degrees: 0 | 90 | 180 | 270;
-  scanner_id: string;
+  scanner_ref: string;
 };
 
 export type ProtocolCaptureStatus = {
