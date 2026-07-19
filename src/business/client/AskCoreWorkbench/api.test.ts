@@ -22,6 +22,12 @@ describe('AskCoreWorkbench API', () => {
     expect(askCoreWorkbenchResourceUrl('schools', 2, 20)).toBe(
       '/api/askcore/workbench/schools?include_total=true&page=2&page_size=20',
     );
+    expect(askCoreWorkbenchResourceUrl('activities', 1, 100)).toBe(
+      '/api/askcore/workbench/activities?include_total=true&page=1&page_size=100',
+    );
+    expect(askCoreWorkbenchItemUrl('attempts', 301)).toBe(
+      '/api/askcore/workbench/attempts/301',
+    );
     expect(askCoreWorkbenchItemUrl('students', 201)).toBe('/api/askcore/workbench/students/201');
   });
 
@@ -125,7 +131,7 @@ describe('AskCoreWorkbench API', () => {
   it('defaults resource list requests to 100 items per refresh', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       expect(String(input)).toBe(
-        '/api/askcore/workbench/assignments?include_total=true&page=1&page_size=100',
+        '/api/askcore/workbench/activities?include_total=true&page=1&page_size=100',
       );
       return new Response(
         JSON.stringify({
@@ -142,11 +148,63 @@ describe('AskCoreWorkbench API', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const client = new AskCoreWorkbenchApiClient();
-    await expect(client.listResource('assignments')).resolves.toMatchObject({
+    await expect(client.listResource('activities')).resolves.toMatchObject({
       has_more: false,
       items: [],
       next_after_id: null,
     });
+  });
+
+  it('loads protocol detail endpoints through activity and attempt ids', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/askcore/workbench/activities/12101/detail') {
+        return new Response(
+          JSON.stringify({
+            activity: { activity_id: 12101, title: '活动详情' },
+            detail_kind: 'protocol_activity',
+            item: { activity_id: 12101, title: '活动详情' },
+            resource: 'activities',
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 200 },
+        );
+      }
+      if (url === '/api/askcore/workbench/attempts/12103/detail') {
+        return new Response(
+          JSON.stringify({
+            attempt: { attempt_id: 12103, status: 'graded' },
+            detail_kind: 'protocol_attempt',
+            item: { attempt_id: 12103, status: 'graded' },
+            resource: 'attempts',
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), {
+        headers: { 'content-type': 'application/json' },
+        status: 404,
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new AskCoreWorkbenchApiClient();
+    await expect(client.getActivityDetail(12101)).resolves.toMatchObject({
+      activity: { activity_id: 12101 },
+      resource: 'activities',
+    });
+    await expect(client.getAttemptDetail(12103)).resolves.toMatchObject({
+      attempt: { attempt_id: 12103 },
+      resource: 'attempts',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/workbench/activities/12101/detail',
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/workbench/attempts/12103/detail',
+      expect.any(Object),
+    );
   });
 
   it('builds first-party action, invocation, preview, and report requests', async () => {
@@ -165,6 +223,12 @@ describe('AskCoreWorkbench API', () => {
       }
       if (url.includes('/submissions/reports/download')) {
         return new Response(new Blob(['zip']), {
+          headers: { 'content-type': 'application/zip' },
+          status: 200,
+        });
+      }
+      if (url.includes('/attempts/reports/download')) {
+        return new Response(new Blob(['attempt-zip']), {
           headers: { 'content-type': 'application/zip' },
           status: 200,
         });
@@ -189,10 +253,15 @@ describe('AskCoreWorkbench API', () => {
     await client.invokeAction('submission.report.generate', { submission_id: 12 });
     await client.fetchPreviewBlob('uploads/org/report.pdf');
     await client.downloadSubmissionReportsZip([12, 13]);
+    await client.downloadAttemptReportsZip([12103, 12104]);
 
     expect(String(calls[0][0])).toBe('/api/askcore/workbench/actions/submission.report.generate');
     expect(String(calls[1][0])).toContain('/api/askcore/workbench/files/preview?object_key=');
     expect(String(calls[2][0])).toBe('/api/askcore/workbench/submissions/reports/download');
+    expect(String(calls[3][0])).toBe('/api/askcore/workbench/attempts/reports/download');
+    expect(JSON.parse(String(calls[3][1]?.body || '{}'))).toEqual({
+      attempt_ids: [12103, 12104],
+    });
     expect(client.getInvocationStreamUrl('inv-1')).toBe(
       '/api/askcore/workbench/invocations/inv-1/stream',
     );
@@ -231,6 +300,32 @@ describe('AskCoreWorkbench API', () => {
 
     const client = new AskCoreWorkbenchApiClient();
     await client.downloadSubmissionReportsZip([12, 13], {
+      onProgress: (item) =>
+        progress.push({ loaded: item.loaded, percent: item.percent, phase: item.phase }),
+    });
+
+    expect(progress[0]).toEqual({ loaded: 0, percent: 0, phase: 'downloading' });
+    expect(progress.at(-1)).toEqual({ loaded: 3, percent: 100, phase: 'completed' });
+  });
+
+  it('reports progress while downloading attempt report ZIPs when content length is known', async () => {
+    const progress: Array<{ loaded: number; percent: number | null; phase: string }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response('zip', {
+            headers: {
+              'content-length': '3',
+              'content-type': 'application/zip',
+            },
+            status: 200,
+          }),
+      ),
+    );
+
+    const client = new AskCoreWorkbenchApiClient();
+    await client.downloadAttemptReportsZip([12103, 12104], {
       onProgress: (item) =>
         progress.push({ loaded: item.loaded, percent: item.percent, phase: item.phase }),
     });

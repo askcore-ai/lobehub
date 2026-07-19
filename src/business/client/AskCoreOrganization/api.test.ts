@@ -23,12 +23,16 @@ import {
   fetchAskCoreEducationIdentityClaims,
   fetchAskCoreEducationOrgUnits,
   fetchAskCoreEducationRoleAssignments,
+  fetchAskCoreIntegrationOperationsStatus,
   fetchAskCoreOrganizationDirectory,
   fetchAskCoreOrganizations,
   importAskCoreDirectoryPeople,
   presignAskCoreWorkbenchUpload,
   rejectAskCoreEducationIdentityClaim,
   revokeAskCoreDirectoryInvitation,
+  runAskCoreMoodleGibbonLiveAcceptance,
+  runAskCoreMoodleGibbonLiveProbe,
+  runAskCoreMoodleGibbonPilotActivation,
   setActiveAskCoreOrganization,
   unbindAskCoreDirectoryPersonAccount,
   unbindAskCoreEducationIdentity,
@@ -145,6 +149,13 @@ describe('AskCoreOrganization api client', () => {
     await unbindAskCoreEducationIdentity('student', 7001);
     await fetchAskCoreEducationRoleAssignments(2);
     await deleteAskCoreEducationRoleAssignment(9);
+    await fetchAskCoreIntegrationOperationsStatus();
+    await runAskCoreMoodleGibbonPilotActivation({
+      action: 'dry_run',
+      bundle: { phase: 'P113', target_lms: 'moodle', target_sis: 'gibbon' },
+    });
+    await runAskCoreMoodleGibbonLiveProbe({ action: 'probe_live' });
+    await runAskCoreMoodleGibbonLiveAcceptance({ action: 'accept_live' });
 
     const calls = fetchMock.mock.calls as [RequestInfo | URL, RequestInit?][];
 
@@ -183,6 +194,10 @@ describe('AskCoreOrganization api client', () => {
       '/api/askcore/workbench/organization/identity-bindings/student/7001',
       '/api/askcore/workbench/organization/roles?org_unit_id=2',
       '/api/askcore/workbench/organization/roles/9',
+      '/api/askcore/workbench/integrations/operations/status',
+      '/api/askcore/workbench/integrations/pilot/moodle-gibbon/activation',
+      '/api/askcore/workbench/integrations/pilot/moodle-gibbon/live-probe',
+      '/api/askcore/workbench/integrations/pilot/moodle-gibbon/live-acceptance',
     ]);
     expect(calls[1][1]).toMatchObject({
       body: JSON.stringify({ invite_token: 'token-1' }),
@@ -209,6 +224,33 @@ describe('AskCoreOrganization api client', () => {
       method: 'PATCH',
     });
     expect(calls[9][1]).toMatchObject({ method: 'DELETE' });
+    const activationCall = calls.find(([input]) =>
+      String(input).endsWith('/workbench/integrations/pilot/moodle-gibbon/activation'),
+    );
+    expect(activationCall?.[1]).toMatchObject({
+      body: JSON.stringify({
+        action: 'dry_run',
+        bundle: { phase: 'P113', target_lms: 'moodle', target_sis: 'gibbon' },
+      }),
+      credentials: 'include',
+      method: 'POST',
+    });
+    const liveProbeCall = calls.find(([input]) =>
+      String(input).endsWith('/workbench/integrations/pilot/moodle-gibbon/live-probe'),
+    );
+    expect(liveProbeCall?.[1]).toMatchObject({
+      body: JSON.stringify({ action: 'probe_live' }),
+      credentials: 'include',
+      method: 'POST',
+    });
+    const liveAcceptanceCall = calls.find(([input]) =>
+      String(input).endsWith('/workbench/integrations/pilot/moodle-gibbon/live-acceptance'),
+    );
+    expect(liveAcceptanceCall?.[1]).toMatchObject({
+      body: JSON.stringify({ action: 'accept_live' }),
+      credentials: 'include',
+      method: 'POST',
+    });
     expect(calls[10][1]).toMatchObject({
       body: JSON.stringify({ name: 'Seed School', unit_type: 'school' }),
       method: 'POST',

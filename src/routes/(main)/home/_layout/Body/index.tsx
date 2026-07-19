@@ -6,9 +6,8 @@ import { EyeOffIcon, MoreHorizontalIcon, SlidersHorizontalIcon } from 'lucide-re
 import type { Key, ReactElement } from 'react';
 import { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
-import { ASKCORE_IDENTITY_CLAIM_OPEN_EVENT } from '@/business/client/AskCoreOrganization/events';
 import NavItem from '@/features/NavPanel/components/NavItem';
 import { useActiveTabKey } from '@/hooks/useActiveTabKey';
 import type { NavItem as NavItemType } from '@/hooks/useNavLayout';
@@ -36,7 +35,13 @@ const ACCORDION_KEYS = new Set<string>([GroupKey.Recents, GroupKey.Agent]);
 /** Keys rendered in the header — must be excluded from the body to avoid duplicates
  * when migrating users whose persisted sidebarItems still include them. */
 const HEADER_KEYS = new Set<string>(['home', 'search']);
-const REQUIRED_NAV_KEYS = new Set<string>(['organization', 'askcore', 'askcore-identity-claim']);
+const REQUIRED_NAV_KEYS = [
+  'school',
+  'operations-center',
+  'teaching-center',
+  'learning-space',
+] as const;
+const REQUIRED_NAV_KEY_SET = new Set<string>(REQUIRED_NAV_KEYS);
 
 const accordionComponents: Record<string, (key: string) => ReactElement> = {
   [GroupKey.Agent]: (key) => <Agent itemKey={key} key={key} />,
@@ -62,6 +67,7 @@ const mergeSidebarExpandedKeys = (
 const Body = memo(() => {
   const { t } = useTranslation('common');
   const tab = useActiveTabKey();
+  const { pathname } = useLocation();
   const navigate = useNavigate();
   const { topNavItems, bottomMenuItems } = useNavLayout();
   const sidebarItems = useGlobalStore(systemStatusSelectors.sidebarItems);
@@ -103,20 +109,35 @@ const Body = memo(() => {
     return map;
   }, [topNavItems, bottomMenuItems]);
 
+  const activeNavKey = useMemo(() => {
+    for (const [key, item] of navLinkItems) {
+      if (!item.hidden && item.url === pathname) return key;
+    }
+    return tab;
+  }, [navLinkItems, pathname, tab]);
+
   // Items that must always be visible regardless of hiddenSections
   const isVisible = useCallback(
     (k: string) =>
       k === GroupKey.Agent ||
       k === SIDEBAR_SPACER_ID ||
-      REQUIRED_NAV_KEYS.has(k) ||
+      REQUIRED_NAV_KEY_SET.has(k) ||
       !hiddenSections.includes(k),
     [hiddenSections],
   );
 
-  const visibleKeys = useMemo(
-    () => sidebarItems.filter((k) => !HEADER_KEYS.has(k) && isVisible(k)),
-    [sidebarItems, isVisible],
-  );
+  const visibleKeys = useMemo(() => {
+    const keys = sidebarItems.filter((key) => !HEADER_KEYS.has(key) && isVisible(key));
+    const requiredKeys = REQUIRED_NAV_KEYS.filter((key) => {
+      const item = navLinkItems.get(key);
+      return item && !item.hidden;
+    });
+    const firstRequiredIndex = keys.findIndex((key) => REQUIRED_NAV_KEY_SET.has(key));
+    const remainingKeys = keys.filter((key) => !REQUIRED_NAV_KEY_SET.has(key));
+    const insertionIndex = firstRequiredIndex < 0 ? 0 : firstRequiredIndex;
+    remainingKeys.splice(insertionIndex, 0, ...requiredKeys);
+    return remainingKeys;
+  }, [isVisible, navLinkItems, sidebarItems]);
 
   const renderNavLink = useCallback(
     (key: string) => {
@@ -129,14 +150,11 @@ const Body = memo(() => {
           onClick={(e) => {
             if (isModifierClick(e)) return;
             e.preventDefault();
-            if (key === 'askcore-identity-claim') {
-              window.dispatchEvent(new Event(ASKCORE_IDENTITY_CLAIM_OPEN_EVENT));
-            }
             navigate(navItem.url!);
           }}
         >
           <NavItem
-            active={tab === key}
+            active={activeNavKey === key}
             contextMenuItems={getContextMenuItems(key)}
             icon={navItem.icon}
             title={navItem.title}
@@ -149,7 +167,7 @@ const Body = memo(() => {
         </Link>
       );
     },
-    [navLinkItems, tab, getContextMenuItems, navigate],
+    [activeNavKey, navLinkItems, getContextMenuItems, navigate],
   );
 
   const handleAccordionExpandedChange = useCallback(

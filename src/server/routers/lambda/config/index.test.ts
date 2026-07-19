@@ -16,8 +16,6 @@ let router: ReturnType<typeof createCaller>;
 
 beforeEach(async () => {
   vi.resetAllMocks();
-  delete process.env.ASKCORE_BILLING_ENABLED_EMAILS;
-  delete process.env.ASKCORE_BILLING_ENABLED_USER_IDS;
   ctx = await createContextInner();
   router = createCaller(ctx);
 });
@@ -25,36 +23,50 @@ beforeEach(async () => {
 describe('configRouter', () => {
   describe('getGlobalConfig', () => {
     describe('AskCore billing access', () => {
-      it('disables business features by default and does not expose LobeHub Cloud provider', async () => {
+      it('enables AskCore billing without enabling generic business features', async () => {
+        ctx = await createContextInner({ userEmail: 'student@example.com', userId: 'student-1' });
+        router = createCaller(ctx);
+
         const response = await router.getGlobalConfig();
 
+        expect(response.serverConfig.enableAskCoreBilling).toBe(true);
         expect(response.serverConfig.enableBusinessFeatures).toBe(false);
         expect(
           (response.serverConfig.aiProvider as Record<string, unknown>)?.lobehub,
         ).toBeUndefined();
       });
 
-      it('enables business features only for allowlisted user ids', async () => {
-        process.env.ASKCORE_BILLING_ENABLED_USER_IDS = 'billing-user';
-        ctx = await createContextInner({ userId: 'billing-user' });
-        router = createCaller(ctx);
-
+      it('keeps AskCore billing and business features disabled for anonymous users', async () => {
         const response = await router.getGlobalConfig();
 
-        expect(response.serverConfig.enableBusinessFeatures).toBe(true);
+        expect(response.serverConfig.enableAskCoreBilling).toBe(false);
+        expect(response.serverConfig.enableBusinessFeatures).toBe(false);
         expect(
           (response.serverConfig.aiProvider as Record<string, unknown>)?.lobehub,
         ).toBeUndefined();
       });
 
-      it('enables business features only for allowlisted emails', async () => {
-        process.env.ASKCORE_BILLING_ENABLED_EMAILS = 'teacher@example.com';
+      it('enables AskCore billing for authenticated user ids', async () => {
+        ctx = await createContextInner({ userId: 'billing-user' });
+        router = createCaller(ctx);
+
+        const response = await router.getGlobalConfig();
+
+        expect(response.serverConfig.enableAskCoreBilling).toBe(true);
+        expect(response.serverConfig.enableBusinessFeatures).toBe(false);
+        expect(
+          (response.serverConfig.aiProvider as Record<string, unknown>)?.lobehub,
+        ).toBeUndefined();
+      });
+
+      it('enables AskCore billing for authenticated emails', async () => {
         ctx = await createContextInner({ userEmail: 'teacher@example.com', userId: 'teacher-1' });
         router = createCaller(ctx);
 
         const response = await router.getGlobalConfig();
 
-        expect(response.serverConfig.enableBusinessFeatures).toBe(true);
+        expect(response.serverConfig.enableAskCoreBilling).toBe(true);
+        expect(response.serverConfig.enableBusinessFeatures).toBe(false);
       });
     });
 

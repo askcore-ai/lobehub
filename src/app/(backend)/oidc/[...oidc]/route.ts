@@ -5,13 +5,32 @@ import { type NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
 import { authEnv } from '@/envs/auth';
+import {
+  ASKCORE_GIBBON_OIDC_CLIENT_ID,
+  ASKCORE_MOODLE_OIDC_CLIENT_ID,
+} from '@/libs/oidc-provider/config';
 import { createNodeRequest, createNodeResponse } from '@/libs/oidc-provider/http-adapter';
 import { getOIDCProvider } from '@/server/services/oidc/oidcProvider';
 
 const log = debug('lobe-oidc:route'); // Create a debug instance with a namespace
+const SCHOOL_CLIENT_IDS = new Set([ASKCORE_GIBBON_OIDC_CLIENT_ID, ASKCORE_MOODLE_OIDC_CLIENT_ID]);
+
+export const currentAccountSchoolAuthorizationRequest = (request: NextRequest) => {
+  const url = new URL(request.url);
+  if (
+    request.method === 'GET' &&
+    url.pathname === '/oidc/auth' &&
+    SCHOOL_CLIENT_IDS.has(url.searchParams.get('client_id') || '')
+  ) {
+    url.searchParams.set('prompt', 'login');
+    return new Request(url, { headers: request.headers, method: 'GET' }) as unknown as NextRequest;
+  }
+  return request;
+};
 
 const handler = async (req: NextRequest) => {
-  const requestUrl = new URL(req.url);
+  const currentRequest = currentAccountSchoolAuthorizationRequest(req);
+  const requestUrl = new URL(currentRequest.url);
   log(`Received ${req.method.toUpperCase()} request: %s %s`, req.method, req.url);
   log('Path: %s, Pathname: %s', requestUrl.pathname, requestUrl.pathname);
 
@@ -46,7 +65,7 @@ const handler = async (req: NextRequest) => {
       const nodeResponse = responseCollector.nodeResponse;
 
       // Use helper method to create the Node.js request object, now requires await
-      createNodeRequest(req).then((nodeRequest) => {
+      createNodeRequest(currentRequest).then((nodeRequest) => {
         log('Calling the obtained middleware...');
         middleware(nodeRequest, nodeResponse, (error?: Error) => {
           log('Middleware callback function HAS BEEN EXECUTED.');

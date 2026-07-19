@@ -104,7 +104,51 @@ const directoryPayload = {
       registration_status: 'registered',
     },
   ],
-  role_assignments: [
+  person_profiles: [
+    {
+      account: null,
+      education: {
+        roles: [
+          {
+            authorization_id: 900,
+            org_unit_id: 3,
+            role: 'teacher',
+            subject_id: null,
+          },
+          {
+            authorization_id: 901,
+            org_unit_id: 2,
+            role: 'subject_lead',
+            subject_id: 1,
+          },
+        ],
+        status: 'assigned',
+      },
+      invitation: { pending_directed_count: 1, pending_open_count: 0, statuses: ['pending'] },
+      person: {
+        display_name: '李老师',
+        id: 101,
+        lifecycle_status: 'active',
+        org_id: 'org-1',
+        primary_org_unit_id: 2,
+        source: 'sample',
+      },
+    },
+    {
+      account: { user_id: 'user-student' },
+      education: { roles: [], status: 'unassigned' },
+      invitation: { pending_directed_count: 0, pending_open_count: 0, statuses: [] },
+      person: {
+        display_name: '王同学',
+        id: 102,
+        lifecycle_status: 'active',
+        org_id: 'org-1',
+        primary_org_unit_id: 3,
+        source: 'sample',
+      },
+    },
+  ],
+  authorizations: [
     {
       id: 900,
       org_id: 'org-1',
@@ -112,21 +156,26 @@ const directoryPayload = {
       person_id: 101,
       role: 'teacher',
       subject_user_id: 'user:directory-person-101',
-      teacher_id: 301,
+    },
+    {
+      id: 901,
+      org_id: 'org-1',
+      org_unit_id: 2,
+      person_id: 101,
+      role: 'subject_lead',
+      subject_id: 1,
+      subject_user_id: 'user:directory-person-101',
     },
   ],
-  roster_links: [
-    { id: 701, org_id: 'org-1', person_id: 101, roster_id: 301, roster_kind: 'teacher' },
-    { id: 702, org_id: 'org-1', person_id: 102, roster_id: 201, roster_kind: 'student' },
-  ],
   units: [
-    { id: 1, name: 'Seed School', org_id: 'org-1', sort_order: 0, unit_type: 'school' },
+    { id: 1, name: 'Seed School', org_id: 'org-1', sort_order: 0, unit_type: 'organization' },
     {
       id: 2,
       name: '数学组',
       org_id: 'org-1',
       parent_id: 1,
       sort_order: 0,
+      subject_id: 1,
       unit_type: 'department',
     },
     {
@@ -138,6 +187,175 @@ const directoryPayload = {
       unit_type: 'class',
     },
   ],
+};
+
+const integrationOperationsStatusPayload = {
+  diagnostics: {
+    diagnostic_count: 5,
+    overall_severity: 'warning',
+    runbook_owners: {
+      ags: 'lms_gradebook_admin',
+      billing_reservations: 'askcore_billing_admin',
+      caliper: 'school_data_admin',
+      lti_registry: 'askcore_admin',
+      school_fact_gateway: 'school_integration_admin',
+    },
+    subsystem_statuses: {
+      ags: 'no_jobs',
+      billing_reservations: 'configured',
+      caliper: 'no_jobs',
+      lti_registry: 'incomplete',
+      school_fact_gateway: 'incomplete',
+    },
+  },
+  external_calls: 0,
+  frontend_contract_version: 'integration_operations_status@v1',
+  operations: {
+    ags_status: 'no_jobs',
+    billing_reservations_status: 'configured',
+    caliper_status: 'no_jobs',
+    lti_registry_status: 'incomplete',
+    school_fact_gateway_status: 'incomplete',
+  },
+  live_pilot_connection: {
+    component_count: 4,
+    components: {
+      caliper: 'ready',
+      moodle_lti: 'ready',
+      oneroster: 'ready',
+      sql_views: 'ready',
+    },
+    connection_ready: true,
+    connection_status: 'ready',
+    contract: 'moodle_gibbon_live_pilot_connection@v1',
+    external_calls: 0,
+    gradebook_mirror_rows: 0,
+    probe_blocked_reason: 'default_read_only_mode',
+    probe_status: 'not_run',
+    ready_component_count: 4,
+    redaction_passed: true,
+    roster_projection_rows: 0,
+    school_fact_snapshot_rows: 0,
+  },
+  live_probe_gate: {
+    components: {
+      caliper: 'not_run',
+      moodle_lti: 'not_run',
+      oneroster: 'not_run',
+      sql_views: 'not_run',
+    },
+    contract: 'moodle_gibbon_live_probe_gate@v1',
+    external_calls: 0,
+    failed_probes: 0,
+    gate_status: 'not_run',
+    gradebook_mirror_rows: 0,
+    probe_attempts: 0,
+    probe_blocked_reason: 'default_read_only_mode',
+    probe_status: 'not_run',
+    redaction_passed: true,
+    roster_projection_rows: 0,
+    school_fact_snapshot_rows: 0,
+    successful_probes: 0,
+    validation_issue_count: 0,
+  },
+  live_pilot_acceptance: {
+    acceptance: {
+      connection_ready: true,
+      live_mode_requested: false,
+      no_gradebook_mirror: true,
+      no_roster_projection: true,
+      no_school_fact_snapshot: true,
+      operations_ready: true,
+      probe_passed: false,
+      redaction_safe: true,
+      registry_ready: true,
+    },
+    acceptance_status: 'blocked',
+    blocking_reason_counts: {
+      live_probe_out_of_band_credentials: 1,
+    },
+    blocking_reasons: ['live_probe_out_of_band_credentials'],
+    contract: 'moodle_gibbon_live_pilot_acceptance@v1',
+    external_calls: 0,
+    gradebook_mirror_rows: 0,
+    phase: 'P124',
+    redaction_passed: true,
+    roster_projection_rows: 0,
+    school_fact_snapshot_rows: 0,
+    validation_issue_count: 1,
+  },
+  phase: 'P115',
+  pilot_registry: {
+    pilot_registry_ready: false,
+    pilot_registry_status: 'not_configured',
+  },
+  production_preflight: {
+    preflight_required: false,
+    preflight_status: 'not_required',
+  },
+  redaction_passed: true,
+  roster_projection_rows: 0,
+  safe: true,
+  status: 'succeeded',
+};
+
+const activationConsolePayload = {
+  action: 'dry_run',
+  activation: {
+    activation_ready: true,
+    activation_status: 'ready',
+    operation_counts: {
+      data_sources: 2,
+      deployments: 1,
+      platforms: 1,
+      tool_keys: 1,
+    },
+    pilot_registry_ready: false,
+    pilot_registry_status: 'dry_run_ready',
+    ready_check_count: 30,
+    redaction_passed: true,
+    status: 'succeeded',
+    validation_issue_codes: [],
+    validation_issue_count: 0,
+  },
+  external_calls: 0,
+  frontend_contract_version: 'moodle_gibbon_pilot_activation@v1',
+  operations_status: integrationOperationsStatusPayload,
+  redaction_passed: true,
+  roster_projection_rows: 0,
+};
+
+const liveProbePayload = {
+  action: 'probe_live',
+  external_calls: 0,
+  frontend_contract_version: 'moodle_gibbon_live_probe_gate@v1',
+  operations_status: integrationOperationsStatusPayload,
+  probe_gate: {
+    ...integrationOperationsStatusPayload.live_probe_gate,
+    gate_status: 'blocked',
+    phase: 'P123',
+    probe_blocked_reason: 'out_of_band_credentials',
+    probe_status: 'blocked',
+    status: 'succeeded',
+  },
+  redaction_passed: true,
+  roster_projection_rows: 0,
+};
+
+const liveAcceptancePayload = {
+  acceptance: {
+    ...integrationOperationsStatusPayload.live_pilot_acceptance,
+    acceptance_status: 'blocked',
+    blocking_reasons: ['live_probe_out_of_band_credentials'],
+    phase: 'P124',
+    status: 'succeeded',
+  },
+  action: 'accept_live',
+  external_calls: 0,
+  frontend_contract_version: 'moodle_gibbon_live_pilot_acceptance@v1',
+  operations_status: integrationOperationsStatusPayload,
+  redaction_passed: true,
+  roster_projection_rows: 0,
 };
 
 describe('AskCoreOrganizationRoute', () => {
@@ -204,9 +422,12 @@ describe('AskCoreOrganizationRoute', () => {
           });
         }
         if (url.includes('/workbench/organization/roles')) {
-          return new Response(JSON.stringify({ items: directoryPayload.role_assignments }), {
+          return new Response(JSON.stringify({ items: directoryPayload.authorizations }), {
             status: 200,
           });
+        }
+        if (url.endsWith('/workbench/integrations/operations/status')) {
+          return new Response(JSON.stringify(integrationOperationsStatusPayload), { status: 200 });
         }
         return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
       }),
@@ -237,13 +458,18 @@ describe('AskCoreOrganizationRoute', () => {
     expect(within(directory).getAllByText('李老师').length).toBeGreaterThan(0);
     expect(within(directory).getAllByText('邀请中').length).toBeGreaterThan(0);
     expect(within(directory).getAllByText(/教师/).length).toBeGreaterThan(0);
+    expect(within(directory).getAllByText(/学科组长/).length).toBeGreaterThan(0);
     expect(within(directory).getByText('账号绑定')).toBeInTheDocument();
     expect(within(directory).getByText('定向邀请')).toBeInTheDocument();
     expect(within(directory).queryByPlaceholderText('不定向邀请位置')).not.toBeInTheDocument();
-    expect(within(directory).getByRole('button', { name: /新建人员/ })).toBeInTheDocument();
-    expect(within(directory).getByRole('button', { name: /不定向邀请/ })).toBeInTheDocument();
-    expect(within(directory).getByRole('button', { name: /批量导入/ })).toBeInTheDocument();
+    expect(within(directory).getByRole('button', { name: /添加人员/ })).toBeInTheDocument();
+    expect(within(directory).queryByRole('button', { name: /^新建人员$/ })).not.toBeInTheDocument();
+    expect(
+      within(directory).queryByRole('button', { name: /^不定向邀请$/ }),
+    ).not.toBeInTheDocument();
+    expect(within(directory).queryByRole('button', { name: /^批量导入$/ })).not.toBeInTheDocument();
     expect(within(directory).getByRole('button', { name: /导出/ })).toBeInTheDocument();
+    expect(within(directory).getByRole('button', { name: '待处理' })).toBeInTheDocument();
 
     const orgTree = within(directory).getByLabelText('组织树');
     expect(within(orgTree).getByRole('button', { name: /全部人员.*2/ })).toBeInTheDocument();
@@ -252,6 +478,10 @@ describe('AskCoreOrganizationRoute', () => {
       'true',
     );
 
+    fireEvent.click(within(orgTree).getByRole('button', { name: /Seed School/ }));
+    expect(within(directory).queryByRole('button', { name: '编辑节点' })).not.toBeInTheDocument();
+    expect(within(directory).queryByRole('button', { name: '删除节点' })).not.toBeInTheDocument();
+
     fireEvent.click(within(orgTree).getByRole('button', { name: /高一 1 班/ }));
     await waitFor(() => expect(within(directory).getAllByText('王同学').length).toBeGreaterThan(0));
     expect(within(orgTree).getByRole('button', { name: /高一 1 班/ })).toHaveAttribute(
@@ -259,11 +489,176 @@ describe('AskCoreOrganizationRoute', () => {
       'true',
     );
     expect(within(directory).getAllByText('已注册').length).toBeGreaterThan(0);
-    expect(within(directory).getByRole('button', { name: /添加到当前节点/ })).toBeInTheDocument();
-    expect(within(directory).getByRole('button', { name: /当前节点邀请/ })).toBeInTheDocument();
+    expect(within(directory).getByRole('button', { name: /添加到当前范围/ })).toBeInTheDocument();
     expect(
-      within(directory).getByRole('button', { name: /批量导入到当前节点/ }),
+      within(directory).queryByRole('button', { name: /当前节点邀请/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(directory).queryByRole('button', { name: /批量导入到当前节点/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows integration operations status only to organization administrators', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/directory')) {
+        return new Response(JSON.stringify(directoryPayload), { status: 200 });
+      }
+      if (url.endsWith('/workbench/integrations/operations/status')) {
+        return new Response(JSON.stringify(integrationOperationsStatusPayload), { status: 200 });
+      }
+      if (
+        url.endsWith('/workbench/integrations/pilot/moodle-gibbon/activation') &&
+        init?.method === 'POST'
+      ) {
+        return new Response(JSON.stringify(activationConsolePayload), { status: 200 });
+      }
+      if (
+        url.endsWith('/workbench/integrations/pilot/moodle-gibbon/live-probe') &&
+        init?.method === 'POST'
+      ) {
+        return new Response(JSON.stringify(liveProbePayload), { status: 200 });
+      }
+      if (
+        url.endsWith('/workbench/integrations/pilot/moodle-gibbon/live-acceptance') &&
+        init?.method === 'POST'
+      ) {
+        return new Response(JSON.stringify(liveAcceptancePayload), { status: 200 });
+      }
+      return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    const panel = await screen.findByLabelText('集成运维状态');
+    expect(within(panel).getByText('集成运维')).toBeInTheDocument();
+    await within(panel).findByText('未就绪');
+    expect(within(panel).getAllByText('需关注').length).toBeGreaterThan(0);
+    expect(within(panel).getByText('integration_operations_status@v1')).toBeInTheDocument();
+    expect(within(panel).getByText('moodle_gibbon_live_pilot_connection@v1')).toBeInTheDocument();
+    expect(within(panel).getByText('外部调用')).toBeInTheDocument();
+    expect(within(panel).getByText('名册投影')).toBeInTheDocument();
+    expect(within(panel).getByText('只读连接')).toBeInTheDocument();
+    expect(within(panel).getByText('连接组件')).toBeInTheDocument();
+    expect(within(panel).getByText('连接探测')).toBeInTheDocument();
+    expect(within(panel).getAllByText('探测门禁').length).toBeGreaterThan(0);
+    expect(within(panel).getByText('探测次数')).toBeInTheDocument();
+    expect(within(panel).getByText('探测外部调用')).toBeInTheDocument();
+    expect(within(panel).getByText('探测契约')).toBeInTheDocument();
+    expect(within(panel).getByText('moodle_gibbon_live_probe_gate@v1')).toBeInTheDocument();
+    expect(within(panel).getAllByText('试点准入').length).toBeGreaterThan(0);
+    expect(within(panel).getAllByText('准入状态').length).toBeGreaterThan(0);
+    expect(within(panel).getByText('阻塞项')).toBeInTheDocument();
+    expect(within(panel).getByText('事实快照')).toBeInTheDocument();
+    expect(within(panel).getByText('准入契约')).toBeInTheDocument();
+    expect(within(panel).getByText('moodle_gibbon_live_pilot_acceptance@v1')).toBeInTheDocument();
+    expect(within(panel).getByText('live_probe_out_of_band_credentials')).toBeInTheDocument();
+    expect(within(panel).getByText('成绩镜像')).toBeInTheDocument();
+    expect(within(panel).getByText('Moodle LTI：已就绪')).toBeInTheDocument();
+    expect(within(panel).getByText('OneRoster：已就绪')).toBeInTheDocument();
+    expect(within(panel).getByLabelText('激活包 JSON')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/workbench/integrations/operations/status',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+    expect(within(panel).queryByText('moodle.example.edu')).not.toBeInTheDocument();
+    expect(within(panel).queryByText('gibbon.example.edu')).not.toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole('button', { name: /只读探测/ }));
+    const probeResult = await screen.findByLabelText('探测结果');
+    expect(within(probeResult).getByText('moodle_gibbon_live_probe_gate@v1')).toBeInTheDocument();
+    expect(within(probeResult).getByText('只读探测')).toBeInTheDocument();
+    expect(within(probeResult).getByText('已阻止')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/workbench/integrations/pilot/moodle-gibbon/live-probe',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'probe_live' }),
+        credentials: 'include',
+        method: 'POST',
+      }),
+    );
+
+    fireEvent.click(within(panel).getByRole('button', { name: /验收试点/ }));
+    const acceptanceResult = await screen.findByLabelText('准入结果');
+    expect(
+      within(acceptanceResult).getByText('moodle_gibbon_live_pilot_acceptance@v1'),
     ).toBeInTheDocument();
+    expect(within(acceptanceResult).getByText('验收试点')).toBeInTheDocument();
+    expect(within(acceptanceResult).getByText('已阻止')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/workbench/integrations/pilot/moodle-gibbon/live-acceptance',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'accept_live' }),
+        credentials: 'include',
+        method: 'POST',
+      }),
+    );
+
+    const activationBundle = { phase: 'P113', target_lms: 'moodle', target_sis: 'gibbon' };
+    fireEvent.change(within(panel).getByLabelText('激活包 JSON'), {
+      target: { value: JSON.stringify(activationBundle) },
+    });
+    fireEvent.click(within(panel).getByRole('button', { name: /试运行/ }));
+
+    const result = await screen.findByLabelText('激活结果');
+    expect(within(result).getByText('moodle_gibbon_pilot_activation@v1')).toBeInTheDocument();
+    expect(within(result).getByText('试运行')).toBeInTheDocument();
+    expect(within(result).getByText('数据源：2')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/workbench/integrations/pilot/moodle-gibbon/activation',
+      expect.objectContaining({
+        body: JSON.stringify({ action: 'dry_run', bundle: activationBundle }),
+        credentials: 'include',
+        method: 'POST',
+      }),
+    );
+    expect(within(result).queryByText('secret-ref')).not.toBeInTheDocument();
+    expect(within(result).queryByText('endpoint_url')).not.toBeInTheDocument();
+  });
+
+  it('does not fetch or render integration operations status for ordinary members', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/directory')) {
+        return new Response(JSON.stringify(directoryPayload), { status: 200 });
+      }
+      return new Response(JSON.stringify(memberOrganizationPayload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText('组织架构工作区')).toBeInTheDocument());
+    expect(screen.queryByLabelText('集成运维状态')).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith('/workbench/integrations/operations/status'),
+      ),
+    ).toBe(false);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith('/workbench/integrations/pilot/moodle-gibbon/activation'),
+      ),
+    ).toBe(false);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith('/workbench/integrations/pilot/moodle-gibbon/live-probe'),
+      ),
+    ).toBe(false);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith('/workbench/integrations/pilot/moodle-gibbon/live-acceptance'),
+      ),
+    ).toBe(false);
   });
 
   it('lets admins create and edit organization units from the organization tree', async () => {
@@ -321,7 +716,7 @@ describe('AskCoreOrganizationRoute', () => {
     fireEvent.mouseDown(within(createPanel as HTMLElement).getByText('选择节点类型'));
     fireEvent.click(await screen.findByTitle('部门'));
     fireEvent.mouseDown(within(createPanel as HTMLElement).getByText('选择上级节点'));
-    fireEvent.click(await screen.findByTitle('Seed School / 学校'));
+    fireEvent.click(await screen.findByTitle('Seed School / 组织'));
     fireEvent.click(within(createPanel as HTMLElement).getByRole('button', { name: '确认新建' }));
 
     await waitFor(() =>
@@ -403,7 +798,8 @@ describe('AskCoreOrganizationRoute', () => {
     const directory = await screen.findByLabelText('组织架构工作区');
     await waitFor(() => expect(within(directory).getByText('Seed School')).toBeInTheDocument());
 
-    fireEvent.click(within(directory).getByRole('button', { name: /新建人员/ }));
+    fireEvent.click(within(directory).getByRole('button', { name: /添加人员/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '新建人员' }));
     const nameInput = await screen.findByPlaceholderText('输入姓名');
     const panel = nameInput.closest('.ant-popover') || document.body;
     fireEvent.change(within(panel as HTMLElement).getByPlaceholderText('输入姓名'), {
@@ -436,6 +832,67 @@ describe('AskCoreOrganizationRoute', () => {
     );
   });
 
+  it('prefills class scoped person creation from the selected organization node', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/workbench/organization/directory')) {
+        return new Response(JSON.stringify(directoryPayload), { status: 200 });
+      }
+      if (url.endsWith('/workbench/organization/people') && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            display_name: '预填学生',
+            id: 104,
+            lifecycle_status: 'active',
+            org_id: 'org-1',
+            primary_org_unit_id: 3,
+            registration_status: 'unregistered',
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify(activeOrganizationPayload), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AskCoreOrganizationRoute />
+      </MemoryRouter>,
+    );
+
+    const directory = await screen.findByLabelText('组织架构工作区');
+    const orgTree = within(directory).getByLabelText('组织树');
+    fireEvent.click(within(orgTree).getByRole('button', { name: /高一 1 班/ }));
+
+    fireEvent.click(within(directory).getByRole('button', { name: /添加到当前范围/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '新建人员' }));
+    const nameInput = await screen.findByPlaceholderText('输入姓名');
+    const panel = nameInput.closest('.ant-popover') || document.body;
+    fireEvent.change(within(panel as HTMLElement).getByPlaceholderText('输入姓名'), {
+      target: { value: '预填学生' },
+    });
+    expect(within(panel as HTMLElement).getByText('学生 · 高一 1 班')).toBeInTheDocument();
+    fireEvent.click(within(panel as HTMLElement).getByRole('button', { name: '确认创建' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/askcore/workbench/organization/people',
+        expect.objectContaining({
+          body: JSON.stringify({
+            display_name: '预填学生',
+            email: undefined,
+            education_org_unit_id: 3,
+            education_role: 'student',
+            primary_org_unit_id: 3,
+            roster_kind: 'student',
+          }),
+          method: 'POST',
+        }),
+      ),
+    );
+  });
+
   it('opens identity claim drawer from the organization action query', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -452,8 +909,8 @@ describe('AskCoreOrganizationRoute', () => {
             id: 31,
             org_id: 'org-1',
             requested_by_user_id: 'user-member',
-            roster_id: 301,
-            roster_kind: 'teacher',
+            roster_id: 101,
+            roster_kind: 'member',
             status: 'pending',
           }),
           { status: 200 },
@@ -474,11 +931,11 @@ describe('AskCoreOrganizationRoute', () => {
       expect(within(drawer).getAllByText('提交身份申请').length).toBeGreaterThan(0),
     );
     expect(screen.getByRole('button', { name: /提交身份申请/ })).toBeInTheDocument();
-    expect(within(drawer).getByPlaceholderText('输入姓名搜索教师或学生名册')).toBeInTheDocument();
+    expect(within(drawer).getByPlaceholderText('输入姓名搜索组织人员档案')).toBeInTheDocument();
     expect(within(drawer).queryByText(/审批/)).not.toBeInTheDocument();
     expect(within(drawer).queryByText('李老师')).not.toBeInTheDocument();
-    expect(within(drawer).getByText('请输入姓名搜索可申请的教师或学生名册')).toBeInTheDocument();
-    fireEvent.change(within(drawer).getByPlaceholderText('输入姓名搜索教师或学生名册'), {
+    expect(within(drawer).getByText('请输入姓名搜索可申请的组织人员档案')).toBeInTheDocument();
+    fireEvent.change(within(drawer).getByPlaceholderText('输入姓名搜索组织人员档案'), {
       target: { value: '李' },
     });
     await waitFor(() => expect(within(drawer).getByText('李老师')).toBeInTheDocument());
@@ -493,7 +950,7 @@ describe('AskCoreOrganizationRoute', () => {
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/askcore/workbench/organization/identity-claims',
         expect.objectContaining({
-          body: JSON.stringify({ roster_id: 301, roster_kind: 'teacher' }),
+          body: JSON.stringify({ roster_id: 101, roster_kind: 'member' }),
           method: 'POST',
         }),
       ),
@@ -528,7 +985,7 @@ describe('AskCoreOrganizationRoute', () => {
     });
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
-    expect(screen.getByPlaceholderText('输入姓名搜索教师或学生名册')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('输入姓名搜索组织人员档案')).toBeInTheDocument();
   });
 
   it('opens the application form by default for organization admins and keeps approval reachable', async () => {
@@ -549,8 +1006,8 @@ describe('AskCoreOrganizationRoute', () => {
                 id: 41,
                 org_id: 'org-1',
                 requested_by_user_id: 'other-user',
-                roster_id: 301,
-                roster_kind: 'teacher',
+                roster_id: 101,
+                roster_kind: 'member',
                 status: 'pending',
               },
             ],
@@ -573,7 +1030,7 @@ describe('AskCoreOrganizationRoute', () => {
     await waitFor(() => expect(within(drawer).getByText('提交身份申请')).toBeInTheDocument());
     expect(within(drawer).getByText('提交申请')).toBeInTheDocument();
     expect(within(drawer).getByText('身份审批')).toBeInTheDocument();
-    fireEvent.change(within(drawer).getByPlaceholderText('输入姓名搜索教师或学生名册'), {
+    fireEvent.change(within(drawer).getByPlaceholderText('输入姓名搜索组织人员档案'), {
       target: { value: '李' },
     });
     expect(within(drawer).getByText('李老师')).toBeInTheDocument();

@@ -1,18 +1,29 @@
 'use client';
 
 import {
+  type ActivityDetailResponse,
   type AnyResourceKey,
   type AskCoreEducationProfile,
   type AskCoreOrganizationState,
   type AskCoreWorkbenchDashboardPayload,
   type AskCoreWorkbenchListPayload,
   type AssignmentDetailResponse,
+  type AttemptDetailResponse,
   type JsonRecord,
   type PluginArtifact,
   type PluginInvocation,
   type PluginInvocationArtifacts,
   type PresignUploadResponse,
   type PrinterDeviceListResponse,
+  type ProtocolCaptureStartInput,
+  type ProtocolCaptureStatus,
+  type ProtocolIdentityLinkAcceptResult,
+  type ProtocolProcessingContext,
+  type ProtocolProcessingEditInput,
+  type ProtocolProcessingEditResult,
+  type ProtocolProcessingReportResult,
+  type ProtocolProcessingSurface,
+  type ProtocolScannerList,
   type ResourceItemResponse,
   type ResourceKey,
   type ResourceListResponse,
@@ -24,6 +35,7 @@ import {
 
 const WORKBENCH_API_BASE = '/api/askcore/workbench';
 const ORGANIZATION_API_BASE = '/api/askcore/organizations';
+const PROTOCOL_API_BASE = '/api/askcore/lti';
 const DEFAULT_PAGE_SIZE = 100;
 
 type AskCoreOrganizationPayloadSummary = {
@@ -139,6 +151,63 @@ export const fetchAskCoreWorkbenchJson = async <T>(
   const { payload } = await readResponsePayload(response);
   return payload as T;
 };
+
+const protocolJson = <T>(path: string, init: RequestInit = {}) =>
+  fetchAskCoreWorkbenchJson<T>(`${PROTOCOL_API_BASE}${path}`, init);
+
+const protocolMutation = (method: 'PATCH' | 'POST', payload?: unknown): RequestInit => ({
+  body: payload === undefined ? undefined : JSON.stringify(payload),
+  headers: payload === undefined ? undefined : { 'Content-Type': 'application/json' },
+  method,
+});
+
+export const fetchProtocolProcessingContext = () =>
+  protocolJson<ProtocolProcessingContext>('/processing/context');
+
+export const acceptProtocolIdentityLinkInvitation = (invitationToken: string) =>
+  protocolJson<ProtocolIdentityLinkAcceptResult>(
+    '/identity-links/accept',
+    protocolMutation('POST', { invitation_token: invitationToken }),
+  );
+
+export const fetchCurrentProtocolProcessingSurface = () =>
+  protocolJson<ProtocolProcessingSurface>('/processing/current');
+
+export const editCurrentProtocolProcessingResult = (payload: ProtocolProcessingEditInput) =>
+  protocolJson<ProtocolProcessingEditResult>(
+    '/processing/current/result',
+    protocolMutation('PATCH', payload),
+  );
+
+export const generateCurrentProtocolProcessingReport = () =>
+  protocolJson<ProtocolProcessingReportResult>(
+    '/processing/current/report',
+    protocolMutation('POST'),
+  );
+
+export const fetchProtocolCaptureScanners = () =>
+  protocolJson<ProtocolScannerList>('/processing/capture/scanners');
+
+export const startProtocolCapture = (payload: ProtocolCaptureStartInput) =>
+  protocolJson<ProtocolCaptureStatus>(
+    '/processing/capture/jobs',
+    protocolMutation('POST', payload),
+  );
+
+export const fetchProtocolCaptureStatus = (captureId: string) =>
+  protocolJson<ProtocolCaptureStatus>(`/processing/capture/jobs/${encodeURIComponent(captureId)}`);
+
+export const continueProtocolCapture = (captureId: string) =>
+  protocolJson<ProtocolCaptureStatus>(
+    `/processing/capture/jobs/${encodeURIComponent(captureId)}/continue`,
+    protocolMutation('POST', {}),
+  );
+
+export const cancelProtocolCapture = (captureId: string) =>
+  protocolJson<ProtocolCaptureStatus>(
+    `/processing/capture/jobs/${encodeURIComponent(captureId)}/cancel`,
+    protocolMutation('POST', {}),
+  );
 
 export const askCoreWorkbenchResourceUrl = (resource: string, page: number, pageSize: number) =>
   `${WORKBENCH_API_BASE}/${resource}${buildQuery({
@@ -430,8 +499,16 @@ export class AskCoreWorkbenchApiClient {
     return this.requestJson<AssignmentDetailResponse>(`/assignments/${assignmentId}/detail`);
   }
 
+  getActivityDetail(activityId: number) {
+    return this.requestJson<ActivityDetailResponse>(`/activities/${activityId}/detail`);
+  }
+
   getSubmissionDetail(submissionId: number) {
     return this.requestJson<SubmissionDetailResponse>(`/submissions/${submissionId}/detail`);
+  }
+
+  getAttemptDetail(attemptId: number) {
+    return this.requestJson<AttemptDetailResponse>(`/attempts/${attemptId}/detail`);
   }
 
   getStudentDetail(studentId: number) {
@@ -581,6 +658,19 @@ export class AskCoreWorkbenchApiClient {
   ) {
     return this.requestBlob('/submissions/reports/download', {
       body: JSON.stringify({ submission_ids: submissionIds }),
+      fallbackName: 'submission-reports.zip',
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+      onProgress: options.onProgress,
+    });
+  }
+
+  downloadAttemptReportsZip(
+    attemptIds: number[],
+    options: { onProgress?: (progress: BlobDownloadProgress) => void } = {},
+  ) {
+    return this.requestBlob('/attempts/reports/download', {
+      body: JSON.stringify({ attempt_ids: attemptIds }),
       fallbackName: 'submission-reports.zip',
       headers: { 'Content-Type': 'application/json' },
       method: 'POST',

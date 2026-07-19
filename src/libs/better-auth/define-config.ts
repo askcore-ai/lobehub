@@ -320,6 +320,9 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
     },
     rateLimit: {
       customRules: {
+        // Better Auth keys this endpoint by IP and path. Keep shared school NATs from
+        // exhausting the default 100-request rolling budget during session discovery.
+        '/get-session': { max: 1000, window: 1 },
         '/request-password-reset': { max: 3, window: 60 },
         '/send-verification-email': { max: 3, window: 60 },
       },

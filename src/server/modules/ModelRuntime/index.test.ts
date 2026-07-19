@@ -21,11 +21,13 @@ import {
   LobeZhipuAI,
   ModelRuntime,
 } from '@lobechat/model-runtime';
+import { ChatErrorType } from '@lobechat/types';
 import { LobeVertexAI } from '@lobechat/model-runtime/vertexai';
 import { type ClientSecretPayload } from '@lobechat/types';
 import { ModelProvider } from 'model-bank';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { wrapAskCoreBillingRuntime } from '@/business/server/model-runtime';
 import { buildPayloadFromKeyVaults, initModelRuntimeWithUserPayload } from './index';
 
 // 模拟依赖项
@@ -57,6 +59,111 @@ vi.mock('@/envs/llm', () => ({
     STEPFUN_API_KEY: 'test-stepfun-key',
   })),
 }));
+
+describe('AskCore billing runtime wrapper', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it('preflights every model runtime method and injects billing metadata', async () => {
+    vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'test-lobehub-billing');
+    vi.stubEnv('AITUTOR_API_BASE_URL', 'http://api:8000');
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: async () => ({ allowed: true }),
+      ok: true,
+      status: 200,
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const chatMock = vi.fn().mockResolvedValue({ text: 'ok' });
+    const generateObjectMock = vi.fn().mockResolvedValue({ object: { ok: true } });
+    const embeddingsMock = vi.fn().mockResolvedValue({ embeddings: [[0.1]] });
+    const createImageMock = vi.fn().mockResolvedValue({ image: 'ok' });
+    const createVideoMock = vi.fn().mockResolvedValue({ video: 'ok' });
+    const baseRuntime = {
+      chat: chatMock,
+      createImage: createImageMock,
+      createVideo: createVideoMock,
+      embeddings: embeddingsMock,
+      generateObject: generateObjectMock,
+    };
+
+    const runtime = wrapAskCoreBillingRuntime(baseRuntime as any, {
+      provider: 'openai',
+      userId: 'user-1',
+    }) as any;
+
+    await runtime.chat({ messages: [], model: 'gpt-test' }, { metadata: { source: 'chat' } });
+    await runtime.generateObject({ model: 'gpt-test', prompt: 'json' }, { metadata: { source: 'json' } });
+    await runtime.embeddings({ input: 'search text', model: 'embed-test' }, { metadata: { source: 'kb' } });
+    await runtime.createImage({ model: 'gpt-image', prompt: 'image' }, { metadata: { source: 'image' } });
+    await runtime.createVideo({ model: 'gpt-video', prompt: 'video' }, { metadata: { source: 'video' } });
+
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/billing/v1/usage/check'),
+      expect.objectContaining({
+        body: expect.stringContaining('"surface":"lobehub:model-runtime"'),
+        method: 'POST',
+      }),
+    );
+    expect(chatMock.mock.calls[0][1].metadata).toEqual({ source: 'chat' });
+    expect(chatMock.mock.calls[0][0].additional_drop_params).toContain('metadata');
+    expect(chatMock.mock.calls[0][0].metadata).toMatchObject({
+      askcore_action_id: 'chat',
+      askcore_billing_context_type: 'user',
+      askcore_surface: 'lobehub:model-runtime',
+      askcore_user_id: 'user-1',
+    });
+    expect(chatMock.mock.calls[0][0].litellm_metadata).toMatchObject({
+      askcore_action_id: 'chat',
+      askcore_billing_context_type: 'user',
+      askcore_surface: 'lobehub:model-runtime',
+      askcore_user_id: 'user-1',
+    });
+    expect(generateObjectMock.mock.calls[0][1].metadata).toEqual({ source: 'json' });
+    expect(generateObjectMock.mock.calls[0][0].litellm_metadata).toMatchObject({
+      askcore_action_id: 'generateObject',
+      askcore_user_id: 'user-1',
+    });
+    expect(embeddingsMock.mock.calls[0][1].metadata).toEqual({ source: 'kb' });
+    expect(createImageMock.mock.calls[0][1].metadata).toEqual({ source: 'image' });
+    expect(createVideoMock.mock.calls[0][1].metadata).toEqual({ source: 'video' });
+  });
+
+  it('returns a quota error before calling the provider when billing preflight fails', async () => {
+    vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'test-lobehub-billing');
+    vi.stubEnv('AITUTOR_API_BASE_URL', 'http://api:8000');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        json: async () => ({
+          billing_url: '/settings/plans',
+          code: 'quota_exhausted',
+          message: '额度不足，请充值后继续',
+        }),
+        ok: false,
+        status: 402,
+      }),
+    );
+    const chatMock = vi.fn();
+    const baseRuntime = { chat: chatMock };
+    const runtime = wrapAskCoreBillingRuntime(baseRuntime as any, {
+      provider: 'openai',
+      userId: 'user-1',
+    }) as any;
+
+    await expect(runtime.chat({ messages: [], model: 'gpt-test' })).rejects.toMatchObject({
+      error: {
+        billing_url: '/settings/plans',
+        code: 'quota_exhausted',
+        message: '额度不足，请充值后继续',
+      },
+      errorType: ChatErrorType.InsufficientBudgetForModel,
+    });
+    expect(chatMock).not.toHaveBeenCalled();
+  });
+});
 
 /**
  * Test cases for function initModelRuntimeWithUserPayload

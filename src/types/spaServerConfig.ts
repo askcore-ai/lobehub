@@ -30,4 +30,5 @@ export interface SPAServerConfig {
   config: GlobalServerConfig;
   featureFlags: Partial<IFeatureFlags>;
   isMobile: boolean;
+  schoolSessionGenerationHash?: string;
 }

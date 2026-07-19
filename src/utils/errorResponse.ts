@@ -19,7 +19,7 @@ const getStatus = (errorType: ILobeAgentRuntimeErrorType | ErrorType) => {
     case ChatErrorType.SubscriptionPlanLimit:
     case ChatErrorType.FreePlanLimit:
     case ChatErrorType.InsufficientBudgetForModel: {
-      return 403;
+      return errorType === ChatErrorType.InsufficientBudgetForModel ? 402 : 403;
     }
 
     // TODO: Need to refactor to Invalid OpenAI API Key

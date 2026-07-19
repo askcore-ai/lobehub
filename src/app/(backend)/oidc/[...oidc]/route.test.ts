@@ -66,4 +66,39 @@ describe('OIDC route', () => {
     await expect(response.text()).resolves.toContain('body stream aborted');
     expect(mocks.middleware).not.toHaveBeenCalled();
   });
+
+  it('forces school authorization to reselect the current Better Auth account', async () => {
+    mocks.createNodeRequest.mockImplementation(async (request: NextRequest) => {
+      expect(new URL(request.url).searchParams.get('prompt')).toBe('login');
+      return {};
+    });
+    mocks.middleware.mockImplementation((_request, _response, done) => done());
+
+    const { GET } = await import('./route');
+    const request = new Request(
+      'https://askcore.cn/oidc/auth?client_id=askcore-moodle&response_type=code',
+      { method: 'GET' },
+    ) as unknown as NextRequest;
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    expect(mocks.createNodeRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not force account selection for non-school OIDC clients', async () => {
+    mocks.createNodeRequest.mockImplementation(async (request: NextRequest) => {
+      expect(new URL(request.url).searchParams.has('prompt')).toBe(false);
+      return {};
+    });
+    mocks.middleware.mockImplementation((_request, _response, done) => done());
+
+    const { GET } = await import('./route');
+    const request = new Request(
+      'https://askcore.cn/oidc/auth?client_id=lobehub-desktop&response_type=code',
+      { method: 'GET' },
+    ) as unknown as NextRequest;
+
+    expect((await GET(request)).status).toBe(200);
+  });
 });

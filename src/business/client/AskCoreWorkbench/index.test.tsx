@@ -4,14 +4,31 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  AskCoreWorkbenchRoute,
+  AskCoreWorkbenchRoute as ProductionAskCoreWorkbenchRoute,
   buildAssignmentOcrRunSummary,
   buildQuestionOcrRunSummary,
   buildSubmissionOcrAssignmentSelectOption,
   buildSubmissionOcrRunSummary,
+  LegacyAskCoreWorkbenchRoute as AskCoreWorkbenchRoute,
   RESOURCE_LIST_LAYOUT,
   SUBMISSION_OCR_LAYOUT_BREAKPOINTS,
 } from './index';
+
+describe('AskCoreWorkbenchRoute production boundary', () => {
+  it('does not mount the retired school workbench without a processing handoff', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/askcore/workbench']}>
+        <ProductionAskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.queryByText('总览')).not.toBeInTheDocument());
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
 
 const activeOrganizationResponse = () =>
   new Response(
@@ -37,6 +54,34 @@ const activeOrganizationResponse = () =>
         canManageMembers: true,
         canUpdateMeta: true,
       },
+    }),
+    { headers: { 'content-type': 'application/json' }, status: 200 },
+  );
+
+const teachingReadyMeResponse = () =>
+  new Response(
+    JSON.stringify({
+      capabilities: {
+        can_create_assignment: true,
+        can_create_question: true,
+        can_run_teacher_submission_ocr: true,
+        can_submit_own_work: false,
+      },
+      education_identities: [],
+      org_composition: {},
+      teaching_runtime: {
+        app_env: 'production',
+        coherent: true,
+        forbid_legacy_school_writes: true,
+        production_preflight_required: true,
+        production_preflight_status: 'passed',
+        protocol_enabled: true,
+        protocol_mode: 'protocol',
+        reason: 'ready',
+        require_lms_sis_in_production: true,
+        teaching_available: true,
+      },
+      workbench_mode: 'teacher',
     }),
     { headers: { 'content-type': 'application/json' }, status: 200 },
   );
@@ -315,6 +360,18 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
             default_persona: null,
             education_identities: [],
             org_composition: { students: 1, teachers: 1 },
+            teaching_runtime: {
+              app_env: 'production',
+              coherent: false,
+              forbid_legacy_school_writes: false,
+              production_preflight_required: false,
+              production_preflight_status: 'not_required',
+              protocol_enabled: false,
+              protocol_mode: 'legacy',
+              reason: 'protocol_disabled',
+              require_lms_sis_in_production: false,
+              teaching_available: false,
+            },
             workbench_mode: 'identity_required',
           }),
           { headers: { 'content-type': 'application/json' }, status: 200 },
@@ -374,6 +431,7 @@ describe('AskCoreWorkbenchRoute dashboard overview', () => {
     );
 
     await waitFor(() => expect(screen.getByText('请先完成教师或学生身份绑定')).toBeInTheDocument());
+    expect(screen.getByText('学校教学连接尚未就绪')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '去提交身份申请' })).toHaveAttribute(
       'href',
       '/organization?action=identity-claim',
@@ -563,6 +621,7 @@ describe('AskCoreWorkbenchRoute submission detail binding', () => {
       const url = String(input);
 
       if (url === '/api/askcore/organizations') return activeOrganizationResponse();
+      if (url === '/api/askcore/workbench/me') return teachingReadyMeResponse();
 
       if (url === '/api/askcore/workbench/submissions/1109/detail') {
         return new Response(JSON.stringify(submissionDetail(status, assignmentStudentId, files)), {
@@ -937,6 +996,7 @@ describe('AskCoreWorkbenchRoute submission list batch actions', () => {
       const url = String(input);
 
       if (url === '/api/askcore/organizations') return activeOrganizationResponse();
+      if (url === '/api/askcore/workbench/me') return teachingReadyMeResponse();
 
       if (url.startsWith('/api/askcore/workbench/submissions?')) {
         return new Response(
@@ -1050,7 +1110,7 @@ describe('AskCoreWorkbenchRoute submission list batch actions', () => {
   const renderSubmissionList = async (fetchMock = makeFetch()) => {
     vi.stubGlobal('fetch', fetchMock);
     render(
-      <MemoryRouter initialEntries={['/askcore/workbench?tab=submissions']}>
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=attempts&route=%2Fsubmissions']}>
         <AskCoreWorkbenchRoute />
       </MemoryRouter>,
     );
@@ -1176,6 +1236,316 @@ describe('AskCoreWorkbenchRoute submission list batch actions', () => {
   }, 15_000);
 });
 
+describe('AskCoreWorkbenchRoute protocol attempt list batch actions', () => {
+  afterEach(() => {
+    message.destroy();
+    Modal.destroyAll();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  const jsonResponse = (payload: unknown, status = 200) =>
+    new Response(JSON.stringify(payload), {
+      headers: { 'content-type': 'application/json' },
+      status,
+    });
+
+  const emptyLookupFetch = (url: string) => {
+    if (url === '/api/askcore/organizations') return activeOrganizationResponse();
+    if (url === '/api/askcore/workbench/organization/units') {
+      return jsonResponse({ units: [] });
+    }
+    return jsonResponse({
+      has_more: false,
+      items: [],
+      next_after_id: null,
+      page: 1,
+      page_size: 100,
+      total: 0,
+    });
+  };
+
+  const attempts = [
+    { activity_title: '函数提交记录', attempt_id: 12103, status: 'graded', student_name: '张三' },
+    { activity_title: '几何提交记录', attempt_id: 12104, status: 'graded', student_name: '李四' },
+  ];
+
+  const invocation = (invocationId: string, actionId: string) => ({
+    action_id: actionId,
+    artifact_count: 0,
+    created_at: '2026-05-23T14:25:32',
+    current_question_order_index: null,
+    failure_reason: null,
+    finished_at: '2026-05-23T14:25:40',
+    invocation_id: invocationId,
+    last_event_at: '2026-05-23T14:25:40',
+    plugin_id: 'aitutor-suite',
+    progress_stage: 'succeeded',
+    question_failed: 0,
+    question_succeeded: 1,
+    question_total: 1,
+    run_id: 20,
+    started_at: '2026-05-23T14:25:33',
+    state: 'succeeded',
+    workflow_name: 'workbench.protocol_attempt_batch_test',
+  });
+
+  const attemptDetail = (attemptId: number, hasImage: boolean) => ({
+    attempt: {
+      attempt_id: attemptId,
+      legacy: { submission_id: attemptId - 11_000 },
+      status: 'graded',
+    },
+    detail_kind: 'legacy_submission',
+    item: { attempt_id: attemptId, status: 'graded' },
+    legacy_submission_id: attemptId - 11_000,
+    resource: 'attempts',
+    submission_detail: {
+      assignment: null,
+      assignment_questions: [],
+      classroom: null,
+      explanation_artifact: null,
+      files: hasImage
+        ? [
+            {
+              media_type: 'image/jpeg',
+              name: `attempt-${attemptId}.jpg`,
+              object_key: `uploads/org/scan/attempt-${attemptId}.jpg`,
+            },
+          ]
+        : [],
+      grade: null,
+      questions: [],
+      report: null,
+      student: null,
+      students: [],
+      subject: null,
+      submission: { status: 'graded', submission_id: attemptId - 11_000 },
+    },
+  });
+
+  const makeFetch = () => {
+    const actions = new Map<string, string>();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+
+      if (url === '/api/askcore/organizations') return activeOrganizationResponse();
+
+      if (url === '/api/askcore/workbench/me') {
+        return jsonResponse({
+          capabilities: {
+            can_create_assignment: true,
+            can_create_question: true,
+            can_run_teacher_submission_ocr: true,
+            can_submit_own_work: false,
+          },
+          education_identities: [],
+          org_composition: {},
+          teaching_runtime: {
+            app_env: 'production',
+            coherent: true,
+            forbid_legacy_school_writes: true,
+            production_preflight_required: true,
+            production_preflight_status: 'passed',
+            protocol_enabled: true,
+            protocol_mode: 'protocol',
+            reason: 'ready',
+            require_lms_sis_in_production: true,
+            teaching_available: true,
+          },
+          workbench_mode: 'teacher',
+        });
+      }
+
+      if (url.startsWith('/api/askcore/workbench/attempts?')) {
+        return jsonResponse({
+          has_more: false,
+          items: attempts,
+          next_after_id: null,
+          page: 1,
+          page_size: 20,
+          resource: 'attempts',
+          total: attempts.length,
+        });
+      }
+
+      if (url === '/api/askcore/workbench/attempts/12103/detail') {
+        return jsonResponse(attemptDetail(12103, true));
+      }
+
+      if (url === '/api/askcore/workbench/attempts/12104/detail') {
+        return jsonResponse(attemptDetail(12104, false));
+      }
+
+      if (url === '/api/askcore/workbench/attempts/reports/download') {
+        return new Response('zip', {
+          headers: {
+            'content-length': '3',
+            'content-type': 'application/zip',
+          },
+          status: 200,
+        });
+      }
+
+      if (url === '/api/askcore/workbench/devices/printers') {
+        return jsonResponse({
+          default_printer_id: 'printer-1',
+          items: [
+            {
+              bridge_id: 'agent-1',
+              capabilities: {},
+              display_name: '办公室打印机',
+              kind: 'ipp',
+              online: true,
+              printer_id: 'printer-1',
+              source: 'device_agent',
+            },
+          ],
+        });
+      }
+
+      if (url.includes('/actions/')) {
+        const actionId = decodeURIComponent(url.split('/actions/')[1]);
+        const invocationId = `inv-attempt-${actions.size + 1}`;
+        actions.set(invocationId, actionId);
+        return jsonResponse(
+          {
+            action_id: actionId,
+            invocation_id: invocationId,
+            plugin_id: 'aitutor-suite',
+            run_id: actions.size,
+            status: 'accepted',
+          },
+          201,
+        );
+      }
+
+      const invocationMatch = url.match(/\/api\/askcore\/workbench\/invocations\/([^/]+)$/);
+      if (invocationMatch?.[1]) {
+        const invocationId = decodeURIComponent(invocationMatch[1]);
+        return jsonResponse(invocation(invocationId, actions.get(invocationId) || ''));
+      }
+
+      if (url.includes('/invocations/') && url.endsWith('/artifacts')) {
+        return jsonResponse({ artifacts: [], invocation_id: 'inv-attempt-1', run_id: 20 });
+      }
+
+      return emptyLookupFetch(url);
+    });
+    return fetchMock;
+  };
+
+  const renderAttemptList = async (fetchMock = makeFetch()) => {
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=attempts']}>
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+    await screen.findAllByText('张三');
+    return fetchMock;
+  };
+
+  const selectVisibleAttempts = async () => {
+    const checkbox = screen.getByRole('checkbox', { name: '全选当前显示记录' });
+    await waitFor(() => expect(checkbox).toBeEnabled());
+    fireEvent.click(checkbox);
+    await waitFor(() => expect(screen.getByText(/已选 2 条/)).toBeInTheDocument());
+  };
+
+  const actionCalls = (fetchMock: ReturnType<typeof makeFetch>, action: string) =>
+    fetchMock.mock.calls.filter(
+      ([input]) => String(input) === `/api/askcore/workbench/actions/${action}`,
+    );
+
+  it('runs selected protocol attempt report generation with attempt ids', async () => {
+    const fetchMock = await renderAttemptList();
+    await selectVisibleAttempts();
+
+    fireEvent.click(screen.getByRole('button', { name: '生成报告' }));
+    await waitFor(() =>
+      expect(actionCalls(fetchMock, 'submission.report.generate')).toHaveLength(2),
+    );
+    const reportBodies = actionCalls(fetchMock, 'submission.report.generate').map(([, init]) =>
+      JSON.parse(String((init as RequestInit).body || '{}')),
+    );
+    expect(reportBodies.map((body) => body.params)).toEqual([
+      { attempt_id: 12103, force: true },
+      { attempt_id: 12104, force: true },
+    ]);
+  }, 20_000);
+
+  it('reruns OCR only for selected protocol attempts with images', async () => {
+    const fetchMock = await renderAttemptList();
+    await selectVisibleAttempts();
+
+    fireEvent.click(screen.getByRole('button', { name: '重新 OCR 并批改' }));
+    fireEvent.click(await screen.findByRole('button', { name: /OK|确定/ }));
+
+    await waitFor(() => expect(actionCalls(fetchMock, 'submission.ocr.rerun')).toHaveLength(1));
+    const body = JSON.parse(
+      String((actionCalls(fetchMock, 'submission.ocr.rerun')[0][1] as RequestInit).body || '{}'),
+    );
+    expect(body.params).toEqual({ attempt_id: 12103 });
+    expect(body.confirmation_id).toMatch(/^confirm-/);
+    await waitFor(() => expect(screen.getAllByText(/失败 1/).length).toBeGreaterThan(0));
+  }, 15_000);
+
+  it('downloads selected protocol attempt reports through the attempt endpoint', async () => {
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: vi.fn(() => 'blob:attempt-reports'),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: vi.fn(),
+    });
+    const fetchMock = await renderAttemptList();
+    await selectVisibleAttempts();
+
+    fireEvent.click(screen.getByRole('button', { name: '下载报告' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/askcore/workbench/attempts/reports/download',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+    const downloadCall = fetchMock.mock.calls.find(
+      ([input]) => String(input) === '/api/askcore/workbench/attempts/reports/download',
+    );
+    expect(JSON.parse(String((downloadCall?.[1] as RequestInit).body || '{}'))).toEqual({
+      attempt_ids: [12103, 12104],
+    });
+  }, 15_000);
+
+  it('prints selected protocol attempt reports with attempt ids', async () => {
+    vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as never;
+    });
+    const fetchMock = await renderAttemptList();
+    await selectVisibleAttempts();
+
+    fireEvent.click(screen.getByRole('button', { name: '打印报告' }));
+
+    await waitFor(() =>
+      expect(actionCalls(fetchMock, 'submission.report.print_batch')).toHaveLength(1),
+    );
+    const body = JSON.parse(
+      String(
+        (actionCalls(fetchMock, 'submission.report.print_batch')[0][1] as RequestInit).body || '{}',
+      ),
+    );
+    expect(body.params).toEqual({
+      attempt_ids: [12103, 12104],
+      duplex: true,
+      media: 'iso_a4_210x297mm',
+      printer_id: 'printer-1',
+    });
+  }, 15_000);
+});
+
 describe('AskCoreWorkbenchRoute resource list loading states', () => {
   afterEach(() => {
     message.destroy();
@@ -1213,6 +1583,9 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
   const emptyLookupFetch = (url: string) => {
     if (url === '/api/askcore/organizations') {
       return activeOrganizationResponse();
+    }
+    if (url === '/api/askcore/workbench/me') {
+      return teachingReadyMeResponse();
     }
     if (url === '/api/askcore/workbench/organization/units') {
       return jsonResponse({ units: [] });
@@ -1338,22 +1711,22 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     expect(document.body.textContent || '').not.toContain('[object Object]');
   });
 
-  it('hides submission rows while an assignment tab request is still loading', async () => {
-    const assignmentResponse = deferredResponse();
+  it('hides attempt rows while an activity tab request is still loading', async () => {
+    const activityResponse = deferredResponse();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
 
-      if (url.startsWith('/api/askcore/workbench/submissions?')) {
+      if (url.startsWith('/api/askcore/workbench/attempts?')) {
         return jsonResponse(
-          listResponse('submissions', [
-            { status: 'graded', student_name: '张三', submission_id: 1109 },
-            { status: 'graded', student_name: '李四', submission_id: 1110 },
+          listResponse('attempts', [
+            { activity_title: '函数提交记录', attempt_id: 1109, status: 'graded' },
+            { activity_title: '几何提交记录', attempt_id: 1110, status: 'submitted' },
           ]),
         );
       }
 
-      if (url.startsWith('/api/askcore/workbench/assignments?')) {
-        return assignmentResponse.promise;
+      if (url.startsWith('/api/askcore/workbench/activities?')) {
+        return activityResponse.promise;
       }
 
       return emptyLookupFetch(url);
@@ -1361,51 +1734,49 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(
-      <MemoryRouter initialEntries={['/askcore/workbench?tab=submissions']}>
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=attempts']}>
         <AskCoreWorkbenchRoute />
       </MemoryRouter>,
     );
 
-    await screen.findAllByText('张三');
+    await screen.findAllByText('函数提交记录');
     expect(
       fetchMock.mock.calls.some(([input]) => {
         const url = String(input);
-        return (
-          url.startsWith('/api/askcore/workbench/submissions?') && url.includes('page_size=100')
-        );
+        return url.startsWith('/api/askcore/workbench/attempts?') && url.includes('page_size=100');
       }),
     ).toBe(true);
 
-    fireEvent.click(screen.getAllByText('作业')[0]);
+    fireEvent.click(screen.getAllByText('活动')[0]);
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(([input]) =>
-          String(input).startsWith('/api/askcore/workbench/assignments?'),
+          String(input).startsWith('/api/askcore/workbench/activities?'),
         ),
       ).toBe(true),
     );
 
-    expect(screen.queryAllByText('张三')).toHaveLength(0);
-    expect(screen.queryAllByText('李四')).toHaveLength(0);
+    expect(screen.queryAllByText('函数提交记录')).toHaveLength(0);
+    expect(screen.queryAllByText('几何提交记录')).toHaveLength(0);
     expect(screen.getByText('正在加载…')).toBeInTheDocument();
 
-    assignmentResponse.resolve(
-      jsonResponse(listResponse('assignments', [{ assignment_id: 501, title: '期中练习' }])),
+    activityResponse.resolve(
+      jsonResponse(listResponse('activities', [{ activity_id: 501, title: '期中练习' }])),
     );
 
     expect(await screen.findAllByText('期中练习')).toHaveLength(2);
     expect(screen.queryByText('正在加载…')).not.toBeInTheDocument();
   });
 
-  it('hides assignment rows while a question tab request is still loading', async () => {
+  it('hides activity rows while a question tab request is still loading', async () => {
     const questionResponse = deferredResponse();
-    let assignmentCalls = 0;
+    let activityCalls = 0;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
 
-      if (url.startsWith('/api/askcore/workbench/assignments?')) {
-        assignmentCalls += 1;
-        return jsonResponse(listResponse('assignments', [{ assignment_id: 501, title: '旧作业' }]));
+      if (url.startsWith('/api/askcore/workbench/activities?')) {
+        activityCalls += 1;
+        return jsonResponse(listResponse('activities', [{ activity_id: 501, title: '旧活动' }]));
       }
 
       if (url.startsWith('/api/askcore/workbench/questions?')) {
@@ -1417,13 +1788,13 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(
-      <MemoryRouter initialEntries={['/askcore/workbench?tab=assignments']}>
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=activities']}>
         <AskCoreWorkbenchRoute />
       </MemoryRouter>,
     );
 
-    await screen.findAllByText('旧作业');
-    await waitFor(() => expect(assignmentCalls).toBeGreaterThanOrEqual(1));
+    await screen.findAllByText('旧活动');
+    await waitFor(() => expect(activityCalls).toBeGreaterThanOrEqual(1));
 
     fireEvent.click(screen.getByRole('radio', { name: '题目' }));
     await waitFor(() =>
@@ -1434,7 +1805,7 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
       ).toBe(true),
     );
 
-    expect(screen.queryAllByText('旧作业')).toHaveLength(0);
+    expect(screen.queryAllByText('旧活动')).toHaveLength(0);
     expect(screen.getByText('正在加载…')).toBeInTheDocument();
 
     questionResponse.resolve(
@@ -1449,18 +1820,16 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     expect(screen.queryByText('正在加载…')).not.toBeInTheDocument();
   });
 
-  it('hides existing assignment rows while the current list is refreshing', async () => {
+  it('hides existing activity rows while the current list is refreshing', async () => {
     const refreshResponse = deferredResponse();
-    let assignmentCalls = 0;
+    let activityCalls = 0;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
 
-      if (url.startsWith('/api/askcore/workbench/assignments?')) {
-        assignmentCalls += 1;
-        if (assignmentCalls <= 2) {
-          return jsonResponse(
-            listResponse('assignments', [{ assignment_id: 501, title: '旧作业' }]),
-          );
+      if (url.startsWith('/api/askcore/workbench/activities?')) {
+        activityCalls += 1;
+        if (activityCalls <= 2) {
+          return jsonResponse(listResponse('activities', [{ activity_id: 501, title: '旧活动' }]));
         }
         return refreshResponse.promise;
       }
@@ -1470,27 +1839,272 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(
-      <MemoryRouter initialEntries={['/askcore/workbench?tab=assignments']}>
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=activities']}>
         <AskCoreWorkbenchRoute />
       </MemoryRouter>,
     );
 
-    await screen.findAllByText('旧作业');
+    await screen.findAllByText('旧活动');
 
-    const callsBeforeRefresh = assignmentCalls;
+    const callsBeforeRefresh = activityCalls;
     fireEvent.click(screen.getByRole('button', { name: /筛\s*选/ }));
-    await waitFor(() => expect(assignmentCalls).toBeGreaterThan(callsBeforeRefresh));
+    await waitFor(() => expect(activityCalls).toBeGreaterThan(callsBeforeRefresh));
 
-    expect(screen.queryAllByText('旧作业')).toHaveLength(0);
+    expect(screen.queryAllByText('旧活动')).toHaveLength(0);
     expect(screen.getByText('正在加载…')).toBeInTheDocument();
 
     refreshResponse.resolve(
-      jsonResponse(listResponse('assignments', [{ assignment_id: 502, title: '新作业' }])),
+      jsonResponse(listResponse('activities', [{ activity_id: 502, title: '新活动' }])),
     );
 
-    expect(await screen.findAllByText('新作业')).toHaveLength(2);
-    expect(screen.queryAllByText('旧作业')).toHaveLength(0);
+    expect(await screen.findAllByText('新活动')).toHaveLength(2);
+    expect(screen.queryAllByText('旧活动')).toHaveLength(0);
   }, 15_000);
+
+  it('renders protocol activities as a read-only list resource', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.startsWith('/api/askcore/workbench/activities?')) {
+        return jsonResponse(
+          listResponse('activities', [
+            { activity_id: 12101, status: 'active', title: 'P121 活动' },
+          ]),
+        );
+      }
+
+      return emptyLookupFetch(url);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=activities']}>
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findAllByText('P121 活动')).toHaveLength(2);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).startsWith('/api/askcore/workbench/activities?'),
+      ),
+    ).toBe(true);
+    expect(screen.queryByText('新建活动')).not.toBeInTheDocument();
+    expect(screen.queryByText('批量删除')).not.toBeInTheDocument();
+  });
+
+  it('renders protocol attempt detail without edit or delete actions', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === '/api/askcore/workbench/attempts/12103/detail') {
+        return jsonResponse({
+          attempt: {
+            activity: { id: 12101, title: 'P121 活动' },
+            attempt_id: 12103,
+            status: 'graded',
+          },
+          detail_kind: 'protocol_attempt',
+          item: { attempt_id: 12103, status: 'graded' },
+          resource: 'attempts',
+        });
+      }
+
+      return emptyLookupFetch(url);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=attempts&route=%2Fattempts%2F12103']}>
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('只读协议资源')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/workbench/attempts/12103/detail',
+      expect.any(Object),
+    );
+    expect(screen.queryByRole('button', { name: '编辑' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument();
+  });
+
+  it('renders legacy-backed protocol activity detail without legacy edit navigation', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === '/api/askcore/workbench/activities/12101/detail') {
+        return jsonResponse({
+          activity: { activity_id: 12101, legacy_assignment_id: 501, title: 'P127 活动' },
+          assignment_detail: {
+            assignment: {
+              assignment_id: 501,
+              creation_type: 'teacher',
+              grade_id: 3,
+              subject_id: 7,
+              title: 'P127 活动作业',
+            },
+            files: [],
+            grade: { grade_id: 3, name: '高一' },
+            questions: [],
+            students: [],
+            subject: { name: '数学', subject_id: 7 },
+          },
+          detail_kind: 'legacy_assignment',
+          item: { activity_id: 12101, title: 'P127 活动' },
+          legacy_assignment_id: 501,
+          resource: 'activities',
+        });
+      }
+
+      return emptyLookupFetch(url);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter
+        initialEntries={['/askcore/workbench?tab=activities&route=%2Factivities%2F12101']}
+      >
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('活动运行记录')).toBeInTheDocument();
+    expect(screen.getByText('P127 活动作业')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/workbench/activities/12101/detail',
+      expect.any(Object),
+    );
+    expect(screen.queryByRole('button', { name: '编辑作业' })).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).includes('/api/askcore/workbench/assignments/501/detail'),
+      ),
+    ).toBe(false);
+  });
+
+  it('renders legacy-backed protocol attempt detail with teacher actions but no edit button', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url === '/api/askcore/workbench/me') {
+        return jsonResponse({
+          capabilities: {
+            can_create_assignment: true,
+            can_create_question: true,
+            can_run_teacher_submission_ocr: true,
+            can_submit_own_work: false,
+          },
+          education_identities: [],
+          org_composition: {},
+          teaching_runtime: {
+            app_env: 'production',
+            coherent: true,
+            forbid_legacy_school_writes: true,
+            production_preflight_required: true,
+            production_preflight_status: 'passed',
+            protocol_enabled: true,
+            protocol_mode: 'protocol',
+            reason: 'ready',
+            require_lms_sis_in_production: true,
+            teaching_available: true,
+          },
+          workbench_mode: 'teacher',
+        });
+      }
+
+      if (url === '/api/askcore/workbench/attempts/12103/detail') {
+        return jsonResponse({
+          attempt: { attempt_id: 12103, legacy: { submission_id: 1109 }, status: 'graded' },
+          detail_kind: 'legacy_submission',
+          item: { attempt_id: 12103, status: 'graded' },
+          legacy_submission_id: 1109,
+          resource: 'attempts',
+          submission_detail: {
+            assignment: { assignment_id: 501, title: 'P127 活动作业' },
+            assignment_questions: [],
+            classroom: null,
+            explanation_artifact: null,
+            files: [
+              {
+                media_type: 'image/jpeg',
+                name: 'submission.jpg',
+                object_key: 'uploads/org/scan/submission.jpg',
+                preview_url: '/api/askcore/workbench/files/preview?object_key=submission.jpg',
+              },
+            ],
+            grade: null,
+            questions: [],
+            report: {
+              name: 'report.pdf',
+              object_key: 'uploads/org/report/report.pdf',
+              status: 'ready',
+            },
+            student: { name: '张三', person_id: 101 },
+            students: [],
+            subject: null,
+            submission: {
+              score: 88,
+              status: 'graded',
+              submission_id: 1109,
+              submitted_at: '2026-05-21T00:00:00Z',
+              total_score: 100,
+            },
+          },
+        });
+      }
+
+      if (
+        url === '/api/askcore/workbench/actions/submission.ocr.rerun' &&
+        init?.method === 'POST'
+      ) {
+        return jsonResponse({
+          action_id: 'submission.ocr.rerun',
+          invocation_id: 'inv-rerun',
+          plugin_id: 'aitutor-suite',
+          run_id: 1,
+          status: 'accepted',
+        });
+      }
+
+      return emptyLookupFetch(url);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/askcore/workbench?tab=attempts&route=%2Fattempts%2F12103']}>
+        <AskCoreWorkbenchRoute />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('提交运行记录')).toBeInTheDocument();
+    expect(screen.getByText('P127 活动作业')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '重新 OCR 并批改' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '生成报告' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '编辑提交' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重新 OCR 并批改' }));
+    fireEvent.click(await screen.findByRole('button', { name: /OK|确定/ }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/askcore/workbench/actions/submission.ocr.rerun',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+    const rerunCall = fetchMock.mock.calls.find(
+      ([input]) => String(input) === '/api/askcore/workbench/actions/submission.ocr.rerun',
+    );
+    const rerunBody = JSON.parse(String((rerunCall?.[1] as RequestInit).body || '{}'));
+    expect(rerunBody.params).toEqual({ attempt_id: 12103 });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/workbench/attempts/12103/detail',
+      expect.any(Object),
+    );
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).includes('/api/askcore/workbench/submissions/1109/detail'),
+      ),
+    ).toBe(false);
+  });
 });
 
 describe('AskCoreWorkbenchRoute submission OCR run summary', () => {

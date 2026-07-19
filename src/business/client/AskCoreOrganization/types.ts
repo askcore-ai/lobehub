@@ -1,9 +1,10 @@
 export type AskCoreOrganizationRole = 'owner' | 'admin' | 'member';
 export type AskCoreInviteChannel = 'email' | 'link' | 'qr';
 export type AskCoreInviteExpiry = '30m' | '1d' | '7d' | '30d';
-export type AskCoreEducationOrgUnitType = 'school' | 'cohort' | 'class' | 'department';
+export type AskCoreEducationOrgUnitType =
+  'organization' | 'school' | 'cohort' | 'class' | 'department';
 export type AskCoreEducationRole =
-  'school_admin' | 'grade_admin' | 'homeroom_teacher' | 'teacher' | 'student';
+  'school_admin' | 'grade_admin' | 'homeroom_teacher' | 'subject_lead' | 'teacher' | 'student';
 
 export interface AskCoreOrganizationSummary {
   contact?: string;
@@ -38,6 +39,152 @@ export interface AskCoreOrganizationPayload {
   };
 }
 
+export interface AskCoreIntegrationOperationsStatusPayload {
+  diagnostics?: {
+    diagnostic_count?: number;
+    overall_severity?: string;
+    runbook_owners?: Record<string, string>;
+    subsystem_statuses?: Record<string, string>;
+  };
+  external_calls?: number;
+  frontend_contract_version: 'integration_operations_status@v1';
+  generated_at?: string;
+  live_pilot_acceptance?: {
+    acceptance?: {
+      connection_ready?: boolean;
+      live_mode_requested?: boolean;
+      no_gradebook_mirror?: boolean;
+      no_roster_projection?: boolean;
+      no_school_fact_snapshot?: boolean;
+      operations_ready?: boolean;
+      probe_passed?: boolean;
+      redaction_safe?: boolean;
+      registry_ready?: boolean;
+    };
+    acceptance_status?: string;
+    blocking_reason_counts?: Record<string, number>;
+    blocking_reasons?: string[];
+    contract?: 'moodle_gibbon_live_pilot_acceptance@v1';
+    external_calls?: number;
+    gradebook_mirror_rows?: number;
+    phase?: string;
+    redaction_passed?: boolean;
+    roster_projection_rows?: number;
+    school_fact_snapshot_rows?: number;
+    validation_issue_count?: number;
+  };
+  live_pilot_connection?: {
+    component_count?: number;
+    components?: Record<string, string>;
+    connection_ready?: boolean;
+    connection_status?: string;
+    contract?: 'moodle_gibbon_live_pilot_connection@v1';
+    external_calls?: number;
+    gradebook_mirror_rows?: number;
+    probe_blocked_reason?: string;
+    probe_status?: string;
+    ready_component_count?: number;
+    redaction_passed?: boolean;
+    roster_projection_rows?: number;
+    school_fact_snapshot_rows?: number;
+  };
+  live_probe_gate?: {
+    components?: Record<string, string>;
+    contract?: 'moodle_gibbon_live_probe_gate@v1';
+    external_calls?: number;
+    failed_probes?: number;
+    gate_status?: string;
+    gradebook_mirror_rows?: number;
+    probe_attempts?: number;
+    probe_blocked_reason?: string | null;
+    probe_status?: string;
+    redaction_passed?: boolean;
+    roster_projection_rows?: number;
+    school_fact_snapshot_rows?: number;
+    successful_probes?: number;
+    validation_issue_count?: number;
+  };
+  operations?: Record<string, unknown>;
+  phase: string;
+  pilot_registry?: {
+    pilot_registry_ready?: boolean;
+    pilot_registry_status?: string;
+  };
+  production_preflight?: {
+    preflight_required?: boolean;
+    preflight_status?: string;
+  };
+  redaction_passed?: boolean;
+  roster_projection_rows?: number;
+  safe?: boolean;
+  status: string;
+}
+
+export type AskCoreMoodleGibbonPilotActivationAction = 'validate' | 'dry_run' | 'apply';
+
+export interface AskCoreMoodleGibbonPilotActivationInput {
+  action: AskCoreMoodleGibbonPilotActivationAction;
+  bundle: Record<string, unknown>;
+}
+
+export interface AskCoreMoodleGibbonPilotActivationPayload {
+  action: AskCoreMoodleGibbonPilotActivationAction;
+  activation?: {
+    activation_ready?: boolean;
+    activation_status?: string;
+    operation_counts?: Record<string, number>;
+    pilot_registry_ready?: boolean;
+    pilot_registry_status?: string;
+    ready_check_count?: number;
+    redaction_passed?: boolean;
+    status?: string;
+    validation_issue_codes?: string[];
+    validation_issue_count?: number;
+  };
+  external_calls?: number;
+  frontend_contract_version: 'moodle_gibbon_pilot_activation@v1';
+  operations_status?: AskCoreIntegrationOperationsStatusPayload;
+  redaction_passed?: boolean;
+  roster_projection_rows?: number;
+}
+
+export type AskCoreMoodleGibbonLiveProbeAction = 'read_only' | 'probe_live';
+
+export interface AskCoreMoodleGibbonLiveProbeInput {
+  action: AskCoreMoodleGibbonLiveProbeAction;
+}
+
+export interface AskCoreMoodleGibbonLiveProbePayload {
+  action: AskCoreMoodleGibbonLiveProbeAction;
+  external_calls?: number;
+  frontend_contract_version: 'moodle_gibbon_live_probe_gate@v1';
+  operations_status?: AskCoreIntegrationOperationsStatusPayload;
+  probe_gate?: AskCoreIntegrationOperationsStatusPayload['live_probe_gate'] & {
+    phase?: string;
+    status?: string;
+  };
+  redaction_passed?: boolean;
+  roster_projection_rows?: number;
+}
+
+export type AskCoreMoodleGibbonLiveAcceptanceAction = 'read_only' | 'accept_live';
+
+export interface AskCoreMoodleGibbonLiveAcceptanceInput {
+  action: AskCoreMoodleGibbonLiveAcceptanceAction;
+}
+
+export interface AskCoreMoodleGibbonLiveAcceptancePayload {
+  acceptance?: AskCoreIntegrationOperationsStatusPayload['live_pilot_acceptance'] & {
+    status?: string;
+  };
+  action: AskCoreMoodleGibbonLiveAcceptanceAction;
+  external_calls?: number;
+  frontend_contract_version: 'moodle_gibbon_live_pilot_acceptance@v1';
+  operations_status?: AskCoreIntegrationOperationsStatusPayload;
+  redaction_passed?: boolean;
+  roster_projection_rows?: number;
+}
+
 export interface AskCoreInvitePayload {
   channel: AskCoreInviteChannel;
   directoryInvitationToken: string;
@@ -60,6 +207,7 @@ export interface AskCoreEducationOrgUnit {
   org_id: string;
   parent_id?: number | null;
   sort_order: number;
+  subject_id?: number | null;
   unit_type: AskCoreEducationOrgUnitType;
 }
 
@@ -74,6 +222,7 @@ export interface AskCoreEducationOrgUnitCreateInput {
   name: string;
   parent_id?: number | null;
   sort_order?: number;
+  subject_id?: number | null;
   unit_type: AskCoreEducationOrgUnitType;
 }
 
@@ -98,6 +247,7 @@ export interface AskCoreEducationRoleAssignment {
   person_id?: number | null;
   role: AskCoreEducationRole;
   student_id?: number | null;
+  subject_id?: number | null;
   subject_user_id: string;
   teacher_id?: number | null;
 }
@@ -107,6 +257,7 @@ export interface AskCoreEducationRoleAssignmentPayload {
 }
 
 export type AskCoreEducationIdentityRosterKind = 'student' | 'teacher';
+export type AskCoreEducationIdentityClaimRosterKind = 'member' | AskCoreEducationIdentityRosterKind;
 
 export interface AskCoreEducationIdentityBindingInput {
   better_auth_user_id: string;
@@ -123,7 +274,7 @@ export interface AskCoreEducationIdentityBinding {
 
 export interface AskCoreEducationIdentityClaimInput {
   roster_id: number;
-  roster_kind: AskCoreEducationIdentityRosterKind;
+  roster_kind: AskCoreEducationIdentityClaimRosterKind;
 }
 
 export interface AskCoreEducationIdentityClaim {
@@ -134,7 +285,7 @@ export interface AskCoreEducationIdentityClaim {
   reviewed_at?: string | null;
   reviewed_by_user_id?: string | null;
   roster_id: number;
-  roster_kind: AskCoreEducationIdentityRosterKind;
+  roster_kind: AskCoreEducationIdentityClaimRosterKind;
   status: 'approved' | 'pending' | 'rejected';
 }
 
@@ -169,6 +320,38 @@ export interface AskCoreDirectoryRosterLink {
   roster_kind: AskCoreDirectoryRosterKind;
 }
 
+export interface AskCoreOrganizationPersonProfile {
+  account?: {
+    email?: string | null;
+    member_id?: string | null;
+    name?: string | null;
+    organization_role?: AskCoreOrganizationRole | null;
+    phone?: string | null;
+    user_id: string;
+  } | null;
+  education: {
+    roles: Array<{
+      authorization_id: number;
+      org_unit_id: number;
+      role: AskCoreEducationRole;
+      subject_id?: number | null;
+    }>;
+    status: 'assigned' | 'unassigned';
+  };
+  invitation: {
+    pending_directed_count: number;
+    pending_open_count: number;
+    statuses: string[];
+  };
+  person: Omit<AskCoreDirectoryPerson, 'better_auth_user_id' | 'registration_status'> & {
+    gender?: string | null;
+    pinyin_name?: string | null;
+    source: string;
+    staff_number?: string | null;
+    student_number?: string | null;
+  };
+}
+
 export interface AskCoreDirectoryInvitation {
   accepted_at?: string | null;
   accepted_by_user_id?: string | null;
@@ -193,12 +376,12 @@ export interface AskCoreDirectoryMemberSummary {
 }
 
 export interface AskCoreOrganizationDirectoryPayload {
+  authorizations: AskCoreEducationRoleAssignment[];
   invitations: AskCoreDirectoryInvitation[];
   member_summaries?: Record<string, AskCoreDirectoryMemberSummary>;
   org_id: string;
   people: AskCoreDirectoryPerson[];
-  role_assignments: AskCoreEducationRoleAssignment[];
-  roster_links: AskCoreDirectoryRosterLink[];
+  person_profiles: AskCoreOrganizationPersonProfile[];
   units: AskCoreEducationOrgUnit[];
 }
 

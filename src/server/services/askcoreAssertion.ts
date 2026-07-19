@@ -50,6 +50,26 @@ const arrayValue = (value: unknown): string[] | undefined =>
     ? value.filter((item): item is string => typeof item === 'string' && !!item)
     : undefined;
 
+const uniqueStringArray = (...values: (string[] | undefined)[]) => [
+  ...new Set(values.flatMap((value) => value ?? [])),
+];
+
+const permissionsForOrganizationRole = (role: string | undefined) => {
+  const normalizedRole = role?.trim();
+  if (normalizedRole === 'owner' || normalizedRole === 'admin') {
+    return [
+      'member:invite',
+      'member:remove',
+      'member:update-role',
+      'organization:update',
+      'project:read',
+      'project:write',
+    ];
+  }
+  if (normalizedRole === 'member') return ['project:read'];
+  return [];
+};
+
 export const getAskCoreAssertionAuthApi = async (): Promise<AskCoreAssertionAuthApi> => {
   const testAuth = (globalThis as AskCoreAssertionTestGlobal).__ASKCORE_WORKBENCH_ROUTE_AUTH__;
   if (testAuth) return testAuth.api;
@@ -209,7 +229,14 @@ const findFullOrganizationMember = (
   userId: string,
 ) => {
   const members = Array.isArray(fullOrganization?.members) ? fullOrganization.members : [];
-  return members.map(recordValue).find((member) => stringValue(member?.userId) === userId);
+  return members.map(recordValue).find((member) => {
+    const memberUser = recordValue(member?.user);
+    return (
+      stringValue(member?.userId) === userId ||
+      stringValue(member?.user_id) === userId ||
+      stringValue(memberUser?.id) === userId
+    );
+  });
 };
 
 const getFullOrganization = async (
@@ -291,6 +318,15 @@ export const resolveAskCorePrincipalClaims = (
     recordValue(session.activeMember) ??
     findFullOrganizationMember(fullOrganization, userId);
   const activeOrgId = stringValue(organization?.id) ?? activeOrganizationIdFromSession(session);
+  const organizationRole =
+    stringValue(member?.role) ??
+    stringValue(session.organizationRole) ??
+    stringValue(session.organization_role);
+  const permissions = uniqueStringArray(
+    arrayValue(session.permissions),
+    arrayValue(member?.permissions),
+    permissionsForOrganizationRole(organizationRole),
+  );
 
   return compactClaims({
     active_org_id: activeOrgId,
@@ -298,11 +334,8 @@ export const resolveAskCorePrincipalClaims = (
     email,
     is_super_admin: stringValue(user?.role) === 'super_admin',
     org_id: activeOrgId,
-    organization_role:
-      stringValue(member?.role) ??
-      stringValue(session.organizationRole) ??
-      stringValue(session.organization_role),
-    permissions: arrayValue(session.permissions) ?? arrayValue(member?.permissions),
+    organization_role: organizationRole,
+    permissions,
     roles: arrayValue(session.roles) ?? [stringValue(user?.role) || 'workbench_user'],
     scopes: options.scopes,
     sub: userId,
@@ -316,6 +349,21 @@ export const resolveWorkbenchPrincipalClaims = (
   resolveAskCorePrincipalClaims(session, fullOrganization, {
     scopes: ['plugin.invoke', 'plugin.read'],
   });
+
+export const resolveAccountPrincipalClaims = (session: AskCoreAssertionSessionRecord) => {
+  const user = recordValue(session.user);
+  const userId = stringValue(user?.id);
+  const email = stringValue(user?.email);
+  if (!userId || !email) return null;
+
+  return compactClaims({
+    email,
+    is_super_admin: stringValue(user?.role) === 'super_admin',
+    roles: arrayValue(session.roles) ?? [stringValue(user?.role) || 'workbench_user'],
+    scopes: ['plugin.invoke', 'plugin.read'],
+    sub: userId,
+  });
+};
 
 export const buildAskCoreAssertion = async (claims: Record<string, unknown>) => {
   const secret = process.env.BILLING_LOBEHUB_ASSERTION_SECRET?.trim();

@@ -54,7 +54,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import type { AskCoreWorkbenchApiClient, BlobDownloadProgress } from './api';
 import {
@@ -65,9 +65,12 @@ import {
 } from './api';
 import {
   ASKCORE_WORKBENCH_TABS,
+  askCoreProtocolMode,
   askCoreWorkbenchTabOptionsForProfile,
   askCoreWorkbenchTabsForProfile,
 } from './config';
+import { ProtocolIdentityLinkSurface } from './ProtocolIdentityLinkSurface';
+import { ProtocolProcessingSurface } from './ProtocolProcessingSurface';
 import {
   buildQuestionPreviewDataFromModel,
   buildQuestionPreviewDataFromPayload,
@@ -99,6 +102,7 @@ import {
   fromFormState,
   getResourceIdKey,
   hydrateLookupLabels,
+  isEditableResource,
   type LookupCollections,
   mergeResourceItems,
   RESOURCE_FILTER_FIELDS,
@@ -107,6 +111,7 @@ import {
   toFormState,
 } from './resourceMeta';
 import {
+  type ActivityDetailResponse,
   type AskCoreEducationProfile,
   type AskCoreOrganizationState,
   type AskCoreWorkbenchColumn,
@@ -115,6 +120,7 @@ import {
   type AskCoreWorkbenchRecord,
   type AskCoreWorkbenchTab,
   type AssignmentDetailResponse,
+  type AttemptDetailResponse,
   type FileDescriptor,
   type JsonRecord,
   type PluginArtifact,
@@ -861,18 +867,63 @@ type WorkbenchRoute =
   | { kind: 'student-submission-ocr'; path: string };
 
 type DetailState =
+  | { detail: ActivityDetailResponse; item: JsonRecord; kind: 'activity' }
+  | { detail: AttemptDetailResponse; item: JsonRecord; kind: 'attempt' }
   | { item: JsonRecord; kind: 'generic' }
   | { detail: AssignmentDetailResponse; item: JsonRecord; kind: 'assignment' }
   | { detail: SubmissionDetailResponse; item: JsonRecord; kind: 'submission' }
   | { detail: StudentDetailResponse; item: JsonRecord; kind: 'student' };
 
 const routeResourceAliases: Record<string, ResourceKey> = {
+  activities: 'activities',
+  activity: 'activities',
   assignment: 'assignments',
   assignments: 'assignments',
+  attempt: 'attempts',
+  attempts: 'attempts',
   question: 'questions',
   questions: 'questions',
   submission: 'submissions',
   submissions: 'submissions',
+};
+
+type ResourceListConfig = {
+  columns?: AskCoreWorkbenchColumn[];
+  label: string;
+  newLabel?: string;
+  resource: ResourceKey;
+  searchPlaceholder?: string;
+};
+
+const LEGACY_RESOURCE_LIST_CONFIGS: Partial<Record<ResourceKey, ResourceListConfig>> = {
+  assignments: {
+    columns: [
+      { dataIndex: 'title', title: '作业', width: 240 },
+      { dataIndex: 'subject_id', displayIndex: 'subject_name', title: '学科', width: 140 },
+      { dataIndex: 'grade_id', displayIndex: 'grade_name', title: '年级', width: 140 },
+      { dataIndex: 'creation_type', isStatus: true, title: '来源', width: 120 },
+      { dataIndex: 'assign_date', title: '布置日期', width: 150 },
+      { dataIndex: 'due_date', title: '截止日期', width: 150 },
+    ],
+    label: '作业',
+    newLabel: '新建作业',
+    resource: 'assignments',
+    searchPlaceholder: '搜索作业、学科',
+  },
+  submissions: {
+    columns: [
+      { dataIndex: 'name', title: '提交', width: 240 },
+      { dataIndex: 'assignment_id', displayIndex: 'assignment_title', title: '作业', width: 180 },
+      { dataIndex: 'student_id', displayIndex: 'student_name', title: '学生', width: 140 },
+      { dataIndex: 'status', isStatus: true, title: '状态', width: 120 },
+      { dataIndex: 'score', title: '得分', width: 120 },
+      { dataIndex: 'submitted_at', title: '提交时间', width: 180 },
+    ],
+    label: '提交',
+    newLabel: '导入提交',
+    resource: 'submissions',
+    searchPlaceholder: '搜索提交、学生',
+  },
 };
 
 const statusLabelMap: Record<string, string> = {
@@ -3617,6 +3668,7 @@ const AssignmentDetailView = ({
   onBack,
   onEdit,
   onReload,
+  protocolNotice,
 }: {
   canManage: boolean;
   client: AskCoreWorkbenchApiClient;
@@ -3625,6 +3677,7 @@ const AssignmentDetailView = ({
   onBack: () => void;
   onEdit: () => void;
   onReload: () => Promise<void> | void;
+  protocolNotice?: ReactNode;
 }) => {
   const assignment = hydrateLookupLabels(detail.assignment, lookups);
   const assignmentId = Number(assignment.assignment_id || assignment.id || 0) || 0;
@@ -4157,6 +4210,7 @@ const AssignmentDetailView = ({
         }
         onBack={onBack}
       />
+      {protocolNotice}
 
       <div className={styles.panel}>
         <h3 className={styles.panelTitle}>基础信息</h3>
@@ -4520,6 +4574,7 @@ const SubmissionSubResultPreview = ({
 };
 
 const SubmissionDetailView = ({
+  canEdit = true,
   canManage,
   client,
   detail,
@@ -4527,7 +4582,10 @@ const SubmissionDetailView = ({
   onBack,
   onEdit,
   onReload,
+  protocolAttemptId,
+  protocolNotice,
 }: {
+  canEdit?: boolean;
   canManage: boolean;
   client: AskCoreWorkbenchApiClient;
   detail: SubmissionDetailResponse;
@@ -4535,9 +4593,17 @@ const SubmissionDetailView = ({
   onBack: () => void;
   onEdit: () => void;
   onReload: () => Promise<void> | void;
+  protocolAttemptId?: number | null;
+  protocolNotice?: ReactNode;
 }) => {
   const submission = hydrateLookupLabels(detail.submission, lookups);
   const submissionId = Number(submission.submission_id || submission.id || 0) || 0;
+  const runtimeAttemptId = positiveId(protocolAttemptId);
+  const runtimeTargetId = runtimeAttemptId || submissionId;
+  const runtimeActionParams = (extra: JsonRecord = {}) =>
+    runtimeAttemptId
+      ? ({ ...extra, attempt_id: runtimeAttemptId } as JsonRecord)
+      : ({ ...extra, submission_id: submissionId } as JsonRecord);
   const assignmentQuestions = useMemo(
     () => readRecordArray(detail.assignment_questions),
     [detail.assignment_questions],
@@ -4655,12 +4721,12 @@ const SubmissionDetailView = ({
   };
 
   const rerunSubmissionOcr = async () => {
-    if (!submissionId || !hasSubmissionImages) return;
+    if (!runtimeTargetId || !hasSubmissionImages) return;
     setBusy(true);
     try {
       await client.invokeAction(
         'submission.ocr.rerun',
-        { submission_id: submissionId },
+        runtimeActionParams(),
         createConfirmationId(),
       );
       message.success('重新 OCR 任务已提交');
@@ -5138,18 +5204,20 @@ const SubmissionDetailView = ({
         actions={
           canManage ? (
             <>
-              <Button className={styles.secondary} icon={<Pencil size={14} />} onClick={onEdit}>
-                编辑提交
-              </Button>
+              {canEdit ? (
+                <Button className={styles.secondary} icon={<Pencil size={14} />} onClick={onEdit}>
+                  编辑提交
+                </Button>
+              ) : null}
               <Popconfirm
                 description="会使用当前上传图片覆盖题目结果，并按本次 OCR 重新识别学生归属。"
-                disabled={busy || !submissionId || !hasSubmissionImages}
+                disabled={busy || !runtimeTargetId || !hasSubmissionImages}
                 title="重新 OCR 并批改该提交？"
                 onConfirm={rerunSubmissionOcr}
               >
                 <Button
                   className={styles.secondary}
-                  disabled={busy || !submissionId || !hasSubmissionImages}
+                  disabled={busy || !runtimeTargetId || !hasSubmissionImages}
                   icon={<RefreshCw size={14} />}
                 >
                   重新 OCR 并批改
@@ -5157,8 +5225,8 @@ const SubmissionDetailView = ({
               </Popconfirm>
               <Button
                 className={styles.secondary}
-                disabled={busy || !submissionId}
-                onClick={() => runAction('submission.grade.run', { submission_id: submissionId })}
+                disabled={busy || !runtimeTargetId}
+                onClick={() => runAction('submission.grade.run', runtimeActionParams())}
               >
                 批改/讲解
               </Button>
@@ -5167,6 +5235,7 @@ const SubmissionDetailView = ({
         }
         onBack={onBack}
       />
+      {protocolNotice}
 
       <div className={styles.panel}>
         <h3 className={styles.panelTitle}>提交信息</h3>
@@ -5266,23 +5335,18 @@ const SubmissionDetailView = ({
               <>
                 <Button
                   className={styles.secondary}
-                  disabled={!submissionId || busy}
+                  disabled={!runtimeTargetId || busy}
                   onClick={() =>
-                    runAction('submission.report.generate', {
-                      force: true,
-                      submission_id: submissionId,
-                    })
+                    runAction('submission.report.generate', runtimeActionParams({ force: true }))
                   }
                 >
                   生成报告
                 </Button>
                 <Button
                   className={styles.secondary}
-                  disabled={!submissionId || busy}
+                  disabled={!runtimeTargetId || busy}
                   icon={<Printer size={14} />}
-                  onClick={() =>
-                    runAction('submission.report.print', { submission_id: submissionId })
-                  }
+                  onClick={() => runAction('submission.report.print', runtimeActionParams())}
                 >
                   打印报告
                 </Button>
@@ -5421,12 +5485,14 @@ const GenericDetailView = ({
   onBack,
   onDelete,
   onEdit,
+  readOnly = false,
   resource,
 }: {
   item: JsonRecord;
   onBack: () => void;
   onDelete: () => void;
   onEdit: () => void;
+  readOnly?: boolean;
   resource: ResourceKey;
 }) => (
   <div className={styles.view}>
@@ -5434,16 +5500,23 @@ const GenericDetailView = ({
       subtitle={`${RESOURCE_LABELS[resource].singular} ID ${getRecordId(resource, item) || '--'}`}
       title={getRecordTitle(resource, item)}
       actions={
-        <>
-          <Button className={styles.secondary} icon={<Pencil size={14} />} onClick={onEdit}>
-            编辑
-          </Button>
-          <Popconfirm title={`删除该${RESOURCE_LABELS[resource].singular}？`} onConfirm={onDelete}>
-            <Button danger icon={<Trash2 size={14} />}>
-              删除
+        readOnly ? (
+          <Tag>只读协议资源</Tag>
+        ) : (
+          <>
+            <Button className={styles.secondary} icon={<Pencil size={14} />} onClick={onEdit}>
+              编辑
             </Button>
-          </Popconfirm>
-        </>
+            <Popconfirm
+              title={`删除该${RESOURCE_LABELS[resource].singular}？`}
+              onConfirm={onDelete}
+            >
+              <Button danger icon={<Trash2 size={14} />}>
+                删除
+              </Button>
+            </Popconfirm>
+          </>
+        )
       }
       onBack={onBack}
     />
@@ -6934,7 +7007,7 @@ const StudentSubmissionOcrCreateView = ({
   );
 };
 
-const AskCoreWorkbenchPage = memo(() => {
+const LegacyAskCoreWorkbenchPage = memo(() => {
   const location = useLocation();
   const navigate = useNavigate();
   const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -6990,15 +7063,17 @@ const AskCoreWorkbenchPage = memo(() => {
   const listVersionRef = useRef(0);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
   const capabilities = educationProfile?.capabilities || null;
+  const teachingRuntime = educationProfile?.teaching_runtime;
+  const teachingAvailable = teachingRuntime?.teaching_available === true;
   const workbenchMode = educationProfile?.workbench_mode;
   const isRestrictedStudent = workbenchMode === 'student_restricted';
   const isIdentityRequired = workbenchMode === 'identity_required';
-  const canCreateAssignment = capabilities ? Boolean(capabilities.can_create_assignment) : true;
-  const canCreateQuestion = capabilities ? Boolean(capabilities.can_create_question) : true;
+  const canCreateAssignment = teachingAvailable && Boolean(capabilities?.can_create_assignment);
+  const canCreateQuestion = teachingAvailable && Boolean(capabilities?.can_create_question);
   const canRunTeacherSubmissionOcr = capabilities
-    ? Boolean(capabilities.can_run_teacher_submission_ocr)
-    : true;
-  const canSubmitOwnWork = capabilities ? Boolean(capabilities.can_submit_own_work) : false;
+    ? teachingAvailable && Boolean(capabilities.can_run_teacher_submission_ocr)
+    : false;
+  const canSubmitOwnWork = teachingAvailable && Boolean(capabilities?.can_submit_own_work);
   const activeOrganization = organizationState?.organization || null;
   const organizationRequired = !organizationLoading && !activeOrganization?.organization_id;
 
@@ -7198,12 +7273,26 @@ const AskCoreWorkbenchPage = memo(() => {
           item: hydrateLookupLabels(payload.assignment, lookups),
           kind: 'assignment',
         });
+      } else if (currentRoute.resource === 'activities') {
+        const payload = await askCoreWorkbenchClient.getActivityDetail(currentRoute.entityId);
+        setDetail({
+          detail: payload,
+          item: hydrateLookupLabels(payload.item || payload.activity, lookups),
+          kind: 'activity',
+        });
       } else if (currentRoute.resource === 'submissions') {
         const payload = await askCoreWorkbenchClient.getSubmissionDetail(currentRoute.entityId);
         setDetail({
           detail: payload,
           item: hydrateLookupLabels(payload.submission, lookups),
           kind: 'submission',
+        });
+      } else if (currentRoute.resource === 'attempts') {
+        const payload = await askCoreWorkbenchClient.getAttemptDetail(currentRoute.entityId);
+        setDetail({
+          detail: payload,
+          item: hydrateLookupLabels(payload.item || payload.attempt, lookups),
+          kind: 'attempt',
         });
       } else if (currentRoute.resource === 'students') {
         const payload = await askCoreWorkbenchClient.getStudentDetail(currentRoute.entityId);
@@ -7399,8 +7488,8 @@ const AskCoreWorkbenchPage = memo(() => {
       navigate(routeFor('overview', `/invocations/${encodeURIComponent(invocationId)}`));
     });
     const stats = [
-      { key: 'submissions', label: '提交', value: counts.submissions || 0 },
-      { key: 'assignments', label: '作业', value: counts.assignments || 0 },
+      { key: 'attempts', label: '提交记录', value: counts.attempts || counts.submissions || 0 },
+      { key: 'activities', label: '活动', value: counts.activities || counts.assignments || 0 },
       { key: 'questions', label: '题目', value: counts.questions || 0 },
     ];
 
@@ -7475,9 +7564,14 @@ const AskCoreWorkbenchPage = memo(() => {
   };
 
   const renderResourceList = (resource: ResourceKey) => {
-    const config =
-      availableTabs.find((tab) => tab.resource === resource) ||
-      ASKCORE_WORKBENCH_TABS.find((tab) => tab.resource === resource)!;
+    const resourceEditable = isEditableResource(resource);
+    const config = availableTabs.find((tab) => tab.resource === resource) ||
+      ASKCORE_WORKBENCH_TABS.find((tab) => tab.resource === resource) ||
+      LEGACY_RESOURCE_LIST_CONFIGS[resource] || {
+        label: RESOURCE_LABELS[resource].label,
+        resource,
+        searchPlaceholder: '搜索',
+      };
     const filters = RESOURCE_FILTER_FIELDS[resource] || [];
     const listPending = loading && !loadingMore;
     const displayedItems = listPending ? [] : filteredItems;
@@ -7494,6 +7588,25 @@ const AskCoreWorkbenchPage = memo(() => {
     const allVisibleSelected =
       visibleIds.size > 0 && [...visibleIds].every((id) => selectedKeySet.has(id));
     const submissionBatchBusy = Boolean(submissionListBatchStatus?.busy);
+    const isProtocolAttemptResource = resource === 'attempts';
+    const isSubmissionRuntimeResource = resource === 'submissions' || isProtocolAttemptResource;
+    const submissionRuntimeLabel = isProtocolAttemptResource ? '提交记录' : '提交';
+    const submissionRuntimeParamsForId = (id: number, extra: JsonRecord = {}) =>
+      isProtocolAttemptResource
+        ? ({ ...extra, attempt_id: id } as JsonRecord)
+        : ({ ...extra, submission_id: id } as JsonRecord);
+    const submissionRuntimeBatchParamsForIds = (ids: number[], extra: JsonRecord = {}) =>
+      isProtocolAttemptResource
+        ? ({ ...extra, attempt_ids: ids } as JsonRecord)
+        : ({ ...extra, submission_ids: ids } as JsonRecord);
+    const loadSubmissionRuntimeDetail = async (id: number) => {
+      if (!isProtocolAttemptResource) return askCoreWorkbenchClient.getSubmissionDetail(id);
+      const payload = await askCoreWorkbenchClient.getAttemptDetail(id);
+      if (!payload.submission_detail) {
+        throw new Error('该提交记录暂未绑定旧提交流水线');
+      }
+      return payload.submission_detail;
+    };
     const updateSubmissionBatchProgress = (
       updater: (current: SubmissionListBatchStatus) => SubmissionListBatchStatus,
     ) => {
@@ -7528,8 +7641,8 @@ const AskCoreWorkbenchPage = memo(() => {
       action: string;
       confirmation?: boolean;
       concurrency: number;
-      paramsForId: (submissionId: number) => JsonRecord;
-      prepare?: (submissionId: number) => Promise<void>;
+      paramsForId: (id: number) => JsonRecord;
+      prepare?: (id: number) => Promise<void>;
       title: string;
     }) => {
       const targets = [...selectedIds];
@@ -7543,18 +7656,18 @@ const AskCoreWorkbenchPage = memo(() => {
         }),
       );
 
-      await runWithLimitedConcurrency(targets, concurrency, async (submissionId, index) => {
-        const label = `提交 ${submissionId}`;
+      await runWithLimitedConcurrency(targets, concurrency, async (targetId, index) => {
+        const label = `${submissionRuntimeLabel} ${targetId}`;
         updateSubmissionBatchProgress((current) => ({
           ...current,
           current: `${label} (${index + 1}/${targets.length})`,
           phase: '正在准备',
         }));
         try {
-          await prepare?.(submissionId);
+          await prepare?.(targetId);
           const result = await askCoreWorkbenchClient.invokeAction(
             action,
-            paramsForId(submissionId),
+            paramsForId(targetId),
             confirmation ? createConfirmationId() : undefined,
           );
           const finalRun = await waitForInvocation({
@@ -7609,9 +7722,9 @@ const AskCoreWorkbenchPage = memo(() => {
         action: 'submission.ocr.rerun',
         concurrency: 1,
         confirmation: true,
-        paramsForId: (submissionId) => ({ submission_id: submissionId }),
-        prepare: async (submissionId) => {
-          const payload = await askCoreWorkbenchClient.getSubmissionDetail(submissionId);
+        paramsForId: (id) => submissionRuntimeParamsForId(id),
+        prepare: async (id) => {
+          const payload = await loadSubmissionRuntimeDetail(id);
           if (!payload.files.some(isImageFile)) throw new Error('该提交没有可用于 OCR 的上传图片');
         },
         title: '批量重新 OCR 并批改',
@@ -7620,14 +7733,14 @@ const AskCoreWorkbenchPage = memo(() => {
       runSubmissionDurableBatch({
         action: 'submission.grade.run',
         concurrency: 2,
-        paramsForId: (submissionId) => ({ submission_id: submissionId }),
+        paramsForId: (id) => submissionRuntimeParamsForId(id),
         title: '批量批改/讲解',
       });
     const runSubmissionReportGenerateBatch = () =>
       runSubmissionDurableBatch({
         action: 'submission.report.generate',
         concurrency: 2,
-        paramsForId: (submissionId) => ({ force: true, submission_id: submissionId }),
+        paramsForId: (id) => submissionRuntimeParamsForId(id, { force: true }),
         title: '批量生成报告',
       });
     const runSubmissionReportDownloadBatch = async () => {
@@ -7641,24 +7754,49 @@ const AskCoreWorkbenchPage = memo(() => {
         }),
       );
       try {
-        const result = await askCoreWorkbenchClient.downloadSubmissionReportsZip(targets, {
-          onProgress: (progress) => {
-            setSubmissionListBatchStatus((current) =>
-              current
-                ? {
-                    ...current,
-                    completed: progress.phase === 'completed' ? targets.length : current.completed,
-                    phase:
-                      progress.phase === 'completed'
-                        ? '下载完成'
-                        : formatDownloadProgressLabel(progress),
-                    percent:
-                      progress.phase === 'completed' ? 100 : (progress.percent ?? current.percent),
-                  }
-                : current,
-            );
-          },
-        });
+        const result = await (isProtocolAttemptResource
+          ? askCoreWorkbenchClient.downloadAttemptReportsZip(targets, {
+              onProgress: (progress) => {
+                setSubmissionListBatchStatus((current) =>
+                  current
+                    ? {
+                        ...current,
+                        completed:
+                          progress.phase === 'completed' ? targets.length : current.completed,
+                        phase:
+                          progress.phase === 'completed'
+                            ? '下载完成'
+                            : formatDownloadProgressLabel(progress),
+                        percent:
+                          progress.phase === 'completed'
+                            ? 100
+                            : (progress.percent ?? current.percent),
+                      }
+                    : current,
+                );
+              },
+            })
+          : askCoreWorkbenchClient.downloadSubmissionReportsZip(targets, {
+              onProgress: (progress) => {
+                setSubmissionListBatchStatus((current) =>
+                  current
+                    ? {
+                        ...current,
+                        completed:
+                          progress.phase === 'completed' ? targets.length : current.completed,
+                        phase:
+                          progress.phase === 'completed'
+                            ? '下载完成'
+                            : formatDownloadProgressLabel(progress),
+                        percent:
+                          progress.phase === 'completed'
+                            ? 100
+                            : (progress.percent ?? current.percent),
+                      }
+                    : current,
+                );
+              },
+            }));
         downloadBlob(result.blob, result.filename || 'submission-reports.zip');
         setSubmissionListBatchStatus((current) =>
           current
@@ -7749,10 +7887,11 @@ const AskCoreWorkbenchPage = memo(() => {
       );
       try {
         const result = await askCoreWorkbenchClient.invokeAction('submission.report.print_batch', {
-          duplex: true,
-          media: 'iso_a4_210x297mm',
-          printer_id: printer.printer_id,
-          submission_ids: targets,
+          ...submissionRuntimeBatchParamsForIds(targets, {
+            duplex: true,
+            media: 'iso_a4_210x297mm',
+            printer_id: printer.printer_id,
+          }),
         });
         const finalRun = await waitForInvocation({
           client: askCoreWorkbenchClient,
@@ -7913,7 +8052,7 @@ const AskCoreWorkbenchPage = memo(() => {
                   </Button>
                 ) : null}
               </>
-            ) : !isRestrictedStudent && !isIdentityRequired ? (
+            ) : resourceEditable && !isRestrictedStudent && !isIdentityRequired ? (
               <Button
                 className={styles.primary}
                 icon={<Plus size={14} />}
@@ -7934,7 +8073,7 @@ const AskCoreWorkbenchPage = memo(() => {
 
         <div className={styles.actionBar}>
           <Space wrap>
-            {!isRestrictedStudent && !isIdentityRequired ? (
+            {resourceEditable && !isRestrictedStudent && !isIdentityRequired ? (
               <Popconfirm
                 disabled={!selectedIds.length || submissionBatchBusy}
                 title={`批量删除 ${selectedIds.length} 条记录？`}
@@ -7973,7 +8112,7 @@ const AskCoreWorkbenchPage = memo(() => {
                 </Button>
               </Popconfirm>
             ) : null}
-            {resource === 'submissions' && canRunTeacherSubmissionOcr ? (
+            {isSubmissionRuntimeResource && canRunTeacherSubmissionOcr ? (
               <>
                 <Popconfirm
                   description="会使用各提交已有图片覆盖 OCR、批改和学生归属结果；没有图片的提交会记录为失败。"
@@ -8027,7 +8166,7 @@ const AskCoreWorkbenchPage = memo(() => {
           </span>
         </div>
 
-        {resource === 'submissions' && submissionListBatchStatus ? (
+        {isSubmissionRuntimeResource && submissionListBatchStatus ? (
           <div className={styles.panel}>
             <div className={styles.actionBar} style={{ marginBottom: 8 }}>
               <Space wrap>
@@ -8228,6 +8367,11 @@ const AskCoreWorkbenchPage = memo(() => {
       />
       {mode === 'edit' && detailLoading ? (
         <Skeleton active />
+      ) : !isEditableResource(resource) ? (
+        <Empty
+          description="该协议资源为只读，不能新建或编辑"
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+        />
       ) : (
         <ResourceForm
           initial={mode === 'edit' ? detail?.item || null : null}
@@ -8269,6 +8413,81 @@ const AskCoreWorkbenchPage = memo(() => {
     }
     if (currentRoute.kind === 'edit') return renderEditOrCreate(currentRoute.resource, 'edit');
     const editRoute = buildResourceEntityPath(currentRoute.resource, currentRoute.entityId, 'edit');
+    if (detail.kind === 'activity') {
+      const assignmentDetail = detail.detail.assignment_detail;
+      const protocolNotice = (
+        <Alert
+          showIcon
+          description={`活动 ID ${detail.detail.activity.activity_id || detail.detail.activity.id || currentRoute.entityId}`}
+          title="活动运行记录"
+          type="info"
+        />
+      );
+      if (assignmentDetail) {
+        return (
+          <AssignmentDetailView
+            canManage={false}
+            client={askCoreWorkbenchClient}
+            detail={assignmentDetail}
+            lookups={lookups}
+            protocolNotice={protocolNotice}
+            onBack={backToList}
+            onEdit={() => undefined}
+            onReload={reloadDetail}
+          />
+        );
+      }
+      return (
+        <GenericDetailView
+          readOnly
+          item={hydrateLookupLabels(detail.detail.activity || detail.item, lookups)}
+          resource="activities"
+          onBack={backToList}
+          onDelete={async () => undefined}
+          onEdit={() => undefined}
+        />
+      );
+    }
+    if (detail.kind === 'attempt') {
+      const submissionDetail = detail.detail.submission_detail;
+      const protocolNotice = (
+        <Alert
+          showIcon
+          description={`提交记录 ID ${detail.detail.attempt.attempt_id || detail.detail.attempt.id || currentRoute.entityId}`}
+          title="提交运行记录"
+          type="info"
+        />
+      );
+      if (submissionDetail) {
+        return (
+          <SubmissionDetailView
+            canEdit={false}
+            canManage={canRunTeacherSubmissionOcr}
+            client={askCoreWorkbenchClient}
+            detail={submissionDetail}
+            lookups={lookups}
+            protocolNotice={protocolNotice}
+            protocolAttemptId={
+              positiveId(detail.detail.attempt.attempt_id || detail.detail.attempt.id) ||
+              currentRoute.entityId
+            }
+            onBack={backToList}
+            onEdit={() => undefined}
+            onReload={reloadDetail}
+          />
+        );
+      }
+      return (
+        <GenericDetailView
+          readOnly
+          item={hydrateLookupLabels(detail.detail.attempt || detail.item, lookups)}
+          resource="attempts"
+          onBack={backToList}
+          onDelete={async () => undefined}
+          onEdit={() => undefined}
+        />
+      );
+    }
     if (detail.kind === 'assignment') {
       return (
         <AssignmentDetailView
@@ -8307,6 +8526,7 @@ const AskCoreWorkbenchPage = memo(() => {
     return (
       <GenericDetailView
         item={detail.item}
+        readOnly={!isEditableResource(currentRoute.resource)}
         resource={currentRoute.resource}
         onBack={backToList}
         onEdit={() => navigate(routeFor(currentRoute.resource as AskCoreWorkbenchTab, editRoute))}
@@ -8504,6 +8724,21 @@ const AskCoreWorkbenchPage = memo(() => {
           />
         ) : null}
 
+        {!educationProfileLoading && educationProfile && !teachingAvailable ? (
+          <Alert
+            showIcon
+            className={styles.error}
+            description="当前仅可查看已有教学记录。创建、提交和编辑将在学校教学系统连接完成后开放。"
+            message="学校教学连接尚未就绪"
+            type="warning"
+            action={
+              <Link to="/organization">
+                <Button size="small">查看连接状态</Button>
+              </Link>
+            }
+          />
+        ) : null}
+
         <div style={{ marginTop: organizationRequired ? 0 : 18 }}>
           {organizationRequired ? renderDashboard() : renderMain()}
         </div>
@@ -8512,6 +8747,21 @@ const AskCoreWorkbenchPage = memo(() => {
   );
 });
 
+LegacyAskCoreWorkbenchPage.displayName = 'LegacyAskCoreWorkbenchPage';
+
+const AskCoreWorkbenchPage = memo(() => {
+  const location = useLocation();
+  const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const protocolMode = askCoreProtocolMode(query.get('protocol'));
+
+  if (protocolMode === 'processing') return <ProtocolProcessingSurface />;
+  if (protocolMode === 'identity-link') {
+    return <ProtocolIdentityLinkSurface invitationToken={query.get('token') || undefined} />;
+  }
+  return <Navigate replace to="/" />;
+});
+
 AskCoreWorkbenchPage.displayName = 'AskCoreWorkbenchPage';
 
 export const AskCoreWorkbenchRoute = AskCoreWorkbenchPage;
+export const LegacyAskCoreWorkbenchRoute = LegacyAskCoreWorkbenchPage;

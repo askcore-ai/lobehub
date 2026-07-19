@@ -114,6 +114,24 @@ vi.mock('@/server/services/user', () => ({
 }));
 
 describe('defineConfig', () => {
+  it('keeps native login methods linked to one Better Auth user', async () => {
+    const { defineConfig } = await import('./define-config');
+
+    defineConfig({ plugins: [] });
+
+    expect(mocks.betterAuth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account: {
+          accountLinking: {
+            allowDifferentEmails: true,
+            enabled: true,
+            trustedProviders: [],
+          },
+        },
+      }),
+    );
+  });
+
   it('should revoke existing sessions after password reset by default', async () => {
     const { defineConfig } = await import('./define-config');
 
@@ -134,5 +152,23 @@ describe('defineConfig', () => {
     defineConfig({ plugins: [] });
 
     expect(mocks.emailHarmony).toHaveBeenCalledWith(mocks.businessEmailHarmonyOptions);
+  });
+
+  it('keeps session discovery available behind a shared school NAT', async () => {
+    const { defineConfig } = await import('./define-config');
+
+    defineConfig({ plugins: [] });
+
+    expect(mocks.betterAuth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rateLimit: {
+          customRules: {
+            '/get-session': { max: 1000, window: 1 },
+            '/request-password-reset': { max: 3, window: 60 },
+            '/send-verification-email': { max: 3, window: 60 },
+          },
+        },
+      }),
+    );
   });
 });

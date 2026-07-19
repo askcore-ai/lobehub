@@ -9,15 +9,104 @@ import { UserModel } from '@/database/models/user';
 import { appEnv } from '@/envs/app';
 import { getJWKS } from '@/libs/oidc-provider/jwt';
 import { normalizeLocale } from '@/locales/resources';
+import { buildAskCoreAssertion } from '@/server/services/askcoreAssertion';
 
 import { isOIDCUserBanned } from './access-control';
 import { DrizzleAdapter } from './adapter';
-import { defaultClaims, defaultClients, defaultScopes } from './config';
+import {
+  ASKCORE_GIBBON_OIDC_CLIENT_ID,
+  ASKCORE_MOODLE_OIDC_CLIENT_ID,
+  defaultClaims,
+  defaultClients,
+  defaultScopes,
+} from './config';
 import { createInteractionPolicy } from './interaction-policy';
 
 const logProvider = debug('lobe-oidc:provider');
 
 export const API_AUDIENCE = 'urn:lobehub:chat';
+const SCHOOL_OIDC_CLIENT_IDS = new Set([
+  ASKCORE_GIBBON_OIDC_CLIENT_ID,
+  ASKCORE_MOODLE_OIDC_CLIENT_ID,
+]);
+
+type ResourceIndicatorClient = { clientId?: string } | undefined;
+
+export const isSchoolOIDCClient = (client: ResourceIndicatorClient) =>
+  !!client?.clientId && SCHOOL_OIDC_CLIENT_IDS.has(client.clientId);
+
+export const useGrantedResourceForClient = (ctx: KoaContextWithOIDC) =>
+  !isSchoolOIDCClient(ctx.oidc.client);
+
+export const resolveOIDCAccountId = ({
+  clientId,
+  externalAccountId,
+  providerSessionAccountId,
+  requestedAccountId,
+}: {
+  clientId?: string;
+  externalAccountId?: string;
+  providerSessionAccountId?: string;
+  requestedAccountId: string;
+}) =>
+  clientId && SCHOOL_OIDC_CLIENT_IDS.has(clientId)
+    ? requestedAccountId
+    : externalAccountId || providerSessionAccountId || requestedAccountId;
+
+const SCHOOL_SUBJECT_PATTERN = /^[\w.-]{8,40}$/;
+
+export const resolveSchoolOIDCSubject = async ({
+  email,
+  userId,
+}: {
+  email?: string | null;
+  userId: string;
+}) => {
+  const apiBaseUrl = process.env.AITUTOR_API_BASE_URL?.trim() || 'http://api:8000';
+  const assertion = await buildAskCoreAssertion({
+    email: email || undefined,
+    scopes: ['school.identity.read'],
+    sub: userId,
+  });
+  const endpoint = new URL('/api/lti/v1/identity-links/account-subject', apiBaseUrl);
+  const response = await fetch(endpoint.toString(), {
+    cache: 'no-store',
+    headers: {
+      'Accept': 'application/json',
+      'X-AskCore-Billing-Assertion': assertion,
+    },
+    signal: AbortSignal.timeout(3000),
+  });
+  if (!response.ok) throw new Error(`school subject resolution failed (${response.status})`);
+  const payload = (await response.json()) as {
+    deployment_id?: number;
+    school_subject?: string;
+  };
+  const schoolSubject = payload.school_subject?.trim() || '';
+  if (
+    !Number.isSafeInteger(payload.deployment_id) ||
+    Number(payload.deployment_id) < 1 ||
+    !SCHOOL_SUBJECT_PATTERN.test(schoolSubject)
+  ) {
+    throw new Error('school subject resolution returned an invalid response');
+  }
+  return schoolSubject;
+};
+
+export const OIDC_PROVIDER_ROUTES = {
+  authorization: '/oidc/auth',
+  code_verification: '/oidc/device',
+  device_authorization: '/oidc/device/auth',
+  end_session: '/oidc/session/end',
+  introspection: '/oidc/token/introspection',
+  jwks: '/oidc/jwks',
+  pushed_authorization_request: '/oidc/request',
+  revocation: '/oidc/token/revocation',
+  token: '/oidc/token',
+  userinfo: '/oidc/me',
+} as const;
+export const requiresPKCEForClient = (client: { tokenEndpointAuthMethod?: string }) =>
+  client.tokenEndpointAuthMethod === 'none';
 
 /**
  * Get cookie keys using KEY_VAULTS_SECRET
@@ -141,7 +230,7 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
           throw new errors.InvalidTarget();
         },
         // When a client uses a refresh token to request a new access token without specifying a resource, the authorization server checks all resources included in the original authorization and uses them for the new access token. This provides a convenient way to maintain authorization consistency without requiring the client to re-specify all resources on each refresh.
-        useGrantedResource: () => true,
+        useGrantedResource: useGrantedResourceForClient,
       },
       revocation: { enabled: true },
       rpInitiatedLogout: { enabled: true },
@@ -158,22 +247,27 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
         logProvider('Found externalAccountId in context: %s', externalAccountId);
       }
 
-      // Determine the account ID to look up
-      // Priority: 1. externalAccountId 2. ctx.oidc.session?.accountId 3. passed-in id
-      const accountIdToFind = externalAccountId || ctx.oidc?.session?.accountId || id;
-
       const clientId = ctx.oidc?.client?.clientId;
+
+      const accountIdToFind = resolveOIDCAccountId({
+        clientId,
+        externalAccountId,
+        providerSessionAccountId: ctx.oidc?.session?.accountId,
+        requestedAccountId: id,
+      });
 
       logProvider('OIDC request client id: %s', clientId);
 
       logProvider(
         'Attempting to find account with ID: %s (source: %s)',
         accountIdToFind,
-        externalAccountId
-          ? 'externalAccountId'
-          : ctx.oidc?.session?.accountId
-            ? 'oidc_session'
-            : 'parameter_id',
+        clientId && SCHOOL_OIDC_CLIENT_IDS.has(clientId)
+          ? 'current_authorization'
+          : externalAccountId
+            ? 'externalAccountId'
+            : ctx.oidc?.session?.accountId
+              ? 'oidc_session'
+              : 'parameter_id',
       );
 
       // Return undefined if no account ID is available
@@ -214,6 +308,12 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
                 user.username ||
                 `${user.firstName || ''} ${user.lastName || ''}`.trim();
               claims.picture = user.avatar;
+              if (clientId && SCHOOL_OIDC_CLIENT_IDS.has(clientId)) {
+                claims.school_subject = await resolveSchoolOIDCSubject({
+                  email: user.email,
+                  userId: user.id,
+                });
+              }
             }
 
             if (scope.includes('email')) {
@@ -269,7 +369,7 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
 
     // 2. PKCE configuration
     pkce: {
-      required: () => true,
+      required: (_ctx, client) => requiresPKCEForClient(client),
     },
 
     // 12. Other configuration
@@ -292,13 +392,7 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
     // Added: enable refresh token rotation
     rotateRefreshToken: true,
 
-    routes: {
-      authorization: '/oidc/auth',
-      code_verification: '/oidc/device',
-      device_authorization: '/oidc/device/auth',
-      end_session: '/oidc/session/end',
-      token: '/oidc/token',
-    },
+    routes: OIDC_PROVIDER_ROUTES,
     // 3. Scopes definition
     scopes: defaultScopes,
 

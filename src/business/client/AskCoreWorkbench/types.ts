@@ -1,6 +1,6 @@
 'use client';
 
-export type AskCoreWorkbenchTab = 'overview' | 'assignments' | 'questions' | 'submissions';
+export type AskCoreWorkbenchTab = 'overview' | 'activities' | 'questions' | 'attempts';
 
 export type JsonPrimitive = boolean | number | string | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | JsonRecord;
@@ -9,6 +9,8 @@ export interface JsonRecord {
 }
 
 export type ResourceKey =
+  | 'activities'
+  | 'attempts'
   | 'schools'
   | 'teachers'
   | 'classes'
@@ -70,10 +72,20 @@ export type AskCoreEducationPersona = {
 };
 
 export type AskCoreEducationWorkbenchMode =
-  | 'identity_required'
-  | 'student_managed'
-  | 'student_restricted'
-  | 'teacher';
+  'identity_required' | 'student_managed' | 'student_restricted' | 'teacher';
+
+export type AskCoreTeachingRuntime = {
+  app_env: string;
+  coherent: boolean;
+  forbid_legacy_school_writes: boolean;
+  production_preflight_required: boolean;
+  production_preflight_status: string;
+  protocol_enabled: boolean;
+  protocol_mode: string;
+  reason: string;
+  require_lms_sis_in_production: boolean;
+  teaching_available: boolean;
+};
 
 export type AskCoreEducationProfile = {
   active_persona?: AskCoreEducationPersona | null;
@@ -81,6 +93,7 @@ export type AskCoreEducationProfile = {
   default_persona?: AskCoreEducationPersona | null;
   education_identities: AskCoreEducationPersona[];
   org_composition: Record<string, number>;
+  teaching_runtime: AskCoreTeachingRuntime;
   workbench_mode: AskCoreEducationWorkbenchMode;
 };
 
@@ -102,6 +115,156 @@ export type AskCoreOrganizationState = {
   organization_role?: string | null;
   organizations: AskCoreOrganizationSummary[];
   permissions?: string[];
+};
+
+export type ProtocolProcessingCapabilities = {
+  can_capture_assignment_material?: boolean;
+  can_capture_paper_batch?: boolean;
+  can_capture_student_submission?: boolean;
+  can_edit: boolean;
+  can_generate_report: boolean;
+  can_grade: boolean;
+  can_link_account: boolean;
+  can_list_scanners?: boolean;
+  can_preview: boolean;
+  can_run_ocr: boolean;
+  can_start_capture?: boolean;
+};
+
+export type ProtocolProcessingContext = {
+  account_link_required: boolean;
+  account_linked: boolean;
+  capabilities: ProtocolProcessingCapabilities;
+  context_kind: 'account_link_required' | 'capture' | 'processing';
+  expires_at: string;
+  processing_state: string;
+  purpose?: ProtocolCapturePurpose;
+  return_url?: string;
+  run_kind?: 'capture' | 'reference' | 'submission';
+};
+
+export type ProtocolCapturePurpose = 'assignment_material' | 'paper_batch' | 'student_submission';
+
+export type ProtocolCaptureInputSource = 'adf' | 'auto' | 'platen';
+export type ProtocolCaptureMedia = 'A3' | 'A4' | 'B4' | 'B5';
+
+export type ProtocolScanner = {
+  capabilities: {
+    document_formats: string[];
+    input_sources: Array<'adf_duplex' | 'adf_simplex' | 'platen'>;
+    media: ProtocolCaptureMedia[];
+  };
+  display_name: string;
+  online: boolean;
+  protocol: 'escl';
+  scanner_id: string;
+};
+
+export type ProtocolScannerList = {
+  scanners: ProtocolScanner[];
+};
+
+export type ProtocolCaptureStartInput = {
+  back_side_rotation_degrees: 0 | 180;
+  duplex: boolean;
+  input_source_mode: ProtocolCaptureInputSource;
+  media: ProtocolCaptureMedia;
+  rotation_degrees: 0 | 90 | 180 | 270;
+  scanner_id: string;
+};
+
+export type ProtocolCaptureStatus = {
+  capture_id: string;
+  capture_state: 'completed' | 'continuation_required' | null;
+  committed_page_count: number;
+  continuation: {
+    next_page_order: number;
+    next_segment_index: number;
+  } | null;
+  failure: { code: string; message: string } | null;
+  first_page_order: number;
+  purpose: ProtocolCapturePurpose;
+  receipt: string | null;
+  segment_index: number;
+  status: 'cancelled' | 'claimed' | 'completed' | 'failed' | 'pending';
+};
+
+export type ProtocolProcessingInput = {
+  content_type: string;
+  kind: 'reference' | 'response';
+  page_order: number;
+  preview_url: string;
+  slot_id: string;
+};
+
+export type ProtocolProcessingQuestion = {
+  feedback?: string | null;
+  is_correct?: boolean | null;
+  max_score?: number | null;
+  ocr_meta?: JsonRecord;
+  order_index: number;
+  question_content?: JsonRecord;
+  question_number?: string | null;
+  question_type?: string | null;
+  reference_answer?: JsonRecord;
+  score?: number | null;
+  student_answer?: string | null;
+};
+
+export type ProtocolProcessingResultContent = {
+  questions: ProtocolProcessingQuestion[];
+  score?: number | null;
+  teacher_summary?: string | null;
+  total_score?: number | null;
+};
+
+export type ProtocolProcessingSurface = {
+  context: ProtocolProcessingContext;
+  inputs: ProtocolProcessingInput[];
+  report: {
+    artifact_id: string | null;
+    available: boolean;
+    preview_url?: string;
+  } | null;
+  result: {
+    artifact_id: string;
+    content: ProtocolProcessingResultContent;
+  } | null;
+};
+
+export type ProtocolProcessingQuestionEdit = {
+  feedback?: string | null;
+  is_correct?: boolean | null;
+  max_score?: number | null;
+  order_index: number;
+  score?: number | null;
+  student_answer?: string | null;
+};
+
+export type ProtocolProcessingEditInput = {
+  expected_latest_artifact_id: string;
+  questions: ProtocolProcessingQuestionEdit[];
+  teacher_summary?: string | null;
+};
+
+export type ProtocolProcessingEditResult = {
+  artifact_id: string;
+  content: ProtocolProcessingResultContent;
+};
+
+export type ProtocolProcessingReportResult = {
+  artifact_id: string;
+  created: boolean;
+  source_artifact_id: string;
+};
+
+export type ProtocolIdentityLinkAcceptResult = {
+  account_user_id: string;
+  deployment_id: number;
+  identity_link_id: number;
+  invitation_id: string;
+  invitation_status: 'accepted';
+  link_status: 'active';
 };
 
 export type FileDescriptor = {
@@ -129,6 +292,15 @@ export type AssignmentDetailResponse = {
   subject: JsonRecord | null;
 };
 
+export type ActivityDetailResponse = {
+  activity: JsonRecord;
+  assignment_detail?: AssignmentDetailResponse | null;
+  detail_kind: 'legacy_assignment' | 'protocol_activity';
+  item: JsonRecord;
+  legacy_assignment_id?: number | null;
+  resource: 'activities';
+};
+
 export type SubmissionDetailResponse = {
   assignment: JsonRecord | null;
   assignment_questions: JsonRecord[];
@@ -142,6 +314,15 @@ export type SubmissionDetailResponse = {
   students: JsonRecord[];
   subject: JsonRecord | null;
   submission: JsonRecord;
+};
+
+export type AttemptDetailResponse = {
+  attempt: JsonRecord;
+  detail_kind: 'legacy_submission' | 'protocol_attempt';
+  item: JsonRecord;
+  legacy_submission_id?: number | null;
+  resource: 'attempts';
+  submission_detail?: SubmissionDetailResponse | null;
 };
 
 export type StudentWrongQuestion = {

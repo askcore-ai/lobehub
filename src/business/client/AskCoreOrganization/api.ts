@@ -22,9 +22,16 @@ import {
   type AskCoreEducationRoleAssignment,
   type AskCoreEducationRoleAssignmentCreateInput,
   type AskCoreEducationRoleAssignmentPayload,
+  type AskCoreIntegrationOperationsStatusPayload,
   type AskCoreInviteChannel,
   type AskCoreInviteExpiry,
   type AskCoreInvitePayload,
+  type AskCoreMoodleGibbonLiveAcceptanceInput,
+  type AskCoreMoodleGibbonLiveAcceptancePayload,
+  type AskCoreMoodleGibbonLiveProbeInput,
+  type AskCoreMoodleGibbonLiveProbePayload,
+  type AskCoreMoodleGibbonPilotActivationInput,
+  type AskCoreMoodleGibbonPilotActivationPayload,
   type AskCoreOrganizationDirectoryPayload,
   type AskCoreOrganizationPayload,
   type AskCoreOrganizationRole,
@@ -34,6 +41,13 @@ import {
 
 const ORGANIZATION_API_BASE = '/api/askcore/organizations';
 const EDUCATION_ORG_API_BASE = '/api/askcore/workbench/organization';
+const INTEGRATION_OPERATIONS_API_PATH = '/api/askcore/workbench/integrations/operations/status';
+const MOODLE_GIBBON_PILOT_ACTIVATION_API_PATH =
+  '/api/askcore/workbench/integrations/pilot/moodle-gibbon/activation';
+const MOODLE_GIBBON_LIVE_PROBE_API_PATH =
+  '/api/askcore/workbench/integrations/pilot/moodle-gibbon/live-probe';
+const MOODLE_GIBBON_LIVE_ACCEPTANCE_API_PATH =
+  '/api/askcore/workbench/integrations/pilot/moodle-gibbon/live-acceptance';
 const WORKBENCH_UPLOAD_API_BASE = '/api/askcore/workbench/uploads';
 
 export class AskCoreOrganizationApiError extends Error {
@@ -83,6 +97,34 @@ export const bootstrapAskCoreOrganization = (inviteToken?: string) =>
 
 export const fetchAskCoreOrganizations = () =>
   requestJson<AskCoreOrganizationPayload>(ORGANIZATION_API_BASE);
+
+export const fetchAskCoreIntegrationOperationsStatus = () =>
+  requestJson<AskCoreIntegrationOperationsStatusPayload>(INTEGRATION_OPERATIONS_API_PATH);
+
+export const runAskCoreMoodleGibbonPilotActivation = (
+  input: AskCoreMoodleGibbonPilotActivationInput,
+) =>
+  requestJson<AskCoreMoodleGibbonPilotActivationPayload>(
+    MOODLE_GIBBON_PILOT_ACTIVATION_API_PATH,
+    {
+      body: JSON.stringify(input),
+      method: 'POST',
+    },
+  );
+
+export const runAskCoreMoodleGibbonLiveProbe = (input: AskCoreMoodleGibbonLiveProbeInput) =>
+  requestJson<AskCoreMoodleGibbonLiveProbePayload>(MOODLE_GIBBON_LIVE_PROBE_API_PATH, {
+    body: JSON.stringify(input),
+    method: 'POST',
+  });
+
+export const runAskCoreMoodleGibbonLiveAcceptance = (
+  input: AskCoreMoodleGibbonLiveAcceptanceInput,
+) =>
+  requestJson<AskCoreMoodleGibbonLiveAcceptancePayload>(MOODLE_GIBBON_LIVE_ACCEPTANCE_API_PATH, {
+    body: JSON.stringify(input),
+    method: 'POST',
+  });
 
 export const createAskCoreOrganization = (input: {
   contact?: string;

@@ -24,7 +24,8 @@ interface SubscriptionIframeWrapperProps {
   page: AskCoreBillingPageKey;
 }
 
-const currentOrigin = () => (typeof window === 'undefined' ? 'https://askcore.cn' : window.location.origin);
+const currentOrigin = () =>
+  typeof window === 'undefined' ? 'https://askcore.cn' : window.location.origin;
 
 const currentPaymentCheckoutId = () =>
   typeof window === 'undefined'
@@ -36,7 +37,7 @@ export const SubscriptionIframeWrapper = memo<SubscriptionIframeWrapperProps>(({
   const [error, setError] = useState<string | null>(null);
   const webviewRef = useRef<HTMLElement>(null);
   const { i18n } = useTranslation();
-  const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
+  const enableAskCoreBilling = useServerConfigStore(serverConfigSelectors.enableAskCoreBilling);
 
   const iframeUrl = useMemo(
     () =>
@@ -161,7 +162,7 @@ export const SubscriptionIframeWrapper = memo<SubscriptionIframeWrapperProps>(({
       .catch(() => setError('Failed to initialize subscription session'));
   }, []);
 
-  if (!enableBusinessFeatures) return null;
+  if (!enableAskCoreBilling) return null;
 
   if (error) {
     return (
@@ -204,6 +205,7 @@ export const SubscriptionIframeWrapper = memo<SubscriptionIframeWrapperProps>(({
           referrerPolicy="same-origin"
           sandbox="allow-forms allow-popups allow-same-origin allow-scripts"
           src={iframeUrl}
+          title={`AskCore subscription ${page}`}
           style={{
             border: 0,
             height: '100%',
@@ -211,7 +213,6 @@ export const SubscriptionIframeWrapper = memo<SubscriptionIframeWrapperProps>(({
             position: 'absolute',
             width: '100%',
           }}
-          title={`AskCore subscription ${page}`}
         />
       )}
     </Flexbox>

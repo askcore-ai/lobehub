@@ -1,30 +1,41 @@
 import { type RouteObject } from 'react-router-dom';
 
+const loadSchoolRoute = async () => {
+  const route = await import('./AskCoreSchoolPortal');
+  return { Component: route.AskCoreSchoolPortalRoute };
+};
+
 export const BusinessDesktopRoutesWithMainLayout: RouteObject[] = [
   {
-    lazy: async () => {
-      const route = await import('./AskCoreOrganization');
-      return { Component: route.AskCoreOrganizationRoute };
-    },
-    path: 'organization',
+    lazy: loadSchoolRoute,
+    path: 'school',
+  },
+  {
+    lazy: loadSchoolRoute,
+    path: 'school/teaching-center',
+  },
+  {
+    lazy: loadSchoolRoute,
+    path: 'school/learning-space',
+  },
+  {
+    lazy: loadSchoolRoute,
+    path: 'school/operations-center',
+  },
+  {
+    lazy: loadSchoolRoute,
+    path: 'school/billing',
   },
   {
     lazy: async () => {
-      const route = await import('./AskCoreWorkbench');
-      return { Component: route.AskCoreWorkbenchRoute };
+      const route = await import('./AskCoreWorkbench/ProtocolRoute');
+      return { Component: route.AskCoreProtocolRoute };
     },
     path: 'askcore/workbench',
   },
 ];
 export const BusinessDesktopRoutesWithSettingsLayout: RouteObject[] = [];
 export const BusinessDesktopRoutesWithoutMainLayout: RouteObject[] = [
-  {
-    lazy: async () => {
-      const route = await import('./AskCoreOrganization/OrganizationJoinRoute');
-      return { Component: route.AskCoreOrganizationJoinRoute };
-    },
-    path: '/join/organization/:token',
-  },
   {
     lazy: async () => {
       const route = await import('./BusinessSettingPages/AskCoreBillingPage');

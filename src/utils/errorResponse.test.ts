@@ -49,6 +49,11 @@ describe('createErrorResponse', () => {
     expect(response.status).toBe(429);
   });
 
+  it('returns a 402 status for AskCore billing quota exhaustion', () => {
+    const response = createErrorResponse(ChatErrorType.InsufficientBudgetForModel);
+    expect(response.status).toBe(402);
+  });
+
   it('returns a 400 status for ExceededContextWindow error type', () => {
     const errorType = AgentRuntimeErrorType.ExceededContextWindow;
     const response = createErrorResponse(errorType);
@@ -105,7 +110,9 @@ describe('createErrorResponse', () => {
     const consoleSpy = vi.spyOn(console, 'error');
     try {
       createErrorResponse(errorType as any);
-    } catch (e) {}
+    } catch {
+      // Expected for invalid status values.
+    }
     expect(consoleSpy).toHaveBeenCalled();
     consoleSpy.mockRestore();
   });

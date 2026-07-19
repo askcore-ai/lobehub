@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { BRANDING_NAME, ORG_NAME } from '@lobechat/business-const';
 import { OG_URL } from '@lobechat/const';
 
@@ -19,6 +21,8 @@ import {
   type SPAServerConfig,
 } from '@/types/spaServerConfig';
 import { RouteVariants } from '@/utils/server/routeVariants';
+
+export const dynamic = 'force-dynamic';
 
 export function generateStaticParams() {
   const mobileOptions = isDesktop ? [false] : [true, false];
@@ -179,8 +183,14 @@ function buildClientEnv(): SPAClientEnv {
 async function getConfigUserFromRequest(request: Request) {
   try {
     const session = await auth.api.getSession({ headers: request.headers });
-    return session?.user?.id
-      ? { userEmail: session.user.email, userId: session.user.id }
+    return session?.user?.id && session.session?.id
+      ? {
+          schoolSessionGenerationHash: createHash('sha256')
+            .update(`${session.user.id.trim()}:${session.session.id.trim()}`)
+            .digest('hex'),
+          userEmail: session.user.email,
+          userId: session.user.id,
+        }
       : undefined;
   } catch {
     return undefined;
@@ -217,7 +227,8 @@ export async function GET(
   const { variants } = await params;
   const { locale, isMobile } = RouteVariants.deserializeVariants(variants);
 
-  const serverConfig = await getServerGlobalConfig(await getConfigUserFromRequest(request));
+  const configUser = await getConfigUserFromRequest(request);
+  const serverConfig = await getServerGlobalConfig(configUser);
   const featureFlags = getServerFeatureFlagsValue();
   const analyticsConfig = buildAnalyticsConfig();
   const clientEnv = buildClientEnv();
@@ -228,6 +239,7 @@ export async function GET(
     config: serverConfig,
     featureFlags,
     isMobile,
+    schoolSessionGenerationHash: configUser?.schoolSessionGenerationHash,
   };
 
   let html = await getTemplate(isMobile);
@@ -243,7 +255,7 @@ export async function GET(
 
   return new Response(html, {
     headers: {
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'private, no-store',
       'content-type': 'text/html; charset=utf-8',
     },
   });

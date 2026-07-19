@@ -64,7 +64,7 @@ export const TASK_TEMPLATE_FALLBACK_CATEGORIES: TaskTemplateCategory[] = [
 ];
 
 export const TASK_TEMPLATE_RECOMMEND_COUNT = 3;
-const ASKCORE_TASK_TEMPLATE_ID_PREFIX = 'askcore-';
+const RETIRED_SCHOOL_TASK_TEMPLATE_ID_PREFIX = 'askcore-';
 
 const allTaskTemplates = [
   // AskCore teaching workbench
@@ -117,7 +117,7 @@ const allTaskTemplates = [
     interests: ['coding'],
   },
 
-  // Upstream catalog is kept below for sync readability; AskCore exposes only askcore-* templates.
+  // Personal catalog
   // content-creation
   {
     id: 'daily-topic-pick',
@@ -696,8 +696,8 @@ const allTaskTemplates = [
   },
 ] satisfies TaskTemplate[];
 
-export const taskTemplates: TaskTemplate[] = allTaskTemplates.filter((template) =>
-  template.id.startsWith(ASKCORE_TASK_TEMPLATE_ID_PREFIX),
+export const taskTemplates: TaskTemplate[] = allTaskTemplates.filter(
+  (template) => !template.id.startsWith(RETIRED_SCHOOL_TASK_TEMPLATE_ID_PREFIX),
 );
 
 export const KNOWN_TASK_TEMPLATE_IDS: ReadonlySet<string> = new Set(taskTemplates.map((t) => t.id));

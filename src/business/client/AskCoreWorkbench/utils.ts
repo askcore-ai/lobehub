@@ -23,11 +23,17 @@ export const askCoreWorkbenchTabFromRoute = (route?: string | null): AskCoreWork
     .replaceAll('_', '-');
 
   const mapping: Record<string, AskCoreWorkbenchTab> = {
-    assignments: 'assignments',
+    activities: 'activities',
+    activity: 'activities',
+    assignment: 'activities',
+    assignments: 'activities',
+    attempt: 'attempts',
+    attempts: 'attempts',
     dashboard: 'overview',
     grades: 'overview',
     questions: 'questions',
-    submissions: 'submissions',
+    submission: 'attempts',
+    submissions: 'attempts',
   };
 
   return mapping[firstSegment] || DEFAULT_ASKCORE_WORKBENCH_TAB;

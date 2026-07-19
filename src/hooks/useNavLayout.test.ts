@@ -1,10 +1,9 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, renderHook } from '@testing-library/react';
+import { createElement, type PropsWithChildren } from 'react';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ASKCORE_ORGANIZATION_CHANGED_EVENT } from '@/business/client/AskCoreOrganization/events';
-import { ASKCORE_WORKBENCH_PATH } from '@/business/client/AskCoreWorkbench/config';
-
-import { __resetAskCoreWorkbenchNavAccessForTest, useNavLayout } from './useNavLayout';
+import { useNavLayout } from './useNavLayout';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -27,204 +26,420 @@ vi.mock('@/store/serverConfig', () => ({
   ) => selector({ featureFlags: { hideGitHub: false, showMarket: true } }),
 }));
 
-const educationProfile = (
-  workbenchMode: 'identity_required' | 'student_managed' | 'student_restricted' | 'teacher',
-) => ({
-  active_persona: null,
-  capabilities: {},
-  default_persona: null,
-  education_identities: [],
-  org_composition: {},
-  workbench_mode: workbenchMode,
-});
+const swrState = vi.hoisted(() => ({
+  accountUserId: 'user-1',
+  accountSessionId: 'session-1',
+  bootstrapPortal: false,
+  bootstrapRole: false,
+  portalAvailable: true,
+  portalValidating: false,
+  role: undefined as 'administrator' | 'student' | 'teacher' | undefined,
+  roleAuthenticated: true,
+  roleError: false,
+  roleErrorStatus: undefined as number | undefined,
+  roleValidating: false,
+  schoolState: 'ready' as 'ready' | 'unavailable',
+  sessionPending: false,
+  sessionRefetching: false,
+}));
+const rolePayloads = vi.hoisted(() => ({
+  administrator: { authenticated: true as const, role: 'administrator' as const },
+  student: { authenticated: true as const, role: 'student' as const },
+  teacher: { authenticated: true as const, role: 'teacher' as const },
+  unauthenticated: { authenticated: false as const },
+}));
+const portalPayloads = vi.hoisted(() => ({
+  ready: {
+    schools: [
+      {
+        destinations: [
+          {
+            key: 'teaching',
+            launch_url: '/api/askcore/school/launch/teaching',
+          },
+        ],
+        role_source_url: 'https://askcore.cn/school/services/askcore/session.php',
+      },
+    ],
+    show_school_entry: true,
+    state: 'ready' as const,
+  },
+  unavailable: {
+    schools: [],
+    show_school_entry: true,
+    state: 'unavailable' as const,
+  },
+}));
 
-const organizationPayload = (active = true) => ({
-  current: active
-    ? {
-        id: 'org-1',
-        isActive: true,
-        name: 'AskCore School',
-        role: 'member',
-        slug: 'askcore-school',
-      }
-    : null,
-  organizations: [
-    {
-      id: 'org-1',
-      isActive: active,
-      name: 'AskCore School',
-      role: 'member',
-      slug: 'askcore-school',
+const requestedRoleKeys = vi.hoisted(() => [] as unknown[]);
+const requestedPortalKeys = vi.hoisted(() => [] as unknown[]);
+const requestedRoleOptions = vi.hoisted(() => [] as Record<string, unknown>[]);
+const requestedPortalOptions = vi.hoisted(() => [] as Record<string, unknown>[]);
+
+vi.mock('@/libs/better-auth/auth-client', () => ({
+  useSession: () => ({
+    data: {
+      session: { id: swrState.accountSessionId },
+      user: { id: swrState.accountUserId },
     },
-  ],
-});
+    isPending: swrState.sessionPending,
+    isRefetching: swrState.sessionRefetching,
+  }),
+}));
 
-const mockNavFetch = ({
-  organizationResponse = new Response(JSON.stringify(organizationPayload(true))),
-  profileResponse = new Response(JSON.stringify(educationProfile('identity_required'))),
-}: {
-  organizationResponse?: Response;
-  profileResponse?: Response;
-} = {}) => {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    const url = String(input);
-    if (url === '/api/askcore/organizations') return organizationResponse.clone();
-    if (url === '/api/askcore/workbench/me') return profileResponse.clone();
-    return new Response(JSON.stringify({}), { status: 404 });
-  });
-  vi.stubGlobal('fetch', fetchMock);
-  return fetchMock;
-};
+vi.mock('@/business/client/AskCoreSchoolPortal/api', async (importOriginal) => ({
+  ...(await importOriginal()),
+  readSchoolPortalBootstrapSnapshot: () =>
+    (swrState.bootstrapPortal || swrState.bootstrapRole) && swrState.role
+      ? {
+          portal: swrState.bootstrapPortal ? portalPayloads[swrState.schoolState] : undefined,
+          sourceSession: swrState.bootstrapRole ? rolePayloads[swrState.role] : undefined,
+        }
+      : undefined,
+}));
 
-const workbenchItem = (items: ReturnType<typeof useNavLayout>['topNavItems']) =>
-  items.find((item) => item.url === ASKCORE_WORKBENCH_PATH);
-
-const identityClaimItem = (items: ReturnType<typeof useNavLayout>['topNavItems']) =>
-  items.find((item) => item.url === '/organization?action=identity-claim');
+vi.mock('swr', () => ({
+  default: (
+    key: readonly string[] | string | null,
+    _fetcher: unknown,
+    options: Record<string, unknown> = {},
+  ) => {
+    if (Array.isArray(key) && key[0] === '/api/askcore/school/portal') {
+      requestedPortalKeys.push(key);
+      requestedPortalOptions.push(options);
+      if (!swrState.portalAvailable) return { data: undefined, error: new Error('unavailable') };
+      return {
+        data: portalPayloads[swrState.schoolState],
+        isValidating: swrState.portalValidating,
+      };
+    }
+    if (Array.isArray(key) && key[0] === '/school/services/askcore/session.php') {
+      requestedRoleKeys.push(key);
+      requestedRoleOptions.push(options);
+      const roleError = swrState.roleError ? new Error('role unavailable') : undefined;
+      if (roleError && swrState.roleErrorStatus) {
+        Object.assign(roleError, { status: swrState.roleErrorStatus });
+      }
+      return {
+        data: swrState.role
+          ? swrState.roleAuthenticated
+            ? rolePayloads[swrState.role]
+            : rolePayloads.unauthenticated
+          : undefined,
+        error: roleError,
+        isValidating: swrState.roleValidating,
+      };
+    }
+    return { data: undefined };
+  },
+}));
 
 beforeEach(() => {
-  __resetAskCoreWorkbenchNavAccessForTest();
-  vi.restoreAllMocks();
+  requestedRoleKeys.length = 0;
+  requestedPortalKeys.length = 0;
+  requestedRoleOptions.length = 0;
+  requestedPortalOptions.length = 0;
+  swrState.accountUserId = 'user-1';
+  swrState.accountSessionId = 'session-1';
+  swrState.bootstrapPortal = false;
+  swrState.bootstrapRole = false;
+  swrState.portalAvailable = true;
+  swrState.portalValidating = false;
+  swrState.schoolState = 'ready';
+  swrState.sessionPending = false;
+  swrState.sessionRefetching = false;
+  swrState.role = undefined;
+  swrState.roleAuthenticated = true;
+  swrState.roleError = false;
+  swrState.roleErrorStatus = undefined;
+  swrState.roleValidating = false;
 });
 
-describe('useNavLayout AskCore workbench entry', () => {
-  it('hides identity claim and workbench entries before an active organization is selected', async () => {
-    const fetchMock = mockNavFetch({
-      organizationResponse: new Response(JSON.stringify(organizationPayload(false))),
-      profileResponse: new Response(JSON.stringify(educationProfile('teacher'))),
-    });
+afterEach(() => vi.unstubAllGlobals());
 
-    const { result } = renderHook(() => useNavLayout());
+const visibleItems = () => {
+  const { result } = renderHook(() => useNavLayout(), { wrapper: Router });
+  return result.current.topNavItems.filter((item) => !item.hidden);
+};
 
-    await waitFor(() => expect(workbenchItem(result.current.topNavItems)?.hidden).toBe(true));
-    await waitFor(() => expect(identityClaimItem(result.current.topNavItems)?.hidden).toBe(true));
-    expect(fetchMock).not.toHaveBeenCalledWith('/api/askcore/workbench/me', expect.any(Object));
+const Router = ({ children }: PropsWithChildren) => createElement(MemoryRouter, null, children);
+
+const SchoolRouter = ({ children }: PropsWithChildren) =>
+  createElement(MemoryRouter, { initialEntries: ['/school'] }, children);
+
+describe('useNavLayout source-role school navigation', () => {
+  it('shares the visible school portal cache scope', () => {
+    renderHook(() => useNavLayout(), { wrapper: SchoolRouter });
+
+    expect(requestedPortalKeys).toContainEqual([
+      '/api/askcore/school/portal',
+      'user-1:session-1',
+      'school-services',
+    ]);
   });
 
-  it('hides identity claim and workbench entries when the organization request fails', async () => {
-    const fetchMock = mockNavFetch({
-      organizationResponse: new Response(JSON.stringify({ detail: 'unavailable' }), {
-        status: 503,
-      }),
-      profileResponse: new Response(JSON.stringify(educationProfile('teacher'))),
-    });
+  it('keeps school visible while the portal request is unavailable', () => {
+    swrState.portalAvailable = false;
+    swrState.role = undefined;
 
-    const { result } = renderHook(() => useNavLayout());
+    const items = visibleItems();
 
-    await waitFor(() => expect(workbenchItem(result.current.topNavItems)?.hidden).toBe(true));
-    await waitFor(() => expect(identityClaimItem(result.current.topNavItems)?.hidden).toBe(true));
-    expect(fetchMock).not.toHaveBeenCalledWith('/api/askcore/workbench/me', expect.any(Object));
+    expect(items.map((item) => item.title)).toContain('学校');
+    swrState.portalAvailable = true;
   });
 
-  it('hides the teaching workbench entry while the active account still needs identity binding', async () => {
-    mockNavFetch({
-      profileResponse: new Response(JSON.stringify(educationProfile('identity_required'))),
-    });
+  it('retries initial transient school bootstrap failures without retrying authorization loss', () => {
+    vi.useFakeTimers();
+    try {
+      renderHook(() => useNavLayout(), { wrapper: SchoolRouter });
+      const transientError = Object.assign(new Error('unavailable'), { status: 503 });
+      const deniedError = Object.assign(new Error('denied'), { status: 401 });
 
-    const { result } = renderHook(() => useNavLayout());
+      for (const rawOptions of [requestedPortalOptions.at(-1), requestedRoleOptions.at(-1)]) {
+        const options = rawOptions as {
+          onErrorRetry: (
+            error: unknown,
+            key: unknown,
+            config: unknown,
+            revalidate: (options: { retryCount: number }) => void,
+            context: { retryCount: number },
+          ) => void;
+          shouldRetryOnError: (error: unknown) => boolean;
+        };
+        const revalidate = vi.fn();
 
-    await waitFor(() => expect(workbenchItem(result.current.topNavItems)?.hidden).toBe(true));
-    await waitFor(() =>
-      expect(identityClaimItem(result.current.topNavItems)).toMatchObject({
-        hidden: false,
-        title: 'tab.askcoreIdentityClaim',
-      }),
-    );
-  });
+        expect(options.shouldRetryOnError(transientError)).toBe(true);
+        expect(options.shouldRetryOnError(deniedError)).toBe(false);
 
-  it('does not expose the teaching workbench when the identity profile request fails', async () => {
-    mockNavFetch({
-      profileResponse: new Response(JSON.stringify({ detail: 'missing identity' }), {
-        status: 500,
-      }),
-    });
+        options.onErrorRetry(transientError, [], {}, revalidate, { retryCount: 1 });
+        act(() => vi.runOnlyPendingTimers());
+        expect(revalidate).toHaveBeenCalledWith({ retryCount: 1 });
 
-    const { result } = renderHook(() => useNavLayout());
-
-    await waitFor(() => expect(workbenchItem(result.current.topNavItems)?.hidden).toBe(true));
-    await waitFor(() =>
-      expect(identityClaimItem(result.current.topNavItems)).toMatchObject({
-        hidden: false,
-        title: 'tab.askcoreIdentityClaim',
-      }),
-    );
-  });
-
-  it('does not expose the teaching workbench when the identity profile payload is invalid', async () => {
-    mockNavFetch({
-      profileResponse: new Response(JSON.stringify({ raw: '<html>signin</html>' })),
-    });
-
-    const { result } = renderHook(() => useNavLayout());
-
-    await waitFor(() => expect(workbenchItem(result.current.topNavItems)?.hidden).toBe(true));
-    await waitFor(() =>
-      expect(identityClaimItem(result.current.topNavItems)).toMatchObject({
-        hidden: false,
-        title: 'tab.askcoreIdentityClaim',
-      }),
-    );
-  });
-
-  it('shows the teaching workbench entry after a teacher identity is available', async () => {
-    mockNavFetch({
-      profileResponse: new Response(JSON.stringify(educationProfile('teacher'))),
-    });
-
-    const { result } = renderHook(() => useNavLayout());
-
-    await waitFor(() =>
-      expect(workbenchItem(result.current.topNavItems)).toMatchObject({
-        hidden: false,
-        title: 'tab.askcoreTeachingWorkbench',
-      }),
-    );
-  });
-
-  it('shows an equal learning workbench entry after a student identity is available', async () => {
-    mockNavFetch({
-      profileResponse: new Response(JSON.stringify(educationProfile('student_restricted'))),
-    });
-
-    const { result } = renderHook(() => useNavLayout());
-
-    await waitFor(() =>
-      expect(workbenchItem(result.current.topNavItems)).toMatchObject({
-        hidden: false,
-        title: 'tab.askcoreLearningWorkbench',
-      }),
-    );
-  });
-
-  it('refreshes AskCore nav access after the active organization changes', async () => {
-    let hasActiveOrganization = false;
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url === '/api/askcore/organizations') {
-        return new Response(JSON.stringify(organizationPayload(hasActiveOrganization)));
+        revalidate.mockClear();
+        options.onErrorRetry(deniedError, [], {}, revalidate, { retryCount: 1 });
+        options.onErrorRetry(transientError, [], {}, revalidate, { retryCount: 3 });
+        act(() => vi.runOnlyPendingTimers());
+        expect(revalidate).not.toHaveBeenCalled();
       }
-      if (url === '/api/askcore/workbench/me') {
-        return new Response(JSON.stringify(educationProfile('teacher')));
-      }
-      return new Response(JSON.stringify({}), { status: 404 });
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
-    const { result } = renderHook(() => useNavLayout());
+  it('cancels a scheduled school bootstrap retry after the account session changes', () => {
+    vi.useFakeTimers();
+    try {
+      const view = renderHook(() => useNavLayout(), { wrapper: SchoolRouter });
+      const options = requestedRoleOptions.at(-1) as {
+        onErrorRetry: (
+          error: unknown,
+          key: unknown,
+          config: unknown,
+          revalidate: (options: { retryCount: number }) => void,
+          context: { retryCount: number },
+        ) => void;
+      };
+      const revalidate = vi.fn();
 
-    await waitFor(() => expect(workbenchItem(result.current.topNavItems)?.hidden).toBe(true));
-    expect(fetchMock).not.toHaveBeenCalledWith('/api/askcore/workbench/me', expect.any(Object));
+      options.onErrorRetry(new Error('unavailable'), [], {}, revalidate, { retryCount: 1 });
+      swrState.accountSessionId = 'session-2';
+      view.rerender();
+      swrState.accountSessionId = 'session-1';
+      view.rerender();
+      act(() => vi.runOnlyPendingTimers());
 
-    hasActiveOrganization = true;
-    act(() => {
-      window.dispatchEvent(new Event(ASKCORE_ORGANIZATION_CHANGED_EVENT));
-    });
+      expect(revalidate).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
-    await waitFor(() =>
-      expect(workbenchItem(result.current.topNavItems)).toMatchObject({
-        hidden: false,
-        title: 'tab.askcoreTeachingWorkbench',
-      }),
+  it('always shows school while the shared source is unavailable', () => {
+    swrState.schoolState = 'unavailable';
+    swrState.role = undefined;
+
+    const items = visibleItems();
+
+    expect(items.map((item) => item.title)).toContain('学校');
+    expect(items.map((item) => item.title)).not.toContain('教学中心');
+    expect(items.map((item) => item.title)).not.toContain('学习空间');
+    expect(items.map((item) => item.title)).not.toContain('运维中心');
+    expect(items.map((item) => item.title)).not.toContain('schoolPortal.surface.billing');
+  });
+
+  it('shows learning space only for a live Gibbon student', () => {
+    swrState.schoolState = 'ready';
+    swrState.role = 'student';
+
+    const items = visibleItems();
+
+    expect(items.map((item) => item.title)).toEqual(
+      expect.arrayContaining(['学校', '学习空间', 'schoolPortal.surface.billing']),
     );
+    expect(items.find((item) => item.title === 'schoolPortal.surface.billing')?.url).toBe(
+      '/school/billing',
+    );
+    expect(items.map((item) => item.title)).not.toContain('教学中心');
+    expect(items.map((item) => item.title)).not.toContain('运维中心');
+    expect(items.find((item) => item.title === '学习空间')?.url).toBe('/school/learning-space');
+    expect(requestedRoleKeys).toContainEqual([
+      '/school/services/askcore/session.php',
+      'user-1:session-1',
+    ]);
+  });
+
+  it('keeps the account-session role cache key stable after a BFCache restore', () => {
+    swrState.role = 'student';
+    const { result } = renderHook(() => useNavLayout(), { wrapper: Router });
+
+    expect(result.current.topNavItems.find((item) => item.title === '学习空间')?.hidden).toBe(
+      false,
+    );
+
+    const pageshow = new Event('pageshow') as PageTransitionEvent;
+    Object.defineProperty(pageshow, 'persisted', { value: true });
+    act(() => window.dispatchEvent(pageshow));
+
+    expect(requestedRoleKeys).not.toContainEqual([
+      '/school/services/askcore/session.php',
+      'user-1:session-1',
+      1,
+    ]);
+    expect(requestedRoleKeys).toEqual(
+      expect.arrayContaining([['/school/services/askcore/session.php', 'user-1:session-1']]),
+    );
+  });
+
+  it('keeps an exact portal-role snapshot visible while live validation is pending', () => {
+    swrState.bootstrapPortal = true;
+    swrState.bootstrapRole = true;
+    swrState.role = 'student';
+    swrState.portalValidating = true;
+    swrState.roleValidating = true;
+
+    const items = visibleItems();
+
+    expect(items.map((item) => item.title)).toContain('学校');
+    expect(items.map((item) => item.title)).toContain('学习空间');
+    expect(items.map((item) => item.title)).not.toContain('教学中心');
+  });
+
+  it('hides a partial bootstrap role while the paired portal is validating', () => {
+    swrState.bootstrapRole = true;
+    swrState.role = 'student';
+    swrState.portalValidating = true;
+
+    const items = visibleItems();
+
+    expect(items.map((item) => item.title)).toContain('学校');
+    expect(items.map((item) => item.title)).not.toContain('学习空间');
+    expect(items.map((item) => item.title)).not.toContain('教学中心');
+  });
+
+  it('hides an arbitrary SWR role while its live validation is pending', () => {
+    swrState.role = 'student';
+    swrState.roleValidating = true;
+
+    const items = visibleItems();
+
+    expect(items.map((item) => item.title)).toContain('学校');
+    expect(items.map((item) => item.title)).not.toContain('学习空间');
+    expect(items.map((item) => item.title)).not.toContain('教学中心');
+  });
+
+  it('keeps a previously live-confirmed role during same-generation source revalidation', () => {
+    swrState.role = 'student';
+    const view = renderHook(() => useNavLayout(), { wrapper: Router });
+    expect(view.result.current.topNavItems.find((item) => item.title === '学习空间')?.hidden).toBe(
+      false,
+    );
+
+    swrState.roleValidating = true;
+    view.rerender();
+
+    expect(view.result.current.topNavItems.find((item) => item.title === '学习空间')?.hidden).toBe(
+      false,
+    );
+  });
+
+  it('keeps a previously live-confirmed role during a transient same-generation source error', () => {
+    swrState.role = 'student';
+    const view = renderHook(() => useNavLayout(), { wrapper: Router });
+
+    swrState.roleError = true;
+    view.rerender();
+
+    expect(view.result.current.topNavItems.find((item) => item.title === '学习空间')?.hidden).toBe(
+      false,
+    );
+  });
+
+  it('keeps a confirmed role while Better Auth refetches the same account session', () => {
+    swrState.role = 'student';
+    const view = renderHook(() => useNavLayout(), { wrapper: Router });
+    expect(view.result.current.topNavItems.find((item) => item.title === '学习空间')?.hidden).toBe(
+      false,
+    );
+
+    swrState.sessionRefetching = true;
+    view.rerender();
+
+    expect(view.result.current.topNavItems.find((item) => item.title === '学习空间')?.hidden).toBe(
+      false,
+    );
+  });
+
+  it('hides a stale positive role when its live validation fails', () => {
+    swrState.role = 'student';
+    swrState.roleError = true;
+    swrState.roleErrorStatus = 401;
+
+    const items = visibleItems();
+
+    expect(items.map((item) => item.title)).toContain('学校');
+    expect(items.map((item) => item.title)).not.toContain('学习空间');
+    expect(items.map((item) => item.title)).not.toContain('教学中心');
+  });
+
+  it('clears a confirmed role when the source explicitly becomes unauthenticated', () => {
+    swrState.role = 'student';
+    const view = renderHook(() => useNavLayout(), { wrapper: Router });
+    expect(view.result.current.topNavItems.find((item) => item.title === '学习空间')?.hidden).toBe(
+      false,
+    );
+
+    swrState.roleAuthenticated = false;
+    view.rerender();
+
+    expect(view.result.current.topNavItems.find((item) => item.title === '学习空间')?.hidden).toBe(
+      true,
+    );
+  });
+
+  it('shows teaching center only for a live Gibbon teacher', () => {
+    swrState.schoolState = 'ready';
+    swrState.role = 'teacher';
+
+    const items = visibleItems();
+
+    expect(items.map((item) => item.title)).toEqual(expect.arrayContaining(['学校', '教学中心']));
+    expect(items.map((item) => item.title)).not.toContain('学习空间');
+    expect(items.map((item) => item.title)).not.toContain('运维中心');
+    expect(items.find((item) => item.title === '教学中心')?.url).toBe('/school/teaching-center');
+  });
+
+  it('shows teaching and operations centers for a live Gibbon administrator', () => {
+    swrState.schoolState = 'ready';
+    swrState.role = 'administrator';
+
+    const items = visibleItems();
+
+    expect(items.map((item) => item.title)).toEqual(
+      expect.arrayContaining(['学校', '教学中心', '运维中心']),
+    );
+    expect(items.map((item) => item.title)).toContain('schoolPortal.surface.billing');
+    expect(items.map((item) => item.title)).not.toContain('学习空间');
+    expect(items.find((item) => item.title === '教学中心')?.url).toBe('/school/teaching-center');
+    expect(items.find((item) => item.title === '运维中心')?.url).toBe('/school/operations-center');
   });
 });
