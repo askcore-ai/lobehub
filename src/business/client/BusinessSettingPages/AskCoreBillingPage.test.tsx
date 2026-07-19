@@ -1,7 +1,9 @@
+import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   ASKCORE_BILLING_OPEN_URL_MESSAGE,
+  BillingView,
   buildAskCoreBillingEmbedUrl,
   formatBillingInterval,
   formatBillingStatus,
@@ -20,6 +22,7 @@ import {
 describe('AskCore billing embed helpers', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   it('builds same-origin AskCore embed URLs by default', () => {
@@ -213,5 +216,87 @@ describe('AskCore billing embed helpers', () => {
     expect(rules.map((item) => item.text).join('\n')).toContain('奖励');
     expect(rules.map((item) => item.text).join('\n')).not.toContain('registration');
     expect(rules.map((item) => item.text).join('\n')).not.toContain('rewardDelay');
+  });
+
+  it('renders fixed prepaid terms without automatic-payment claims', async () => {
+    const personal = {
+      account_id: 137,
+      balance_credits: 320,
+      current_term: {
+        id: 1,
+        interval: 'month' as const,
+        plan_id: 'professional',
+        status: 'active' as const,
+        term_end: '2026-08-19T12:00:00+00:00',
+        term_start: '2026-07-19T12:00:00+00:00',
+      },
+      next_payment: null,
+      plan_id: 'professional',
+      renewal_mode: 'manual' as const,
+      scheduled_terms: [
+        {
+          id: 2,
+          interval: 'month' as const,
+          plan_id: 'professional',
+          status: 'scheduled' as const,
+          term_end: '2026-09-19T12:00:00+00:00',
+          term_start: '2026-08-19T12:00:00+00:00',
+        },
+      ],
+      subscription_status: 'active',
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ items: [], summary: personal }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <BillingView
+        copy={getBillingCopy('en-US')}
+        isChinese={false}
+        moneyFormatter={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })}
+        accountState={{
+          data: {
+            billing_enabled: true,
+            credit_unit: 'credits',
+            currency: 'CNY',
+            mode: 'enforce',
+            personal,
+          },
+          loading: false,
+        }}
+        plansPayload={{
+          billing_enabled: true,
+          credit_packs: [],
+          credit_unit: 'credits',
+          currency: 'CNY',
+          mode: 'enforce',
+          plans: [
+            {
+              description: 'Professional prepaid access',
+              display_name: 'Professional',
+              features: [],
+              id: 'professional',
+              monthly_credits: 350,
+              monthly_price_usd: 6.99,
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(await screen.findByText('Manual renewal — no automatic charge')).toBeInTheDocument();
+    expect(screen.getByText('Paid Access Starts')).toBeInTheDocument();
+    expect(screen.getByText('Paid Access Ends')).toBeInTheDocument();
+    expect(screen.getByText('Scheduled Terms')).toBeInTheDocument();
+    expect(screen.getAllByText(/Professional/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText('Next Payment')).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/billing/billing-history',
+      expect.objectContaining({ credentials: 'include' }),
+    );
   });
 });

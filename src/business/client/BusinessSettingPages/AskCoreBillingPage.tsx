@@ -441,6 +441,9 @@ const enCopy = {
     detailPayOnce: 'One-time payment',
     detailYearly: 'per year',
     faq: 'Frequently Asked Questions',
+    faqRenewalAnswer:
+      'Each purchase is a fixed prepaid term. Renew manually before or after expiry; AskCore will not charge automatically.',
+    faqRenewalQuestion: 'How do I renew my paid term?',
     fileStorage: 'File Storage',
     noProvider: 'No payment provider is enabled.',
     perMonth: 'per month',
@@ -646,6 +649,9 @@ const zhCopy: typeof enCopy = {
     detailPayOnce: '一次性付款',
     detailYearly: '每年',
     faq: '常见问题',
+    faqRenewalAnswer:
+      '每次购买都是固定期限的预付条款，可在到期前后手动续费；AskCore 不会自动扣款。',
+    faqRenewalQuestion: '付费条款如何续费？',
     fileStorage: '文件存储',
     noProvider: '当前未启用支付渠道。',
     perMonth: '每月',
@@ -780,7 +786,34 @@ const createLocalizedBillingCopy = (language: string | undefined, t: TranslateFn
     ...base,
     billing: {
       ...base.billing,
+      billingCycle: translatedCopy(
+        t,
+        'askcoreBilling.billing.prepaidTerm',
+        base.billing.billingCycle,
+      ),
+      endDate: translatedCopy(t, 'askcoreBilling.billing.endDate', base.billing.endDate),
       intervalFallback: monthlyInterval,
+      manualRenewal: translatedCopy(
+        t,
+        'askcoreBilling.billing.manualRenewal',
+        base.billing.manualRenewal,
+      ),
+      noScheduledTerms: translatedCopy(
+        t,
+        'askcoreBilling.billing.noScheduledTerms',
+        base.billing.noScheduledTerms,
+      ),
+      renewalMode: translatedCopy(
+        t,
+        'askcoreBilling.billing.renewalMode',
+        base.billing.renewalMode,
+      ),
+      scheduledTerms: translatedCopy(
+        t,
+        'askcoreBilling.billing.scheduledTerms',
+        base.billing.scheduledTerms,
+      ),
+      startDate: translatedCopy(t, 'askcoreBilling.billing.startDate', base.billing.startDate),
     },
     intervals: {
       ...base.intervals,
@@ -793,6 +826,23 @@ const createLocalizedBillingCopy = (language: string | undefined, t: TranslateFn
       monthly: translatedCopy(t, 'plans.navs.monthly', base.periods.monthly),
       oneTime: translatedCopy(t, 'plans.navs.payonce', base.periods.oneTime),
       yearly: translatedCopy(t, 'plans.navs.yearly', base.periods.yearly),
+    },
+    page: {
+      ...base.page,
+      subtitle: translatedCopy(t, 'askcoreBilling.page.subtitle', base.page.subtitle),
+    },
+    plans: {
+      ...base.plans,
+      faqRenewalAnswer: translatedCopy(
+        t,
+        'askcoreBilling.faq.renewalAnswer',
+        base.plans.faqRenewalAnswer,
+      ),
+      faqRenewalQuestion: translatedCopy(
+        t,
+        'askcoreBilling.faq.renewalQuestion',
+        base.plans.faqRenewalQuestion,
+      ),
     },
     referral: {
       ...base.referral,
@@ -1473,6 +1523,7 @@ const comparisonUnit = (unit: string | undefined, isChinese: boolean) => {
 const localizedFaq = (
   items: AskCorePlansPayload['faq'] | undefined,
   isChinese: boolean,
+  copy: BillingCopy,
 ): { answer: string; question: string }[] => {
   if (!isChinese) {
     return items?.length
@@ -1483,10 +1534,7 @@ const localizedFaq = (
               /organization.*?personal credits\.?/i,
               'This page currently shows personal plans and personal credits.',
             )
-            .replace(
-              /.*portal.*/i,
-              'Each purchase is a fixed prepaid term. Renew manually before or after expiry; AskCore will not charge automatically.',
-            ),
+            .replace(/.*portal.*/i, copy.plans.faqRenewalAnswer),
         }))
       : [
           {
@@ -1500,9 +1548,8 @@ const localizedFaq = (
               'You can change plans or purchase credit packs. This page currently shows personal plans and personal credits.',
           },
           {
-            question: 'How do I renew my paid term?',
-            answer:
-              'Each purchase is a fixed prepaid term. Renew manually before or after expiry; AskCore will not charge automatically.',
+            question: copy.plans.faqRenewalQuestion,
+            answer: copy.plans.faqRenewalAnswer,
           },
           {
             question: 'Which plans are available?',
@@ -1521,8 +1568,8 @@ const localizedFaq = (
       answer: '可以升级套餐或购买积分包。本轮付费页只展示个人套餐与个人积分。',
     },
     {
-      question: '付费条款如何续费？',
-      answer: '每次购买都是固定期限的预付条款，可在到期前后手动续费；AskCore 不会自动扣款。',
+      question: copy.plans.faqRenewalQuestion,
+      answer: copy.plans.faqRenewalAnswer,
     },
     {
       question: '当前有哪些套餐？',
@@ -1923,7 +1970,7 @@ const PlansView = memo<{
       </Card>
       <Card className={styles.section} title={copy.plans.faq}>
         <Collapse
-          items={localizedFaq(plansPayload?.faq, isChinese).map((item) => ({
+          items={localizedFaq(plansPayload?.faq, isChinese, copy).map((item) => ({
             children: <Text type={'secondary'}>{item.answer}</Text>,
             key: item.question,
             label: item.question,
@@ -2280,7 +2327,7 @@ const CreditsView = memo<{
 
 CreditsView.displayName = 'CreditsView';
 
-const BillingView = memo<{
+export const BillingView = memo<{
   accountState: ResourceState<AskCoreAccountPayload>;
   copy: BillingCopy;
   isChinese: boolean;
