@@ -21,6 +21,9 @@ const vercelConfig = {
 };
 const nextConfig = defineConfig({
   ...(isVercel ? vercelConfig : {}),
+  // The self-hosted release statically renders more than 2,000 sitemap routes.
+  // A full eight-route batch can legitimately exceed Next's 60 second default.
+  staticPageGenerationTimeout: 180,
 });
 
 export default nextConfig;
