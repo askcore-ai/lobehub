@@ -5,6 +5,7 @@ import {
   buildAskCoreBillingEmbedUrl,
   formatBillingInterval,
   formatBillingStatus,
+  formatPersonalRenewalMode,
   formatPlanTopupUnitPrice,
   getBillingCopy,
   isAllowedBillingExternalUrl,
@@ -197,6 +198,10 @@ describe('AskCore billing embed helpers', () => {
     expect(formatBillingInterval('payonce', enCopy)).toBe('One-time');
     expect(formatBillingStatus('free', zhCopy)).toBe('免费版');
     expect(formatBillingStatus('pending_reward', zhCopy)).toBe('审核中');
+    expect(formatPersonalRenewalMode('manual', zhCopy)).toBe('到期后手动续费，不会自动扣款');
+    expect(formatPersonalRenewalMode('manual', enCopy)).toBe(
+      'Manual renewal — no automatic charge',
+    );
 
     const rules = localizeReferralRules(
       { registration: 'registration', reward: 'reward', rewardDelay: 'rewardDelay' },

@@ -158,10 +158,23 @@ interface AskCorePlansPayload {
   providers?: Partial<Record<BillingProvider, { checkout_available?: boolean; enabled: boolean }>>;
 }
 
+interface AskCorePersonalPrepaidTerm {
+  id: number;
+  interval: 'month' | 'year';
+  plan_id: string;
+  status: 'active' | 'canceled' | 'expired' | 'scheduled';
+  term_end: string;
+  term_start: string;
+}
+
 interface AskCorePersonalAccount {
   account_id: number;
   balance_credits: number;
+  current_term: AskCorePersonalPrepaidTerm | null;
+  next_payment: null;
   plan_id: string;
+  renewal_mode: 'manual';
+  scheduled_terms: AskCorePersonalPrepaidTerm[];
   subscription_status: string;
 }
 
@@ -262,20 +275,7 @@ interface AskCoreInvoiceRow {
 
 interface AskCoreBillingHistoryPayload {
   items: AskCoreInvoiceRow[];
-  summary?: {
-    cancel_at_period_end?: boolean;
-    current_period_end?: string | null;
-    current_period_start?: string | null;
-    interval?: string;
-    next_payment?: {
-      amount_due_cny?: number | null;
-      amount_due_usd?: number;
-      due_at?: string | null;
-    };
-    plan_id?: string;
-    status?: string;
-    subscription_id?: string | null;
-  };
+  summary?: AskCorePersonalAccount;
 }
 
 interface AskCoreReferralPayload {
@@ -353,17 +353,20 @@ const enCopy = {
   },
   billing: {
     amount: 'Amount',
-    billingCycle: 'Billing Cycle',
+    billingCycle: 'Prepaid Term',
     billingHistory: 'Billing History',
     billingSummary: 'Billing Summary',
     currentPlan: 'Current Plan',
-    endDate: 'End Date',
+    endDate: 'Paid Access Ends',
     intervalFallback: 'Monthly',
-    nextPayment: 'Next Payment',
+    manualRenewal: 'Manual renewal — no automatic charge',
+    noScheduledTerms: 'No prepaid terms are queued',
     orderNumber: 'Order Number',
     paymentDate: 'Payment Date',
     paymentGateway: 'Payment Gateway',
-    startDate: 'Start Date',
+    renewalMode: 'Renewal',
+    scheduledTerms: 'Scheduled Terms',
+    startDate: 'Paid Access Starts',
     status: 'Status',
     transactionStatus: 'Transaction Status',
   },
@@ -421,7 +424,7 @@ const enCopy = {
     wechatUnavailable: 'WeChat Pay is not ready for this account.',
   },
   page: {
-    subtitle: 'Usage, subscription management, credits, billing, and referral rewards.',
+    subtitle: 'Usage, fixed prepaid terms, credits, billing, and referral rewards.',
     titles: {
       billing: 'Billing',
       credits: 'Credits',
@@ -556,17 +559,20 @@ const zhCopy: typeof enCopy = {
   },
   billing: {
     amount: '金额',
-    billingCycle: '计费周期',
+    billingCycle: '预付周期',
     billingHistory: '账单记录',
     billingSummary: '账单概览',
     currentPlan: '当前套餐',
-    endDate: '结束日期',
+    endDate: '付费权益到期',
     intervalFallback: '每月',
-    nextPayment: '下次付款',
+    manualRenewal: '到期后手动续费，不会自动扣款',
+    noScheduledTerms: '当前没有已排期的预付条款',
     orderNumber: '订单号',
     paymentDate: '付款时间',
     paymentGateway: '支付渠道',
-    startDate: '开始日期',
+    renewalMode: '续费方式',
+    scheduledTerms: '已排期条款',
+    startDate: '付费权益开始',
     status: '状态',
     transactionStatus: '交易状态',
   },
@@ -623,7 +629,7 @@ const zhCopy: typeof enCopy = {
     wechatUnavailable: '微信支付尚未为当前账号启用。',
   },
   page: {
-    subtitle: '用量、订阅管理、积分、账单与推荐奖励。',
+    subtitle: '用量、固定预付条款、积分、账单与推荐奖励。',
     titles: {
       billing: '账单',
       credits: '积分',
@@ -849,6 +855,11 @@ export const formatBillingStatus = (
   const normalized = value.toLowerCase().replaceAll('-', '_') as keyof BillingCopy['statuses'];
   return copy.statuses[normalized] || value;
 };
+
+export const formatPersonalRenewalMode = (
+  value: string | null | undefined,
+  copy: BillingCopy,
+): string => (value === 'manual' ? copy.billing.manualRenewal : '-');
 
 const applyCopyTemplate = (template: string, values: Record<string, string>) =>
   template.replaceAll(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => values[key] || '');
@@ -1474,7 +1485,7 @@ const localizedFaq = (
             )
             .replace(
               /.*portal.*/i,
-              'Plan changes, credit purchases, and billing history are available in the Current Plan card.',
+              'Each purchase is a fixed prepaid term. Renew manually before or after expiry; AskCore will not charge automatically.',
             ),
         }))
       : [
@@ -1489,9 +1500,9 @@ const localizedFaq = (
               'You can change plans or purchase credit packs. This page currently shows personal plans and personal credits.',
           },
           {
-            question: 'How do I change my subscription?',
+            question: 'How do I renew my paid term?',
             answer:
-              'Plan changes, credit purchases, and billing history are available in the Current Plan card.',
+              'Each purchase is a fixed prepaid term. Renew manually before or after expiry; AskCore will not charge automatically.',
           },
           {
             question: 'Which plans are available?',
@@ -1510,8 +1521,8 @@ const localizedFaq = (
       answer: '可以升级套餐或购买积分包。本轮付费页只展示个人套餐与个人积分。',
     },
     {
-      question: '如何变更或取消订阅？',
-      answer: '套餐调整、积分购买和账单记录入口已放在当前套餐卡片中。',
+      question: '付费条款如何续费？',
+      answer: '每次购买都是固定期限的预付条款，可在到期前后手动续费；AskCore 不会自动扣款。',
     },
     {
       question: '当前有哪些套餐？',
@@ -2313,6 +2324,8 @@ const BillingView = memo<{
   if (historyState.error) return <Alert showIcon message={historyState.error} type="error" />;
 
   const summary = historyState.data?.summary;
+  const currentTerm = summary?.current_term;
+  const scheduledTerms = summary?.scheduled_terms || [];
 
   return (
     <Flexbox gap={16}>
@@ -2333,33 +2346,46 @@ const BillingView = memo<{
               {
                 key: 'status',
                 label: copy.billing.status,
-                children: formatBillingStatus(summary?.status || 'free', copy),
+                children: formatBillingStatus(summary?.subscription_status || 'free', copy),
               },
               {
                 key: 'interval',
                 label: copy.billing.billingCycle,
-                children: formatBillingInterval(summary?.interval, copy),
+                children: currentTerm ? formatBillingInterval(currentTerm.interval, copy) : '-',
               },
               {
                 key: 'start',
                 label: copy.billing.startDate,
-                children: formatDate(summary?.current_period_start),
+                children: formatDate(currentTerm?.term_start),
               },
               {
                 key: 'end',
                 label: copy.billing.endDate,
-                children: formatDate(summary?.current_period_end),
+                children: formatDate(currentTerm?.term_end),
               },
               {
-                key: 'next',
-                label: copy.billing.nextPayment,
-                children: moneyFormatter.format(
-                  moneyValue(
-                    summary?.next_payment?.amount_due_usd,
-                    summary?.next_payment?.amount_due_cny,
-                    isChinese,
+                key: 'renewal',
+                label: copy.billing.renewalMode,
+                children: formatPersonalRenewalMode(summary?.renewal_mode, copy),
+              },
+              {
+                key: 'scheduled',
+                label: copy.billing.scheduledTerms,
+                span: 3,
+                children:
+                  scheduledTerms.length === 0 ? (
+                    copy.billing.noScheduledTerms
+                  ) : (
+                    <Flexbox gap={4}>
+                      {scheduledTerms.map((term) => (
+                        <Text key={term.id}>
+                          {planNames[term.plan_id] || term.plan_id} ·{' '}
+                          {formatBillingInterval(term.interval, copy)} ·{' '}
+                          {formatDate(term.term_start)} – {formatDate(term.term_end)}
+                        </Text>
+                      ))}
+                    </Flexbox>
                   ),
-                ),
               },
             ]}
           />
