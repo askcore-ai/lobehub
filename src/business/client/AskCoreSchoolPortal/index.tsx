@@ -3,7 +3,7 @@
 import { Button } from '@lobehub/ui';
 import { Alert, Empty, Skeleton } from 'antd';
 import { createStaticStyles, cssVar } from 'antd-style';
-import { BookOpenCheck, RefreshCw, School, ShieldCheck } from 'lucide-react';
+import { BookOpenCheck, CreditCard, RefreshCw, School, ShieldCheck } from 'lucide-react';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -24,6 +24,7 @@ import {
   schoolSourceSessionCacheKey,
   stableSchoolSessionGeneration,
 } from './api';
+import { SchoolBillingPage } from './BillingPage';
 import {
   type SchoolPortalManifest,
   schoolRoleCanAccessWorkspace,
@@ -163,6 +164,9 @@ export const AskCoreSchoolPortalRoute = memo(() => {
     isPending: accountSessionPending,
     isRefetching: accountSessionRefetching,
   });
+  const accountUserId =
+    typeof accountSession?.user?.id === 'string' ? accountSession.user.id.trim() : '';
+  const isBillingSurface = pathname === '/school/billing';
   const isOperationsSurface = pathname === '/school/operations-center';
   const isTeachingSurface =
     pathname === '/school/teaching-center' ||
@@ -277,16 +281,18 @@ export const AskCoreSchoolPortalRoute = memo(() => {
       : undefined;
   const trustedSourceSession = activePair?.sourceSession;
   const sourceRole = trustedSourceSession?.authenticated ? trustedSourceSession.role : undefined;
-  const roleAllowed =
-    pathname === '/school/learning-space'
+  const roleAllowed = isBillingSurface
+    ? schoolRoleCanAccessWorkspace(sourceRole, 'billing')
+    : pathname === '/school/learning-space'
       ? schoolRoleCanAccessWorkspace(sourceRole, 'learning')
       : pathname === '/school/teaching-center'
         ? schoolRoleCanAccessWorkspace(sourceRole, 'teaching')
         : isOperationsSurface
           ? schoolRoleCanAccessWorkspace(sourceRole, 'operations')
           : true;
-  const surfaceTitle =
-    pathname === '/school/learning-space'
+  const surfaceTitle = isBillingSurface
+    ? t('schoolPortal.surface.billing')
+    : pathname === '/school/learning-space'
       ? t('schoolPortal.surface.learningSpace')
       : pathname === '/school/teaching-center'
         ? t('schoolPortal.surface.teachingCenter')
@@ -294,11 +300,13 @@ export const AskCoreSchoolPortalRoute = memo(() => {
           ? t('schoolPortal.surface.operationsCenter')
           : t('schoolPortal.surface.school');
   const schoolName = sharedSchool?.name || t('schoolPortal.name');
-  const SurfaceIcon = isOperationsSurface
-    ? ShieldCheck
-    : isTeachingSurface
-      ? BookOpenCheck
-      : School;
+  const SurfaceIcon = isBillingSurface
+    ? CreditCard
+    : isOperationsSurface
+      ? ShieldCheck
+      : isTeachingSurface
+        ? BookOpenCheck
+        : School;
   const [lifecycleEpoch, setLifecycleEpoch] = useState(0);
   const [trustedGeneration, setTrustedGeneration] = useState(sessionGeneration);
   const [covered, setCovered] = useState(false);
@@ -435,12 +443,21 @@ export const AskCoreSchoolPortalRoute = memo(() => {
 
   const generationReady = !!sessionGeneration && trustedGeneration === sessionGeneration;
   const canLaunchCandidate =
+    !isBillingSurface &&
     generationReady &&
     !covered &&
     trustedPortal?.state === 'ready' &&
     !!destination &&
     trustedSourceSession?.authenticated === true &&
     (!isTeachingSurface || roleAllowed);
+  const canShowBilling =
+    isBillingSurface &&
+    generationReady &&
+    !covered &&
+    trustedPortal?.state === 'ready' &&
+    trustedSourceSession?.authenticated === true &&
+    !!sharedSchool &&
+    !!accountUserId;
   const sourceFrameKey = canLaunchCandidate
     ? `${sessionGeneration}:${destinationKey}:${lifecycleEpoch}`
     : '';
@@ -522,6 +539,7 @@ export const AskCoreSchoolPortalRoute = memo(() => {
       sourceSessionLoading ||
       (!canLaunchFrame && sourceSessionValidating && !exactBootstrapPair) ||
       (canLaunchCandidate && !canLaunchFrame) ||
+      (isBillingSurface && !canShowBilling && !error && !sourceSessionError) ||
       recoveringRole ||
       covered ||
       (canLaunchFrame && currentSourceFrameStatus === 'loading') ? (
@@ -616,6 +634,10 @@ export const AskCoreSchoolPortalRoute = memo(() => {
             }}
           />
         </section>
+      ) : null}
+
+      {canShowBilling && sharedSchool ? (
+        <SchoolBillingPage accountUserId={accountUserId} schoolKey={sharedSchool.key} />
       ) : null}
 
       {!error && !isValidating && canLaunchFrame && currentSourceFrameStatus === 'failed' ? (

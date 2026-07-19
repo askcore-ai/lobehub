@@ -23,6 +23,10 @@ export const BusinessDesktopRoutesWithMainLayout: RouteObject[] = [
     path: 'school/operations-center',
   },
   {
+    lazy: loadSchoolRoute,
+    path: 'school/billing',
+  },
+  {
     lazy: async () => {
       const route = await import('./AskCoreWorkbench/ProtocolRoute');
       return { Component: route.AskCoreProtocolRoute };

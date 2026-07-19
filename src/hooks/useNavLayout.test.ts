@@ -264,6 +264,7 @@ describe('useNavLayout source-role school navigation', () => {
     expect(items.map((item) => item.title)).not.toContain('教学中心');
     expect(items.map((item) => item.title)).not.toContain('学习空间');
     expect(items.map((item) => item.title)).not.toContain('运维中心');
+    expect(items.map((item) => item.title)).not.toContain('schoolPortal.surface.billing');
   });
 
   it('shows learning space only for a live Gibbon student', () => {
@@ -272,7 +273,12 @@ describe('useNavLayout source-role school navigation', () => {
 
     const items = visibleItems();
 
-    expect(items.map((item) => item.title)).toEqual(expect.arrayContaining(['学校', '学习空间']));
+    expect(items.map((item) => item.title)).toEqual(
+      expect.arrayContaining(['学校', '学习空间', 'schoolPortal.surface.billing']),
+    );
+    expect(items.find((item) => item.title === 'schoolPortal.surface.billing')?.url).toBe(
+      '/school/billing',
+    );
     expect(items.map((item) => item.title)).not.toContain('教学中心');
     expect(items.map((item) => item.title)).not.toContain('运维中心');
     expect(items.find((item) => item.title === '学习空间')?.url).toBe('/school/learning-space');
@@ -431,6 +437,7 @@ describe('useNavLayout source-role school navigation', () => {
     expect(items.map((item) => item.title)).toEqual(
       expect.arrayContaining(['学校', '教学中心', '运维中心']),
     );
+    expect(items.map((item) => item.title)).toContain('schoolPortal.surface.billing');
     expect(items.map((item) => item.title)).not.toContain('学习空间');
     expect(items.find((item) => item.title === '教学中心')?.url).toBe('/school/teaching-center');
     expect(items.find((item) => item.title === '运维中心')?.url).toBe('/school/operations-center');

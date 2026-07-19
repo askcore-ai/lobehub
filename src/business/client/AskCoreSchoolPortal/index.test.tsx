@@ -35,6 +35,7 @@ const commonTranslations = vi.hoisted<Record<string, string>>(() => ({
   'schoolPortal.state.unavailable.message': '学校服务正在恢复，请稍后重试。个人空间仍可正常使用。',
   'schoolPortal.state.unavailable.title': '学校连接暂不可用',
   'schoolPortal.surface.learningSpace': '学习空间',
+  'schoolPortal.surface.billing': '学校计费',
   'schoolPortal.surface.operationsCenter': '运维中心',
   'schoolPortal.surface.school': '学校',
   'schoolPortal.surface.teachingCenter': '教学中心',
@@ -127,6 +128,7 @@ const SchoolRouteHarness = () => {
 describe('school source-role workspace access', () => {
   it.each([
     ['administrator', 'teaching', true],
+    ['student', 'billing', true],
     ['administrator', 'operations', true],
     ['administrator', 'learning', false],
     ['teacher', 'teaching', true],

@@ -1,5 +1,6 @@
 import {
   BookOpenCheckIcon,
+  CreditCardIcon,
   GraduationCapIcon,
   HomeIcon,
   SchoolIcon,
@@ -216,6 +217,7 @@ export const useNavLayout = (): NavLayout => {
   const canAccessTeaching = schoolRoleCanAccessWorkspace(sourceRole, 'teaching');
   const canAccessOperations = schoolRoleCanAccessWorkspace(sourceRole, 'operations');
   const canAccessLearning = schoolRoleCanAccessWorkspace(sourceRole, 'learning');
+  const canAccessBilling = schoolRoleCanAccessWorkspace(sourceRole, 'billing');
 
   const topNavItems = useMemo(
     () =>
@@ -237,6 +239,13 @@ export const useNavLayout = (): NavLayout => {
           key: 'school',
           title: '学校',
           url: '/school',
+        },
+        {
+          hidden: !canAccessBilling || !sharedSchool,
+          icon: CreditCardIcon,
+          key: 'school-billing',
+          title: t('schoolPortal.surface.billing'),
+          url: '/school/billing',
         },
         {
           hidden: !canAccessTeaching || !hasTeachingDestination,
@@ -274,6 +283,7 @@ export const useNavLayout = (): NavLayout => {
       ] as NavItem[],
     [
       canAccessLearning,
+      canAccessBilling,
       canAccessOperations,
       canAccessTeaching,
       hasTeachingDestination,
