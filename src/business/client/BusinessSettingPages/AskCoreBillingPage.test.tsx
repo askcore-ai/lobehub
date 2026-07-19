@@ -376,7 +376,16 @@ describe('AskCore billing embed helpers', () => {
         },
       ],
       mode: 'enforce',
-      plans: [],
+      plans: [
+        {
+          description: 'Free access',
+          display_name: 'Free',
+          features: [],
+          id: 'free',
+          monthly_credits: 20,
+          monthly_price_usd: 0,
+        },
+      ],
     };
 
     render(
