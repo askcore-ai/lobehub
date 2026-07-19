@@ -299,4 +299,59 @@ describe('AskCore billing embed helpers', () => {
       expect.objectContaining({ credentials: 'include' }),
     );
   });
+
+  it('renders the derived free state without a current or scheduled prepaid term', async () => {
+    const personal = {
+      account_id: 138,
+      balance_credits: 20,
+      current_term: null,
+      next_payment: null,
+      plan_id: 'free',
+      renewal_mode: 'manual' as const,
+      scheduled_terms: [],
+      subscription_status: 'free',
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ items: [], summary: personal }), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 200,
+        }),
+      ),
+    );
+
+    render(
+      <BillingView
+        copy={getBillingCopy('en-US')}
+        isChinese={false}
+        moneyFormatter={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })}
+        accountState={{
+          data: {
+            billing_enabled: true,
+            credit_unit: 'credits',
+            currency: 'CNY',
+            mode: 'enforce',
+            personal,
+          },
+          loading: false,
+        }}
+        plansPayload={{
+          billing_enabled: true,
+          credit_packs: [],
+          credit_unit: 'credits',
+          currency: 'CNY',
+          mode: 'enforce',
+          plans: [],
+        }}
+      />,
+    );
+
+    expect(await screen.findAllByText('Free')).not.toHaveLength(0);
+    expect(screen.getByText('No prepaid terms are queued')).toBeInTheDocument();
+    expect(screen.getByText('Paid Access Starts')).toBeInTheDocument();
+    expect(screen.getByText('Paid Access Ends')).toBeInTheDocument();
+    expect(screen.getAllByText('-').length).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByText('Next Payment')).not.toBeInTheDocument();
+  });
 });
