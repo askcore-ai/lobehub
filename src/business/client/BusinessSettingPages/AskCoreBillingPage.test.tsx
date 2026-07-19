@@ -1,10 +1,12 @@
 import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import jaSubscription from '../../../../locales/ja-JP/subscription.json';
 import {
   ASKCORE_BILLING_OPEN_URL_MESSAGE,
   BillingView,
   buildAskCoreBillingEmbedUrl,
+  createLocalizedBillingCopy,
   formatBillingInterval,
   formatBillingStatus,
   formatPersonalRenewalMode,
@@ -16,6 +18,7 @@ import {
   localizeReferralRules,
   normalizeBillingPath,
   normalizePlansPayload,
+  PlansView,
   resolveDefaultProvider,
 } from './AskCoreBillingPage';
 
@@ -353,5 +356,41 @@ describe('AskCore billing embed helpers', () => {
     expect(screen.getByText('Paid Access Ends')).toBeInTheDocument();
     expect(screen.getAllByText('-').length).toBeGreaterThanOrEqual(3);
     expect(screen.queryByText('Next Payment')).not.toBeInTheDocument();
+  });
+
+  it('renders the backend renewal FAQ through a non-English locale key', () => {
+    const translate = (key: string, options?: Record<string, unknown>) =>
+      String((jaSubscription as Record<string, string>)[key] ?? options?.defaultValue ?? key);
+    const copy = createLocalizedBillingCopy('ja-JP', translate);
+    const plansPayload = {
+      billing_enabled: true,
+      billing_periods: [],
+      credit_packs: [],
+      credit_unit: 'credits',
+      currency: 'CNY',
+      faq: [
+        {
+          answer:
+            'Each purchase is a fixed prepaid term. Renew manually before or after expiry; AskCore will not charge automatically.',
+          question: 'How do I renew my prepaid term?',
+        },
+      ],
+      mode: 'enforce',
+      plans: [],
+    };
+
+    render(
+      <PlansView
+        copy={copy}
+        isChinese={false}
+        moneyFormatter={new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' })}
+        plansPayload={plansPayload}
+        state={{ data: plansPayload, loading: false }}
+        onCheckoutSuccess={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('有料期間を更新するにはどうすればよいですか？')).toBeInTheDocument();
+    expect(screen.queryByText('How do I renew my prepaid term?')).not.toBeInTheDocument();
   });
 });

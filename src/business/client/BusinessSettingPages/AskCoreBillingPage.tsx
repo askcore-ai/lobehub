@@ -768,7 +768,10 @@ const translatedCopy = (
   options: Record<string, unknown> = {},
 ) => t(key, { ...options, defaultValue });
 
-const createLocalizedBillingCopy = (language: string | undefined, t: TranslateFn): BillingCopy => {
+export const createLocalizedBillingCopy = (
+  language: string | undefined,
+  t: TranslateFn,
+): BillingCopy => {
   const base = getBillingCopy(language);
   const shortInterval =
     isChineseLanguage(language) || language?.toLowerCase().startsWith('en') || !language;
@@ -1527,15 +1530,25 @@ const localizedFaq = (
 ): { answer: string; question: string }[] => {
   if (!isChinese) {
     return items?.length
-      ? items.map((item) => ({
-          ...item,
-          answer: item.answer
-            .replace(
+      ? items.map((item) => {
+          const isRenewalItem =
+            /renew|fixed prepaid term|automatic charge|customer portal|cancel (?:my )?subscription/i.test(
+              `${item.question} ${item.answer}`,
+            );
+          if (isRenewalItem) {
+            return {
+              question: copy.plans.faqRenewalQuestion,
+              answer: copy.plans.faqRenewalAnswer,
+            };
+          }
+          return {
+            ...item,
+            answer: item.answer.replace(
               /organization.*?personal credits\.?/i,
               'This page currently shows personal plans and personal credits.',
-            )
-            .replace(/.*portal.*/i, copy.plans.faqRenewalAnswer),
-        }))
+            ),
+          };
+        })
       : [
           {
             question: 'What are credits?',
@@ -1678,7 +1691,7 @@ const CurrentPlanCard = memo<{
 
 CurrentPlanCard.displayName = 'CurrentPlanCard';
 
-const PlansView = memo<{
+export const PlansView = memo<{
   account?: AskCoreAccountPayload;
   copy: BillingCopy;
   isChinese: boolean;
