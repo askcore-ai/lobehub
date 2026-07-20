@@ -158,10 +158,23 @@ interface AskCorePlansPayload {
   providers?: Partial<Record<BillingProvider, { checkout_available?: boolean; enabled: boolean }>>;
 }
 
+interface AskCorePersonalPrepaidTerm {
+  id: number;
+  interval: 'month' | 'year';
+  plan_id: string;
+  status: 'active' | 'canceled' | 'expired' | 'scheduled';
+  term_end: string;
+  term_start: string;
+}
+
 interface AskCorePersonalAccount {
   account_id: number;
   balance_credits: number;
+  current_term: AskCorePersonalPrepaidTerm | null;
+  next_payment: null;
   plan_id: string;
+  renewal_mode: 'manual';
+  scheduled_terms: AskCorePersonalPrepaidTerm[];
   subscription_status: string;
 }
 
@@ -262,20 +275,7 @@ interface AskCoreInvoiceRow {
 
 interface AskCoreBillingHistoryPayload {
   items: AskCoreInvoiceRow[];
-  summary?: {
-    cancel_at_period_end?: boolean;
-    current_period_end?: string | null;
-    current_period_start?: string | null;
-    interval?: string;
-    next_payment?: {
-      amount_due_cny?: number | null;
-      amount_due_usd?: number;
-      due_at?: string | null;
-    };
-    plan_id?: string;
-    status?: string;
-    subscription_id?: string | null;
-  };
+  summary?: AskCorePersonalAccount;
 }
 
 interface AskCoreReferralPayload {
@@ -353,17 +353,20 @@ const enCopy = {
   },
   billing: {
     amount: 'Amount',
-    billingCycle: 'Billing Cycle',
+    billingCycle: 'Prepaid Term',
     billingHistory: 'Billing History',
     billingSummary: 'Billing Summary',
     currentPlan: 'Current Plan',
-    endDate: 'End Date',
+    endDate: 'Paid Access Ends',
     intervalFallback: 'Monthly',
-    nextPayment: 'Next Payment',
+    manualRenewal: 'Manual renewal — no automatic charge',
+    noScheduledTerms: 'No prepaid terms are queued',
     orderNumber: 'Order Number',
     paymentDate: 'Payment Date',
     paymentGateway: 'Payment Gateway',
-    startDate: 'Start Date',
+    renewalMode: 'Renewal',
+    scheduledTerms: 'Scheduled Terms',
+    startDate: 'Paid Access Starts',
     status: 'Status',
     transactionStatus: 'Transaction Status',
   },
@@ -421,7 +424,7 @@ const enCopy = {
     wechatUnavailable: 'WeChat Pay is not ready for this account.',
   },
   page: {
-    subtitle: 'Usage, subscription management, credits, billing, and referral rewards.',
+    subtitle: 'Usage, fixed prepaid terms, credits, billing, and referral rewards.',
     titles: {
       billing: 'Billing',
       credits: 'Credits',
@@ -438,6 +441,9 @@ const enCopy = {
     detailPayOnce: 'One-time payment',
     detailYearly: 'per year',
     faq: 'Frequently Asked Questions',
+    faqRenewalAnswer:
+      'Each purchase is a fixed prepaid term. Renew manually before or after expiry; AskCore will not charge automatically.',
+    faqRenewalQuestion: 'How do I renew my paid term?',
     fileStorage: 'File Storage',
     noProvider: 'No payment provider is enabled.',
     perMonth: 'per month',
@@ -478,11 +484,18 @@ const enCopy = {
     programRules: 'Program Rules',
     registrationTime: 'Registration Time',
     rules: {
+      expiry: 'Credit validity: Referral credits expire after {{days}} days.',
+      priority:
+        'Deduction priority: free credits, subscription credits, referral credits, then top-up credits.',
       registration:
         'Registration method: Invited users register via referral link or enter referral code on registration page',
-      reward: 'Reward: Referrer and invitee each receive {{reward}}M credits',
+      reward: 'Reward: referrer and invitee each receive {{reward}}.',
       rewardDelay:
-        'Reward processing: Credits will be distributed after verification, which may take up to 6 hours',
+        'Reward processing: credits are issued after verification, within {{hours}} hours.',
+      validAction: 'Valid action: {{action}}.',
+      validActions: {
+        firstBillableUsage: 'first billable usage',
+      },
     },
     status: 'Status',
     totalInvites: 'Total Invites',
@@ -556,17 +569,20 @@ const zhCopy: typeof enCopy = {
   },
   billing: {
     amount: '金额',
-    billingCycle: '计费周期',
+    billingCycle: '预付周期',
     billingHistory: '账单记录',
     billingSummary: '账单概览',
     currentPlan: '当前套餐',
-    endDate: '结束日期',
+    endDate: '付费权益到期',
     intervalFallback: '每月',
-    nextPayment: '下次付款',
+    manualRenewal: '到期后手动续费，不会自动扣款',
+    noScheduledTerms: '当前没有已排期的预付条款',
     orderNumber: '订单号',
     paymentDate: '付款时间',
     paymentGateway: '支付渠道',
-    startDate: '开始日期',
+    renewalMode: '续费方式',
+    scheduledTerms: '已排期条款',
+    startDate: '付费权益开始',
     status: '状态',
     transactionStatus: '交易状态',
   },
@@ -623,7 +639,7 @@ const zhCopy: typeof enCopy = {
     wechatUnavailable: '微信支付尚未为当前账号启用。',
   },
   page: {
-    subtitle: '用量、订阅管理、积分、账单与推荐奖励。',
+    subtitle: '用量、固定预付条款、积分、账单与推荐奖励。',
     titles: {
       billing: '账单',
       credits: '积分',
@@ -640,6 +656,9 @@ const zhCopy: typeof enCopy = {
     detailPayOnce: '一次性付款',
     detailYearly: '每年',
     faq: '常见问题',
+    faqRenewalAnswer:
+      '每次购买都是固定期限的预付条款，可在到期前后手动续费；AskCore 不会自动扣款。',
+    faqRenewalQuestion: '付费条款如何续费？',
     fileStorage: '文件存储',
     noProvider: '当前未启用支付渠道。',
     perMonth: '每月',
@@ -679,9 +698,15 @@ const zhCopy: typeof enCopy = {
     programRules: '计划规则',
     registrationTime: '注册时间',
     rules: {
+      expiry: '积分有效期：推荐奖励积分将在 {{days}} 天后过期。',
+      priority: '扣减优先级：免费积分、订阅积分、推荐奖励积分、充值积分。',
       registration: '注册方式：被邀请用户通过推荐链接注册或在注册页输入推荐码',
-      reward: '奖励：邀请人和被邀请人各获得 {{reward}}M 积分',
-      rewardDelay: '奖励处理：积分将在审核通过后发放，审核最多需要 6 小时',
+      reward: '奖励：邀请人和被邀请人各获得 {{reward}}',
+      rewardDelay: '奖励处理：积分将在审核通过后发放，最多需要 {{hours}} 小时',
+      validAction: '有效动作：{{action}}',
+      validActions: {
+        firstBillableUsage: '首次产生可计费用量',
+      },
     },
     status: '状态',
     totalInvites: '邀请总数',
@@ -745,6 +770,9 @@ type BillingCopy = typeof enCopy;
 type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
 
 const REFERRAL_REWARD_TEMPLATE_TOKEN = '__ASKCORE_REFERRAL_REWARD__';
+const REFERRAL_DAYS_TEMPLATE_TOKEN = '__ASKCORE_REFERRAL_DAYS__';
+const REFERRAL_HOURS_TEMPLATE_TOKEN = '__ASKCORE_REFERRAL_HOURS__';
+const REFERRAL_ACTION_TEMPLATE_TOKEN = '__ASKCORE_REFERRAL_ACTION__';
 
 export const getBillingCopy = (language?: string): BillingCopy =>
   isChineseLanguage(language) ? zhCopy : enCopy;
@@ -756,7 +784,10 @@ const translatedCopy = (
   options: Record<string, unknown> = {},
 ) => t(key, { ...options, defaultValue });
 
-const createLocalizedBillingCopy = (language: string | undefined, t: TranslateFn): BillingCopy => {
+export const createLocalizedBillingCopy = (
+  language: string | undefined,
+  t: TranslateFn,
+): BillingCopy => {
   const base = getBillingCopy(language);
   const shortInterval =
     isChineseLanguage(language) || language?.toLowerCase().startsWith('en') || !language;
@@ -774,7 +805,34 @@ const createLocalizedBillingCopy = (language: string | undefined, t: TranslateFn
     ...base,
     billing: {
       ...base.billing,
+      billingCycle: translatedCopy(
+        t,
+        'askcoreBilling.billing.prepaidTerm',
+        base.billing.billingCycle,
+      ),
+      endDate: translatedCopy(t, 'askcoreBilling.billing.endDate', base.billing.endDate),
       intervalFallback: monthlyInterval,
+      manualRenewal: translatedCopy(
+        t,
+        'askcoreBilling.billing.manualRenewal',
+        base.billing.manualRenewal,
+      ),
+      noScheduledTerms: translatedCopy(
+        t,
+        'askcoreBilling.billing.noScheduledTerms',
+        base.billing.noScheduledTerms,
+      ),
+      renewalMode: translatedCopy(
+        t,
+        'askcoreBilling.billing.renewalMode',
+        base.billing.renewalMode,
+      ),
+      scheduledTerms: translatedCopy(
+        t,
+        'askcoreBilling.billing.scheduledTerms',
+        base.billing.scheduledTerms,
+      ),
+      startDate: translatedCopy(t, 'askcoreBilling.billing.startDate', base.billing.startDate),
     },
     intervals: {
       ...base.intervals,
@@ -788,10 +846,32 @@ const createLocalizedBillingCopy = (language: string | undefined, t: TranslateFn
       oneTime: translatedCopy(t, 'plans.navs.payonce', base.periods.oneTime),
       yearly: translatedCopy(t, 'plans.navs.yearly', base.periods.yearly),
     },
+    page: {
+      ...base.page,
+      subtitle: translatedCopy(t, 'askcoreBilling.page.subtitle', base.page.subtitle),
+    },
+    plans: {
+      ...base.plans,
+      faqRenewalAnswer: translatedCopy(
+        t,
+        'askcoreBilling.faq.renewalAnswer',
+        base.plans.faqRenewalAnswer,
+      ),
+      faqRenewalQuestion: translatedCopy(
+        t,
+        'askcoreBilling.faq.renewalQuestion',
+        base.plans.faqRenewalQuestion,
+      ),
+    },
     referral: {
       ...base.referral,
       programRules: translatedCopy(t, 'referral.rules.title', base.referral.programRules),
       rules: {
+        ...base.referral.rules,
+        expiry: translatedCopy(t, 'referral.rules.expiry', base.referral.rules.expiry, {
+          days: REFERRAL_DAYS_TEMPLATE_TOKEN,
+        }).replaceAll(REFERRAL_DAYS_TEMPLATE_TOKEN, '{{days}}'),
+        priority: translatedCopy(t, 'referral.rules.priority', base.referral.rules.priority),
         registration: translatedCopy(
           t,
           'referral.rules.registration',
@@ -804,7 +884,22 @@ const createLocalizedBillingCopy = (language: string | undefined, t: TranslateFn
           t,
           'referral.rules.rewardDelay',
           base.referral.rules.rewardDelay,
-        ),
+          { hours: REFERRAL_HOURS_TEMPLATE_TOKEN },
+        ).replaceAll(REFERRAL_HOURS_TEMPLATE_TOKEN, '{{hours}}'),
+        validAction: translatedCopy(
+          t,
+          'referral.rules.validAction',
+          base.referral.rules.validAction,
+          { action: REFERRAL_ACTION_TEMPLATE_TOKEN },
+        ).replaceAll(REFERRAL_ACTION_TEMPLATE_TOKEN, '{{action}}'),
+        validActions: {
+          ...base.referral.rules.validActions,
+          firstBillableUsage: translatedCopy(
+            t,
+            'referral.rules.validActions.firstBillableUsage',
+            base.referral.rules.validActions.firstBillableUsage,
+          ),
+        },
       },
     },
     statuses: {
@@ -850,12 +945,23 @@ export const formatBillingStatus = (
   return copy.statuses[normalized] || value;
 };
 
+export const formatPersonalRenewalMode = (
+  value: string | null | undefined,
+  copy: BillingCopy,
+): string => (value === 'manual' ? copy.billing.manualRenewal : '-');
+
 const applyCopyTemplate = (template: string, values: Record<string, string>) =>
   template.replaceAll(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => values[key] || '');
 
-const formatReferralRewardMillions = (credits: number | null | undefined) => {
-  const value = Number(credits || 0) / 1_000_000;
-  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value);
+const formatReferralValidAction = (
+  value: string | number | undefined,
+  copy: BillingCopy,
+) => {
+  const normalized = String(value || '').trim();
+  if (normalized === 'first_billable_usage') {
+    return copy.referral.rules.validActions.firstBillableUsage;
+  }
+  return normalized || '-';
 };
 
 export const localizeReferralRules = (
@@ -864,18 +970,41 @@ export const localizeReferralRules = (
   copy: BillingCopy,
 ) => {
   const knownRules = new Set<string>();
+  const rawEntries = Object.entries(rules || {});
+  const normalizedRuleValue = (id: string) => {
+    const entry = rawEntries.find(([key]) => key.toLowerCase().replaceAll(/[\s_-]/g, '') === id);
+    if (entry) knownRules.add(entry[0]);
+    return entry?.[1];
+  };
+
   const localized = [
     { id: 'registration', text: copy.referral.rules.registration },
     {
       id: 'reward',
       text: applyCopyTemplate(copy.referral.rules.reward, {
-        reward: formatReferralRewardMillions(rewardCredits),
+        reward: formatCredits(rewardCredits, copy),
       }),
     },
-    { id: 'rewardDelay', text: copy.referral.rules.rewardDelay },
+    {
+      id: 'rewarddelayhours',
+      text: applyCopyTemplate(copy.referral.rules.rewardDelay, {
+        hours: String(normalizedRuleValue('rewarddelayhours') || 6),
+      }),
+    },
+    {
+      id: 'expirydays',
+      text: applyCopyTemplate(copy.referral.rules.expiry, {
+        days: String(normalizedRuleValue('expirydays') || 0),
+      }),
+    },
+    { id: 'priority', text: copy.referral.rules.priority },
+    {
+      id: 'validaction',
+      text: applyCopyTemplate(copy.referral.rules.validAction, {
+        action: formatReferralValidAction(normalizedRuleValue('validaction'), copy),
+      }),
+    },
   ];
-
-  const rawEntries = Object.entries(rules || {});
   const result = localized.filter((item) => {
     const hasRule =
       rawEntries.length === 0 ||
@@ -891,7 +1020,9 @@ export const localizeReferralRules = (
   });
 
   for (const [key, value] of rawEntries) {
-    if (!knownRules.has(key)) result.push({ id: key, text: String(value) });
+    if (!knownRules.has(key) && key.startsWith('rule_')) {
+      result.push({ id: key, text: String(value) });
+    }
   }
 
   return result;
@@ -1462,21 +1593,29 @@ const comparisonUnit = (unit: string | undefined, isChinese: boolean) => {
 const localizedFaq = (
   items: AskCorePlansPayload['faq'] | undefined,
   isChinese: boolean,
+  copy: BillingCopy,
 ): { answer: string; question: string }[] => {
   if (!isChinese) {
     return items?.length
-      ? items.map((item) => ({
-          ...item,
-          answer: item.answer
-            .replace(
+      ? items.map((item) => {
+          const isRenewalItem =
+            /renew|fixed prepaid term|automatic charge|customer portal|cancel (?:my )?subscription/i.test(
+              `${item.question} ${item.answer}`,
+            );
+          if (isRenewalItem) {
+            return {
+              question: copy.plans.faqRenewalQuestion,
+              answer: copy.plans.faqRenewalAnswer,
+            };
+          }
+          return {
+            ...item,
+            answer: item.answer.replace(
               /organization.*?personal credits\.?/i,
               'This page currently shows personal plans and personal credits.',
-            )
-            .replace(
-              /.*portal.*/i,
-              'Plan changes, credit purchases, and billing history are available in the Current Plan card.',
             ),
-        }))
+          };
+        })
       : [
           {
             question: 'What are credits?',
@@ -1489,9 +1628,8 @@ const localizedFaq = (
               'You can change plans or purchase credit packs. This page currently shows personal plans and personal credits.',
           },
           {
-            question: 'How do I change my subscription?',
-            answer:
-              'Plan changes, credit purchases, and billing history are available in the Current Plan card.',
+            question: copy.plans.faqRenewalQuestion,
+            answer: copy.plans.faqRenewalAnswer,
           },
           {
             question: 'Which plans are available?',
@@ -1510,8 +1648,8 @@ const localizedFaq = (
       answer: '可以升级套餐或购买积分包。本轮付费页只展示个人套餐与个人积分。',
     },
     {
-      question: '如何变更或取消订阅？',
-      answer: '套餐调整、积分购买和账单记录入口已放在当前套餐卡片中。',
+      question: copy.plans.faqRenewalQuestion,
+      answer: copy.plans.faqRenewalAnswer,
     },
     {
       question: '当前有哪些套餐？',
@@ -1620,7 +1758,7 @@ const CurrentPlanCard = memo<{
 
 CurrentPlanCard.displayName = 'CurrentPlanCard';
 
-const PlansView = memo<{
+export const PlansView = memo<{
   account?: AskCoreAccountPayload;
   copy: BillingCopy;
   isChinese: boolean;
@@ -1912,7 +2050,7 @@ const PlansView = memo<{
       </Card>
       <Card className={styles.section} title={copy.plans.faq}>
         <Collapse
-          items={localizedFaq(plansPayload?.faq, isChinese).map((item) => ({
+          items={localizedFaq(plansPayload?.faq, isChinese, copy).map((item) => ({
             children: <Text type={'secondary'}>{item.answer}</Text>,
             key: item.question,
             label: item.question,
@@ -2269,7 +2407,7 @@ const CreditsView = memo<{
 
 CreditsView.displayName = 'CreditsView';
 
-const BillingView = memo<{
+export const BillingView = memo<{
   accountState: ResourceState<AskCoreAccountPayload>;
   copy: BillingCopy;
   isChinese: boolean;
@@ -2313,6 +2451,8 @@ const BillingView = memo<{
   if (historyState.error) return <Alert showIcon message={historyState.error} type="error" />;
 
   const summary = historyState.data?.summary;
+  const currentTerm = summary?.current_term;
+  const scheduledTerms = summary?.scheduled_terms || [];
 
   return (
     <Flexbox gap={16}>
@@ -2333,33 +2473,46 @@ const BillingView = memo<{
               {
                 key: 'status',
                 label: copy.billing.status,
-                children: formatBillingStatus(summary?.status || 'free', copy),
+                children: formatBillingStatus(summary?.subscription_status || 'free', copy),
               },
               {
                 key: 'interval',
                 label: copy.billing.billingCycle,
-                children: formatBillingInterval(summary?.interval, copy),
+                children: currentTerm ? formatBillingInterval(currentTerm.interval, copy) : '-',
               },
               {
                 key: 'start',
                 label: copy.billing.startDate,
-                children: formatDate(summary?.current_period_start),
+                children: formatDate(currentTerm?.term_start),
               },
               {
                 key: 'end',
                 label: copy.billing.endDate,
-                children: formatDate(summary?.current_period_end),
+                children: formatDate(currentTerm?.term_end),
               },
               {
-                key: 'next',
-                label: copy.billing.nextPayment,
-                children: moneyFormatter.format(
-                  moneyValue(
-                    summary?.next_payment?.amount_due_usd,
-                    summary?.next_payment?.amount_due_cny,
-                    isChinese,
+                key: 'renewal',
+                label: copy.billing.renewalMode,
+                children: formatPersonalRenewalMode(summary?.renewal_mode, copy),
+              },
+              {
+                key: 'scheduled',
+                label: copy.billing.scheduledTerms,
+                span: 3,
+                children:
+                  scheduledTerms.length === 0 ? (
+                    copy.billing.noScheduledTerms
+                  ) : (
+                    <Flexbox gap={4}>
+                      {scheduledTerms.map((term) => (
+                        <Text key={term.id}>
+                          {planNames[term.plan_id] || term.plan_id} ·{' '}
+                          {formatBillingInterval(term.interval, copy)} ·{' '}
+                          {formatDate(term.term_start)} – {formatDate(term.term_end)}
+                        </Text>
+                      ))}
+                    </Flexbox>
                   ),
-                ),
               },
             ]}
           />

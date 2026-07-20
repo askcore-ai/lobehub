@@ -1,10 +1,15 @@
+import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import jaSubscription from '../../../../locales/ja-JP/subscription.json';
 import {
   ASKCORE_BILLING_OPEN_URL_MESSAGE,
+  BillingView,
   buildAskCoreBillingEmbedUrl,
+  createLocalizedBillingCopy,
   formatBillingInterval,
   formatBillingStatus,
+  formatPersonalRenewalMode,
   formatPlanTopupUnitPrice,
   getBillingCopy,
   isAllowedBillingExternalUrl,
@@ -13,12 +18,14 @@ import {
   localizeReferralRules,
   normalizeBillingPath,
   normalizePlansPayload,
+  PlansView,
   resolveDefaultProvider,
 } from './AskCoreBillingPage';
 
 describe('AskCore billing embed helpers', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   it('builds same-origin AskCore embed URLs by default', () => {
@@ -197,16 +204,214 @@ describe('AskCore billing embed helpers', () => {
     expect(formatBillingInterval('payonce', enCopy)).toBe('One-time');
     expect(formatBillingStatus('free', zhCopy)).toBe('免费版');
     expect(formatBillingStatus('pending_reward', zhCopy)).toBe('审核中');
+    expect(formatPersonalRenewalMode('manual', zhCopy)).toBe('到期后手动续费，不会自动扣款');
+    expect(formatPersonalRenewalMode('manual', enCopy)).toBe(
+      'Manual renewal — no automatic charge',
+    );
 
     const rules = localizeReferralRules(
-      { registration: 'registration', reward: 'reward', rewardDelay: 'rewardDelay' },
-      1_000_000,
+      {
+        expiry_days: 100,
+        registration: 'registration',
+        reward: 'reward',
+        reward_delay_hours: 6,
+        valid_action: 'first_billable_usage',
+      },
+      100,
       zhCopy,
     );
 
-    expect(rules.map((item) => item.text).join('\n')).toContain('注册方式');
-    expect(rules.map((item) => item.text).join('\n')).toContain('奖励');
-    expect(rules.map((item) => item.text).join('\n')).not.toContain('registration');
-    expect(rules.map((item) => item.text).join('\n')).not.toContain('rewardDelay');
+    const text = rules.map((item) => item.text).join('\n');
+
+    expect(text).toContain('注册方式');
+    expect(text).toContain('100 积分');
+    expect(text).toContain('6 小时');
+    expect(text).toContain('100 天');
+    expect(text).toContain('首次产生可计费用量');
+    expect(text).not.toContain('0M');
+    expect(text).not.toContain('registration');
+    expect(text).not.toContain('first_billable_usage');
+  });
+
+  it('renders fixed prepaid terms without automatic-payment claims', async () => {
+    const personal = {
+      account_id: 137,
+      balance_credits: 320,
+      current_term: {
+        id: 1,
+        interval: 'month' as const,
+        plan_id: 'professional',
+        status: 'active' as const,
+        term_end: '2026-08-19T12:00:00+00:00',
+        term_start: '2026-07-19T12:00:00+00:00',
+      },
+      next_payment: null,
+      plan_id: 'professional',
+      renewal_mode: 'manual' as const,
+      scheduled_terms: [
+        {
+          id: 2,
+          interval: 'month' as const,
+          plan_id: 'professional',
+          status: 'scheduled' as const,
+          term_end: '2026-09-19T12:00:00+00:00',
+          term_start: '2026-08-19T12:00:00+00:00',
+        },
+      ],
+      subscription_status: 'active',
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ items: [], summary: personal }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <BillingView
+        copy={getBillingCopy('en-US')}
+        isChinese={false}
+        moneyFormatter={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })}
+        accountState={{
+          data: {
+            billing_enabled: true,
+            credit_unit: 'credits',
+            currency: 'CNY',
+            mode: 'enforce',
+            personal,
+          },
+          loading: false,
+        }}
+        plansPayload={{
+          billing_enabled: true,
+          credit_packs: [],
+          credit_unit: 'credits',
+          currency: 'CNY',
+          mode: 'enforce',
+          plans: [
+            {
+              description: 'Professional prepaid access',
+              display_name: 'Professional',
+              features: [],
+              id: 'professional',
+              monthly_credits: 350,
+              monthly_price_usd: 6.99,
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(await screen.findByText('Manual renewal — no automatic charge')).toBeInTheDocument();
+    expect(screen.getByText('Paid Access Starts')).toBeInTheDocument();
+    expect(screen.getByText('Paid Access Ends')).toBeInTheDocument();
+    expect(screen.getByText('Scheduled Terms')).toBeInTheDocument();
+    expect(screen.getAllByText(/Professional/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText('Next Payment')).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/billing/billing-history',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
+
+  it('renders the derived free state without a current or scheduled prepaid term', async () => {
+    const personal = {
+      account_id: 138,
+      balance_credits: 20,
+      current_term: null,
+      next_payment: null,
+      plan_id: 'free',
+      renewal_mode: 'manual' as const,
+      scheduled_terms: [],
+      subscription_status: 'free',
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ items: [], summary: personal }), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 200,
+        }),
+      ),
+    );
+
+    render(
+      <BillingView
+        copy={getBillingCopy('en-US')}
+        isChinese={false}
+        moneyFormatter={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })}
+        accountState={{
+          data: {
+            billing_enabled: true,
+            credit_unit: 'credits',
+            currency: 'CNY',
+            mode: 'enforce',
+            personal,
+          },
+          loading: false,
+        }}
+        plansPayload={{
+          billing_enabled: true,
+          credit_packs: [],
+          credit_unit: 'credits',
+          currency: 'CNY',
+          mode: 'enforce',
+          plans: [],
+        }}
+      />,
+    );
+
+    expect(await screen.findAllByText('Free')).not.toHaveLength(0);
+    expect(screen.getByText('No prepaid terms are queued')).toBeInTheDocument();
+    expect(screen.getByText('Paid Access Starts')).toBeInTheDocument();
+    expect(screen.getByText('Paid Access Ends')).toBeInTheDocument();
+    expect(screen.getAllByText('-').length).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByText('Next Payment')).not.toBeInTheDocument();
+  });
+
+  it('renders the backend renewal FAQ through a non-English locale key', () => {
+    const translate = (key: string, options?: Record<string, unknown>) =>
+      String((jaSubscription as Record<string, string>)[key] ?? options?.defaultValue ?? key);
+    const copy = createLocalizedBillingCopy('ja-JP', translate);
+    const plansPayload = {
+      billing_enabled: true,
+      billing_periods: [],
+      credit_packs: [],
+      credit_unit: 'credits',
+      currency: 'CNY',
+      faq: [
+        {
+          answer:
+            'Each purchase is a fixed prepaid term. Renew manually before or after expiry; AskCore will not charge automatically.',
+          question: 'How do I renew my prepaid term?',
+        },
+      ],
+      mode: 'enforce',
+      plans: [
+        {
+          description: 'Free access',
+          display_name: 'Free',
+          features: [],
+          id: 'free',
+          monthly_credits: 20,
+          monthly_price_usd: 0,
+        },
+      ],
+    };
+
+    render(
+      <PlansView
+        copy={copy}
+        isChinese={false}
+        moneyFormatter={new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' })}
+        plansPayload={plansPayload}
+        state={{ data: plansPayload, loading: false }}
+        onCheckoutSuccess={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('有料期間を更新するにはどうすればよいですか？')).toBeInTheDocument();
+    expect(screen.queryByText('How do I renew my prepaid term?')).not.toBeInTheDocument();
   });
 });

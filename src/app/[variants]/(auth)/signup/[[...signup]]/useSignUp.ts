@@ -26,6 +26,18 @@ interface SignUpErrorLike {
   message?: string;
 }
 
+const referralCodeFromValue = (value?: string | null) => {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+
+  try {
+    const url = new URL(trimmed);
+    return url.searchParams.get('referral')?.trim() || trimmed;
+  } catch {
+    return trimmed;
+  }
+};
+
 export const useSignUp = () => {
   const { t } = useTranslation(['auth', 'authError']);
   const router = useRouter();
@@ -94,6 +106,27 @@ export const useSignUp = () => {
           : '';
         message.error(translated || signUpError.message || t('betterAuth.signup.error'));
         return;
+      }
+
+      const referralCode = referralCodeFromValue(
+        values.referral_code || searchParams.get('referral'),
+      );
+      if (referralCode) {
+        try {
+          const response = await fetch('/api/askcore/billing/referrals/backfill', {
+            body: JSON.stringify({ referral_code: referralCode }),
+            headers: { 'Content-Type': 'application/json' },
+            method: 'POST',
+          });
+          if (!response.ok) {
+            const payload = (await response.json().catch(() => null)) as {
+              detail?: string;
+            } | null;
+            message.error(payload?.detail || t('betterAuth.signup.invalidReferralCodeTitle'));
+          }
+        } catch {
+          message.error(t('betterAuth.signup.invalidReferralCodeTitle'));
+        }
       }
 
       if (enableEmailVerification) {

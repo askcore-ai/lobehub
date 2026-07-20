@@ -1,4 +1,16 @@
 export default {
+  'askcoreBilling.billing.endDate': 'Paid Access Ends',
+  'askcoreBilling.billing.manualRenewal': 'Manual renewal — no automatic charge',
+  'askcoreBilling.billing.noScheduledTerms': 'No prepaid terms are queued',
+  'askcoreBilling.billing.prepaidTerm': 'Prepaid Term',
+  'askcoreBilling.billing.renewalMode': 'Renewal',
+  'askcoreBilling.billing.scheduledTerms': 'Scheduled Terms',
+  'askcoreBilling.billing.startDate': 'Paid Access Starts',
+  'askcoreBilling.faq.renewalAnswer':
+    'Each purchase is a fixed prepaid term. Renew manually before or after expiry; AskCore will not charge automatically.',
+  'askcoreBilling.faq.renewalQuestion': 'How do I renew my paid term?',
+  'askcoreBilling.page.subtitle':
+    'Usage, fixed prepaid terms, credits, billing, and referral rewards.',
   'balance.creditBalance': 'Top-up Credits Balance',
   'balance.hobbyDesc':
     '{{hobby}} does not include subscription credits, you need to configure model API or top up',
