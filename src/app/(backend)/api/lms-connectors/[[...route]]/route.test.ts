@@ -167,8 +167,14 @@ describe('AskCore LMS connector proxy', () => {
 
   it.each([
     ['GET', 'v2/processing/reference-runs'],
+    ['GET', 'v2/processing/submission-runs'],
+    ['GET', 'v2/processing/candidate-scopes'],
+    ['GET', 'v2/processing/batch-runs'],
     ['GET', 'v2/processing/capture-runs'],
     ['GET', 'v2/processing/runs/status'],
+    ['GET', 'v2/processing/runs/44/seal'],
+    ['GET', 'v2/processing/runs/44/launch-token'],
+    ['GET', 'v2/processing/batch-runs/800/items/rematch'],
     ['GET', 'v2/processing/captures/receipts/manifest'],
     ['GET', 'v2/processing/captures/receipts/ack'],
     ['GET', 'v2/processing/captures/receipts/pages/1/download'],
