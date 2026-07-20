@@ -88,8 +88,8 @@ describe('AskCore LMS connector proxy', () => {
     vi.stubGlobal('fetch', fetchMock);
     const headers = {
       ...signatureHeaders,
-      authorization: 'Bearer must-not-forward',
-      cookie: 'better-auth.session=must-not-forward',
+      'authorization': 'Bearer must-not-forward',
+      'cookie': 'better-auth.session=must-not-forward',
       'idempotency-key': `moodle:${path}:71`,
       'x-askcore-billing-assertion': 'must-not-forward',
     };
@@ -114,7 +114,7 @@ describe('AskCore LMS connector proxy', () => {
       'cache-control': 'private, no-store',
       'content-length': '4',
       'content-type': 'image/jpeg',
-      location: 'https://must-not-leak.invalid',
+      'location': 'https://must-not-leak.invalid',
       'set-cookie': 'private=blocked',
       'x-askcore-content-sha256': 'b'.repeat(64),
     });
@@ -145,7 +145,7 @@ describe('AskCore LMS connector proxy', () => {
       'content-disposition': 'attachment; filename="feedback.pdf"',
       'content-length': '8',
       'content-type': 'application/pdf',
-      location: 'https://must-not-leak.invalid',
+      'location': 'https://must-not-leak.invalid',
       'set-cookie': 'private=blocked',
     });
     vi.stubGlobal(
@@ -213,7 +213,7 @@ describe('AskCore LMS connector proxy', () => {
 
     const response = await callProxy('POST', path, {
       ...signatureHeaders,
-      cookie: 'better-auth.session=must-not-forward',
+      'cookie': 'better-auth.session=must-not-forward',
       'x-askcore-billing-assertion': 'forged-assertion',
     });
 
@@ -262,10 +262,7 @@ describe('AskCore LMS connector proxy', () => {
       { headers: signatureHeaders },
     );
 
-    const response = await GET(
-      request,
-      routeContext(['v2', 'processing', 'runs', '71']),
-    );
+    const response = await GET(request, routeContext(['v2', 'processing', 'runs', '71']));
 
     expect(response.status).toBe(404);
     expect(fetchMock).not.toHaveBeenCalled();
