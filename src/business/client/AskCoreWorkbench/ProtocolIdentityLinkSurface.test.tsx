@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -73,6 +73,49 @@ describe('ProtocolIdentityLinkSurface', () => {
       expect.objectContaining({ finishedAt: expect.any(String), version: expect.any(Number) }),
     );
     expect(refreshUserState).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the accepted identity visible when refreshing user state fails', async () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/askcore/workbench?protocol=identity-link&token=one-time-secret',
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        Response.json({
+          account_user_id: 'account-1',
+          deployment_id: 7,
+          identity_link_id: 9,
+          invitation_id: 'invitation-1',
+          invitation_status: 'accepted',
+          link_status: 'active',
+        }),
+      ),
+    );
+    updateOnboarding.mockResolvedValue({ success: true });
+    refreshUserState.mockRejectedValue(new Error('refresh failed'));
+
+    render(
+      <MemoryRouter
+        initialEntries={['/askcore/workbench?protocol=identity-link&token=one-time-secret']}
+      >
+        <Routes>
+          <Route
+            element={<ProtocolIdentityLinkSurface invitationToken="one-time-secret" />}
+            path="/askcore/workbench"
+          />
+          <Route element={<div>home landing</div>} path="/" />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('学校身份已关联')).toBeInTheDocument();
+    expect(screen.queryByText('身份关联失败')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '返回首页' }));
+    expect(await screen.findByText('home landing')).toBeInTheDocument();
+    expect(window.sessionStorage.getItem('askcore.lti.identity-link.invitation')).toBeNull();
   });
 
   it('fails closed when neither the URL nor the current tab has a token', async () => {

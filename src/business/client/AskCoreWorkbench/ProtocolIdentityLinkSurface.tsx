@@ -111,6 +111,18 @@ export const ProtocolIdentityLinkSurface = memo(
       setState('loading');
       try {
         await acceptProtocolIdentityLinkInvitation(token);
+      } catch (reason) {
+        setAuthenticationRequired(
+          reason instanceof AskCoreWorkbenchApiError && reason.status === 401,
+        );
+        setError(identityLinkErrorMessage(reason));
+        setState('error');
+        return;
+      }
+
+      discardInvitationToken();
+      setState('success');
+      try {
         if (needsOnboarding) {
           await userService.updateOnboarding({
             currentStep: currentOnboardingStep,
@@ -119,15 +131,9 @@ export const ProtocolIdentityLinkSurface = memo(
           });
         }
         await refreshUserState();
-        discardInvitationToken();
-        setState('success');
         navigate('/school', { replace: true });
-      } catch (reason) {
-        setAuthenticationRequired(
-          reason instanceof AskCoreWorkbenchApiError && reason.status === 401,
-        );
-        setError(identityLinkErrorMessage(reason));
-        setState('error');
+      } catch {
+        // The identity link is already committed. Keep the success state and let the user leave safely.
       }
     }, [currentOnboardingStep, invitationToken, navigate, needsOnboarding, refreshUserState]);
 
@@ -151,6 +157,11 @@ export const ProtocolIdentityLinkSurface = memo(
             status="success"
             subTitle="当前 AskCore 账号已完成关联"
             title="学校身份已关联"
+            extra={
+              <Button icon={<Home size={16} />} onClick={() => navigate('/')}>
+                返回首页
+              </Button>
+            }
           />
         ) : (
           <Result
