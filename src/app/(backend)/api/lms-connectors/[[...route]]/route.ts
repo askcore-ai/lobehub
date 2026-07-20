@@ -18,6 +18,14 @@ const REQUIRED_SIGNATURE_HEADERS = [
   'x-askcore-signature',
   'x-askcore-timestamp',
 ] as const;
+const OPTIONAL_REQUEST_HEADERS = ['accept', 'content-type', 'idempotency-key'] as const;
+const RESPONSE_HEADERS = [
+  'cache-control',
+  'content-disposition',
+  'content-length',
+  'content-type',
+  'x-askcore-content-sha256',
+] as const;
 
 const jsonError = (status: number, detail: string) => NextResponse.json({ detail }, { status });
 
@@ -25,12 +33,23 @@ const isAllowedConnectorRoute = (method: string, route: string[]) => {
   const path = route.join('/');
   if (method === 'POST') {
     return (
-      path === 'v1/processing/runs' ||
-      /^v1\/processing\/runs\/[1-9]\d*\/(?:launch-token|seal)$/.test(path)
+      /^v2\/processing\/(?:reference-runs|submission-runs|candidate-scopes|batch-runs|capture-runs)$/.test(
+        path,
+      ) ||
+      path === 'v2/processing/runs/status' ||
+      /^v2\/processing\/runs\/[1-9]\d*\/(?:launch-token|seal)$/.test(path) ||
+      /^v2\/processing\/batch-runs\/[1-9]\d*\/items\/rematch$/.test(path) ||
+      /^v2\/processing\/captures\/receipts\/(?:manifest|ack)$/.test(path) ||
+      /^v2\/processing\/captures\/receipts\/pages\/[1-9]\d*\/download$/.test(path)
     );
   }
   if (method === 'GET') {
-    return /^v1\/processing\/runs\/[1-9]\d*(?:\/report)?$/.test(path);
+    return (
+      /^v2\/processing\/runs\/[1-9]\d*(?:\/report)?$/.test(path) ||
+      /^v2\/processing\/batch-runs\/[1-9]\d*\/items\/[1-9]\d*\/(?:manifest|pages\/[1-9]\d*)$/.test(
+        path,
+      )
+    );
   }
   return false;
 };
@@ -62,7 +81,7 @@ const forwardConnectorRequest = async (request: NextRequest, context: RouteConte
   for (const name of REQUIRED_SIGNATURE_HEADERS) {
     headers.set(name, request.headers.get(name)!);
   }
-  for (const name of ['accept', 'content-type']) {
+  for (const name of OPTIONAL_REQUEST_HEADERS) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }
@@ -81,9 +100,12 @@ const forwardConnectorRequest = async (request: NextRequest, context: RouteConte
   }
 
   const responseHeaders = new Headers();
-  for (const name of ['content-disposition', 'content-length', 'content-type']) {
+  for (const name of RESPONSE_HEADERS) {
     const value = upstream.headers.get(name);
     if (value) responseHeaders.set(name, value);
+  }
+  if (!responseHeaders.has('cache-control')) {
+    responseHeaders.set('cache-control', 'private, no-store');
   }
   return new NextResponse(upstream.body, {
     headers: responseHeaders,
