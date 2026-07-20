@@ -216,8 +216,16 @@ export function defineConfig() {
 
     const response = defaultMiddleware(req);
 
+    // The Moodle cutover readiness probe is machine-to-machine and is authenticated by the
+    // route's connector HMAC. Keep the exception exact so browser/session traffic remains protected.
+    const isActorObservationReadiness =
+      req.method === 'POST' &&
+      req.nextUrl.pathname === '/api/askcore/school/session-proof' &&
+      Array.from(req.nextUrl.searchParams).length === 1 &&
+      req.nextUrl.searchParams.get('readiness') === '1';
+
     // when enable auth protection, only public route is not protected, others are all protected
-    const isProtected = !isPublicRoute(req);
+    const isProtected = !isPublicRoute(req) && !isActorObservationReadiness;
 
     logBetterAuth('Route protection status: %s, %s', req.url, isProtected ? 'protected' : 'public');
 
