@@ -1,10 +1,12 @@
 'use client';
 
 import { CURRENT_ONBOARDING_VERSION } from '@lobechat/const';
-import { Alert, Button, Result, Skeleton, Space } from 'antd';
+import { Button } from '@lobehub/ui';
+import { Alert, Result, Skeleton, Space } from 'antd';
 import { createStaticStyles, cssVar } from 'antd-style';
 import { Home, LogIn, RefreshCw } from 'lucide-react';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
 import { userService } from '@/services/user';
@@ -88,6 +90,7 @@ const identityLinkErrorMessage = (reason: unknown) => {
 export const ProtocolIdentityLinkSurface = memo(
   ({ invitationToken }: { invitationToken?: string }) => {
     const navigate = useNavigate();
+    const { t } = useTranslation('error');
     const currentOnboardingStep = useUserStore(onboardingSelectors.currentStep);
     const needsOnboarding = useUserStore(onboardingSelectors.needsOnboarding);
     const refreshUserState = useUserStore((state) => state.refreshUserState);
@@ -159,7 +162,7 @@ export const ProtocolIdentityLinkSurface = memo(
             title="学校身份已关联"
             extra={
               <Button icon={<Home size={16} />} onClick={() => navigate('/')}>
-                返回首页
+                {t('error.backHome')}
               </Button>
             }
           />
@@ -187,7 +190,7 @@ export const ProtocolIdentityLinkSurface = memo(
                   </Button>
                 )}
                 <Button icon={<Home size={16} />} onClick={() => navigate('/')}>
-                  返回首页
+                  {t('error.backHome')}
                 </Button>
               </Space>
             }

@@ -6,6 +6,32 @@ import { ProtocolIdentityLinkSurface } from './ProtocolIdentityLinkSurface';
 
 const updateOnboarding = vi.hoisted(() => vi.fn());
 const refreshUserState = vi.hoisted(() => vi.fn());
+const identityLinkEntry = '/askcore/workbench?protocol=identity-link&token=one-time-secret';
+
+const acceptedIdentityLinkResponse = () =>
+  Response.json({
+    account_user_id: 'account-1',
+    deployment_id: 7,
+    identity_link_id: 9,
+    invitation_id: 'invitation-1',
+    invitation_status: 'accepted',
+    link_status: 'active',
+  });
+
+const renderIdentityLinkWithDestination = (destinationPath: string, destinationLabel: string) => {
+  window.history.replaceState(null, '', identityLinkEntry);
+  return render(
+    <MemoryRouter initialEntries={[identityLinkEntry]}>
+      <Routes>
+        <Route
+          element={<ProtocolIdentityLinkSurface invitationToken="one-time-secret" />}
+          path="/askcore/workbench"
+        />
+        <Route element={<div>{destinationLabel}</div>} path={destinationPath} />
+      </Routes>
+    </MemoryRouter>,
+  );
+};
 
 vi.mock('@/services/user', () => ({
   userService: { updateOnboarding },
@@ -25,38 +51,12 @@ describe('ProtocolIdentityLinkSurface', () => {
   });
 
   it('accepts the one-time token without exposing it after mount', async () => {
-    window.history.replaceState(
-      null,
-      '',
-      '/askcore/workbench?protocol=identity-link&token=one-time-secret',
-    );
-    const fetchMock = vi.fn().mockResolvedValue(
-      Response.json({
-        account_user_id: 'account-1',
-        deployment_id: 7,
-        identity_link_id: 9,
-        invitation_id: 'invitation-1',
-        invitation_status: 'accepted',
-        link_status: 'active',
-      }),
-    );
+    const fetchMock = vi.fn().mockResolvedValue(acceptedIdentityLinkResponse());
     vi.stubGlobal('fetch', fetchMock);
     updateOnboarding.mockResolvedValue({ success: true });
     refreshUserState.mockResolvedValue(undefined);
 
-    render(
-      <MemoryRouter
-        initialEntries={['/askcore/workbench?protocol=identity-link&token=one-time-secret']}
-      >
-        <Routes>
-          <Route
-            element={<ProtocolIdentityLinkSurface invitationToken="one-time-secret" />}
-            path="/askcore/workbench"
-          />
-          <Route element={<div>school landing</div>} path="/school" />
-        </Routes>
-      </MemoryRouter>,
-    );
+    renderIdentityLinkWithDestination('/school', 'school landing');
 
     expect(window.location.search).toBe('?protocol=identity-link');
     expect(await screen.findByText('school landing')).toBeInTheDocument();
@@ -76,44 +76,15 @@ describe('ProtocolIdentityLinkSurface', () => {
   });
 
   it('keeps the accepted identity visible when refreshing user state fails', async () => {
-    window.history.replaceState(
-      null,
-      '',
-      '/askcore/workbench?protocol=identity-link&token=one-time-secret',
-    );
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        Response.json({
-          account_user_id: 'account-1',
-          deployment_id: 7,
-          identity_link_id: 9,
-          invitation_id: 'invitation-1',
-          invitation_status: 'accepted',
-          link_status: 'active',
-        }),
-      ),
-    );
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(acceptedIdentityLinkResponse()));
     updateOnboarding.mockResolvedValue({ success: true });
     refreshUserState.mockRejectedValue(new Error('refresh failed'));
 
-    render(
-      <MemoryRouter
-        initialEntries={['/askcore/workbench?protocol=identity-link&token=one-time-secret']}
-      >
-        <Routes>
-          <Route
-            element={<ProtocolIdentityLinkSurface invitationToken="one-time-secret" />}
-            path="/askcore/workbench"
-          />
-          <Route element={<div>home landing</div>} path="/" />
-        </Routes>
-      </MemoryRouter>,
-    );
+    renderIdentityLinkWithDestination('/', 'home landing');
 
     expect(await screen.findByText('学校身份已关联')).toBeInTheDocument();
     expect(screen.queryByText('身份关联失败')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '返回首页' }));
+    fireEvent.click(screen.getByRole('button', { name: 'error.backHome' }));
     expect(await screen.findByText('home landing')).toBeInTheDocument();
     expect(window.sessionStorage.getItem('askcore.lti.identity-link.invitation')).toBeNull();
   });
