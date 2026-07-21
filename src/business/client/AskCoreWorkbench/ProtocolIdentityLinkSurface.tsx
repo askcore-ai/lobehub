@@ -112,8 +112,9 @@ export const ProtocolIdentityLinkSurface = memo(
       setAuthenticationRequired(false);
       setError('');
       setState('loading');
+      let acceptance: Awaited<ReturnType<typeof acceptProtocolIdentityLinkInvitation>>;
       try {
-        await acceptProtocolIdentityLinkInvitation(token);
+        acceptance = await acceptProtocolIdentityLinkInvitation(token);
       } catch (reason) {
         setAuthenticationRequired(
           reason instanceof AskCoreWorkbenchApiError && reason.status === 401,
@@ -134,7 +135,7 @@ export const ProtocolIdentityLinkSurface = memo(
           });
         }
         await refreshUserState();
-        navigate('/school', { replace: true });
+        navigate(acceptance.replayed ? '/' : '/school', { replace: true });
       } catch {
         // The identity link is already committed. Keep the success state and let the user leave safely.
       }

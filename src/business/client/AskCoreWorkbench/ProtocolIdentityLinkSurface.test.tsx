@@ -8,7 +8,7 @@ const updateOnboarding = vi.hoisted(() => vi.fn());
 const refreshUserState = vi.hoisted(() => vi.fn());
 const identityLinkEntry = '/askcore/workbench?protocol=identity-link&token=one-time-secret';
 
-const acceptedIdentityLinkResponse = () =>
+const acceptedIdentityLinkResponse = (replayed = false) =>
   Response.json({
     account_user_id: 'account-1',
     deployment_id: 7,
@@ -16,6 +16,7 @@ const acceptedIdentityLinkResponse = () =>
     invitation_id: 'invitation-1',
     invitation_status: 'accepted',
     link_status: 'active',
+    replayed,
   });
 
 const renderIdentityLinkWithDestination = (destinationPath: string, destinationLabel: string) => {
@@ -86,6 +87,18 @@ describe('ProtocolIdentityLinkSurface', () => {
     expect(screen.queryByText('身份关联失败')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'error.backHome' }));
     expect(await screen.findByText('home landing')).toBeInTheDocument();
+    expect(window.sessionStorage.getItem('askcore.lti.identity-link.invitation')).toBeNull();
+  });
+
+  it('returns an already-linked account to the personal workspace after invitation login', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(acceptedIdentityLinkResponse(true)));
+    updateOnboarding.mockResolvedValue({ success: true });
+    refreshUserState.mockResolvedValue(undefined);
+
+    renderIdentityLinkWithDestination('/', 'home landing');
+
+    expect(await screen.findByText('home landing')).toBeInTheDocument();
+    expect(screen.queryByText('school landing')).not.toBeInTheDocument();
     expect(window.sessionStorage.getItem('askcore.lti.identity-link.invitation')).toBeNull();
   });
 

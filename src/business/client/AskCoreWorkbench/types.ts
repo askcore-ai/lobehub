@@ -266,6 +266,7 @@ export type ProtocolIdentityLinkAcceptResult = {
   invitation_id: string;
   invitation_status: 'accepted';
   link_status: 'active';
+  replayed: boolean;
 };
 
 export type FileDescriptor = {
