@@ -7,6 +7,7 @@ import { ProtocolIdentityLinkSurface } from './ProtocolIdentityLinkSurface';
 const updateOnboarding = vi.hoisted(() => vi.fn());
 const refreshUserState = vi.hoisted(() => vi.fn());
 const identityLinkEntry = '/askcore/workbench?protocol=identity-link&token=one-time-secret';
+const tokenlessIdentityLinkEntry = '/askcore/workbench?protocol=identity-link';
 
 const acceptedIdentityLinkResponse = (replayed = false) =>
   Response.json({
@@ -102,8 +103,42 @@ describe('ProtocolIdentityLinkSurface', () => {
     expect(window.sessionStorage.getItem('askcore.lti.identity-link.invitation')).toBeNull();
   });
 
-  it('fails closed when neither the URL nor the current tab has a token', async () => {
-    const fetchMock = vi.fn();
+  it('recovers a delayed tokenless callback for the already-linked current account', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        deployment_id: 7,
+        linked: true,
+        school_subject: 'school_opaque_subject',
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={[tokenlessIdentityLinkEntry]}>
+        <Routes>
+          <Route element={<ProtocolIdentityLinkSurface />} path="/askcore/workbench" />
+          <Route element={<div>home landing</div>} path="/" />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('home landing')).toBeInTheDocument();
+    expect(screen.queryByText('身份关联失败')).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/askcore/lti/identity-links/account-subject',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
+
+  it('fails closed when the tokenless current account is not linked', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        deployment_id: 7,
+        linked: false,
+        school_subject: 'unlinked-account',
+      }),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     render(
@@ -114,8 +149,27 @@ describe('ProtocolIdentityLinkSurface', () => {
 
     expect(await screen.findByText('身份关联失败')).toBeInTheDocument();
     expect(screen.getByText('邀请令牌缺失或已被使用')).toBeInTheDocument();
-    await waitFor(() => expect(fetchMock).not.toHaveBeenCalled());
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
   });
+
+  it.each([401, 409, 503])(
+    'fails closed when tokenless identity status returns %s',
+    async (status) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(Response.json({ detail: 'status unavailable' }, { status })),
+      );
+
+      render(
+        <MemoryRouter>
+          <ProtocolIdentityLinkSurface />
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByText('身份关联失败')).toBeInTheDocument();
+      expect(screen.getByText('邀请令牌缺失或已被使用')).toBeInTheDocument();
+    },
+  );
 
   it('shows an actionable message instead of a backend error for an invalid token', async () => {
     vi.stubGlobal(

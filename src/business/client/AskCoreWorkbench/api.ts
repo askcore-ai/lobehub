@@ -18,6 +18,7 @@ import {
   type ProtocolCaptureStartInput,
   type ProtocolCaptureStatus,
   type ProtocolIdentityLinkAcceptResult,
+  type ProtocolIdentityLinkAccountSubjectResult,
   type ProtocolProcessingContext,
   type ProtocolProcessingEditInput,
   type ProtocolProcessingEditResult,
@@ -169,6 +170,9 @@ export const acceptProtocolIdentityLinkInvitation = (invitationToken: string) =>
     '/identity-links/accept',
     protocolMutation('POST', { invitation_token: invitationToken }),
   );
+
+export const fetchCurrentProtocolIdentityLinkAccountSubject = () =>
+  protocolJson<ProtocolIdentityLinkAccountSubjectResult>('/identity-links/account-subject');
 
 export const fetchCurrentProtocolProcessingSurface = () =>
   protocolJson<ProtocolProcessingSurface>('/processing/current');

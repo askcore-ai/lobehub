@@ -198,6 +198,40 @@ describe('AskCore processing proxy', () => {
     expect(headers.has('cookie')).toBe(false);
   });
 
+  it('reads identity-link ownership only for the current Better Auth account', async () => {
+    vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'protocol-proxy-secret');
+    authApi.getSession.mockResolvedValue({
+      user: { email: 'student@askcore.cn', id: 'student-1' },
+    } as any);
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        deployment_id: 7,
+        linked: true,
+        school_subject: 'school_opaque_subject',
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const { GET } = await loadRoute();
+
+    const response = await GET(
+      new NextRequest('https://askcore.cn/api/askcore/lti/identity-links/account-subject'),
+      routeContext(['identity-links', 'account-subject']),
+    );
+
+    expect(response.status).toBe(200);
+    expect(authApi.getFullOrganization).not.toHaveBeenCalled();
+    const [target, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(target.toString()).toBe('http://api:8000/api/lti/v1/identity-links/account-subject');
+    const assertion = (init.headers as Headers).get('X-AskCore-Billing-Assertion');
+    const { payload } = await jwtVerify(
+      assertion!,
+      new TextEncoder().encode('protocol-proxy-secret'),
+      { audience: 'aitutor-billing', issuer: 'askcore-lobehub' },
+    );
+    expect(payload.sub).toBe('student-1');
+    expect(payload.org_id).toBeUndefined();
+  });
+
   it('forwards only protocol cookies and propagates the context cookie', async () => {
     vi.stubEnv('AITUTOR_API_BASE_URL', 'http://api:8000');
     vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'protocol-proxy-secret');

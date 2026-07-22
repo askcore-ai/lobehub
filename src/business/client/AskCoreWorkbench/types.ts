@@ -269,6 +269,12 @@ export type ProtocolIdentityLinkAcceptResult = {
   replayed: boolean;
 };
 
+export type ProtocolIdentityLinkAccountSubjectResult = {
+  deployment_id: number;
+  linked: boolean;
+  school_subject: string;
+};
+
 export type FileDescriptor = {
   download_url?: string | null;
   media_type?: string | null;

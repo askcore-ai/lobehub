@@ -13,7 +13,11 @@ import { userService } from '@/services/user';
 import { useUserStore } from '@/store/user';
 import { onboardingSelectors } from '@/store/user/selectors';
 
-import { acceptProtocolIdentityLinkInvitation, AskCoreWorkbenchApiError } from './api';
+import {
+  acceptProtocolIdentityLinkInvitation,
+  AskCoreWorkbenchApiError,
+  fetchCurrentProtocolIdentityLinkAccountSubject,
+} from './api';
 import { ASKCORE_IDENTITY_LINK_TOKEN_STORAGE_KEY } from './config';
 
 const styles = createStaticStyles(({ css }) => ({
@@ -102,8 +106,22 @@ export const ProtocolIdentityLinkSurface = memo(
     const accept = useCallback(async () => {
       const token = invitationToken?.trim() || invitationTokenFromSession();
       if (!token) {
-        setError('邀请令牌缺失或已被使用');
-        setState('error');
+        setAuthenticationRequired(false);
+        setError('');
+        setState('loading');
+        try {
+          const accountSubject = await fetchCurrentProtocolIdentityLinkAccountSubject();
+          if (!accountSubject.linked) throw new Error('Current account is not linked');
+          try {
+            await refreshUserState();
+          } catch {
+            // The read-only ownership check is authoritative for this recovery path.
+          }
+          navigate('/', { replace: true });
+        } catch {
+          setError('邀请令牌缺失或已被使用');
+          setState('error');
+        }
         return;
       }
 
