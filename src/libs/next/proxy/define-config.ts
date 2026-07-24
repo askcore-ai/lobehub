@@ -224,8 +224,17 @@ export function defineConfig() {
       Array.from(req.nextUrl.searchParams).length === 1 &&
       req.nextUrl.searchParams.get('readiness') === '1';
 
+    // Edge auth reaches this exact route without a browser-facing response. The route itself
+    // requires the internal marker and validates Better Auth before contacting the fixed source.
+    const isSourceCompositeAuthorization =
+      req.method === 'GET' &&
+      req.nextUrl.pathname === '/api/askcore/school/source-auth';
+
     // when enable auth protection, only public route is not protected, others are all protected
-    const isProtected = !isPublicRoute(req) && !isActorObservationReadiness;
+    const isProtected =
+      !isPublicRoute(req) &&
+      !isActorObservationReadiness &&
+      !isSourceCompositeAuthorization;
 
     logBetterAuth('Route protection status: %s, %s', req.url, isProtected ? 'protected' : 'public');
 
