@@ -67,6 +67,8 @@ export enum SettingsTabs {
   Provider = 'provider',
   Proxy = 'proxy',
   Referral = 'referral',
+  SchoolAffairs = 'school-affairs',
+  SchoolPlan = 'school-plan',
   Security = 'security',
   ServiceModel = 'service-model',
   Skill = 'skill',

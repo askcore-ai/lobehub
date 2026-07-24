@@ -35,12 +35,7 @@ const ACCORDION_KEYS = new Set<string>([GroupKey.Recents, GroupKey.Agent]);
 /** Keys rendered in the header — must be excluded from the body to avoid duplicates
  * when migrating users whose persisted sidebarItems still include them. */
 const HEADER_KEYS = new Set<string>(['home', 'search']);
-const REQUIRED_NAV_KEYS = [
-  'school',
-  'operations-center',
-  'teaching-center',
-  'learning-space',
-] as const;
+const REQUIRED_NAV_KEYS = ['school'] as const;
 const REQUIRED_NAV_KEY_SET = new Set<string>(REQUIRED_NAV_KEYS);
 
 const accordionComponents: Record<string, (key: string) => ReactElement> = {

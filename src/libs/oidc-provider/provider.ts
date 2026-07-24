@@ -54,8 +54,9 @@ export const resolveOIDCAccountId = ({
     : externalAccountId || providerSessionAccountId || requestedAccountId;
 
 const SCHOOL_SUBJECT_PATTERN = /^[\w.-]{8,40}$/;
+const IDENTITY_LINK_VERSION_PATTERN = /^[a-f\d]{64}$/;
 
-export const resolveSchoolOIDCSubject = async ({
+export const resolveSchoolOIDCIdentity = async ({
   email,
   userId,
 }: {
@@ -80,17 +81,108 @@ export const resolveSchoolOIDCSubject = async ({
   if (!response.ok) throw new Error(`school subject resolution failed (${response.status})`);
   const payload = (await response.json()) as {
     deployment_id?: number;
+    identity_link_version?: string;
     school_subject?: string;
   };
   const schoolSubject = payload.school_subject?.trim() || '';
+  const identityLinkVersion = payload.identity_link_version?.trim() || '';
   if (
     !Number.isSafeInteger(payload.deployment_id) ||
     Number(payload.deployment_id) < 1 ||
-    !SCHOOL_SUBJECT_PATTERN.test(schoolSubject)
+    !SCHOOL_SUBJECT_PATTERN.test(schoolSubject) ||
+    !IDENTITY_LINK_VERSION_PATTERN.test(identityLinkVersion)
   ) {
     throw new Error('school subject resolution returned an invalid response');
   }
-  return schoolSubject;
+  return { identityLinkVersion, schoolSubject };
+};
+
+export const resolveSchoolOIDCSubject = async (account: {
+  email?: null | string;
+  userId: string;
+}) => (await resolveSchoolOIDCIdentity(account)).schoolSubject;
+
+const schoolIdentityRequests = new WeakMap<
+  object,
+  Map<string, ReturnType<typeof resolveSchoolOIDCIdentity>>
+>();
+
+const resolveSchoolOIDCIdentityForRequest = (
+  ctx: object,
+  account: { email?: null | string; userId: string },
+) => {
+  let requests = schoolIdentityRequests.get(ctx);
+  if (!requests) {
+    requests = new Map();
+    schoolIdentityRequests.set(ctx, requests);
+  }
+  const existing = requests.get(account.userId);
+  if (existing) return existing;
+  const request = resolveSchoolOIDCIdentity(account);
+  requests.set(account.userId, request);
+  return request;
+};
+
+export const resolveSchoolOIDCPairwiseSubject = async ({
+  accountId,
+  client,
+  ctx,
+}: {
+  accountId: string;
+  client: ResourceIndicatorClient;
+  ctx: object;
+}) => {
+  if (!isSchoolOIDCClient(client)) {
+    throw new Error('pairwise subject is restricted to school OIDC clients');
+  }
+  return (await resolveSchoolOIDCIdentityForRequest(ctx, { userId: accountId })).schoolSubject;
+};
+
+type OIDCAccountUser = {
+  avatar?: null | string;
+  email?: null | string;
+  emailVerifiedAt?: Date | null;
+  firstName?: null | string;
+  fullName?: null | string;
+  id: string;
+  lastName?: null | string;
+  username?: null | string;
+};
+
+export const buildOIDCAccountClaims = async ({
+  clientId,
+  resolveSchoolIdentity = resolveSchoolOIDCIdentity,
+  scope,
+  user,
+}: {
+  clientId?: string;
+  resolveSchoolIdentity?: typeof resolveSchoolOIDCIdentity;
+  scope: string;
+  user: OIDCAccountUser;
+}): Promise<{ [key: string]: any; sub: string }> => {
+  const schoolIdentity =
+    clientId && SCHOOL_OIDC_CLIENT_IDS.has(clientId)
+      ? await resolveSchoolIdentity({ email: user.email, userId: user.id })
+      : undefined;
+  const claims: { [key: string]: any; sub: string } = {
+    sub: schoolIdentity?.schoolSubject || user.id,
+  };
+
+  if (scope.includes('profile')) {
+    claims.name =
+      user.fullName ||
+      user.username ||
+      `${user.firstName || ''} ${user.lastName || ''}`.trim();
+    claims.picture = user.avatar;
+    if (schoolIdentity) claims.school_subject = schoolIdentity.schoolSubject;
+  }
+
+  if (scope.includes('email')) {
+    claims.email = user.email;
+    claims.email_verified = !!user.emailVerifiedAt;
+  }
+
+  return claims;
 };
 
 export const OIDC_PROVIDER_ROUTES = {
@@ -238,13 +330,13 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
     },
     // 10. Account lookup
     async findAccount(ctx: KoaContextWithOIDC, id: string) {
-      logProvider('findAccount called for id: %s', id);
+      logProvider('findAccount called');
 
       // Check if there is a pre-stored external account ID
       // @ts-ignore - Custom property
       const externalAccountId = ctx.externalAccountId;
       if (externalAccountId) {
-        logProvider('Found externalAccountId in context: %s', externalAccountId);
+        logProvider('External account reference is present');
       }
 
       const clientId = ctx.oidc?.client?.clientId;
@@ -256,11 +348,13 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
         requestedAccountId: id,
       });
 
-      logProvider('OIDC request client id: %s', clientId);
+      logProvider(
+        'OIDC request client class: %s',
+        clientId && SCHOOL_OIDC_CLIENT_IDS.has(clientId) ? 'school' : 'general',
+      );
 
       logProvider(
-        'Attempting to find account with ID: %s (source: %s)',
-        accountIdToFind,
+        'Attempting to find account (source: %s)',
         clientId && SCHOOL_OIDC_CLIENT_IDS.has(clientId)
           ? 'current_authorization'
           : externalAccountId
@@ -278,56 +372,36 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
 
       try {
         const user = await UserModel.findById(db, accountIdToFind);
-        logProvider(
-          'UserModel.findById result for %s: %O',
-          accountIdToFind,
-          user ? { id: user.id, name: user.username } : null,
-        );
+        logProvider('UserModel.findById result: %s', user ? 'found' : 'not_found');
 
         if (!user) {
-          logProvider('No user found for accountId: %s', accountIdToFind);
+          logProvider('No user found for OIDC account');
           return undefined;
         }
 
         if (isOIDCUserBanned(user)) {
-          logProvider('Account is banned for accountId: %s', accountIdToFind);
+          logProvider('OIDC account is banned');
           return undefined;
         }
 
         return {
           accountId: user.id,
           async claims(use, scope): Promise<{ [key: string]: any; sub: string }> {
-            logProvider('claims function called for user %s with scope: %s', user.id, scope);
-            const claims: { [key: string]: any; sub: string } = {
-              sub: user.id,
-            };
-
-            if (scope.includes('profile')) {
-              claims.name =
-                user.fullName ||
-                user.username ||
-                `${user.firstName || ''} ${user.lastName || ''}`.trim();
-              claims.picture = user.avatar;
-              if (clientId && SCHOOL_OIDC_CLIENT_IDS.has(clientId)) {
-                claims.school_subject = await resolveSchoolOIDCSubject({
-                  email: user.email,
-                  userId: user.id,
-                });
-              }
-            }
-
-            if (scope.includes('email')) {
-              claims.email = user.email;
-              claims.email_verified = !!user.emailVerifiedAt;
-            }
-
-            logProvider('Returning claims: %O', claims);
-            return claims;
+            logProvider(
+              'Resolving OIDC claims for client class: %s',
+              clientId && SCHOOL_OIDC_CLIENT_IDS.has(clientId) ? 'school' : 'general',
+            );
+            return buildOIDCAccountClaims({
+              clientId,
+              resolveSchoolIdentity: (account) =>
+                resolveSchoolOIDCIdentityForRequest(ctx, account),
+              scope,
+              user,
+            });
           },
         };
-      } catch (error) {
-        logProvider('Error finding account or generating claims: %O', error);
-        console.error('Error finding account:', error);
+      } catch {
+        logProvider('OIDC account lookup or claim generation failed');
         return undefined;
       }
     },
@@ -336,9 +410,7 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
     interactions: {
       policy: createInteractionPolicy(),
       url(ctx, interaction) {
-        // ---> Add logs <---
         logProvider('interactions.url function called');
-        logProvider('Interaction details: %O', interaction);
 
         // Read the ui_locales parameter from the OIDC request (space-separated language priorities)
         // https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
@@ -358,8 +430,6 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
         }
 
         const interactionUrl = `/oauth/consent/${interaction.uid}${query}`;
-        logProvider('Generated interaction URL: %s', interactionUrl);
-        // ---> End of added logs <---
         return interactionUrl;
       },
     },
@@ -371,6 +441,9 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
     pkce: {
       required: (_ctx, client) => requiresPKCEForClient(client),
     },
+
+    pairwiseIdentifier: (ctx, accountId, client) =>
+      resolveSchoolOIDCPairwiseSubject({ accountId, client, ctx }),
 
     // 12. Other configuration
     renderError: async (ctx, out, error) => {
@@ -395,6 +468,7 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
     routes: OIDC_PROVIDER_ROUTES,
     // 3. Scopes definition
     scopes: defaultScopes,
+    subjectTypes: ['public', 'pairwise'],
 
     // 8. Token TTL
     ttl: {
@@ -417,8 +491,7 @@ export const createOIDCProvider = async (db: LobeChatDatabase): Promise<Provider
   provider.proxy = true;
 
   provider.on('server_error', (ctx, err) => {
-    logProvider('OIDC Provider Server Error: %O', err); // Use logProvider
-    console.error('OIDC Provider Error:', err);
+    logProvider('OIDC Provider Server Error: %s', err.name);
   });
 
   provider.on('authorization.success', (ctx) => {

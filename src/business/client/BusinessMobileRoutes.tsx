@@ -11,22 +11,6 @@ export const BusinessMobileRoutesWithMainLayout: RouteObject[] = [
     path: 'school',
   },
   {
-    lazy: loadSchoolRoute,
-    path: 'school/teaching-center',
-  },
-  {
-    lazy: loadSchoolRoute,
-    path: 'school/learning-space',
-  },
-  {
-    lazy: loadSchoolRoute,
-    path: 'school/operations-center',
-  },
-  {
-    lazy: loadSchoolRoute,
-    path: 'school/billing',
-  },
-  {
     lazy: async () => {
       const routeModule = await import('./AskCoreWorkbench/ProtocolRoute');
       return { Component: routeModule.AskCoreProtocolRoute };

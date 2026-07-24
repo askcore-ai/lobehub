@@ -9,6 +9,7 @@ interface CustomNextConfig {
   outputFileTracingIncludes?: NextConfig['outputFileTracingIncludes'];
   redirects?: Redirect[];
   serverExternalPackages?: NextConfig['serverExternalPackages'];
+  staticPageGenerationTimeout?: NextConfig['staticPageGenerationTimeout'];
   turbopack?: NextConfig['turbopack'];
 }
 

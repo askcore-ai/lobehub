@@ -30,6 +30,7 @@ RUN set -e && \
 FROM base AS builder
 
 ARG USE_CN_MIRROR
+ARG NPM_REGISTRY_INSTALL
 ARG NEXT_PUBLIC_BASE_PATH
 ARG NEXT_PUBLIC_SENTRY_DSN
 ARG NEXT_PUBLIC_ANALYTICS_POSTHOG
@@ -79,18 +80,22 @@ COPY apps/desktop/src/main/package.json ./apps/desktop/src/main/package.json
 RUN set -e && \
     if [ "${USE_CN_MIRROR:-false}" = "true" ]; then \
         export SENTRYCLI_CDNURL="https://npmmirror.com/mirrors/sentry-cli"; \
+        export FFMPEG_BINARIES_URL="https://cdn.npmmirror.com/binaries/ffmpeg-static"; \
         npm config set registry "https://registry.npmmirror.com/"; \
         echo 'canvas_binary_host_mirror=https://npmmirror.com/mirrors/canvas' >> .npmrc; \
     fi && \
     export COREPACK_NPM_REGISTRY=$(npm config get registry | sed 's/\/$//') && \
     npm i -g corepack@latest && \
     corepack enable && \
-    corepack use $(sed -n 's/.*"packageManager": "\(.*\)".*/\1/p' package.json) && \
-    pnpm i && \
+    corepack install -g $(sed -n 's/.*"packageManager": "\(.*\)".*/\1/p' package.json) && \
+    if [ -n "${NPM_REGISTRY_INSTALL:-}" ]; then export COREPACK_NPM_REGISTRY="${NPM_REGISTRY_INSTALL}"; export npm_config_registry="${NPM_REGISTRY_INSTALL}"; npm config set registry "${NPM_REGISTRY_INSTALL}"; fi && \
+    install_registry="${NPM_REGISTRY_INSTALL:-$(npm config get registry)}" && \
+    echo "LobeHub dependency registry: ${install_registry}" && \
+    pnpm --config.registry="${install_registry}" i && \
     mkdir -p /deps && \
     cd /deps && \
     echo '{"name":"deps","private":true}' > package.json && \
-    pnpm add pg drizzle-orm
+    pnpm --config.registry="${install_registry}" add pg drizzle-orm
 
 COPY . .
 
@@ -124,6 +129,7 @@ COPY --from=builder --chown=1001:1001 /deps/node_modules/drizzle-orm /app/node_m
 
 # Copy server launcher and shared scripts
 COPY --from=builder --chown=1001:1001 /app/scripts/serverLauncher/startServer.js /app/startServer.js
+COPY --from=builder --chown=1001:1001 /app/scripts/serverLauncher/runtimeEntrypoint.sh /app/runtimeEntrypoint.sh
 COPY --from=builder --chown=1001:1001 /app/scripts/_shared /app/scripts/_shared
 
 RUN set -e && \
@@ -338,6 +344,6 @@ USER nextjs
 
 EXPOSE 3210/tcp
 
-ENTRYPOINT ["/bin/node"]
+ENTRYPOINT ["/bin/sh", "/app/runtimeEntrypoint.sh"]
 
 CMD ["/app/startServer.js"]

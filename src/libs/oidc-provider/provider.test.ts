@@ -56,12 +56,16 @@ describe('OIDC Provider - Market Client Integration', () => {
       expect.arrayContaining([
         expect.objectContaining({
           client_id: ASKCORE_MOODLE_OIDC_CLIENT_ID,
+          client_name: 'AskCore 学校/学习空间',
           redirect_uris: ['https://askcore.cn/school/teaching/admin/oauth2callback.php'],
+          subject_type: 'pairwise',
           token_endpoint_auth_method: 'client_secret_basic',
         }),
         expect.objectContaining({
           client_id: ASKCORE_GIBBON_OIDC_CLIENT_ID,
+          client_name: 'AskCore 校务',
           redirect_uris: ['https://askcore.cn/school/services/login.php'],
+          subject_type: 'pairwise',
           token_endpoint_auth_method: 'client_secret_post',
         }),
       ]),
@@ -179,6 +183,7 @@ describe('OIDC Provider - Market Client Integration', () => {
         new Response(
           JSON.stringify({
             deployment_id: 1,
+            identity_link_version: 'a'.repeat(64),
             linked: true,
             school_subject: 'school_0123456789abcdef0123456789abcdef',
           }),
@@ -213,7 +218,7 @@ describe('OIDC Provider - Market Client Integration', () => {
       ).rejects.toThrow('school subject resolution failed');
     });
 
-    it('accepts an ordinary Better Auth subject containing dots', async () => {
+    it('accepts a pseudonymous direct subject without exposing the Better Auth id', async () => {
       buildAskCoreAssertion.mockResolvedValue('signed-school-assertion');
       vi.stubGlobal(
         'fetch',
@@ -221,8 +226,9 @@ describe('OIDC Provider - Market Client Integration', () => {
           new Response(
             JSON.stringify({
               deployment_id: 1,
+              identity_link_version: 'b'.repeat(64),
               linked: false,
-              school_subject: 'user.qa.student.1',
+              school_subject: 'school_0123456789abcdef0123456789abcdef',
             }),
             { status: 200 },
           ),
@@ -232,7 +238,127 @@ describe('OIDC Provider - Market Client Integration', () => {
       const { resolveSchoolOIDCSubject } = await import('./provider');
       await expect(
         resolveSchoolOIDCSubject({ email: 'student@askcore.local', userId: 'user.qa.student.1' }),
-      ).resolves.toBe('user.qa.student.1');
+      ).resolves.toBe('school_0123456789abcdef0123456789abcdef');
+    });
+
+    it('uses the pseudonymous school subject as the school client sub', async () => {
+      const resolveSchoolIdentity = vi.fn().mockResolvedValue({
+        identityLinkVersion: 'c'.repeat(64),
+        schoolSubject: 'school_0123456789abcdef0123456789abcdef',
+      });
+      const { buildOIDCAccountClaims } = await import('./provider');
+
+      const claims = await buildOIDCAccountClaims({
+        clientId: 'askcore-gibbon',
+        resolveSchoolIdentity,
+        scope: 'openid profile email',
+        user: {
+          avatar: 'https://example.com/avatar.png',
+          email: 'student@askcore.local',
+          emailVerifiedAt: new Date(),
+          fullName: 'Student One',
+          id: 'better-auth-internal-id',
+        },
+      });
+
+      expect(claims).toEqual({
+        email: 'student@askcore.local',
+        email_verified: true,
+        name: 'Student One',
+        picture: 'https://example.com/avatar.png',
+        school_subject: 'school_0123456789abcdef0123456789abcdef',
+        sub: 'school_0123456789abcdef0123456789abcdef',
+      });
+      expect(JSON.stringify(claims)).not.toContain('better-auth-internal-id');
+    });
+
+    it('signs pairwise school ID Token and UserInfo subjects without the account id', async () => {
+      buildAskCoreAssertion.mockResolvedValue('signed-school-assertion');
+      const request = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            deployment_id: 1,
+            identity_link_version: 'd'.repeat(64),
+            school_subject: 'school_0123456789abcdef0123456789abcdef',
+          }),
+          { status: 200 },
+        ),
+      );
+      vi.stubGlobal('fetch', request);
+      const { decodeJwt, exportJWK, generateKeyPair } = await import('jose');
+      const { default: Provider } = await import('oidc-provider');
+      const { resolveSchoolOIDCPairwiseSubject } = await import('./provider');
+      const { privateKey } = await generateKeyPair('RS256', { extractable: true });
+      const privateJwk = {
+        ...(await exportJWK(privateKey)),
+        alg: 'RS256',
+        kid: 'p140-school-subject-test',
+        use: 'sig',
+      };
+      const provider = new Provider('https://issuer.example.com', {
+        claims: {
+          openid: ['sub'],
+          profile: ['school_subject'],
+        },
+        clients: [
+          {
+            client_id: 'askcore-gibbon',
+            client_secret: 'p140-school-client-secret',
+            redirect_uris: ['https://school.example.com/callback'],
+            response_types: ['code'],
+            subject_type: 'pairwise',
+            token_endpoint_auth_method: 'client_secret_post',
+            userinfo_signed_response_alg: 'RS256',
+          },
+        ],
+        features: { jwtUserinfo: { enabled: true } },
+        findAccount: async (_ctx, accountId) => ({
+          accountId,
+          claims: async () => ({ sub: accountId }),
+        }),
+        jwks: { keys: [privateJwk] },
+        pairwiseIdentifier: (ctx, accountId, client) =>
+          resolveSchoolOIDCPairwiseSubject({ accountId, client, ctx }),
+        subjectTypes: ['public', 'pairwise'],
+      });
+      const client = await provider.Client.find('askcore-gibbon');
+      expect(client).toBeDefined();
+      const accountId = 'better-auth-internal-id';
+      const available = {
+        school_subject: 'school_0123456789abcdef0123456789abcdef',
+        sub: accountId,
+      };
+      const ctx = {};
+      const idToken = new (provider.IdToken as any)(available, { client, ctx });
+      idToken.scope = 'openid profile';
+      const userInfo = new (provider.IdToken as any)(available, { client, ctx });
+      userInfo.scope = 'openid profile';
+      const idTokenClaims = decodeJwt(await idToken.issue({ use: 'idtoken' }));
+      const userInfoClaims = decodeJwt(
+        await userInfo.issue({ expiresAt: Math.floor(Date.now() / 1000) + 60, use: 'userinfo' }),
+      );
+
+      for (const claims of [idTokenClaims, userInfoClaims]) {
+        expect(claims.sub).toBe('school_0123456789abcdef0123456789abcdef');
+        expect(claims.school_subject).toBe('school_0123456789abcdef0123456789abcdef');
+        expect(JSON.stringify(claims)).not.toContain(accountId);
+      }
+      expect(request).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the account id as sub for non-school clients', async () => {
+      const resolveSchoolIdentity = vi.fn();
+      const { buildOIDCAccountClaims } = await import('./provider');
+
+      const claims = await buildOIDCAccountClaims({
+        clientId: 'general-client',
+        resolveSchoolIdentity,
+        scope: 'openid',
+        user: { id: 'general-account-id' },
+      });
+
+      expect(claims).toEqual({ sub: 'general-account-id' });
+      expect(resolveSchoolIdentity).not.toHaveBeenCalled();
     });
 
     it('should have createOIDCProvider function', async () => {

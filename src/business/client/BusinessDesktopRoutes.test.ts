@@ -6,26 +6,23 @@ import {
 } from './BusinessDesktopRoutes';
 
 describe('BusinessDesktopRoutes', () => {
-  it('keeps only the LTI processing and identity callback route under the main layout', () => {
+  it('keeps one direct school entry and the LTI processing route under the main layout', () => {
     const paths = BusinessDesktopRoutesWithMainLayout.map((route) => route.path);
 
     expect(paths).toContain('askcore/workbench');
     expect(paths).toContain('school');
-    expect(paths).toContain('school/teaching-center');
-    expect(paths).toContain('school/learning-space');
-    expect(paths).toContain('school/operations-center');
-    expect(paths).toContain('school/billing');
+    expect(paths).not.toContain('school/teaching-center');
+    expect(paths).not.toContain('school/learning-space');
+    expect(paths).not.toContain('school/operations-center');
+    expect(paths).not.toContain('school/billing');
     expect(paths).not.toContain('organization');
   });
 
-  it('registers the linked-school portal without restoring organization routes', () => {
+  it('registers no duplicate or legacy school routes', () => {
     const paths = BusinessDesktopRoutesWithMainLayout.map((route) => route.path);
 
-    expect(paths).toContain('school');
-    expect(paths).toContain('school/teaching-center');
-    expect(paths).toContain('school/learning-space');
-    expect(paths).toContain('school/operations-center');
-    expect(paths).toContain('school/billing');
+    expect(paths.filter((path) => path === 'school')).toHaveLength(1);
+    expect(paths.some((path) => path?.startsWith('school/'))).toBe(false);
     expect(paths).not.toContain('organization');
   });
 

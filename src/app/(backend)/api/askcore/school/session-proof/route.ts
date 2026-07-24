@@ -1,11 +1,14 @@
+import { createHash } from 'node:crypto';
+
 import { type NextRequest, NextResponse } from 'next/server';
 
-import { resolveSchoolOIDCSubject } from '@/libs/oidc-provider/provider';
+import { resolveSchoolOIDCIdentity } from '@/libs/oidc-provider/provider';
 import {
   askCoreAssertionHeaderName,
   buildAskCoreAssertion,
   getAskCoreAssertionAuthApi,
 } from '@/server/services/askcoreAssertion';
+import { readBoundedStream } from '@/server/utils/readBoundedStream';
 
 const noStoreHeaders = { 'Cache-Control': 'private, no-store' };
 const DEFAULT_API_BASE_URL = 'http://api:8000';
@@ -27,43 +30,6 @@ const isJsonContentType = (value: string | null) => {
   return mediaType === 'application/json' || mediaType?.endsWith('+json') === true;
 };
 
-class BodyLimitError extends Error {}
-
-const readBoundedStream = async (
-  stream: ReadableStream<Uint8Array> | null,
-  maxBytes: number,
-): Promise<Uint8Array<ArrayBuffer>> => {
-  if (!stream) return new Uint8Array();
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let byteLength = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      byteLength += value.byteLength;
-      if (byteLength > maxBytes) {
-        try {
-          await reader.cancel();
-        } catch {
-          // The size violation remains authoritative even if cancellation races a closed stream.
-        }
-        throw new BodyLimitError();
-      }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  const body = new Uint8Array(byteLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return body;
-};
-
 const currentAccount = async (request: NextRequest) => {
   const authApi = await getAskCoreAssertionAuthApi();
   const session = await authApi.getSession({ headers: request.headers });
@@ -73,7 +39,11 @@ const currentAccount = async (request: NextRequest) => {
       ? (record.user as Record<string, unknown>)
       : undefined;
   const userId = textValue(user?.id);
-  return { record, user, userId };
+  const sessionData =
+    record?.session && typeof record.session === 'object'
+      ? (record.session as Record<string, unknown>)
+      : undefined;
+  return { record, sessionId: textValue(sessionData?.id), user, userId };
 };
 
 const actorObservationUrl = (path: string) => {
@@ -85,8 +55,8 @@ const actorObservationUrl = (path: string) => {
 };
 
 export const GET = async (request: NextRequest) => {
-  const { user, userId } = await currentAccount(request);
-  if (!userId) {
+  const { sessionId, user, userId } = await currentAccount(request);
+  if (!userId || !sessionId) {
     return NextResponse.json(
       { detail: 'AskCore session is required' },
       { headers: noStoreHeaders, status: 401 },
@@ -94,11 +64,21 @@ export const GET = async (request: NextRequest) => {
   }
 
   try {
-    const schoolSubject = await resolveSchoolOIDCSubject({
+    const identity = await resolveSchoolOIDCIdentity({
       email: textValue(user?.email) || undefined,
       userId,
     });
-    return NextResponse.json({ school_subject: schoolSubject }, { headers: noStoreHeaders });
+    const sessionGenerationHash = createHash('sha256')
+      .update(`askcore-school-session-generation-v1\0${userId}\0${sessionId}`, 'utf8')
+      .digest('hex');
+    return NextResponse.json(
+      {
+        identity_link_version: identity.identityLinkVersion,
+        school_subject: identity.schoolSubject,
+        session_generation_hash: sessionGenerationHash,
+      },
+      { headers: noStoreHeaders },
+    );
   } catch {
     return NextResponse.json(
       { detail: 'School identity proof is unavailable' },

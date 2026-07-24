@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const authApi = vi.hoisted(() => ({ getSession: vi.fn() }));
-const resolveSchoolOIDCSubject = vi.hoisted(() => vi.fn());
+const resolveSchoolOIDCIdentity = vi.hoisted(() => vi.fn());
 const buildAskCoreAssertion = vi.hoisted(() => vi.fn());
 
 vi.mock('@/server/services/askcoreAssertion', () => ({
@@ -11,7 +11,7 @@ vi.mock('@/server/services/askcoreAssertion', () => ({
   buildAskCoreAssertion,
   getAskCoreAssertionAuthApi: vi.fn(async () => authApi),
 }));
-vi.mock('@/libs/oidc-provider/provider', () => ({ resolveSchoolOIDCSubject }));
+vi.mock('@/libs/oidc-provider/provider', () => ({ resolveSchoolOIDCIdentity }));
 
 describe('AskCore school current-session proof', () => {
   afterEach(() => {
@@ -20,12 +20,15 @@ describe('AskCore school current-session proof', () => {
     vi.unstubAllGlobals();
   });
 
-  it('returns only the current Better Auth account pseudonymous school subject', async () => {
+  it('returns only the current source-alignment proof', async () => {
     authApi.getSession.mockResolvedValue({
       session: { id: 'session-b' },
       user: { email: 'student@example.test', id: 'account-b' },
     });
-    resolveSchoolOIDCSubject.mockResolvedValue('school_0123456789abcdef0123456789abcdef');
+    resolveSchoolOIDCIdentity.mockResolvedValue({
+      identityLinkVersion: 'a'.repeat(64),
+      schoolSubject: 'school_0123456789abcdef0123456789abcdef',
+    });
     const { GET } = await import('./route');
 
     const response = await GET(
@@ -37,9 +40,11 @@ describe('AskCore school current-session proof', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toContain('no-store');
     await expect(response.json()).resolves.toEqual({
+      identity_link_version: 'a'.repeat(64),
       school_subject: 'school_0123456789abcdef0123456789abcdef',
+      session_generation_hash: expect.stringMatching(/^[a-f\d]{64}$/),
     });
-    expect(resolveSchoolOIDCSubject).toHaveBeenCalledWith({
+    expect(resolveSchoolOIDCIdentity).toHaveBeenCalledWith({
       email: 'student@example.test',
       userId: 'account-b',
     });
@@ -69,7 +74,7 @@ describe('AskCore school current-session proof', () => {
       }),
     );
     expect(postResponse.status).toBe(401);
-    expect(resolveSchoolOIDCSubject).not.toHaveBeenCalled();
+    expect(resolveSchoolOIDCIdentity).not.toHaveBeenCalled();
     expect(buildAskCoreAssertion).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -498,6 +503,6 @@ describe('AskCore school current-session proof', () => {
       }),
     );
     expect(query.status).toBe(404);
-    expect(resolveSchoolOIDCSubject).not.toHaveBeenCalled();
+    expect(resolveSchoolOIDCIdentity).not.toHaveBeenCalled();
   });
 });

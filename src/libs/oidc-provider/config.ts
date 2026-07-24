@@ -17,13 +17,14 @@ export const schoolOIDCClientsFromEnvironment = (
     clients.push({
       application_type: 'web',
       client_id: ASKCORE_MOODLE_OIDC_CLIENT_ID,
-      client_name: 'AskCore 教学中心',
+      client_name: 'AskCore 学校/学习空间',
       client_secret: moodleSecret,
       grant_types: ['authorization_code'],
       logo_uri: 'https://askcore.cn/askcore-logo.png',
       post_logout_redirect_uris: ['https://askcore.cn/school'],
       redirect_uris: ['https://askcore.cn/school/teaching/admin/oauth2callback.php'],
       response_types: ['code'],
+      subject_type: 'pairwise',
       token_endpoint_auth_method: 'client_secret_basic',
     });
   }
@@ -31,13 +32,14 @@ export const schoolOIDCClientsFromEnvironment = (
     clients.push({
       application_type: 'web',
       client_id: ASKCORE_GIBBON_OIDC_CLIENT_ID,
-      client_name: 'AskCore 校务中心',
+      client_name: 'AskCore 校务',
       client_secret: gibbonSecret,
       grant_types: ['authorization_code'],
       logo_uri: 'https://askcore.cn/askcore-logo.png',
       post_logout_redirect_uris: ['https://askcore.cn/school'],
       redirect_uris: ['https://askcore.cn/school/services/login.php'],
       response_types: ['code'],
+      subject_type: 'pairwise',
       token_endpoint_auth_method: 'client_secret_post',
     });
   }
