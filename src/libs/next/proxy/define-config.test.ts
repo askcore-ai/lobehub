@@ -46,7 +46,7 @@ describe('Better Auth proxy behavior', () => {
     const { middleware } = defineConfig();
 
     const response = await middleware(
-      new NextRequest('https://askcore.cn/api/askcore/school/session-proof?readiness=1', {
+      new NextRequest('https://askcore.cn/api/askcore/school/actor-observation?readiness=1', {
         method: 'POST',
       }),
     );
@@ -56,7 +56,7 @@ describe('Better Auth proxy behavior', () => {
     expect(getSession).not.toHaveBeenCalled();
 
     const protectedResponse = await middleware(
-      new NextRequest('https://askcore.cn/api/askcore/school/session-proof?readiness=1&extra=1', {
+      new NextRequest('https://askcore.cn/api/askcore/school/actor-observation?readiness=1&extra=1', {
         method: 'POST',
       }),
     );

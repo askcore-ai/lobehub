@@ -93,7 +93,7 @@ export const SchoolBillingPage = memo<SchoolBillingPageProps>(({ accountUserId, 
     error: proofError,
     isLoading: proofLoading,
     mutate: refreshProof,
-  } = useSWR(proofKey, () => fetchSchoolBillingSourceProof({ accountUserId, schoolKey }), {
+  } = useSWR(proofKey, () => fetchSchoolBillingSourceProof({ schoolKey }), {
     refreshInterval: (current) =>
       current ? Math.max(15_000, current.expires_at * 1000 - Date.now() - 15_000) : 30_000,
     revalidateOnFocus: true,

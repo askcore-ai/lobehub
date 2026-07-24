@@ -220,7 +220,7 @@ export function defineConfig() {
     // route's connector HMAC. Keep the exception exact so browser/session traffic remains protected.
     const isActorObservationReadiness =
       req.method === 'POST' &&
-      req.nextUrl.pathname === '/api/askcore/school/session-proof' &&
+      req.nextUrl.pathname === '/api/askcore/school/actor-observation' &&
       Array.from(req.nextUrl.searchParams).length === 1 &&
       req.nextUrl.searchParams.get('readiness') === '1';
 

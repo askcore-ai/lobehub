@@ -85,7 +85,6 @@ describe('SchoolBillingPage', () => {
     expect(screen.queryByText('schoolBilling.summary.totalSeats')).not.toBeInTheDocument();
     expect(sourceProofBodies).toEqual([
       {
-        account_user_id: 'user-1',
         action: 'session_proof',
         school_key: 'askcore-online-school',
       },

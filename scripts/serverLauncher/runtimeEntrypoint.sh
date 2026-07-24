@@ -2,8 +2,8 @@
 
 set -eu
 
-source_file="${SCHOOL_SESSION_BROKER_SECRET_SOURCE_FILE:-}"
-target_file="${SCHOOL_SESSION_BROKER_SECRET_FILE:-}"
+source_file="${SCHOOL_SESSION_BROKER_PRIVATE_KEY_SOURCE_FILE:-}"
+target_file="${SCHOOL_SESSION_BROKER_PRIVATE_KEY_FILE:-}"
 runtime_uid="${ASKCORE_RUNTIME_UID:-}"
 runtime_gid="${ASKCORE_RUNTIME_GID:-}"
 
@@ -19,29 +19,26 @@ esac
   exit 1
 }
 [ "$(id -u)" -eq 0 ] || {
-  echo "AskCore runtime secret preparation requires the bounded root init" >&2
+  echo "AskCore broker private-key preparation requires the bounded root init" >&2
   exit 1
 }
 [ -n "$source_file" ] && [ -n "$target_file" ] && [ "$source_file" != "$target_file" ] || {
-  echo "AskCore runtime secret paths are invalid" >&2
+  echo "AskCore broker private-key paths are invalid" >&2
   exit 1
 }
 [ ! -L "$source_file" ] && [ -f "$source_file" ] && [ -r "$source_file" ] || {
-  echo "AskCore runtime secret is unavailable" >&2
+  echo "AskCore broker private key is unavailable" >&2
   exit 1
 }
 case "$target_file" in
   /run/askcore/*) ;;
-  *) echo "AskCore runtime secret target is outside /run/askcore" >&2; exit 1 ;;
+  *) echo "AskCore broker private-key target is outside /run/askcore" >&2; exit 1 ;;
 esac
 
-secret_value="$(tr -d '\r\n' <"$source_file")"
-[ "${#secret_value}" -ge 32 ] || {
-  unset secret_value
-  echo "AskCore runtime secret is invalid" >&2
+grep -q '^-----BEGIN PRIVATE KEY-----$' "$source_file" || {
+  echo "AskCore broker private key is invalid" >&2
   exit 1
 }
-unset secret_value
 
 target_directory="${target_file%/*}"
 temporary_file="$target_file.$$"

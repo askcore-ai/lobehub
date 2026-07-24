@@ -170,15 +170,12 @@ export const fetchSchoolIntegrationOperations = async (): Promise<SchoolIntegrat
 const SCHOOL_SOURCE_PROOF_PATTERN = /^[\w-]+\.[\w-]+\.[\w-]+$/;
 
 export const fetchSchoolBillingSourceProof = async ({
-  accountUserId,
   schoolKey,
 }: {
-  accountUserId: string;
   schoolKey: string;
 }): Promise<SchoolSourceProof> => {
   const response = await fetchSchoolResource(SCHOOL_BILLING_SOURCE_URL, {
     body: JSON.stringify({
-      account_user_id: accountUserId,
       action: 'session_proof',
       school_key: schoolKey,
     }),

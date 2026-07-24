@@ -1,8 +1,5 @@
-import { createHash } from 'node:crypto';
-
 import { type NextRequest, NextResponse } from 'next/server';
 
-import { resolveSchoolOIDCIdentity } from '@/libs/oidc-provider/provider';
 import {
   askCoreAssertionHeaderName,
   buildAskCoreAssertion,
@@ -30,7 +27,7 @@ const isJsonContentType = (value: string | null) => {
   return mediaType === 'application/json' || mediaType?.endsWith('+json') === true;
 };
 
-const currentAccount = async (request: NextRequest) => {
+const currentAccountId = async (request: NextRequest) => {
   const authApi = await getAskCoreAssertionAuthApi();
   const session = await authApi.getSession({ headers: request.headers });
   const record = session && typeof session === 'object' ? session : undefined;
@@ -38,12 +35,7 @@ const currentAccount = async (request: NextRequest) => {
     record?.user && typeof record.user === 'object'
       ? (record.user as Record<string, unknown>)
       : undefined;
-  const userId = textValue(user?.id);
-  const sessionData =
-    record?.session && typeof record.session === 'object'
-      ? (record.session as Record<string, unknown>)
-      : undefined;
-  return { record, sessionId: textValue(sessionData?.id), user, userId };
+  return textValue(user?.id);
 };
 
 const actorObservationUrl = (path: string) => {
@@ -52,39 +44,6 @@ const actorObservationUrl = (path: string) => {
     process.env.WORKBENCH_API_BASE_URL?.trim() ||
     DEFAULT_API_BASE_URL;
   return new URL(path, baseUrl);
-};
-
-export const GET = async (request: NextRequest) => {
-  const { sessionId, user, userId } = await currentAccount(request);
-  if (!userId || !sessionId) {
-    return NextResponse.json(
-      { detail: 'AskCore session is required' },
-      { headers: noStoreHeaders, status: 401 },
-    );
-  }
-
-  try {
-    const identity = await resolveSchoolOIDCIdentity({
-      email: textValue(user?.email) || undefined,
-      userId,
-    });
-    const sessionGenerationHash = createHash('sha256')
-      .update(`askcore-school-session-generation-v1\0${userId}\0${sessionId}`, 'utf8')
-      .digest('hex');
-    return NextResponse.json(
-      {
-        identity_link_version: identity.identityLinkVersion,
-        school_subject: identity.schoolSubject,
-        session_generation_hash: sessionGenerationHash,
-      },
-      { headers: noStoreHeaders },
-    );
-  } catch {
-    return NextResponse.json(
-      { detail: 'School identity proof is unavailable' },
-      { headers: noStoreHeaders, status: 503 },
-    );
-  }
 };
 
 export const POST = async (request: NextRequest) => {
@@ -97,9 +56,7 @@ export const POST = async (request: NextRequest) => {
     );
   }
 
-  const userId = readiness
-    ? ACTOR_OBSERVATION_READINESS_SUBJECT
-    : (await currentAccount(request)).userId;
+  const userId = readiness ? ACTOR_OBSERVATION_READINESS_SUBJECT : await currentAccountId(request);
   if (!userId) {
     return NextResponse.json(
       { detail: 'AskCore session is required' },
@@ -145,6 +102,7 @@ export const POST = async (request: NextRequest) => {
       { headers: noStoreHeaders, status: 400 },
     );
   }
+
   let assertion: string;
   try {
     assertion = await buildAskCoreAssertion({
@@ -153,7 +111,7 @@ export const POST = async (request: NextRequest) => {
     });
   } catch {
     return NextResponse.json(
-      { detail: 'School identity proof is unavailable' },
+      { detail: 'Actor observation is unavailable' },
       { headers: noStoreHeaders, status: 503 },
     );
   }

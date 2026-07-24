@@ -304,13 +304,13 @@ const exerciseLeaseDeadline = async (api, browser) => {
     const initialRequests = initialState.verification_requests.moodle;
     const startedAt = Date.now();
     let elapsed = 0;
-    while (elapsed <= 30_500) {
+    while (elapsed <= 25_500) {
       await page.waitForTimeout(100);
       const state = await api.get(`${baseURL}/__p140/state`).then((response) => response.json());
       elapsed = Date.now() - startedAt;
       if (state.verification_requests.moodle > initialRequests) break;
     }
-    assert(elapsed <= 30_500, `alignment lease renewed after ${elapsed}ms`);
+    assert(elapsed <= 25_500, `alignment lease renewed after ${elapsed}ms`);
   } finally {
     await context.close();
   }
@@ -407,6 +407,29 @@ const exerciseFailures = async (api, browser) => {
     const response = await responsePromise;
     assert(response.status() === 503, `${failure} did not fail closed`);
     assert((await page.locator('main').textContent()).includes('safely blocked'), `${failure} leaked through`);
+    await context.close();
+  }
+};
+
+const exerciseMissingPreprovisionedAccount = async (api, browser) => {
+  await control(api, { action: 'reset' });
+  await control(api, { action: 'set_source_account_ready', ready: false, source: 'moodle' });
+  const { context, page } = await createPage(browser);
+  try {
+    await page.goto(`${baseURL}/__p140/start?source=moodle&fixture-role=student`);
+    const responsePromise = page.waitForResponse(
+      (response) => response.url().endsWith('/api/askcore/school/handoff'),
+    );
+    await page.locator('#handoff').click();
+    const response = await responsePromise;
+    assert(response.status() === 403, 'missing Moodle account did not fail closed');
+    assert(
+      (await page.locator('main').textContent()).includes('not preprovisioned'),
+      'missing Moodle account did not explain the safe denial',
+    );
+    const state = await api.get(`${baseURL}/__p140/state`).then((result) => result.json());
+    assert(state.source_sessions.moodle === null, 'missing account created a source session');
+  } finally {
     await context.close();
   }
 };
@@ -699,6 +722,7 @@ const main = async () => {
     await exerciseBFCache(api, browser);
     await exerciseHandoffFailureDocuments(browser);
     await exerciseFailures(api, browser);
+    await exerciseMissingPreprovisionedAccount(api, browser);
     await exerciseSPA(api, browser);
     console.log(
       JSON.stringify({
@@ -727,8 +751,9 @@ const main = async () => {
           'refetch-null-invalidation',
           'signed-out-broadcast',
           'proof-before-domcontentloaded',
-          'lease-expiry-30s',
+          'lease-expiry-25s',
           'handoff-public-failures',
+          'missing-preprovisioned-account',
         ],
         sources: ['moodle', 'gibbon'],
         status: 'passed',
