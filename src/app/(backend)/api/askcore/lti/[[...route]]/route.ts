@@ -53,7 +53,10 @@ const isAllowedProcessingRoute = (method: string, route: string[]) => {
   return false;
 };
 
-const isAllowedIdentityLinkRoute = (method: string, route: string[]) =>
+const isAllowedIdentityLinkReadRoute = (method: string, route: string[]) =>
+  method === 'GET' && route.join('/') === 'identity-links/account-subject';
+
+const isAllowedIdentityLinkWriteRoute = (method: string, route: string[]) =>
   method === 'POST' && route.join('/') === 'identity-links/accept';
 
 const jsonError = (status: number, detail: string) => NextResponse.json({ detail }, { status });
@@ -96,7 +99,9 @@ const forwardProtocolRequest = async (request: NextRequest, context: RouteContex
   }
   const { route = [] } = await context.params;
   const processingRoute = isAllowedProcessingRoute(request.method, route);
-  const identityLinkRoute = isAllowedIdentityLinkRoute(request.method, route);
+  const identityLinkReadRoute = isAllowedIdentityLinkReadRoute(request.method, route);
+  const identityLinkWriteRoute = isAllowedIdentityLinkWriteRoute(request.method, route);
+  const identityLinkRoute = identityLinkReadRoute || identityLinkWriteRoute;
   const publicRoute = isAllowedPublicProtocolRoute(request.method, route);
   if (
     !route.length ||
@@ -112,7 +117,7 @@ const forwardProtocolRequest = async (request: NextRequest, context: RouteContex
     });
   }
   const privateRoute = processingRoute || identityLinkRoute;
-  if (privateRoute && !isAllowedAskCoreSameOriginWrite(request)) {
+  if ((processingRoute || identityLinkWriteRoute) && !isAllowedAskCoreSameOriginWrite(request)) {
     return jsonError(403, 'Cross-origin protocol writes are not allowed');
   }
 
@@ -125,12 +130,13 @@ const forwardProtocolRequest = async (request: NextRequest, context: RouteContex
     const authApi = await getAskCoreAssertionAuthApi();
     const session = await authApi.getSession({ headers: request.headers });
     if (!session) return jsonError(401, 'AskCore session is required');
-    const fullOrganization = identityLinkRoute
+    const fullOrganization = identityLinkWriteRoute
       ? await resolveFullOrganizationForHeaders(request.headers, session)
       : undefined;
-    const claims = processingRoute
-      ? resolveAccountPrincipalClaims(session)
-      : resolveWorkbenchPrincipalClaims(session, fullOrganization);
+    const claims =
+      processingRoute || identityLinkReadRoute
+        ? resolveAccountPrincipalClaims(session)
+        : resolveWorkbenchPrincipalClaims(session, fullOrganization);
     if (!claims) return jsonError(401, 'AskCore session is required');
 
     let assertion: string;

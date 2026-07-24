@@ -266,6 +266,13 @@ export type ProtocolIdentityLinkAcceptResult = {
   invitation_id: string;
   invitation_status: 'accepted';
   link_status: 'active';
+  replayed: boolean;
+};
+
+export type ProtocolIdentityLinkAccountSubjectResult = {
+  deployment_id: number;
+  linked: boolean;
+  school_subject: string;
 };
 
 export type FileDescriptor = {
