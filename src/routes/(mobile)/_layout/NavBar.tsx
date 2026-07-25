@@ -10,14 +10,21 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
 import { enterSchoolSource } from '@/business/client/AskCoreSchoolPortal/handoffClient';
-import { MOBILE_TABBAR_HEIGHT } from '@/const/layoutTokens';
+import sourceMobileNavVisualContract from '@/features/AskCoreMobileNavigation/sourceMobileNavVisualContract.generated.json';
 import { useActiveTabKey } from '@/hooks/useActiveTabKey';
 import { SidebarTabKey } from '@/store/global/initialState';
+
+const icons = { MessageSquare, School, User } as const;
+const { activeFillPercent, layout, theme } = sourceMobileNavVisualContract;
 
 const styles = createStaticStyles(({ css, cssVar }) => ({
   active: css`
     svg {
-      fill: color-mix(in srgb, ${cssVar.colorPrimary} 33%, transparent);
+      fill: color-mix(
+        in srgb,
+        ${cssVar[theme.tokens.active as keyof typeof cssVar]} ${activeFillPercent}%,
+        transparent
+      );
     }
   `,
   container: css`
@@ -35,38 +42,37 @@ const NavBar = memo(() => {
 
   const items: TabBarProps['items'] = useMemo(
     () =>
-      [
-        {
+      sourceMobileNavVisualContract.items.map((item) => {
+        const title =
+          item.key === 'chat'
+            ? t('tab.chat')
+            : item.key === 'school'
+              ? t('setting:group.school')
+              : t('tab.me');
+        const key =
+          item.key === 'chat'
+            ? SidebarTabKey.Chat
+            : item.key === 'me'
+              ? SidebarTabKey.Me
+              : item.key;
+        return {
           icon: (active: boolean) => (
-            <Icon className={active ? styles.active : undefined} icon={MessageSquare} />
+            <Icon
+              className={active ? styles.active : undefined}
+              icon={icons[item.icon as keyof typeof icons]}
+            />
           ),
-          key: SidebarTabKey.Chat,
+          key,
           onClick: () => {
-            navigate('/agent');
+            if (item.key === 'school') {
+              void enterSchoolSource('moodle').catch(() => navigate(item.href));
+              return;
+            }
+            navigate(item.href);
           },
-          title: t('tab.chat'),
-        },
-        {
-          icon: (active: boolean) => (
-            <Icon className={active ? styles.active : undefined} icon={School} />
-          ),
-          key: 'school',
-          onClick: () => {
-            void enterSchoolSource('moodle').catch(() => navigate('/school'));
-          },
-          title: t('setting:group.school'),
-        },
-        {
-          icon: (active: boolean) => (
-            <Icon className={active ? styles.active : undefined} icon={User} />
-          ),
-          key: SidebarTabKey.Me,
-          onClick: () => {
-            navigate('/me');
-          },
-          title: t('tab.me'),
-        },
-      ] as TabBarProps['items'],
+          title,
+        };
+      }) as TabBarProps['items'],
     [navigate, t],
   );
 
@@ -74,7 +80,7 @@ const NavBar = memo(() => {
     <TabBar
       activeKey={activeKey}
       className={styles.container}
-      height={MOBILE_TABBAR_HEIGHT}
+      height={layout.barHeight}
       items={items}
     />
   );

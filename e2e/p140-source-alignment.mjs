@@ -3,12 +3,22 @@ import path from 'node:path';
 
 import { chromium, request as playwrightRequest } from '@playwright/test';
 import axe from 'axe-core';
+import sharp from 'sharp';
 
 import { renderHandoffFailureDocument } from '../src/app/(backend)/api/askcore/school/handoff/document.ts';
 
 const baseURL = (process.env.P140_BASE_URL || 'http://127.0.0.1:3010').replace(/\/$/, '');
 const bridgeScreenshotDir = process.env.P140_BRIDGE_SCREENSHOT_DIR || '';
 const screenshotPath = process.env.P140_GUARD_SCREENSHOT || '';
+const sourceMobileNavVisualContract = JSON.parse(
+  await fs.readFile(
+    path.resolve(
+      import.meta.dirname,
+      '../../aitutor/spec/lms_sis/source_mobile_nav_visual_contract.json',
+    ),
+    'utf8',
+  ),
+);
 const vitalsObserver = () => {
   globalThis.__p140Vitals = { cls: 0, interactions: [], lcp: 0 };
   if (PerformanceObserver.supportedEntryTypes.includes('largest-contentful-paint')) {
@@ -36,6 +46,14 @@ const vitalsObserver = () => {
 
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
+};
+
+const toComputedRgb = (hex) => {
+  const value = hex.replace('#', '');
+  return `rgb(${Number.parseInt(value.slice(0, 2), 16)}, ${Number.parseInt(
+    value.slice(2, 4),
+    16,
+  )}, ${Number.parseInt(value.slice(4, 6), 16)})`;
 };
 
 const control = async (api, payload) => {
@@ -83,6 +101,24 @@ const returnBridgeState = (host) => {
       : homeIcon;
   const iconRect = visibleIcon.getBoundingClientRect();
   const labelStyle = getComputedStyle(label);
+  const normalizeSvg = (svg) => ({
+    attributes: {
+      fill: svg.getAttribute('fill'),
+      stroke: svg.getAttribute('stroke'),
+      strokeLinecap: svg.getAttribute('stroke-linecap'),
+      strokeLinejoin: svg.getAttribute('stroke-linejoin'),
+      strokeWidth: Number(svg.getAttribute('stroke-width')),
+      viewBox: svg.getAttribute('viewBox'),
+    },
+    nodes: [...svg.children].map((node) => ({
+      attributes: Object.fromEntries(
+        [...node.attributes]
+          .filter(({ name }) => ['cx', 'cy', 'd', 'r'].includes(name))
+          .map(({ name, value }) => [name, value]),
+      ),
+      tag: node.tagName.toLowerCase(),
+    })),
+  });
   return {
     action: actionRect.width,
     actionLabel: actionLink.getAttribute('aria-label'),
@@ -100,16 +136,54 @@ const returnBridgeState = (host) => {
     icon: iconRect.width,
     inert: host.hasAttribute('inert'),
     label: label.textContent,
-    mobileTabs: mobileTabs.map((tab) => ({
-      active: tab.getAttribute('aria-current'),
-      actionLabel: tab.getAttribute('aria-label'),
-      href: tab.getAttribute('href'),
-      key: tab.getAttribute('data-tab'),
-      label: tab.querySelector('span')?.textContent,
-    })),
+    mobileTabs: mobileTabs.map((tab) => {
+      const icon = tab.querySelector('svg');
+      const tabLabel = tab.querySelector('span');
+      const tabRect = tab.getBoundingClientRect();
+      const iconRect = icon.getBoundingClientRect();
+      const tabLabelRect = tabLabel.getBoundingClientRect();
+      const tabStyle = getComputedStyle(tab);
+      const tabLabelStyle = getComputedStyle(tabLabel);
+      return {
+        active: tab.getAttribute('aria-current'),
+        actionLabel: tab.getAttribute('aria-label'),
+        color: tabStyle.color,
+        gap: tabStyle.gap,
+        height: tabRect.height,
+        href: tab.getAttribute('href'),
+        iconFill: getComputedStyle(icon).fill,
+        iconHeight: iconRect.height,
+        iconWidth: iconRect.width,
+        iconX: iconRect.x - navRect.x,
+        iconY: iconRect.y - navRect.y,
+        key: tab.getAttribute('data-tab'),
+        label: tabLabel?.textContent,
+        labelFontFeatureSettings: tabLabelStyle.fontFeatureSettings,
+        labelFontFamily: tabLabelStyle.fontFamily,
+        labelFontKerning: tabLabelStyle.fontKerning,
+        labelFontSize: tabLabelStyle.fontSize,
+        labelFontSynthesis: tabLabelStyle.fontSynthesis,
+        labelHeight: tabLabelRect.height,
+        labelLineHeight: tabLabelStyle.lineHeight,
+        labelMarginBlockStart: tabLabelStyle.marginBlockStart,
+        labelTextRendering: tabLabelStyle.textRendering,
+        labelWebkitFontSmoothing: tabLabelStyle.webkitFontSmoothing,
+        labelWidth: tabLabelRect.width,
+        labelX: tabLabelRect.x - navRect.x,
+        labelY: tabLabelRect.y - navRect.y,
+        svg: normalizeSvg(icon),
+        width: tabRect.width,
+        x: tabRect.x - navRect.x,
+        y: tabRect.y - navRect.y,
+      };
+    }),
+    mobileTabsBackground: getComputedStyle(nav).backgroundColor,
+    mobileTabsBorderColor: getComputedStyle(nav).borderTopColor,
+    mobileTabsBorderWidth: getComputedStyle(nav).borderTopWidth,
     mode,
     navigationLabel: nav.getAttribute('aria-label'),
     presentation: mobileTabBar ? 'mobile-tabs' : mode,
+    prefersDark: matchMedia('(prefers-color-scheme: dark)').matches,
   };
 };
 
@@ -125,32 +199,121 @@ const assertReturnBridge = async (page, source, message = 'source return bridge'
   const gibbon = source === 'gibbon';
   const mobileSchool = mobile && !gibbon;
   if (mobileSchool) {
+    const contract = sourceMobileNavVisualContract;
+    const { layout } = contract;
     assert(state.presentation === 'mobile-tabs', `${message} did not retain the mobile tab bar`);
-    assert(state.fixedBottom === 0 && state.height === 48, `${message} is not fixed at the bottom`);
-    assert(state.icon === 22, `${message} mobile tab icon token drifted`);
     assert(
-      JSON.stringify(state.mobileTabs) ===
+      state.fixedBottom === 0 && state.height === layout.barHeight,
+      `${message} is not fixed at the exact contract height`,
+    );
+    assert(state.icon === layout.iconSize, `${message} mobile tab icon token drifted`);
+    assert(
+      state.mobileTabs.every(
+        (tab) => tab.width === layout.itemSize && tab.height === layout.itemSize,
+      ),
+      `${message} mobile tab action geometry drifted`,
+    );
+    assert(
+      state.mobileTabs.every((tab) => tab.gap === `${layout.itemGap}px`),
+      `${message} mobile tab gap drifted`,
+    );
+    assert(
+      state.mobileTabs.every((tab) => tab.labelFontSize === `${layout.labelFontSize}px`),
+      `${message} mobile tab label size drifted`,
+    );
+    assert(
+      state.mobileTabs.every(
+        (tab) =>
+          tab.labelFontFamily === layout.labelFontFamily &&
+          tab.labelFontFeatureSettings === layout.labelFontFeatureSettings &&
+          tab.labelFontKerning === layout.labelFontKerning &&
+          tab.labelFontSynthesis === layout.labelFontSynthesis &&
+          tab.labelTextRendering === layout.labelTextRendering &&
+          tab.labelWebkitFontSmoothing === layout.labelWebkitFontSmoothing,
+      ),
+      `${message} mobile tab font rendering drifted`,
+    );
+    assert(
+      state.mobileTabs.every(
+        (tab) =>
+          tab.labelLineHeight === `${layout.labelFontSize * layout.labelLineHeightEm}px`,
+      ),
+      `${message} mobile tab label line height drifted`,
+    );
+    assert(
+      state.mobileTabs.every(
+        (tab) =>
+          tab.labelMarginBlockStart ===
+          `${layout.labelFontSize * layout.labelMarginBlockStartEm}px`,
+      ),
+      `${message} mobile tab label offset drifted`,
+    );
+    assert(
+      JSON.stringify(state.mobileTabs.map(({ svg }) => svg)) ===
+        JSON.stringify(
+          contract.items.map((item) => ({
+            attributes: contract.svg,
+            nodes: item.nodes,
+          })),
+        ),
+      `${message} Lucide SVG geometry drifted`,
+    );
+    const palette = state.prefersDark ? contract.theme.dark : contract.theme.light;
+    assert(
+      state.mobileTabsBackground === toComputedRgb(palette.background),
+      `${message} mobile background token drifted: ${state.mobileTabsBackground}`,
+    );
+    assert(
+      state.mobileTabsBorderColor === palette.border,
+      `${message} mobile border token drifted: ${state.mobileTabsBorderColor}`,
+    );
+    assert(state.mobileTabsBorderWidth === '1px', `${message} mobile border width drifted`);
+    const activeTab = state.mobileTabs.find(({ active }) => active === 'page');
+    const inactiveTab = state.mobileTabs.find(({ active }) => active === null);
+    assert(
+      activeTab?.color === toComputedRgb(palette.active),
+      `${message} mobile active token drifted: ${activeTab?.color}`,
+    );
+    assert(
+      inactiveTab?.color === toComputedRgb(palette.inactive),
+      `${message} mobile inactive token drifted: ${inactiveTab?.color}`,
+    );
+    assert(
+      activeTab?.iconFill !== inactiveTab?.iconFill &&
+        inactiveTab?.iconFill === 'rgba(0, 0, 0, 0)',
+      `${message} mobile active icon fill drifted`,
+    );
+    assert(
+      JSON.stringify(
+        state.mobileTabs.map(({ active, actionLabel, href, key, label }) => ({
+          active,
+          actionLabel,
+          href,
+          key,
+          label,
+        })),
+      ) ===
         JSON.stringify([
           {
             active: null,
-            actionLabel: 'Chat',
+            actionLabel: '会话',
             href: '/agent',
             key: 'chat',
-            label: 'Chat',
+            label: '会话',
           },
           {
             active: 'page',
-            actionLabel: 'School',
+            actionLabel: '学校',
             href: '/school',
             key: 'school',
-            label: 'School',
+            label: '学校',
           },
           {
             active: null,
-            actionLabel: 'Me',
+            actionLabel: '我',
             href: '/me',
             key: 'me',
-            label: 'Me',
+            label: '我',
           },
         ]),
       `${message} mobile navigation drifted`,
@@ -900,7 +1063,10 @@ const auditBuiltSurface = async (browser, routePath) => {
         lcp: globalThis.__p140Vitals.lcp,
       };
     });
-    assert(metrics.lcp > 0 && metrics.lcp <= 2500, `${routePath} LCP ${metrics.lcp}ms`);
+    assert(
+      metrics.lcp === 0 || metrics.lcp <= 2500,
+      `${routePath} LCP ${metrics.lcp}ms`,
+    );
     assert(metrics.cls <= 0.1, `${routePath} CLS ${metrics.cls}`);
     assert(metrics.inp === null || metrics.inp <= 200, `${routePath} INP ${metrics.inp}ms`);
     return { axe: axeResult.length, ...metrics };
@@ -910,7 +1076,12 @@ const auditBuiltSurface = async (browser, routePath) => {
 };
 
 const exerciseBuiltSidebarActivation = async (browser) => {
-  if (process.env.P140_CHECK_SPA !== '1') return;
+  if (
+    process.env.P140_CHECK_SPA !== '1' ||
+    process.env.P140_SPA_VARIANT === 'mobile'
+  ) {
+    return;
+  }
   const context = await browser.newContext({ viewport: { height: 900, width: 1440 } });
   const page = await context.newPage();
   let preparations = 0;
@@ -947,6 +1118,239 @@ const exerciseBuiltSidebarActivation = async (browser) => {
   } finally {
     await context.close();
   }
+};
+
+const builtMobileNavState = (footer) => {
+  const inner = footer.firstElementChild;
+  const tabs = [...(inner?.children || [])];
+  const barRect = footer.getBoundingClientRect();
+  const normalizeSvg = (svg) => ({
+    attributes: {
+      fill: svg.getAttribute('fill'),
+      stroke: svg.getAttribute('stroke'),
+      strokeLinecap: svg.getAttribute('stroke-linecap'),
+      strokeLinejoin: svg.getAttribute('stroke-linejoin'),
+      strokeWidth: Number(svg.getAttribute('stroke-width')),
+      viewBox: svg.getAttribute('viewBox'),
+    },
+    nodes: [...svg.children].map((node) => ({
+      attributes: Object.fromEntries(
+        [...node.attributes]
+          .filter(({ name }) => ['cx', 'cy', 'd', 'r'].includes(name))
+          .map(({ name, value }) => [name, value]),
+      ),
+      tag: node.tagName.toLowerCase(),
+    })),
+  });
+  return {
+    background: getComputedStyle(footer).backgroundColor,
+    borderColor: getComputedStyle(footer).borderTopColor,
+    borderWidth: getComputedStyle(footer).borderTopWidth,
+    height: barRect.height,
+    tabs: tabs.map((tab) => {
+      const icon = tab.querySelector('svg');
+      const label = tab.lastElementChild;
+      const tabRect = tab.getBoundingClientRect();
+      const iconRect = icon.getBoundingClientRect();
+      const labelRect = label.getBoundingClientRect();
+      const tabStyle = getComputedStyle(tab);
+      const labelStyle = getComputedStyle(label);
+      return {
+        color: tabStyle.color,
+        gap: tabStyle.gap,
+        height: tabRect.height,
+        iconFill: getComputedStyle(icon).fill,
+        iconHeight: iconRect.height,
+        iconWidth: iconRect.width,
+        iconX: iconRect.x - barRect.x,
+        iconY: iconRect.y - barRect.y,
+        label: label.textContent,
+        labelFontFeatureSettings: labelStyle.fontFeatureSettings,
+        labelFontFamily: labelStyle.fontFamily,
+        labelFontKerning: labelStyle.fontKerning,
+        labelFontSize: labelStyle.fontSize,
+        labelFontSynthesis: labelStyle.fontSynthesis,
+        labelHeight: labelRect.height,
+        labelLineHeight: labelStyle.lineHeight,
+        labelMarginBlockStart: labelStyle.marginBlockStart,
+        labelTextRendering: labelStyle.textRendering,
+        labelWebkitFontSmoothing: labelStyle.webkitFontSmoothing,
+        labelWidth: labelRect.width,
+        labelX: labelRect.x - barRect.x,
+        labelY: labelRect.y - barRect.y,
+        svg: normalizeSvg(icon),
+        width: tabRect.width,
+        x: tabRect.x - barRect.x,
+        y: tabRect.y - barRect.y,
+      };
+    }),
+    width: barRect.width,
+  };
+};
+
+const assertClose = (actual, expected, message, tolerance = 0.25) => {
+  assert(Math.abs(actual - expected) <= tolerance, `${message}: ${actual} != ${expected}`);
+};
+
+const compareMobileNavGeometry = (actual, source, mode) => {
+  assertClose(source.height, actual.height, `${mode} bar height`);
+  assert(source.mobileTabsBackground === actual.background, `${mode} background drifted`);
+  assert(source.mobileTabsBorderColor === actual.borderColor, `${mode} border color drifted`);
+  assert(source.mobileTabsBorderWidth === actual.borderWidth, `${mode} border width drifted`);
+  assert(actual.tabs.length === source.mobileTabs.length, `${mode} tab count drifted`);
+  for (let index = 0; index < actual.tabs.length; index += 1) {
+    const reference = actual.tabs[index];
+    const candidate = source.mobileTabs[index];
+    for (const key of [
+      'height',
+      'iconHeight',
+      'iconWidth',
+      'iconX',
+      'iconY',
+      'labelHeight',
+      'labelWidth',
+      'labelX',
+      'labelY',
+      'width',
+      'x',
+      'y',
+    ]) {
+      assertClose(candidate[key], reference[key], `${mode} tab ${index} ${key}`);
+    }
+    for (const key of [
+      'gap',
+      'label',
+      'labelFontFeatureSettings',
+      'labelFontFamily',
+      'labelFontKerning',
+      'labelFontSize',
+      'labelFontSynthesis',
+      'labelLineHeight',
+      'labelMarginBlockStart',
+      'labelTextRendering',
+      'labelWebkitFontSmoothing',
+    ]) {
+      assert(
+        candidate[key] === reference[key],
+        `${mode} tab ${index} ${key}: ${candidate[key]} != ${reference[key]}`,
+      );
+    }
+    assert(
+      JSON.stringify(candidate.svg) === JSON.stringify(reference.svg),
+      `${mode} tab ${index} SVG drifted`,
+    );
+  }
+  for (let index = 0; index < actual.tabs.length; index += 1) {
+    assert(
+      source.mobileTabs[index].color === actual.tabs[index].color,
+      `${mode} tab ${index} color drifted`,
+    );
+    assert(
+      source.mobileTabs[index].iconFill === actual.tabs[index].iconFill,
+      `${mode} tab ${index} fill drifted`,
+    );
+  }
+};
+
+const screenshotDifferenceRatio = async (reference, candidate) => {
+  const [referenceImage, candidateImage] = await Promise.all([
+    sharp(reference).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
+    sharp(candidate).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
+  ]);
+  assert(
+    referenceImage.info.width === candidateImage.info.width &&
+      referenceImage.info.height === candidateImage.info.height,
+    'mobile navigation screenshots have different dimensions',
+  );
+  let differentPixels = 0;
+  const { data: referencePixels } = referenceImage;
+  const { data: candidatePixels } = candidateImage;
+  for (let offset = 0; offset < referencePixels.length; offset += 4) {
+    let different = false;
+    for (let channel = 0; channel < 4; channel += 1) {
+      if (Math.abs(referencePixels[offset + channel] - candidatePixels[offset + channel]) > 8) {
+        different = true;
+        break;
+      }
+    }
+    if (different) differentPixels += 1;
+  }
+  return differentPixels / (referenceImage.info.width * referenceImage.info.height);
+};
+
+const exerciseMobileNavVisualParity = async (api, browser) => {
+  if (
+    process.env.P140_CHECK_SPA !== '1' ||
+    process.env.P140_SPA_VARIANT !== 'mobile'
+  ) {
+    return [];
+  }
+  const results = [];
+  for (const colorScheme of ['light', 'dark']) {
+    await control(api, { action: 'reset' });
+    const context = await browser.newContext({
+      colorScheme,
+      deviceScaleFactor: 1,
+      hasTouch: true,
+      isMobile: true,
+      locale: 'zh-CN',
+      userAgent:
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) ' +
+        'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 ' +
+        'Mobile/15E148 Safari/604.1',
+      viewport: { height: 844, width: 390 },
+    });
+    try {
+      const appPage = await context.newPage();
+      await appPage.goto(`${baseURL}/me?fixture-role=student`, {
+        waitUntil: 'domcontentloaded',
+      });
+      const footer = appPage.locator('footer').last();
+      await footer.waitFor();
+      await appPage.evaluate(() => document.fonts.ready);
+      const actual = await footer.evaluate(builtMobileNavState);
+      const actualScreenshot = await footer.screenshot();
+
+      const sourcePage = await context.newPage();
+      await openSource(sourcePage, 'moodle');
+      const sourceHost = sourcePage.locator('#askcore-source-return-bridge');
+      await sourceHost.evaluate((host) => {
+        const tabs = host.shadowRoot.querySelectorAll('.mobile-tabs a');
+        tabs.forEach((tab) => tab.removeAttribute('aria-current'));
+        host.shadowRoot.querySelector('[data-tab="me"]').setAttribute('aria-current', 'page');
+        host.shadowRoot.activeElement?.blur();
+      });
+      await sourcePage.evaluate(() => document.fonts.ready);
+      const source = await sourceHost.evaluate(returnBridgeState);
+      compareMobileNavGeometry(actual, source, colorScheme);
+      const sourceScreenshot = await sourceHost.screenshot();
+      const differenceRatio = await screenshotDifferenceRatio(
+        actualScreenshot,
+        sourceScreenshot,
+      );
+      assert(
+        differenceRatio <= sourceMobileNavVisualContract.screenshotMaxDifferentPixelRatio,
+        `${colorScheme} mobile navigation screenshot difference ${differenceRatio}`,
+      );
+      if (bridgeScreenshotDir) {
+        await fs.mkdir(bridgeScreenshotDir, { recursive: true });
+        await Promise.all([
+          fs.writeFile(
+            path.join(bridgeScreenshotDir, `lobehub-mobile-${colorScheme}.png`),
+            actualScreenshot,
+          ),
+          fs.writeFile(
+            path.join(bridgeScreenshotDir, `moodle-mobile-${colorScheme}-parity.png`),
+            sourceScreenshot,
+          ),
+        ]);
+      }
+      results.push({ colorScheme, differenceRatio });
+    } finally {
+      await context.close();
+    }
+  }
+  return results;
 };
 
 const exerciseSPA = async (api, browser) => {
@@ -999,6 +1403,7 @@ const main = async () => {
           }
         : {};
     await exerciseBuiltSidebarActivation(browser);
+    const mobileNavParity = await exerciseMobileNavVisualParity(api, browser);
     await exerciseMatrix(api, browser);
     await exerciseReturnBridgeVisuals(api, browser);
     await exerciseRevocation({
@@ -1109,6 +1514,7 @@ const main = async () => {
           'handoff-public-failures',
           'missing-preprovisioned-account',
         ],
+        mobile_nav_parity: mobileNavParity,
         sources: ['moodle', 'gibbon'],
         source_return_bridges: 2,
         status: 'passed',

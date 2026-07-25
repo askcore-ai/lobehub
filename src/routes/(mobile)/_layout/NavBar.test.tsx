@@ -32,8 +32,14 @@ vi.mock('@lobehub/ui', () => ({
 }));
 
 vi.mock('@lobehub/ui/mobile', () => ({
-  TabBar: ({ items }: { items: { onClick: () => void; title: string }[] }) => (
-    <nav>
+  TabBar: ({
+    height,
+    items,
+  }: {
+    height: number;
+    items: { key: string; onClick: () => void; title: string }[];
+  }) => (
+    <nav data-height={height} data-keys={items.map(({ key }) => key).join(',')}>
       {items.map((item) => (
         <button key={item.title} type="button" onClick={item.onClick}>
           {item.title}
@@ -62,6 +68,8 @@ describe('P140 mobile navigation', () => {
     expect(screen.getByRole('button', { name: 'setting:group.school' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'tab.me' })).toBeVisible();
     expect(screen.queryByRole('button', { name: 'tab.community' })).not.toBeInTheDocument();
+    expect(screen.getByRole('navigation')).toHaveAttribute('data-height', '48');
+    expect(screen.getByRole('navigation')).toHaveAttribute('data-keys', 'chat,school,me');
 
     fireEvent.click(screen.getByRole('button', { name: 'setting:group.school' }));
 
@@ -80,5 +88,15 @@ describe('P140 mobile navigation', () => {
     await waitFor(() => {
       expect(mocks.navigate).toHaveBeenCalledWith('/school');
     });
+  });
+
+  it('uses the generated contract destinations for Chat and Me', () => {
+    render(<NavBar />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'tab.chat' }));
+    fireEvent.click(screen.getByRole('button', { name: 'tab.me' }));
+
+    expect(mocks.navigate).toHaveBeenNthCalledWith(1, '/agent');
+    expect(mocks.navigate).toHaveBeenNthCalledWith(2, '/me');
   });
 });
