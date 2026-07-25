@@ -4,8 +4,14 @@ import '@testing-library/jest-dom/vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const useSession = vi.hoisted(() => vi.fn());
+const { setSchoolHandoffSessionState, useSession } = vi.hoisted(() => ({
+  setSchoolHandoffSessionState: vi.fn(),
+  useSession: vi.fn(),
+}));
 vi.mock('@/libs/better-auth/auth-client', () => ({ useSession }));
+vi.mock('@/business/client/AskCoreSchoolPortal/handoffClient', () => ({
+  setSchoolHandoffSessionState,
+}));
 
 const messages: unknown[] = [];
 class FakeBroadcastChannel {
@@ -16,6 +22,7 @@ class FakeBroadcastChannel {
 describe('P140 school session generation notifier', () => {
   beforeEach(() => {
     messages.length = 0;
+    setSchoolHandoffSessionState.mockReset();
     window.localStorage.clear();
     window.sessionStorage.clear();
     vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
@@ -36,6 +43,10 @@ describe('P140 school session generation notifier', () => {
       sessionState: 'stable',
       type: 'generation-changed',
     });
+    expect(setSchoolHandoffSessionState).toHaveBeenCalledWith(
+      'stable',
+      expect.any(String),
+    );
     expect(view.container.querySelector('iframe')).toBeNull();
 
     session = { session: { id: 'session-b' }, user: { id: 'account-b' } };
@@ -85,6 +96,7 @@ describe('P140 school session generation notifier', () => {
         type: 'generation-changed',
       }),
     );
+    expect(setSchoolHandoffSessionState).toHaveBeenLastCalledWith('unstable', null);
 
     session = { session: { id: 'session-b' }, user: { id: 'account-b' } };
     isRefetching = false;

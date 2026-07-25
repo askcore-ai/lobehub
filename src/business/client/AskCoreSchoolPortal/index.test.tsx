@@ -2,11 +2,30 @@
 import '@testing-library/jest-dom/vitest';
 
 import { ConfigProvider } from '@lobehub/ui';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import * as m from 'motion/react-m';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AskCoreSchoolPortalRoute } from './index';
+
+const mocks = vi.hoisted(() => ({
+  cancel: vi.fn(),
+  enter: vi.fn(),
+  SchoolHandoffError: class extends Error {
+    status: number;
+
+    constructor(status: number) {
+      super('school handoff unavailable');
+      this.status = status;
+    }
+  },
+}));
+
+vi.mock('./handoffClient', () => ({
+  cancelSchoolSourceHandoff: mocks.cancel,
+  enterSchoolSource: mocks.enter,
+  SchoolHandoffError: mocks.SchoolHandoffError,
+}));
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -21,31 +40,46 @@ const renderRoute = () =>
 
 describe('P140 direct School / Learning Space entry', () => {
   beforeEach(() => {
-    vi.spyOn(HTMLFormElement.prototype, 'requestSubmit').mockImplementation(() => {});
+    mocks.cancel.mockReset();
+    mocks.enter.mockReset();
+    mocks.enter.mockReturnValue(new Promise(() => {}));
   });
 
   afterEach(() => {
     cleanup();
-    vi.restoreAllMocks();
   });
 
-  it('posts once from /school directly to the Moodle handoff', async () => {
+  it('prepares Moodle without rendering a visible success intermediary', async () => {
     const view = renderRoute();
 
-    await waitFor(() =>
-      expect(HTMLFormElement.prototype.requestSubmit).toHaveBeenCalledTimes(1),
-    );
+    await waitFor(() => expect(mocks.enter).toHaveBeenCalledWith('moodle'));
     expect(
-      screen.getByRole('heading', { name: 'schoolPortal.handoff.moodle.title' }),
-    ).toBeVisible();
-    expect(view.container.querySelector('form')).toHaveAttribute(
-      'action',
-      '/api/askcore/school/handoff',
+      screen.queryByRole('heading', { name: 'schoolPortal.handoff.moodle.title' }),
+    ).not.toBeInTheDocument();
+    expect(view.container.querySelector('form')).toBeNull();
+    expect(view.container.querySelector('iframe')).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'schoolPortal.handoff.moodle.message',
     );
-    expect(view.container.querySelector('input[name="source"]')).toHaveValue('moodle');
-    for (const icon of view.container.querySelectorAll('svg')) {
-      expect(icon).toHaveAttribute('aria-hidden', 'true');
-    }
+  });
+
+  it('shows the accessible /school recovery surface only after preparation fails', async () => {
+    mocks.enter.mockRejectedValueOnce(new mocks.SchoolHandoffError(503));
+    renderRoute();
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'schoolPortal.state.unavailable.title',
+      }),
+    ).toBeVisible();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'schoolPortal.state.unavailable.message',
+    );
+    mocks.enter.mockReturnValueOnce(new Promise(() => {}));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'schoolPortal.connection.refresh' }),
+    );
+    expect(mocks.enter).toHaveBeenCalledTimes(2);
   });
 
   it('contains no duplicate school dashboard, plan card, or source iframe', () => {

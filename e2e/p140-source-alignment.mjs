@@ -7,6 +7,7 @@ import axe from 'axe-core';
 import { renderHandoffFailureDocument } from '../src/app/(backend)/api/askcore/school/handoff/document.ts';
 
 const baseURL = (process.env.P140_BASE_URL || 'http://127.0.0.1:3010').replace(/\/$/, '');
+const bridgeScreenshotDir = process.env.P140_BRIDGE_SCREENSHOT_DIR || '';
 const screenshotPath = process.env.P140_GUARD_SCREENSHOT || '';
 const vitalsObserver = () => {
   globalThis.__p140Vitals = { cls: 0, interactions: [], lcp: 0 };
@@ -48,6 +49,60 @@ const createPage = async (browser, viewport = { height: 900, width: 1440 }) => {
   return { context, page: await context.newPage() };
 };
 
+const returnBridgeState = (host) => {
+  const shadow = host.shadowRoot;
+  const home = shadow?.querySelector('a');
+  const homeIcon = shadow?.querySelector('.home');
+  const label = shadow?.querySelector('.label');
+  const nav = shadow?.querySelector('nav');
+  if (!shadow || !home || !homeIcon || !label || !nav) return null;
+  const homeRect = home.getBoundingClientRect();
+  const hostRect = host.getBoundingClientRect();
+  const iconRect = homeIcon.getBoundingClientRect();
+  return {
+    action: homeRect.width,
+    ariaHidden: host.getAttribute('aria-hidden'),
+    background: getComputedStyle(nav).backgroundColor,
+    fixedTop: hostRect.top,
+    height: hostRect.height,
+    homeLabel: home.getAttribute('aria-label'),
+    href: home.getAttribute('href'),
+    icon: iconRect.width,
+    inert: host.hasAttribute('inert'),
+    label: label.textContent,
+    navigationLabel: nav.getAttribute('aria-label'),
+  };
+};
+
+const assertReturnBridge = async (page, message = 'source return bridge') => {
+  await page.waitForFunction(() => document.querySelector('#askcore-source-return-bridge')?.shadowRoot);
+  assert(
+    (await page.locator('#askcore-source-return-bridge').count()) === 1,
+    `${message} is not unique`,
+  );
+  const state = await page.locator('#askcore-source-return-bridge').evaluate(returnBridgeState);
+  assert(state, `${message} shadow content is incomplete`);
+  const mobile = (page.viewportSize()?.width || 1440) <= 767;
+  assert(state.href === '/', `${message} destination is not fixed to AskCore home`);
+  assert(state.label === 'School / Learning Space', `${message} label drifted`);
+  assert(state.navigationLabel === 'AskCore navigation', `${message} navigation has no name`);
+  assert(state.homeLabel === 'Return to AskCore home', `${message} home action has no name`);
+  assert(!state.inert && state.ariaHidden === null, `${message} was covered by source guard`);
+  assert(state.fixedTop === 0 && state.height === 44, `${message} is not fixed at the source top`);
+  assert(state.action === (mobile ? 36 : 28), `${message} action token drifted`);
+  assert(state.icon === (mobile ? 22 : 16), `${message} icon token drifted`);
+  await page.locator('#askcore-source-return-bridge').evaluate((host) => {
+    host.shadowRoot.querySelector('a').focus();
+  });
+  assert(
+    await page.locator('#askcore-source-return-bridge').evaluate(
+      (host) => host.shadowRoot.activeElement === host.shadowRoot.querySelector('a'),
+    ),
+    `${message} home action is not keyboard focusable`,
+  );
+  return state;
+};
+
 const openSource = async (page, source, role = 'student') => {
   await page.goto(
     `${baseURL}/__p140/start?source=${source}&fixture-role=${role}`,
@@ -67,6 +122,7 @@ const openSource = async (page, source, role = 'student') => {
   assert(state.ariaHidden === null && !state.inert, `${source} content stayed covered`);
   assert((await page.locator('#source-action').getAttribute('aria-label')) === null, 'unexpected label');
   assert((await page.locator('#source-action').textContent()) === 'Source action', 'missing control name');
+  await assertReturnBridge(page, `${source} return bridge`);
 };
 
 const assertCovered = async (page, message) => {
@@ -79,6 +135,7 @@ const assertCovered = async (page, message) => {
     inert: node.hasAttribute('inert'),
   }));
   assert(covered.inert && covered.ariaHidden === 'true', message);
+  await assertReturnBridge(page, `${message} return bridge`);
 };
 
 const waitForClosedSource = async (page, source, api) => {
@@ -392,6 +449,90 @@ const exerciseMatrix = async (api, browser) => {
   }
 };
 
+const exerciseReturnBridgeVisuals = async (api, browser) => {
+  const cases = [
+    {
+      colorScheme: 'light',
+      name: 'moodle-desktop-light',
+      source: 'moodle',
+      viewport: { height: 900, width: 1440 },
+    },
+    {
+      colorScheme: 'dark',
+      name: 'gibbon-desktop-dark',
+      source: 'gibbon',
+      viewport: { height: 900, width: 1440 },
+    },
+    {
+      colorScheme: 'light',
+      name: 'moodle-mobile-light',
+      source: 'moodle',
+      viewport: { height: 844, width: 390 },
+    },
+  ];
+  for (const visual of cases) {
+    await control(api, { action: 'reset' });
+    const context = await browser.newContext({
+      colorScheme: visual.colorScheme,
+      viewport: visual.viewport,
+    });
+    const page = await context.newPage();
+    try {
+      await openSource(page, visual.source);
+      await page.goto(`${baseURL}/__p140/source/${visual.source}/deep?fixture-role=student`);
+      await page.waitForFunction(() =>
+        document.documentElement.classList.contains('askcore-session-ready'),
+      );
+      const state = await assertReturnBridge(page, `${visual.name} return bridge`);
+      if (visual.colorScheme === 'dark') {
+        assert(
+          state.background === 'rgb(31, 32, 36)',
+          `dark return bridge background drifted: ${state.background}`,
+        );
+      }
+      if (bridgeScreenshotDir) {
+        await fs.mkdir(bridgeScreenshotDir, { recursive: true });
+        await page.screenshot({
+          path: path.join(bridgeScreenshotDir, `${visual.name}.png`),
+        });
+      }
+      await page.locator('#askcore-source-return-bridge a').hover();
+      const hoverBackground = await page
+        .locator('#askcore-source-return-bridge')
+        .evaluate((host) =>
+          getComputedStyle(host.shadowRoot.querySelector('a')).backgroundColor,
+        );
+      assert(
+        hoverBackground ===
+          (visual.colorScheme === 'dark' ? 'rgb(48, 50, 56)' : 'rgb(233, 234, 237)'),
+        `${visual.name} hover state drifted: ${hoverBackground}`,
+      );
+      if (bridgeScreenshotDir) {
+        await page.screenshot({
+          path: path.join(bridgeScreenshotDir, `${visual.name}-hover.png`),
+        });
+      }
+      if (visual.name === 'moodle-desktop-light') {
+        await page.locator('#askcore-source-return-bridge a').click();
+        await page.waitForURL(`${baseURL}/`);
+      }
+    } finally {
+      await context.close();
+    }
+  }
+
+  const { context, page } = await createPage(browser);
+  try {
+    await page.goto(`${baseURL}/__p140/unbound-source`);
+    assert(
+      (await page.locator('#askcore-source-return-bridge').count()) === 0,
+      'return bridge leaked onto an unbound source page',
+    );
+  } finally {
+    await context.close();
+  }
+};
+
 const exerciseFailures = async (api, browser) => {
   for (const failure of ['moodle', 'gibbon', 'identity', 'broker']) {
     await control(api, { action: 'reset' });
@@ -509,13 +650,22 @@ const auditBuiltSurface = async (browser, routePath) => {
   });
   const page = await context.newPage();
   await page.addInitScript(() => {
-    const requestSubmit = HTMLFormElement.prototype.requestSubmit;
-    HTMLFormElement.prototype.requestSubmit = function (...args) {
-      if (new URL(this.action, location.href).pathname === '/api/askcore/school/handoff') {
-        this.dataset.p140AutoSubmitObserved = 'true';
+    const nativeSubmit = HTMLFormElement.prototype.submit;
+    HTMLFormElement.prototype.submit = function () {
+      const action = new URL(this.action, location.href);
+      if (
+        action.pathname === '/school/services/askcore/handoff.php' ||
+        action.pathname === '/school/teaching/local/askcore/handoff.php'
+      ) {
+        const grant = new FormData(this).get('grant');
+        globalThis.__p140SourceSubmit = {
+          action: action.pathname,
+          beforePath: location.pathname,
+          grant,
+        };
         return;
       }
-      return requestSubmit.apply(this, args);
+      return nativeSubmit.call(this);
     };
   });
   await page.addInitScript(vitalsObserver);
@@ -523,34 +673,51 @@ const auditBuiltSurface = async (browser, routePath) => {
     await page.goto(`${baseURL}${routePath}?fixture-role=administrator`, {
       waitUntil: 'domcontentloaded',
     });
-    const main = page.locator('main');
-    await main.waitFor();
+    await page.waitForFunction(() => Boolean(globalThis.__p140SourceSubmit));
+    const submission = await page.evaluate(() => globalThis.__p140SourceSubmit);
+    const expectedAction =
+      routePath === '/settings/school-affairs'
+        ? '/school/services/askcore/handoff.php'
+        : '/school/teaching/local/askcore/handoff.php';
+    assert(submission.action === expectedAction, `${routePath} selected the wrong source action`);
+    assert(submission.beforePath === routePath, `${routePath} exposed a handoff intermediary`);
     assert(
-      (await main.locator('form').getAttribute('data-p140-auto-submit-observed')) === 'true',
-      `${routePath} did not request the automatic source handoff`,
+      /^[\w-]+\.[\w-]+\.[\w-]+$/.test(submission.grant),
+      `${routePath} did not prepare a bounded handoff grant`,
     );
-    const status = main.getByRole('status');
+    assert(page.url().includes(routePath), `${routePath} left the current UI before source submit`);
+    assert(
+      (await page.locator(`form[action="${expectedAction}"]`).count()) === 0,
+      `${routePath} retained a transient grant form`,
+    );
+    assert(
+      !(await page.locator('body').innerText()).includes(submission.grant),
+      `${routePath} exposed the grant in visible or accessible text`,
+    );
+    const leaked = await page.evaluate((grant) => ({
+      local: Object.values(localStorage).includes(grant),
+      query: location.href.includes(grant),
+      session: Object.values(sessionStorage).includes(grant),
+    }), submission.grant);
+    assert(
+      !leaked.local && !leaked.query && !leaked.session,
+      `${routePath} persisted or placed the grant in the URL`,
+    );
+
+    const status = page.getByRole('status');
     await status.waitFor();
     assert((await status.getAttribute('aria-live')) === 'polite', `${routePath} status is not live`);
-    const button = main.getByRole('button');
-    assert((await button.count()) === 1, `${routePath} handoff control is not unique`);
-    assert(Boolean(await button.textContent()), `${routePath} handoff control has no name`);
-
-    let reachedByKeyboard = false;
-    for (let index = 0; index < 200; index += 1) {
-      await page.keyboard.press('Tab');
-      if (await button.evaluate((node) => node === document.activeElement)) {
-        reachedByKeyboard = true;
-        break;
-      }
-    }
-    assert(reachedByKeyboard, `${routePath} handoff control is not keyboard reachable`);
+    const statusBox = await status.boundingBox();
     assert(
-      await button.evaluate((node) => node.matches(':focus-visible')),
-      `${routePath} handoff control has no visible keyboard focus`,
+      statusBox && statusBox.width <= 1 && statusBox.height <= 1,
+      `${routePath} rendered a visible handoff intermediary`,
+    );
+    assert(
+      (await page.getByRole('button', { name: /continue|继续|重试|retry/i }).count()) === 0,
+      `${routePath} requires a visible handoff confirmation`,
     );
 
-    const animation = await main.locator('svg').first().evaluate((node) => {
+    const animation = await status.evaluate((node) => {
       const style = getComputedStyle(node);
       return { duration: style.animationDuration, name: style.animationName };
     });
@@ -564,7 +731,7 @@ const auditBuiltSurface = async (browser, routePath) => {
     assert(overflow <= 0, `${routePath} has horizontal overflow`);
 
     await page.addScriptTag({ content: axe.source });
-    const axeResult = await main.evaluate(async (node) => {
+    const axeResult = await status.evaluate(async (node) => {
       const result = await globalThis.axe.run(node, {
         resultTypes: ['violations'],
         runOnly: {
@@ -595,8 +762,48 @@ const auditBuiltSurface = async (browser, routePath) => {
     });
     assert(metrics.lcp > 0 && metrics.lcp <= 2500, `${routePath} LCP ${metrics.lcp}ms`);
     assert(metrics.cls <= 0.1, `${routePath} CLS ${metrics.cls}`);
-    assert(metrics.inp !== null && metrics.inp <= 200, `${routePath} INP ${metrics.inp}ms`);
+    assert(metrics.inp === null || metrics.inp <= 200, `${routePath} INP ${metrics.inp}ms`);
     return { axe: axeResult.length, ...metrics };
+  } finally {
+    await context.close();
+  }
+};
+
+const exerciseBuiltSidebarActivation = async (browser) => {
+  if (process.env.P140_CHECK_SPA !== '1') return;
+  const context = await browser.newContext({ viewport: { height: 900, width: 1440 } });
+  const page = await context.newPage();
+  let preparations = 0;
+  await page.route('**/api/askcore/school/handoff', async (route) => {
+    preparations += 1;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await route.continue();
+  });
+  await page.addInitScript(() => {
+    const nativeSubmit = HTMLFormElement.prototype.submit;
+    HTMLFormElement.prototype.submit = function () {
+      const action = new URL(this.action, location.href);
+      if (action.pathname === '/school/teaching/local/askcore/handoff.php') {
+        globalThis.__p140SourceSubmit = {
+          action: action.pathname,
+          beforePath: location.pathname,
+        };
+        return;
+      }
+      return nativeSubmit.call(this);
+    };
+  });
+  try {
+    await page.goto(`${baseURL}/?fixture-role=student`, { waitUntil: 'domcontentloaded' });
+    const schoolEntry = page.locator('a[href="/school"]:visible').first();
+    await schoolEntry.waitFor();
+    await schoolEntry.click();
+    await schoolEntry.click();
+    await page.waitForFunction(() => Boolean(globalThis.__p140SourceSubmit));
+    const submission = await page.evaluate(() => globalThis.__p140SourceSubmit);
+    assert(submission.beforePath === '/', 'sidebar activation displayed the /school intermediary');
+    assert(page.url().includes('/?fixture-role=student'), 'sidebar activation replaced the AskCore UI');
+    assert(preparations === 1, `repeated sidebar activation prepared ${preparations} handoffs`);
   } finally {
     await context.close();
   }
@@ -651,7 +858,9 @@ const main = async () => {
             school_affairs: await auditBuiltSurface(browser, '/settings/school-affairs'),
           }
         : {};
+    await exerciseBuiltSidebarActivation(browser);
     await exerciseMatrix(api, browser);
+    await exerciseReturnBridgeVisuals(api, browser);
     await exerciseRevocation({
       api,
       browser,
@@ -734,6 +943,11 @@ const main = async () => {
         bfcache_guarded: true,
         failures: 4,
         lifecycle: [
+          'invisible-handoff',
+          'serialized-repeated-activation',
+          'source-return-bridge',
+          'source-return-bridge-covered',
+          'source-return-bridge-unbound-absent',
           'refresh',
           'preserved-login-reentry',
           'account-switch',
@@ -756,7 +970,9 @@ const main = async () => {
           'missing-preprovisioned-account',
         ],
         sources: ['moodle', 'gibbon'],
+        source_return_bridges: 2,
         status: 'passed',
+        visible_handoff_intermediaries: 0,
         vitals: baselines,
         viewports: 5,
       }),

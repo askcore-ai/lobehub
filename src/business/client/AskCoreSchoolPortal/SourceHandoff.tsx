@@ -2,22 +2,17 @@
 
 import { Button } from '@lobehub/ui/base-ui';
 import { createStaticStyles, cssVar } from 'antd-style';
-import { ArrowUpRight, LoaderCircle } from 'lucide-react';
-import { memo, useEffect, useRef } from 'react';
+import { RefreshCw } from 'lucide-react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-const styles = createStaticStyles(({ css }) => ({
-  icon: css`
-    @media (prefers-reduced-motion: no-preference) {
-      animation: askcore-school-spin 1.4s linear infinite;
-    }
+import {
+  cancelSchoolSourceHandoff,
+  enterSchoolSource,
+  SchoolHandoffError,
+} from './handoffClient';
 
-    @keyframes askcore-school-spin {
-      to {
-        transform: rotate(360deg);
-      }
-    }
-  `,
+const styles = createStaticStyles(({ css }) => ({
   page: css`
     display: grid;
     place-items: center;
@@ -38,6 +33,17 @@ const styles = createStaticStyles(({ css }) => ({
 
     background: ${cssVar.colorBgContainer};
     text-align: center;
+  `,
+  srOnly: css`
+    position: absolute;
+    overflow: hidden;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    border: 0;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
   `,
   text: css`
     margin: 0;
@@ -69,36 +75,61 @@ const handoffTranslations = {
 
 export const SourceHandoff = memo<SourceHandoffProps>(({ source }) => {
   const { t } = useTranslation('common');
-  const formRef = useRef<HTMLFormElement>(null);
-  const submitted = useRef(false);
   const translations = handoffTranslations[source];
+  const [failureStatus, setFailureStatus] = useState<number>();
+  const mounted = useRef(true);
+
+  const startHandoff = useCallback(async () => {
+    setFailureStatus(undefined);
+    try {
+      await enterSchoolSource(source);
+    } catch (error) {
+      if (!mounted.current) return;
+      setFailureStatus(error instanceof SchoolHandoffError ? error.status : 503);
+    }
+  }, [source]);
 
   useEffect(() => {
-    if (submitted.current || !formRef.current) return;
-    submitted.current = true;
-    formRef.current.requestSubmit();
-  }, []);
+    mounted.current = true;
+    void startHandoff();
+    return () => {
+      mounted.current = false;
+      cancelSchoolSourceHandoff();
+    };
+  }, [startHandoff]);
+
+  if (!failureStatus) {
+    return (
+      <span aria-live="polite" className={styles.srOnly} role="status">
+        {t(translations.message)}
+      </span>
+    );
+  }
 
   return (
     <main className={styles.page}>
       <section aria-labelledby="school-handoff-title" className={styles.panel}>
-        <LoaderCircle aria-hidden className={styles.icon} size={36} />
         <h1 className={styles.title} id="school-handoff-title">
-          {t(translations.title)}
+          {t(
+            failureStatus === 401
+              ? 'schoolPortal.identity.denied'
+              : 'schoolPortal.state.unavailable.title',
+          )}
         </h1>
-        <p aria-live="polite" className={styles.text} role="status">
-          {t(translations.message)}
+        <p aria-live="assertive" className={styles.text} role="alert">
+          {t(
+            failureStatus === 401
+              ? 'schoolPortal.identity.denied'
+              : 'schoolPortal.state.unavailable.message',
+          )}
         </p>
-        <form action="/api/askcore/school/handoff" method="post" ref={formRef}>
-          <input name="source" type="hidden" value={source} />
-          <Button
-            htmlType="submit"
-            icon={<ArrowUpRight aria-hidden focusable="false" />}
-            type="primary"
-          >
-            {t(translations.continue)}
-          </Button>
-        </form>
+        <Button
+          icon={<RefreshCw aria-hidden focusable="false" />}
+          type="primary"
+          onClick={() => void startHandoff()}
+        >
+          {t('schoolPortal.connection.refresh')}
+        </Button>
       </section>
     </main>
   );

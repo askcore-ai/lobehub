@@ -16,6 +16,7 @@ type MockNavItem = { hidden?: boolean; key: string; title: string; url: string }
 
 const mocks = vi.hoisted(() => ({
   activeTabKey: 'home',
+  enterSchoolSource: vi.fn(),
   globalState: undefined as unknown as MockGlobalState,
   navLayout: {
     bottomMenuItems: [] as MockNavItem[],
@@ -77,6 +78,10 @@ vi.mock('@/features/NavPanel/components/NavItem', () => ({
   ),
 }));
 
+vi.mock('@/business/client/AskCoreSchoolPortal/handoffClient', () => ({
+  enterSchoolSource: mocks.enterSchoolSource,
+}));
+
 vi.mock('@/hooks/useActiveTabKey', () => ({
   useActiveTabKey: () => mocks.activeTabKey,
 }));
@@ -107,6 +112,8 @@ vi.mock('@/store/global', () => ({
 
 beforeEach(() => {
   mocks.activeTabKey = 'home';
+  mocks.enterSchoolSource.mockReset();
+  mocks.enterSchoolSource.mockResolvedValue('navigating');
   mocks.updateSystemStatus.mockReset();
   mocks.navigate.mockReset();
   mocks.pathname = '/';
@@ -226,7 +233,7 @@ describe('Home sidebar body', () => {
     expect(screen.queryByText('学校计费')).not.toBeInTheDocument();
   });
 
-  it('navigates the combined entry to the direct Moodle handoff route', () => {
+  it('prepares the direct Moodle handoff without changing the current AskCore route', () => {
     mocks.navLayout = {
       bottomMenuItems: [],
       topNavItems: [{ key: 'school', title: '学校/学习空间', url: '/school' }],
@@ -236,7 +243,22 @@ describe('Home sidebar body', () => {
     render(<Body />);
     fireEvent.click(screen.getByRole('link', { name: '学校/学习空间' }));
 
-    expect(mocks.navigate).toHaveBeenCalledWith('/school');
+    expect(mocks.enterSchoolSource).toHaveBeenCalledWith('moodle');
+    expect(mocks.navigate).not.toHaveBeenCalled();
+  });
+
+  it('uses /school only as the bounded recovery route after preparation fails', async () => {
+    mocks.enterSchoolSource.mockRejectedValueOnce(new Error('unavailable'));
+    mocks.navLayout = {
+      bottomMenuItems: [],
+      topNavItems: [{ key: 'school', title: '学校/学习空间', url: '/school' }],
+    };
+    mocks.globalState.status.sidebarItems = ['school'];
+
+    render(<Body />);
+    fireEvent.click(screen.getByRole('link', { name: '学校/学习空间' }));
+
+    await vi.waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith('/school'));
   });
 
   it('marks the combined school navigation item active at /school', () => {

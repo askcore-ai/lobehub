@@ -1,5 +1,3 @@
-import { randomBytes } from 'node:crypto';
-
 import { type NextRequest, NextResponse } from 'next/server';
 
 import { isAllowedAskCoreSameOriginWrite } from '@/server/services/askcoreAssertion';
@@ -11,25 +9,37 @@ import {
 import { translation } from '@/server/translation';
 import { BodyLimitError, readBoundedStream } from '@/server/utils/readBoundedStream';
 
-import {
-  handoffFailureDocumentCSP,
-  renderHandoffFailureDocument,
-  renderHandoffSuccessDocument,
-} from './document';
+import { handoffFailureDocumentCSP, renderHandoffFailureDocument } from './document';
 
 const REQUEST_BODY_MAX_BYTES = 128;
+const MAX_GRANT_LENGTH = 8192;
+const GRANT_PATTERN = /^[\w-]+\.[\w-]+\.[\w-]+$/;
+const SOURCE_ACTIONS: Record<SchoolSourceAudience, string> = {
+  gibbon: '/school/services/askcore/handoff.php',
+  moodle: '/school/teaching/local/askcore/handoff.php',
+};
 const noStoreHeaders = {
   'Cache-Control': 'private, no-store',
   'Referrer-Policy': 'no-referrer',
   'X-Content-Type-Options': 'nosniff',
 };
 
-const isTopLevelNavigation = (request: NextRequest) => {
+export const isHandoffPreparationRequest = (request: NextRequest) => {
   const origin = request.headers.get('origin');
   const site = request.headers.get('sec-fetch-site');
   const mode = request.headers.get('sec-fetch-mode');
   const destination = request.headers.get('sec-fetch-dest');
-  return Boolean(origin) && site === 'same-origin' && mode === 'navigate' && destination === 'document';
+  const accept = request.headers.get('accept') || '';
+  return (
+    Boolean(origin) &&
+    site === 'same-origin' &&
+    (mode === 'cors' || mode === 'same-origin') &&
+    destination === 'empty' &&
+    accept
+      .split(',')
+      .map((value) => value.split(';', 1)[0]?.trim().toLowerCase())
+      .includes('application/json')
+  );
 };
 
 const requestedLocale = (request: NextRequest) =>
@@ -69,100 +79,75 @@ const errorResponse = async ({
   );
 };
 
+const preparationErrorResponse = (status: number) =>
+  NextResponse.json(
+    { error: 'handoff_unavailable' },
+    {
+      headers: noStoreHeaders,
+      status,
+    },
+  );
+
 export const POST = async (request: NextRequest) => {
-  if (!isAllowedAskCoreSameOriginWrite(request) || !isTopLevelNavigation(request)) {
-    return errorResponse({
-      messageKey: 'schoolPortal.connection.unavailable',
-      request,
-      status: 403,
-    });
+  if (!isAllowedAskCoreSameOriginWrite(request) || !isHandoffPreparationRequest(request)) {
+    return preparationErrorResponse(403);
   }
   const contentType = request.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase();
   if (contentType !== 'application/x-www-form-urlencoded') {
-    return errorResponse({
-      messageKey: 'schoolPortal.connection.unavailable',
-      request,
-      status: 400,
-    });
+    return preparationErrorResponse(400);
   }
   const declaredLength = request.headers.get('content-length')?.trim();
   if (declaredLength && !/^\d+$/.test(declaredLength)) {
-    return errorResponse({
-      messageKey: 'schoolPortal.connection.unavailable',
-      request,
-      status: 400,
-    });
+    return preparationErrorResponse(400);
   }
   if (declaredLength && Number(declaredLength) > REQUEST_BODY_MAX_BYTES) {
-    return errorResponse({
-      messageKey: 'schoolPortal.connection.unavailable',
-      request,
-      status: 413,
-    });
+    return preparationErrorResponse(413);
   }
   let body: Uint8Array<ArrayBuffer>;
   try {
     body = await readBoundedStream(request.body, REQUEST_BODY_MAX_BYTES);
   } catch (error) {
-    return errorResponse({
-      messageKey: 'schoolPortal.connection.unavailable',
-      request,
-      status: error instanceof BodyLimitError ? 413 : 400,
-    });
+    return preparationErrorResponse(error instanceof BodyLimitError ? 413 : 400);
   }
   let encodedBody: string;
   try {
     encodedBody = new TextDecoder('utf-8', { fatal: true }).decode(body);
   } catch {
-    return errorResponse({
-      messageKey: 'schoolPortal.connection.unavailable',
-      request,
-      status: 400,
-    });
+    return preparationErrorResponse(400);
   }
-  const source = encodedBody === 'source=moodle' ? 'moodle' : encodedBody === 'source=gibbon' ? 'gibbon' : '';
+  const source =
+    encodedBody === 'source=moodle'
+      ? 'moodle'
+      : encodedBody === 'source=gibbon'
+        ? 'gibbon'
+        : '';
   if (source !== 'moodle' && source !== 'gibbon') {
-    return errorResponse({
-      messageKey: 'schoolPortal.connection.unavailable',
-      request,
-      status: 400,
-    });
+    return preparationErrorResponse(400);
   }
 
   try {
     const handoff = await createSourceHandoff(request.headers, source as SchoolSourceAudience);
-    const nonce = randomBytes(18).toString('base64url');
-    const { locale, t } = await translation('common', requestedLocale(request));
-    const keyPrefix = `schoolPortal.handoff.${source}` as const;
-    const html = renderHandoffSuccessDocument({
-      action: handoff.action,
-      continueLabel: t(`${keyPrefix}.continue`),
-      grant: handoff.grant,
-      locale,
-      message: t(`${keyPrefix}.message`),
-      nonce,
-      title: t(`${keyPrefix}.title`),
-    });
-    return new NextResponse(html, {
-      headers: {
-        ...noStoreHeaders,
-        'Content-Security-Policy': `default-src 'none'; form-action 'self'; script-src 'nonce-${nonce}'; base-uri 'none'; frame-ancestors 'none'`,
-        'Content-Type': 'text/html; charset=utf-8',
+    if (
+      handoff.action !== SOURCE_ACTIONS[source] ||
+      typeof handoff.grant !== 'string' ||
+      handoff.grant.length === 0 ||
+      handoff.grant.length > MAX_GRANT_LENGTH ||
+      !GRANT_PATTERN.test(handoff.grant)
+    ) {
+      return preparationErrorResponse(503);
+    }
+    return NextResponse.json(
+      {
+        action: handoff.action,
+        grant: handoff.grant,
       },
-    });
+      {
+        headers: noStoreHeaders,
+      },
+    );
   } catch (error) {
     const sessionRequired = error instanceof SchoolSessionRequiredError;
-    return errorResponse({
-      messageKey: sessionRequired
-        ? 'schoolPortal.identity.denied'
-        : 'schoolPortal.state.unavailable.message',
-      recoveryHref: source === 'gibbon' ? '/settings/school-affairs' : '/school',
-      request,
-      status: sessionRequired ? 401 : 503,
-      titleKey: sessionRequired
-        ? 'schoolPortal.identity.denied'
-        : 'schoolPortal.state.unavailable.title',
-    });
+    return preparationErrorResponse(sessionRequired ? 401 : 503);
   }
 };
 

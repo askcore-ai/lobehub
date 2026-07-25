@@ -18,17 +18,8 @@ const translation = vi.hoisted(() =>
     locale,
     t: (key: string) =>
       ({
-        'schoolPortal.handoff.gibbon.continue': 'Continue to School Affairs',
-        'schoolPortal.handoff.gibbon.message': 'Verifying Gibbon session',
-        'schoolPortal.handoff.gibbon.title': 'Entering School Affairs',
-        'schoolPortal.handoff.moodle.continue': 'Continue to School / Learning Space',
-        'schoolPortal.handoff.moodle.message': 'Verifying Moodle session',
-        'schoolPortal.handoff.moodle.title': 'Entering School / Learning Space',
         'schoolPortal.connection.refresh': 'Try again',
         'schoolPortal.connection.unavailable': 'School connection unavailable',
-        'schoolPortal.identity.denied': 'Sign in to continue',
-        'schoolPortal.state.unavailable.message': 'The school service could not be reached.',
-        'schoolPortal.state.unavailable.title': 'School service unavailable',
       })[key] || key,
   })),
 );
@@ -46,36 +37,28 @@ const request = (body = 'source=moodle', headers: Record<string, string> = {}) =
   new NextRequest('https://askcore.cn/api/askcore/school/handoff', {
     body,
     headers: {
+      accept: 'application/json',
       'content-type': 'application/x-www-form-urlencoded',
-      'origin': 'https://askcore.cn',
-      'sec-fetch-dest': 'document',
-      'sec-fetch-mode': 'navigate',
+      origin: 'https://askcore.cn',
+      'sec-fetch-dest': 'empty',
+      'sec-fetch-mode': 'cors',
       'sec-fetch-site': 'same-origin',
       ...headers,
     },
     method: 'POST',
   });
 
-const expectFailureDocument = async (
-  response: Response,
-  status: number,
-  recoveryHref = '/school',
-) => {
-  const html = await response.text();
+const expectPreparationError = async (response: Response, status: number) => {
   expect(response.status).toBe(status);
-  expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8');
+  expect(response.headers.get('content-type')).toContain('application/json');
   expect(response.headers.get('cache-control')).toBe('private, no-store');
-  expect(response.headers.get('content-security-policy')).toContain("default-src 'none'");
-  expect(html).toContain(`<main data-askcore-handoff-error data-status="${status}">`);
-  expect(html).toContain('role="alert"');
-  expect(html).toContain(`href="${recoveryHref}"`);
-  expect(html).not.toContain('{"detail":');
+  await expect(response.json()).resolves.toEqual({ error: 'handoff_unavailable' });
 };
 
-describe('school source handoff route', () => {
+describe('school source handoff preparation route', () => {
   afterEach(() => vi.clearAllMocks());
 
-  it('returns a no-store CSP-constrained auto-POST document', async () => {
+  it('returns only a no-store fixed Moodle action and one-time grant', async () => {
     createSourceHandoff.mockResolvedValue({
       action: '/school/teaching/local/askcore/handoff.php',
       expiresAt: 1_800_000_030,
@@ -83,71 +66,87 @@ describe('school source handoff route', () => {
     });
     const { POST } = await import('./route');
     const response = await POST(request());
-    const html = await response.text();
+
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('private, no-store');
     expect(response.headers.get('referrer-policy')).toBe('no-referrer');
-    expect(response.headers.get('content-security-policy')).toContain("form-action 'self'");
-    expect(response.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
-    expect(html).toContain('method="post"');
-    expect(html).toContain('action="/school/teaching/local/askcore/handoff.php"');
-    expect(html).toContain('value="header.payload.signature"');
-    expect(html).toContain('Entering School / Learning Space');
-    expect(html).toContain('Verifying Moodle session');
+    expect(response.headers.get('content-type')).toContain('application/json');
+    await expect(response.json()).resolves.toEqual({
+      action: '/school/teaching/local/askcore/handoff.php',
+      grant: 'header.payload.signature',
+    });
     expect(createSourceHandoff).toHaveBeenCalledWith(expect.any(Headers), 'moodle');
   });
 
-  it('labels the Settings handoff as school affairs for Gibbon', async () => {
+  it('returns only the fixed Gibbon action for School Affairs', async () => {
     createSourceHandoff.mockResolvedValue({
       action: '/school/services/askcore/handoff.php',
       expiresAt: 1_800_000_030,
       grant: 'header.payload.signature',
     });
     const { POST } = await import('./route');
-    const response = await POST(request('source=gibbon', { 'accept-language': 'en-US,en;q=0.9' }));
-    const html = await response.text();
+    const response = await POST(request('source=gibbon'));
 
-    expect(response.status).toBe(200);
-    expect(html).toContain('<html lang="en-US">');
-    expect(html).toContain('Entering School Affairs');
-    expect(html).toContain('Continue to School Affairs');
-    expect(html).toContain('action="/school/services/askcore/handoff.php"');
-    expect(translation).toHaveBeenCalledWith('common', 'en-US');
+    await expect(response.json()).resolves.toEqual({
+      action: '/school/services/askcore/handoff.php',
+      grant: 'header.payload.signature',
+    });
     expect(createSourceHandoff).toHaveBeenCalledWith(expect.any(Headers), 'gibbon');
   });
 
-  it('uses one escaping policy for the successful handoff document', async () => {
-    createSourceHandoff.mockResolvedValue({
-      action: '//attacker.invalid/handoff',
-      expiresAt: 1_800_000_030,
-      grant: 'grant"><img src=x onerror=alert(1)>',
-    });
-    translation.mockResolvedValueOnce({
-      locale: 'en-US"><script>alert(1)</script>',
-      t: (key: string) => `<img data-key="${key}" onerror="alert(1)">`,
-    });
+  it('fails closed when the Broker returns a non-fixed action or invalid grant', async () => {
+    createSourceHandoff
+      .mockResolvedValueOnce({
+        action: '//attacker.invalid/handoff',
+        expiresAt: 1_800_000_030,
+        grant: 'header.payload.signature',
+      })
+      .mockResolvedValueOnce({
+        action: '/school/teaching/local/askcore/handoff.php',
+        expiresAt: 1_800_000_030,
+        grant: '',
+      })
+      .mockResolvedValueOnce({
+        action: '/school/teaching/local/askcore/handoff.php',
+        expiresAt: 1_800_000_030,
+        grant: 'not-a-jwt',
+      })
+      .mockResolvedValueOnce({
+        action: '/school/teaching/local/askcore/handoff.php',
+        expiresAt: 1_800_000_030,
+        grant: `header.payload.${'x'.repeat(8192)}`,
+      });
     const { POST } = await import('./route');
-    const response = await POST(request());
-    const html = await response.text();
 
-    expect(response.status).toBe(200);
-    expect(html).toContain('action="/school"');
-    expect(html).toContain('grant&quot;>&lt;img');
-    expect(html).toContain('&lt;img data-key=');
-    expect(html).not.toContain('//attacker.invalid');
-    expect(html).not.toContain('<img');
-    expect(html).not.toContain('<script>alert(1)</script>');
+    await expectPreparationError(await POST(request()), 503);
+    await expectPreparationError(await POST(request()), 503);
+    await expectPreparationError(await POST(request()), 503);
+    await expectPreparationError(await POST(request()), 503);
   });
 
-  it('rejects cross-origin, incomplete metadata, non-navigation, and unknown-source requests', async () => {
+  it('rejects cross-origin, navigation, incomplete metadata, and unknown-source requests', async () => {
     const { POST } = await import('./route');
     allowed.mockReturnValueOnce(false);
-    expect((await POST(request())).status).toBe(403);
-    expect((await POST(request('source=moodle', { origin: '' }))).status).toBe(403);
-    expect((await POST(request('source=moodle', { 'sec-fetch-site': '' }))).status).toBe(403);
-    expect((await POST(request('source=moodle', { 'sec-fetch-mode': 'cors' }))).status).toBe(403);
-    expect((await POST(request('source=moodle', { 'sec-fetch-dest': 'iframe' }))).status).toBe(403);
-    expect((await POST(request('source=unknown'))).status).toBe(400);
+    await expectPreparationError(await POST(request()), 403);
+    await expectPreparationError(await POST(request('source=moodle', { origin: '' })), 403);
+    await expectPreparationError(
+      await POST(request('source=moodle', { 'sec-fetch-site': '' })),
+      403,
+    );
+    await expectPreparationError(
+      await POST(
+        request('source=moodle', {
+          'sec-fetch-dest': 'document',
+          'sec-fetch-mode': 'navigate',
+        }),
+      ),
+      403,
+    );
+    await expectPreparationError(
+      await POST(request('source=moodle', { accept: 'text/html' })),
+      403,
+    );
+    await expectPreparationError(await POST(request('source=unknown')), 400);
     expect(createSourceHandoff).not.toHaveBeenCalled();
   });
 
@@ -155,13 +154,14 @@ describe('school source handoff route', () => {
     const { POST } = await import('./route');
     const oversized = request(`source=moodle&padding=${'x'.repeat(256)}`);
     oversized.headers.delete('content-length');
-    expect((await POST(oversized)).status).toBe(413);
+    await expectPreparationError(await POST(oversized), 413);
 
     const headers = {
+      accept: 'application/json',
       'content-type': 'application/x-www-form-urlencoded',
-      'origin': 'https://askcore.cn',
-      'sec-fetch-dest': 'document',
-      'sec-fetch-mode': 'navigate',
+      origin: 'https://askcore.cn',
+      'sec-fetch-dest': 'empty',
+      'sec-fetch-mode': 'cors',
       'sec-fetch-site': 'same-origin',
       'transfer-encoding': 'chunked',
     };
@@ -176,46 +176,39 @@ describe('school source handoff route', () => {
       'https://askcore.cn/api/askcore/school/handoff',
       { body: stream, headers, method: 'POST' } as never,
     );
-    expect((await POST(chunked)).status).toBe(413);
+    await expectPreparationError(await POST(chunked), 413);
     expect(createSourceHandoff).not.toHaveBeenCalled();
   });
 
-  it('rejects an oversized declared body before consuming it', async () => {
+  it('rejects oversized declared bodies before consuming them', async () => {
     const { POST } = await import('./route');
-    expect((await POST(request('source=moodle', { 'content-length': '129' }))).status).toBe(413);
-    expect(createSourceHandoff).not.toHaveBeenCalled();
-  });
-
-  it('returns 401 when the Better Auth session is missing', async () => {
-    createSourceHandoff.mockRejectedValueOnce(new SchoolSessionRequiredError());
-    const { POST } = await import('./route');
-
-    await expectFailureDocument(
-      await POST(request('source=moodle', { 'accept-language': 'zh-CN,zh;q=0.9' })),
-      401,
-    );
-    expect(translation).toHaveBeenCalledWith('common', 'zh-CN');
-  });
-
-  it('returns localized accessible recovery documents for forbidden, oversized, and unavailable handoffs', async () => {
-    const { POST } = await import('./route');
-
-    allowed.mockReturnValueOnce(false);
-    await expectFailureDocument(await POST(request()), 403);
-    await expectFailureDocument(
+    await expectPreparationError(
       await POST(request('source=moodle', { 'content-length': '129' })),
       413,
     );
-    createSourceHandoff.mockRejectedValueOnce(new Error('broker unavailable'));
-    await expectFailureDocument(
-      await POST(request('source=gibbon')),
-      503,
-      '/settings/school-affairs',
-    );
+    expect(createSourceHandoff).not.toHaveBeenCalled();
   });
 
-  it('does not accept GET handoff', async () => {
+  it('returns generic 401 and 503 JSON without identity diagnostics', async () => {
+    const { POST } = await import('./route');
+    createSourceHandoff
+      .mockRejectedValueOnce(new SchoolSessionRequiredError())
+      .mockRejectedValueOnce(new Error('broker unavailable'));
+
+    await expectPreparationError(await POST(request()), 401);
+    await expectPreparationError(await POST(request('source=gibbon')), 503);
+  });
+
+  it('keeps GET as a localized accessible recovery document', async () => {
     const { GET } = await import('./route');
-    await expectFailureDocument(await GET(request()), 405);
+    const response = await GET(request());
+    const html = await response.text();
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8');
+    expect(response.headers.get('content-security-policy')).toContain("default-src 'none'");
+    expect(html).toContain('data-askcore-handoff-error');
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('href="/school"');
   });
 });

@@ -8,6 +8,7 @@ import { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
+import { enterSchoolSource } from '@/business/client/AskCoreSchoolPortal/handoffClient';
 import NavItem from '@/features/NavPanel/components/NavItem';
 import { useActiveTabKey } from '@/hooks/useActiveTabKey';
 import type { NavItem as NavItemType } from '@/hooks/useNavLayout';
@@ -145,6 +146,10 @@ const Body = memo(() => {
           onClick={(e) => {
             if (isModifierClick(e)) return;
             e.preventDefault();
+            if (key === 'school') {
+              void enterSchoolSource('moodle').catch(() => navigate('/school'));
+              return;
+            }
             navigate(navItem.url!);
           }}
         >
