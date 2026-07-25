@@ -51,30 +51,69 @@ const createPage = async (browser, viewport = { height: 900, width: 1440 }) => {
 
 const returnBridgeState = (host) => {
   const shadow = host.shadowRoot;
-  const home = shadow?.querySelector('a');
+  const actionLink = shadow?.querySelector('.row > a');
+  const backIcon = shadow?.querySelector('.back');
   const homeIcon = shadow?.querySelector('.home');
   const label = shadow?.querySelector('.label');
+  const mobileTabContainer = shadow?.querySelector('.mobile-tabs');
+  const mobileTabs = [...(shadow?.querySelectorAll('.mobile-tabs a') || [])];
   const nav = shadow?.querySelector('nav');
-  if (!shadow || !home || !homeIcon || !label || !nav) return null;
-  const homeRect = home.getBoundingClientRect();
+  if (
+    !shadow ||
+    !actionLink ||
+    !backIcon ||
+    !homeIcon ||
+    !label ||
+    !mobileTabContainer ||
+    !nav
+  ) {
+    return null;
+  }
+  const actionRect = actionLink.getBoundingClientRect();
   const hostRect = host.getBoundingClientRect();
-  const iconRect = homeIcon.getBoundingClientRect();
+  const labelRect = label.getBoundingClientRect();
+  const navRect = nav.getBoundingClientRect();
+  const mode = nav.classList.contains('settings-back') ? 'settings-back' : 'home';
+  const mobileTabBar =
+    mode === 'home' && getComputedStyle(mobileTabContainer).display !== 'none';
+  const visibleIcon = mobileTabBar
+    ? mobileTabs[1].querySelector('svg')
+    : mode === 'settings-back'
+      ? backIcon
+      : homeIcon;
+  const iconRect = visibleIcon.getBoundingClientRect();
+  const labelStyle = getComputedStyle(label);
   return {
-    action: homeRect.width,
+    action: actionRect.width,
+    actionLabel: actionLink.getAttribute('aria-label'),
     ariaHidden: host.getAttribute('aria-hidden'),
     background: getComputedStyle(nav).backgroundColor,
+    centeredTitleDelta: Math.abs(
+      labelRect.left + labelRect.width / 2 - (navRect.left + navRect.width / 2),
+    ),
+    fixedBottom: window.innerHeight - hostRect.bottom,
     fixedTop: hostRect.top,
+    fontSize: labelStyle.fontSize,
+    fontWeight: labelStyle.fontWeight,
     height: hostRect.height,
-    homeLabel: home.getAttribute('aria-label'),
-    href: home.getAttribute('href'),
+    href: actionLink.getAttribute('href'),
     icon: iconRect.width,
     inert: host.hasAttribute('inert'),
     label: label.textContent,
+    mobileTabs: mobileTabs.map((tab) => ({
+      active: tab.getAttribute('aria-current'),
+      actionLabel: tab.getAttribute('aria-label'),
+      href: tab.getAttribute('href'),
+      key: tab.getAttribute('data-tab'),
+      label: tab.querySelector('span')?.textContent,
+    })),
+    mode,
     navigationLabel: nav.getAttribute('aria-label'),
+    presentation: mobileTabBar ? 'mobile-tabs' : mode,
   };
 };
 
-const assertReturnBridge = async (page, message = 'source return bridge') => {
+const assertReturnBridge = async (page, source, message = 'source return bridge') => {
   await page.waitForFunction(() => document.querySelector('#askcore-source-return-bridge')?.shadowRoot);
   assert(
     (await page.locator('#askcore-source-return-bridge').count()) === 1,
@@ -83,22 +122,82 @@ const assertReturnBridge = async (page, message = 'source return bridge') => {
   const state = await page.locator('#askcore-source-return-bridge').evaluate(returnBridgeState);
   assert(state, `${message} shadow content is incomplete`);
   const mobile = (page.viewportSize()?.width || 1440) <= 767;
-  assert(state.href === '/', `${message} destination is not fixed to AskCore home`);
-  assert(state.label === 'School / Learning Space', `${message} label drifted`);
-  assert(state.navigationLabel === 'AskCore navigation', `${message} navigation has no name`);
-  assert(state.homeLabel === 'Return to AskCore home', `${message} home action has no name`);
+  const gibbon = source === 'gibbon';
+  const mobileSchool = mobile && !gibbon;
+  if (mobileSchool) {
+    assert(state.presentation === 'mobile-tabs', `${message} did not retain the mobile tab bar`);
+    assert(state.fixedBottom === 0 && state.height === 48, `${message} is not fixed at the bottom`);
+    assert(state.icon === 22, `${message} mobile tab icon token drifted`);
+    assert(
+      JSON.stringify(state.mobileTabs) ===
+        JSON.stringify([
+          {
+            active: null,
+            actionLabel: 'Chat',
+            href: '/agent',
+            key: 'chat',
+            label: 'Chat',
+          },
+          {
+            active: 'page',
+            actionLabel: 'School',
+            href: '/school',
+            key: 'school',
+            label: 'School',
+          },
+          {
+            active: null,
+            actionLabel: 'Me',
+            href: '/me',
+            key: 'me',
+            label: 'Me',
+          },
+        ]),
+      `${message} mobile navigation drifted`,
+    );
+  } else {
+    assert(state.presentation === (gibbon ? 'settings-back' : 'home'), `${message} mode drifted`);
+    assert(state.fixedTop === 0 && state.height === 44, `${message} is not fixed at the source top`);
+    assert(state.action === (mobile ? 36 : 28), `${message} action token drifted`);
+    assert(state.icon === (mobile ? 22 : 16), `${message} icon token drifted`);
+  }
+  const expectedHref = gibbon ? (mobile ? '/me/settings' : '/settings') : '/';
+  if (!mobileSchool) {
+    assert(state.href === expectedHref, `${message} destination drifted: ${state.href}`);
+  }
+  assert(state.mode === (gibbon ? 'settings-back' : 'home'), `${message} mode drifted`);
+  assert(
+    state.label === (gibbon ? 'School Affairs' : 'School / Learning Space'),
+    `${message} label drifted`,
+  );
+  assert(
+    state.navigationLabel === (gibbon ? 'School Affairs' : 'AskCore navigation'),
+    `${message} navigation has no name`,
+  );
+  assert(
+    state.actionLabel === (gibbon ? 'Back' : 'Return to AskCore home'),
+    `${message} action has no name`,
+  );
   assert(!state.inert && state.ariaHidden === null, `${message} was covered by source guard`);
-  assert(state.fixedTop === 0 && state.height === 44, `${message} is not fixed at the source top`);
-  assert(state.action === (mobile ? 36 : 28), `${message} action token drifted`);
-  assert(state.icon === (mobile ? 22 : 16), `${message} icon token drifted`);
-  await page.locator('#askcore-source-return-bridge').evaluate((host) => {
-    host.shadowRoot.querySelector('a').focus();
-  });
+  if (!mobileSchool) {
+    assert(state.fontSize === (gibbon ? '16px' : '12px'), `${message} type token drifted`);
+  }
+  if (gibbon) {
+    assert(state.fontWeight === '500', `${message} desktop title weight drifted`);
+    if (mobile) {
+      assert(state.centeredTitleDelta <= 1, `${message} mobile title is not centered`);
+    }
+  }
+  const focusSelector = mobileSchool ? '[data-tab="school"]' : '.row > a';
+  await page.locator('#askcore-source-return-bridge').evaluate((host, selector) => {
+    host.shadowRoot.querySelector(selector).focus();
+  }, focusSelector);
   assert(
     await page.locator('#askcore-source-return-bridge').evaluate(
-      (host) => host.shadowRoot.activeElement === host.shadowRoot.querySelector('a'),
+      (host, selector) => host.shadowRoot.activeElement === host.shadowRoot.querySelector(selector),
+      focusSelector,
     ),
-    `${message} home action is not keyboard focusable`,
+    `${message} return action is not keyboard focusable`,
   );
   return state;
 };
@@ -122,10 +221,10 @@ const openSource = async (page, source, role = 'student') => {
   assert(state.ariaHidden === null && !state.inert, `${source} content stayed covered`);
   assert((await page.locator('#source-action').getAttribute('aria-label')) === null, 'unexpected label');
   assert((await page.locator('#source-action').textContent()) === 'Source action', 'missing control name');
-  await assertReturnBridge(page, `${source} return bridge`);
+  await assertReturnBridge(page, source, `${source} return bridge`);
 };
 
-const assertCovered = async (page, message) => {
+const assertCovered = async (page, source, message) => {
   await page.waitForFunction(() => {
     const content = document.querySelector('#source-content');
     return content?.hasAttribute('inert') && content.getAttribute('aria-hidden') === 'true';
@@ -135,7 +234,7 @@ const assertCovered = async (page, message) => {
     inert: node.hasAttribute('inert'),
   }));
   assert(covered.inert && covered.ariaHidden === 'true', message);
-  await assertReturnBridge(page, `${message} return bridge`);
+  await assertReturnBridge(page, source, `${message} return bridge`);
 };
 
 const waitForClosedSource = async (page, source, api) => {
@@ -203,7 +302,7 @@ const exerciseRevocation = async ({
   await control(api, { action: 'set_verification_delay', milliseconds: 800 });
   await control(api, mutation);
   await triggerRevalidation(page, trigger);
-  await assertCovered(page, `${source} ${mutation.action} exposed stale content`);
+  await assertCovered(page, source, `${source} ${mutation.action} exposed stale content`);
   if (screenshot && screenshotPath) {
     await fs.mkdir(path.dirname(screenshotPath), { recursive: true });
     await page.screenshot({ path: screenshotPath });
@@ -223,7 +322,11 @@ const exerciseDelayedAccountSwitch = async (api, browser) => {
   await control(api, { action: 'switch', account: 'teacher' });
   await triggerRevalidation(page, 'broadcast');
   await page.waitForTimeout(900);
-  await assertCovered(page, 'delayed student proof exposed the old page after switching to teacher');
+  await assertCovered(
+    page,
+    'moodle',
+    'delayed student proof exposed the old page after switching to teacher',
+  );
   const ready = await page.evaluate(() =>
     document.documentElement.classList.contains('askcore-session-ready'),
   );
@@ -241,7 +344,7 @@ const exerciseRefetchInvalidation = async (api, browser) => {
     await triggerRevalidation(page, 'focus');
     await page.waitForTimeout(100);
     await broadcastGeneration(page, null, 'unstable');
-    await assertCovered(page, 'Better Auth refetch did not immediately cover Account A');
+    await assertCovered(page, 'moodle', 'Better Auth refetch did not immediately cover Account A');
     await broadcastSchoolSessionMessage(page, {
       generationHash: 'legacy-generation',
       type: 'generation-changed',
@@ -469,6 +572,12 @@ const exerciseReturnBridgeVisuals = async (api, browser) => {
       source: 'moodle',
       viewport: { height: 844, width: 390 },
     },
+    {
+      colorScheme: 'light',
+      name: 'gibbon-mobile-light',
+      source: 'gibbon',
+      viewport: { height: 844, width: 390 },
+    },
   ];
   for (const visual of cases) {
     await control(api, { action: 'reset' });
@@ -483,7 +592,11 @@ const exerciseReturnBridgeVisuals = async (api, browser) => {
       await page.waitForFunction(() =>
         document.documentElement.classList.contains('askcore-session-ready'),
       );
-      const state = await assertReturnBridge(page, `${visual.name} return bridge`);
+      const state = await assertReturnBridge(
+        page,
+        visual.source,
+        `${visual.name} return bridge`,
+      );
       if (visual.colorScheme === 'dark') {
         assert(
           state.background === 'rgb(31, 32, 36)',
@@ -496,25 +609,52 @@ const exerciseReturnBridgeVisuals = async (api, browser) => {
           path: path.join(bridgeScreenshotDir, `${visual.name}.png`),
         });
       }
-      await page.locator('#askcore-source-return-bridge a').hover();
-      const hoverBackground = await page
-        .locator('#askcore-source-return-bridge')
-        .evaluate((host) =>
-          getComputedStyle(host.shadowRoot.querySelector('a')).backgroundColor,
+      if (visual.name !== 'moodle-mobile-light') {
+        await page.locator('#askcore-source-return-bridge .row > a').hover();
+        const hoverBackground = await page
+          .locator('#askcore-source-return-bridge')
+          .evaluate((host) =>
+            getComputedStyle(host.shadowRoot.querySelector('.row > a')).backgroundColor,
+          );
+        assert(
+          hoverBackground ===
+            (visual.colorScheme === 'dark' ? 'rgb(48, 50, 56)' : 'rgb(233, 234, 237)'),
+          `${visual.name} hover state drifted: ${hoverBackground}`,
         );
-      assert(
-        hoverBackground ===
-          (visual.colorScheme === 'dark' ? 'rgb(48, 50, 56)' : 'rgb(233, 234, 237)'),
-        `${visual.name} hover state drifted: ${hoverBackground}`,
-      );
-      if (bridgeScreenshotDir) {
-        await page.screenshot({
-          path: path.join(bridgeScreenshotDir, `${visual.name}-hover.png`),
-        });
+        if (bridgeScreenshotDir) {
+          await page.screenshot({
+            path: path.join(bridgeScreenshotDir, `${visual.name}-hover.png`),
+          });
+        }
       }
-      if (visual.name === 'moodle-desktop-light') {
-        await page.locator('#askcore-source-return-bridge a').click();
-        await page.waitForURL(`${baseURL}/`);
+      if (
+        visual.name === 'moodle-desktop-light' ||
+        visual.name === 'moodle-mobile-light' ||
+        visual.name === 'gibbon-desktop-dark' ||
+        visual.name === 'gibbon-mobile-light'
+      ) {
+        const mobileMoodle = visual.source === 'moodle' && visual.viewport.width <= 767;
+        const expectedPath =
+          mobileMoodle
+            ? '/agent'
+            : visual.source === 'moodle'
+              ? '/'
+            : visual.viewport.width <= 767
+              ? '/me/settings'
+              : '/settings';
+        await page
+          .locator(
+            mobileMoodle
+              ? '#askcore-source-return-bridge [data-tab="chat"]'
+              : '#askcore-source-return-bridge .row > a',
+          )
+          .click();
+        await page.waitForURL(
+          (url) =>
+            expectedPath === '/'
+              ? url.href === `${baseURL}/`
+              : url.pathname.startsWith(expectedPath),
+        );
       }
     } finally {
       await context.close();
