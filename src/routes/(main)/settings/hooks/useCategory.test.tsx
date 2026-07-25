@@ -2,13 +2,13 @@ import { renderHook } from '@testing-library/react';
 import { type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import zhSetting from '../../../../../locales/zh-CN/setting.json';
-import zhSubscription from '../../../../../locales/zh-CN/subscription.json';
 import { mapFeatureFlagsEnvToState } from '@/config/featureFlags';
 import { SettingsTabs } from '@/store/global/initialState';
 import { initServerConfigStore, Provider } from '@/store/serverConfig/store';
 import { useUserStore } from '@/store/user';
 
+import zhSetting from '../../../../../locales/zh-CN/setting.json';
+import zhSubscription from '../../../../../locales/zh-CN/subscription.json';
 import { useCategory } from './useCategory';
 
 vi.hoisted(() => {
@@ -87,11 +87,11 @@ describe('settings useCategory', () => {
     expect(keys).not.toContain(SettingsTabs.Provider);
   });
 
-  it('places school affairs and school plans in Settings when school features are enabled', () => {
+  it('exposes school Settings when generic Business/OIDC features are disabled', () => {
     const { result } = renderHook(() => useCategory(), {
       wrapper: createWrapper(true, {
         enableAskCoreBilling: true,
-        enableBusinessFeatures: true,
+        enableBusinessFeatures: false,
       }),
     });
     const keys = result.current.flatMap((group) => group.items.map((item) => item.key));
@@ -104,16 +104,17 @@ describe('settings useCategory', () => {
     expect(zhSubscription['tab.plans']).toBe('个人套餐');
   });
 
-  it('does not expose school Settings when business features are disabled', () => {
+  it('keeps School Affairs independent when billing is unavailable', () => {
     const { result } = renderHook(() => useCategory(), {
       wrapper: createWrapper(true, {
-        enableAskCoreBilling: true,
+        enableAskCoreBilling: false,
         enableBusinessFeatures: false,
       }),
     });
     const keys = result.current.flatMap((group) => group.items.map((item) => item.key));
 
-    expect(keys).not.toContain(SettingsTabs.SchoolAffairs);
+    expect(keys).toContain(SettingsTabs.SchoolAffairs);
     expect(keys).not.toContain(SettingsTabs.SchoolPlan);
+    expect(keys).not.toContain(SettingsTabs.Plans);
   });
 });

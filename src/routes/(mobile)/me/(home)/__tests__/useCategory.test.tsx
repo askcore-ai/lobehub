@@ -47,11 +47,17 @@ describe('useCategory', () => {
     act(() => {
       const items = result.current;
       expect(items.some((item) => item.key === 'profile')).toBe(true);
+      expect(items.some((item) => item.key === 'community')).toBe(true);
       expect(items.some((item) => item.key === 'setting')).toBe(true);
       expect(items.some((item) => item.key === 'docs')).toBe(true);
       expect(items.some((item) => item.key === 'feedback')).toBe(true);
       expect(items.some((item) => item.key === 'changelog')).toBe(true);
     });
+
+    act(() => {
+      result.current.find((item) => item.key === 'community')?.onClick?.();
+    });
+    expect(mockNavigate).toHaveBeenCalledWith('/community');
   });
 
   it('should return correct items when the user is not logged in', () => {
@@ -64,6 +70,7 @@ describe('useCategory', () => {
     act(() => {
       const items = result.current;
       expect(items.some((item) => item.key === 'profile')).toBe(false);
+      expect(items.some((item) => item.key === 'community')).toBe(false);
       expect(items.some((item) => item.key === 'setting')).toBe(false);
       expect(items.some((item) => item.key === 'data')).toBe(false);
       expect(items.some((item) => item.key === 'docs')).toBe(true);

@@ -129,22 +129,20 @@ export const useCategory = () => {
       title: t('group.common'),
     });
 
-    if (enableBusinessFeatures) {
-      const schoolItems: CategoryItem[] = [
-        { icon: School, key: SettingsTabs.SchoolAffairs, label: t('tab.schoolAffairs') },
-        enableAskCoreBilling && {
-          icon: Building2,
-          key: SettingsTabs.SchoolPlan,
-          label: t('tab.schoolPlan'),
-        },
-      ].filter(Boolean) as CategoryItem[];
+    const schoolItems: CategoryItem[] = [
+      { icon: School, key: SettingsTabs.SchoolAffairs, label: t('tab.schoolAffairs') },
+      enableAskCoreBilling && {
+        icon: Building2,
+        key: SettingsTabs.SchoolPlan,
+        label: t('tab.schoolPlan'),
+      },
+    ].filter(Boolean) as CategoryItem[];
 
-      groups.push({
-        items: schoolItems,
-        key: SettingsGroupKey.School,
-        title: t('group.school'),
-      });
-    }
+    groups.push({
+      items: schoolItems,
+      key: SettingsGroupKey.School,
+      title: t('group.school'),
+    });
 
     // Subscription group
     if (enableAskCoreBilling) {

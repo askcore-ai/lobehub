@@ -28,8 +28,6 @@ const BUSINESS_SETTINGS_TABS = [
   SettingsTabs.SchoolPlan,
 ];
 
-const SCHOOL_SETTINGS_TABS = [SettingsTabs.SchoolAffairs, SettingsTabs.SchoolPlan];
-
 interface SettingsContentProps {
   activeTab?: string;
   mobile?: boolean;
@@ -37,15 +35,7 @@ interface SettingsContentProps {
 
 const SettingsContent = ({ mobile, activeTab }: SettingsContentProps) => {
   const enableAskCoreBilling = useServerConfigStore(serverConfigSelectors.enableAskCoreBilling);
-  const enableBusinessFeatures = useServerConfigStore(
-    serverConfigSelectors.enableBusinessFeatures,
-  );
   const navigate = useNavigate();
-  const isSchoolSettingsUnavailable = Boolean(
-    activeTab &&
-      !enableBusinessFeatures &&
-      SCHOOL_SETTINGS_TABS.includes(activeTab as SettingsTabs),
-  );
 
   useEffect(() => {
     if (activeTab && REDIRECT_MAP[activeTab]) {
@@ -58,10 +48,7 @@ const SettingsContent = ({ mobile, activeTab }: SettingsContentProps) => {
     ) {
       navigate(mobile ? '/me/settings' : '/settings/profile', { replace: true });
     }
-    if (isSchoolSettingsUnavailable) {
-      navigate(mobile ? '/me/settings' : '/settings/profile', { replace: true });
-    }
-  }, [activeTab, enableAskCoreBilling, isSchoolSettingsUnavailable, mobile, navigate]);
+  }, [activeTab, enableAskCoreBilling, mobile, navigate]);
 
   const renderComponent = (tab: string) => {
     const Component = componentMap[tab as keyof typeof componentMap] || componentMap.appearance;
@@ -94,8 +81,6 @@ const SettingsContent = ({ mobile, activeTab }: SettingsContentProps) => {
   ) {
     return null;
   }
-  if (isSchoolSettingsUnavailable) return null;
-
   if (mobile) {
     return activeTab ? renderComponent(activeTab) : renderComponent(SettingsTabs.Profile);
   }
