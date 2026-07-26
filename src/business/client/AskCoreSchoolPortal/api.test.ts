@@ -8,6 +8,12 @@ import {
 } from './api';
 import { setSchoolHandoffSessionState } from './handoffClient';
 
+const opaqueRedirectResponse = () => {
+  const response = new Response(null);
+  Object.defineProperty(response, 'type', { value: 'opaqueredirect' });
+  return response;
+};
+
 describe('school portal manifest sanitizer', () => {
   afterEach(() => {
     setSchoolHandoffSessionState('signed-out', null);
@@ -109,6 +115,11 @@ describe('school portal manifest sanitizer', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/school/services/askcore/billing.php',
+      expect.objectContaining({ method: 'POST', redirect: 'manual' }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       '/api/askcore/school/handoff',
       expect.objectContaining({ method: 'POST' }),
@@ -118,6 +129,43 @@ describe('school portal manifest sanitizer', () => {
       '/school/services/askcore/handoff.php',
       expect.objectContaining({ method: 'POST', redirect: 'manual' }),
     );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      '/school/services/askcore/billing.php',
+      expect.objectContaining({ method: 'POST', redirect: 'manual' }),
+    );
+  });
+
+  it.each([
+    ['302', new Response(null, { headers: { location: '/school' }, status: 302 })],
+    ['opaqueredirect', opaqueRedirectResponse()],
+  ])('aligns Gibbon once after a production source-session %s', async (_kind, firstResponse) => {
+    const sourceProof = 'proof.header.signature';
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(firstResponse)
+      .mockResolvedValueOnce(
+        Response.json({
+          action: '/school/services/askcore/handoff.php',
+          grant: 'grant.header.signature',
+        }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 303 }))
+      .mockResolvedValueOnce(
+        Response.json({
+          expires_at: Math.floor(Date.now() / 1000) + 60,
+          source_proof: sourceProof,
+          status: 'succeeded',
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    setSchoolHandoffSessionState('stable', 'generation-a');
+
+    await expect(
+      fetchSchoolBillingSourceProof({ schoolKey: 'askcore-pilot-school' }),
+    ).resolves.toMatchObject({ source_proof: sourceProof });
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it.each([403, 503])('does not align or retry source-proof status %s', async (status) => {

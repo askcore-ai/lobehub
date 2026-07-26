@@ -169,6 +169,12 @@ export const fetchSchoolIntegrationOperations = async (): Promise<SchoolIntegrat
 };
 
 const SCHOOL_SOURCE_PROOF_PATTERN = /^[\w-]+\.[\w-]+\.[\w-]+$/;
+const SCHOOL_SOURCE_SESSION_REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+const requiresSchoolSourceSessionAlignment = (response: Response) =>
+  response.status === 401 ||
+  response.type === 'opaqueredirect' ||
+  SCHOOL_SOURCE_SESSION_REDIRECT_STATUSES.has(response.status);
 
 export const fetchSchoolBillingSourceProof = async ({
   schoolKey,
@@ -185,15 +191,16 @@ export const fetchSchoolBillingSourceProof = async ({
       credentials: 'include',
       headers: { 'accept': 'application/json', 'content-type': 'application/json' },
       method: 'POST',
+      redirect: 'manual',
     });
   let response = await requestProof();
-  if (response.status === 401) {
+  if (requiresSchoolSourceSessionAlignment(response)) {
     await alignSchoolSourceSession('gibbon');
     response = await requestProof();
   }
   if (!response.ok) {
     throw new SchoolPortalApiError(
-      response.status,
+      response.status || 503,
       'School billing identity is unavailable',
       'schoolBilling.error.sourceProofUnavailable',
     );
