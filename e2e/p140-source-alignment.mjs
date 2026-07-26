@@ -377,8 +377,9 @@ const openSource = async (page, source, role = 'student') => {
   );
   const state = await page.locator('#source-content').evaluate((node) => ({
     account: node.getAttribute('data-account'),
-    ariaHidden: node.getAttribute('aria-hidden'),
-    inert: node.hasAttribute('inert'),
+    ariaHidden:
+      node.closest('[inert][aria-hidden="true"]')?.getAttribute('aria-hidden') ?? null,
+    inert: Boolean(node.closest('[inert][aria-hidden="true"]')),
   }));
   assert(state.account === role, `${source} source session did not align to ${role}`);
   assert(state.ariaHidden === null && !state.inert, `${source} content stayed covered`);
@@ -390,11 +391,12 @@ const openSource = async (page, source, role = 'student') => {
 const assertCovered = async (page, source, message) => {
   await page.waitForFunction(() => {
     const content = document.querySelector('#source-content');
-    return content?.hasAttribute('inert') && content.getAttribute('aria-hidden') === 'true';
+    return Boolean(content?.closest('[inert][aria-hidden="true"]'));
   });
   const covered = await page.locator('#source-content').evaluate((node) => ({
-    ariaHidden: node.getAttribute('aria-hidden'),
-    inert: node.hasAttribute('inert'),
+    ariaHidden:
+      node.closest('[inert][aria-hidden="true"]')?.getAttribute('aria-hidden') ?? null,
+    inert: Boolean(node.closest('[inert][aria-hidden="true"]')),
   }));
   assert(covered.inert && covered.ariaHidden === 'true', message);
   await assertReturnBridge(page, source, `${message} return bridge`);
@@ -421,34 +423,33 @@ const triggerRevalidation = async (page, trigger) => {
     return;
   }
   if (trigger === 'broadcast') {
-    await page.evaluate(() => {
-      const channel = new BroadcastChannel('askcore-school-session-v1');
-      channel.postMessage({ reason: 'account-changed' });
-      channel.close();
-    });
+    await broadcastSchoolSessionMessage(page, { reason: 'account-changed' });
     return;
   }
   throw new Error(`unknown trigger ${trigger}`);
 };
 
 const broadcastGeneration = async (page, generationHash, sessionState) => {
-  await page.evaluate(({ value, state }) => {
-    const channel = new BroadcastChannel('askcore-school-session-v1');
-    channel.postMessage({
-      generationHash: value,
-      sessionState: state,
-      type: 'generation-changed',
-    });
-    channel.close();
-  }, { state: sessionState, value: generationHash });
+  await broadcastSchoolSessionMessage(page, {
+    generationHash,
+    sessionState,
+    type: 'generation-changed',
+  });
 };
 
 const broadcastSchoolSessionMessage = async (page, message) => {
-  await page.evaluate((value) => {
-    const channel = new BroadcastChannel('askcore-school-session-v1');
-    channel.postMessage(value);
-    channel.close();
-  }, message);
+  const sender = await page.context().newPage();
+  try {
+    await sender.goto(`${baseURL}/__p140/start`, { waitUntil: 'domcontentloaded' });
+    await sender.evaluate(async (value) => {
+      const channel = new BroadcastChannel('askcore-school-session-v1');
+      channel.postMessage(value);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      channel.close();
+    }, message);
+  } finally {
+    await sender.close();
+  }
 };
 
 const exerciseRevocation = async ({
@@ -557,10 +558,10 @@ const exerciseSignedOutBroadcast = async (api, browser) => {
     await page.evaluate(() => {
       const report = () => {
         const content = document.querySelector('#source-content');
+        const protectedAncestor = content?.closest('[inert][aria-hidden="true"]');
         if (
           document.documentElement.classList.contains('askcore-session-pending') &&
-          content?.hasAttribute('inert') &&
-          content.getAttribute('aria-hidden') === 'true'
+          protectedAncestor
         ) {
           console.log('P140_SIGNED_OUT_COVER true');
         }
@@ -652,9 +653,10 @@ const exerciseBFCache = async (api, browser) => {
     addEventListener('pageshow', (event) => {
       queueMicrotask(() => {
         const content = document.querySelector('#source-content');
+        const protectedAncestor = content?.closest('[inert][aria-hidden="true"]');
         console.log(
-          `P140_BFCACHE_GUARD ${event.persisted} ${content?.hasAttribute('inert')} ${
-            content?.getAttribute('aria-hidden') === 'true'
+          `P140_BFCACHE_GUARD ${event.persisted} ${Boolean(protectedAncestor)} ${
+            protectedAncestor?.getAttribute('aria-hidden') === 'true'
           }`,
         );
       });
@@ -833,6 +835,49 @@ const exerciseReturnBridgeVisuals = async (api, browser) => {
     );
   } finally {
     await context.close();
+  }
+};
+
+const exerciseMoodleMobileEndClearance = async (api, browser) => {
+  for (const width of [320, 390, 767]) {
+    await control(api, { action: 'reset' });
+    const { context, page } = await createPage(browser, { height: 844, width });
+    try {
+      await openSource(page, 'moodle');
+      const state = await page.evaluate(() => {
+        const wrapper = document.querySelector('#page-wrapper');
+        const end = document.querySelector('#source-end');
+        const bridge = document.querySelector('#askcore-source-return-bridge');
+        const spacer = document.querySelector('#askcore-source-mobile-content-spacer');
+        if (!(wrapper instanceof HTMLElement) || !end || !bridge) return null;
+        wrapper.scrollTop = wrapper.scrollHeight;
+        const endRect = end.getBoundingClientRect();
+        const bridgeRect = bridge.getBoundingClientRect();
+        return {
+          bridgeHeight: bridgeRect.height,
+          clearance: bridgeRect.top - endRect.bottom,
+          spacerCount: document.querySelectorAll(
+            '#askcore-source-mobile-content-spacer',
+          ).length,
+          spacerHeight: spacer?.getBoundingClientRect().height || 0,
+        };
+      });
+      assert(state, `Moodle end-clearance fixture missing at ${width}px`);
+      assert(state.bridgeHeight === 48, `Moodle navigation height drifted at ${width}px`);
+      assert(state.spacerCount === 1, `Moodle spacer count drifted at ${width}px`);
+      assert(state.spacerHeight === 56, `Moodle spacer height drifted at ${width}px`);
+      assert(state.clearance >= 8, `Moodle final content is covered at ${width}px`);
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() =>
+        document.documentElement.classList.contains('askcore-session-ready'),
+      );
+      assert(
+        (await page.locator('#askcore-source-mobile-content-spacer').count()) === 1,
+        `Moodle reload duplicated its spacer at ${width}px`,
+      );
+    } finally {
+      await context.close();
+    }
   }
 };
 
@@ -1390,7 +1435,7 @@ const main = async () => {
   const browser = await chromium.launch({
     args: ['--headless=new'],
     env: browserTemp ? { ...process.env, TMPDIR: browserTemp } : process.env,
-    executablePath: chromium.executablePath(),
+    executablePath: process.env.P140_CHROMIUM_EXECUTABLE || chromium.executablePath(),
     headless: false,
     ignoreDefaultArgs: ['--disable-back-forward-cache'],
   });
@@ -1406,6 +1451,7 @@ const main = async () => {
     const mobileNavParity = await exerciseMobileNavVisualParity(api, browser);
     await exerciseMatrix(api, browser);
     await exerciseReturnBridgeVisuals(api, browser);
+    await exerciseMoodleMobileEndClearance(api, browser);
     await exerciseRevocation({
       api,
       browser,
@@ -1493,6 +1539,7 @@ const main = async () => {
           'source-return-bridge',
           'source-return-bridge-covered',
           'source-return-bridge-unbound-absent',
+          'moodle-mobile-end-clearance',
           'refresh',
           'preserved-login-reentry',
           'account-switch',

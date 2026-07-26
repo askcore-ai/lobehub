@@ -46,6 +46,18 @@ const styles = createStaticStyles(({ css }) => ({
   card: css`
     height: 100%;
   `,
+  creditHeader: css`
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+  `,
+  creditMetrics: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    justify-content: space-between;
+  `,
   page: css`
     overflow: auto;
     display: flex;
@@ -281,6 +293,15 @@ export const SchoolBillingPage = memo<SchoolBillingPageProps>(({ accountUserId, 
   }
 
   const schoolFunded = sponsorship.current_funding_priority === 'school_then_personal';
+  const memberCredit = sponsorship.credit_summary;
+  const memberAvailablePercent = memberCredit
+    ? Math.min(
+        100,
+        (memberCredit.school_available_credits /
+          Math.max(memberCredit.school_granted_credits, 1)) *
+          100,
+      )
+    : 0;
   const usagePercent = admin
     ? Math.min(
         100,
@@ -412,15 +433,51 @@ export const SchoolBillingPage = memo<SchoolBillingPageProps>(({ accountUserId, 
           </Card>
         </>
       ) : (
-        <Card title={t('schoolBilling.member.title')}>
-          <Space orientation="vertical">
-            <Typography.Text>
-              {t(`schoolBilling.member.status.${sponsorship.sponsorship_status}`)}
-            </Typography.Text>
+        <Card
+          title={t(
+            memberCredit ? 'schoolBilling.member.credit.title' : 'schoolBilling.member.title',
+          )}
+        >
+          <Space orientation="vertical" style={{ width: '100%' }}>
+            <div className={styles.creditHeader}>
+              <Typography.Text strong>{t('schoolBilling.member.title')}</Typography.Text>
+              <Tag color={schoolFunded ? 'green' : 'default'}>
+                {t(`schoolBilling.member.status.${sponsorship.sponsorship_status}`)}
+              </Tag>
+            </div>
             {sponsorship.seat_id ? (
               <Typography.Text type="secondary">
                 {t('schoolBilling.member.seat', { seat: sponsorship.seat_id })}
               </Typography.Text>
+            ) : null}
+            {memberCredit ? (
+              <>
+                <Progress percent={Number(memberAvailablePercent.toFixed(1))} showInfo={false} />
+                <div className={styles.creditMetrics}>
+                  <Typography.Text type="secondary">
+                    {t('schoolBilling.member.credit.available', {
+                      credits: credits(memberCredit.school_available_credits),
+                    })}
+                  </Typography.Text>
+                  <Typography.Text type="secondary">
+                    {t('schoolBilling.member.credit.total', {
+                      credits: credits(memberCredit.school_granted_credits),
+                    })}
+                  </Typography.Text>
+                </div>
+                <div className={styles.creditMetrics}>
+                  <Typography.Text type="secondary">
+                    {t('schoolBilling.member.credit.monthly', {
+                      credits: credits(memberCredit.seat_monthly_credits),
+                    })}
+                  </Typography.Text>
+                  <Typography.Text type="secondary">
+                    {t('schoolBilling.member.credit.used', {
+                      credits: credits(memberCredit.seat_settled_credits),
+                    })}
+                  </Typography.Text>
+                </div>
+              </>
             ) : null}
           </Space>
         </Card>

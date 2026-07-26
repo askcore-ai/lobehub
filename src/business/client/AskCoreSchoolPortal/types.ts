@@ -27,6 +27,7 @@ export interface SchoolIntegrationOperations {
 
 export interface SchoolSponsorshipSummary {
   contract: 'askcore.school-sponsorship.v1';
+  credit_summary: SchoolMemberCreditSummary | null;
   current_funding_priority: 'personal_only' | 'school_then_personal';
   personal_fallback_enabled: true;
   safe_reason: string | null;
@@ -35,6 +36,16 @@ export interface SchoolSponsorshipSummary {
   seat_id: number | null;
   sponsorship_status:
     'assigned' | 'available_to_claim' | 'inactive' | 'no_seat' | 'source_unavailable';
+}
+
+export interface SchoolMemberCreditSummary {
+  period_end: string;
+  period_start: string;
+  rollover: false;
+  school_available_credits: number;
+  school_granted_credits: number;
+  seat_monthly_credits: number;
+  seat_settled_credits: number;
 }
 
 export interface SchoolCreditPeriod {
