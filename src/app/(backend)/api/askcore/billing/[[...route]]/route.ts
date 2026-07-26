@@ -100,6 +100,7 @@ const buildSchoolBillingAssertion = async ({
     method,
     path,
     school_key: schoolKey,
+    source_binding: sessionBinding,
     source_cell_key: sourceCellKey,
     source_proof: sourceProof,
     sub: accountUserId,

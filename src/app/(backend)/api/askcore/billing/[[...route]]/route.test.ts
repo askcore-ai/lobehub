@@ -248,6 +248,7 @@ describe('AskCore billing proxy route', () => {
       method: 'GET',
       path: '/api/billing/v1/schools/askcore-online-school',
       school_key: 'askcore-online-school',
+      source_binding: currentSchoolBinding,
       source_cell_key: 'askcore-online-school',
       source_proof: sourceProof,
       sub: 'user-1',
