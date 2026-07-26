@@ -1,3 +1,4 @@
+import { alignSchoolSourceSession } from './handoffClient';
 import {
   type SchoolBillingAdminSummary,
   type SchoolEligibleMember,
@@ -174,16 +175,22 @@ export const fetchSchoolBillingSourceProof = async ({
 }: {
   schoolKey: string;
 }): Promise<SchoolSourceProof> => {
-  const response = await fetchSchoolResource(SCHOOL_BILLING_SOURCE_URL, {
-    body: JSON.stringify({
-      action: 'session_proof',
-      school_key: schoolKey,
-    }),
-    cache: 'no-store',
-    credentials: 'include',
-    headers: { 'accept': 'application/json', 'content-type': 'application/json' },
-    method: 'POST',
-  });
+  const requestProof = () =>
+    fetchSchoolResource(SCHOOL_BILLING_SOURCE_URL, {
+      body: JSON.stringify({
+        action: 'session_proof',
+        school_key: schoolKey,
+      }),
+      cache: 'no-store',
+      credentials: 'include',
+      headers: { 'accept': 'application/json', 'content-type': 'application/json' },
+      method: 'POST',
+    });
+  let response = await requestProof();
+  if (response.status === 401) {
+    await alignSchoolSourceSession('gibbon');
+    response = await requestProof();
+  }
   if (!response.ok) {
     throw new SchoolPortalApiError(
       response.status,

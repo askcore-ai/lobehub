@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const grant = 'header.payload.signature';
+const gibbonAction = '/school/services/askcore/handoff.php';
 const moodleAction = '/school/teaching/local/askcore/handoff.php';
 
 class TestBroadcastChannel {
@@ -125,6 +126,64 @@ describe('invisible school source handoff client', () => {
     await expect(first).resolves.toBe('navigating');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(submit).toHaveBeenCalledTimes(1);
+  });
+
+  it('aligns Gibbon invisibly without creating a form or document navigation', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ action: gibbonAction, grant }))
+      .mockResolvedValueOnce({ status: 0, type: 'opaqueredirect' });
+    vi.stubGlobal('fetch', fetchMock);
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {});
+    const { alignSchoolSourceSession, setSchoolHandoffSessionState } =
+      await import('./handoffClient');
+    setSchoolHandoffSessionState('stable', 'generation-a');
+
+    await expect(alignSchoolSourceSession('gibbon')).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      gibbonAction,
+      expect.objectContaining({
+        body: new URLSearchParams({ grant }),
+        cache: 'no-store',
+        credentials: 'include',
+        method: 'POST',
+        redirect: 'manual',
+      }),
+    );
+    expect(submit).not.toHaveBeenCalled();
+    expect(document.querySelector('form')).toBeNull();
+    expect(location.href).not.toContain(grant);
+  });
+
+  it('aborts invisible alignment when the account generation changes', async () => {
+    let sourceSignal: AbortSignal | undefined;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ action: gibbonAction, grant }))
+      .mockImplementationOnce((_input, init?: RequestInit) => {
+        sourceSignal = init?.signal || undefined;
+        return new Promise<Response>((_resolve, reject) => {
+          sourceSignal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted', 'AbortError')),
+            { once: true },
+          );
+        });
+      });
+    vi.stubGlobal('fetch', fetchMock);
+    const { alignSchoolSourceSession, setSchoolHandoffSessionState } =
+      await import('./handoffClient');
+    setSchoolHandoffSessionState('stable', 'generation-a');
+
+    const alignment = alignSchoolSourceSession('gibbon');
+    await vi.waitFor(() => expect(sourceSignal).toBeDefined());
+    setSchoolHandoffSessionState('unstable', null);
+
+    await expect(alignment).rejects.toMatchObject({ name: 'AbortError' });
+    expect(sourceSignal?.aborted).toBe(true);
   });
 
   it('aborts the old preparation when the local account generation changes', async () => {

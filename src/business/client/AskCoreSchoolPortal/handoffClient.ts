@@ -33,6 +33,13 @@ let activePreparation:
       promise: Promise<'navigating'>;
     }
   | undefined;
+let activeSessionAlignment:
+  | {
+      controller: AbortController;
+      promise: Promise<void>;
+      source: SchoolSourceAudience;
+    }
+  | undefined;
 let sessionEpoch = 0;
 let sessionGenerationHash: string | null = null;
 let sessionState: SchoolHandoffSessionState | 'initializing' = 'initializing';
@@ -44,6 +51,9 @@ const abortActivePreparation = () => {
   const previous = activePreparation;
   activePreparation = undefined;
   previous?.controller.abort();
+  const previousAlignment = activeSessionAlignment;
+  activeSessionAlignment = undefined;
+  previousAlignment?.controller.abort();
 };
 
 const resolveSessionWaiters = () => {
@@ -189,6 +199,7 @@ export const cancelSchoolSourceHandoff = () => {
 export const enterSchoolSource = (source: SchoolSourceAudience): Promise<'navigating'> => {
   ensureSessionChannel();
   if (activePreparation) return activePreparation.promise;
+  if (activeSessionAlignment) abortActivePreparation();
 
   const controller = new AbortController();
   const promise = (async () => {
@@ -212,5 +223,73 @@ export const enterSchoolSource = (source: SchoolSourceAudience): Promise<'naviga
   });
 
   activePreparation = { controller, promise };
+  return promise;
+};
+
+export const alignSchoolSourceSession = (source: SchoolSourceAudience): Promise<void> => {
+  ensureSessionChannel();
+  if (activeSessionAlignment?.source === source) return activeSessionAlignment.promise;
+  if (activePreparation) throw new SchoolHandoffError(409);
+  if (activeSessionAlignment) abortActivePreparation();
+
+  const controller = new AbortController();
+  const timer = window.setTimeout(
+    () =>
+      controller.abort(
+        new DOMException('School source session alignment timed out', 'TimeoutError'),
+      ),
+    SESSION_INITIALIZATION_TIMEOUT_MS,
+  );
+  const promise = (async () => {
+    await waitForInitializedSession(controller.signal);
+    if (sessionState !== 'stable' || !sessionGenerationHash) {
+      throw new SchoolHandoffError(401);
+    }
+    const requestEpoch = sessionEpoch;
+    const handoff = await requestSourceHandoff(source, controller.signal);
+    if (
+      controller.signal.aborted ||
+      requestEpoch !== sessionEpoch ||
+      sessionState !== 'stable'
+    ) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+
+    const response = await fetch(handoff.action, {
+      body: new URLSearchParams({ grant: handoff.grant }),
+      cache: 'no-store',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      method: 'POST',
+      redirect: 'manual',
+      signal: controller.signal,
+    });
+    if (response.status !== 303 && response.type !== 'opaqueredirect') {
+      throw new SchoolHandoffError(response.status || 503);
+    }
+    if (
+      controller.signal.aborted ||
+      requestEpoch !== sessionEpoch ||
+      sessionState !== 'stable'
+    ) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+  })()
+    .catch((error: unknown) => {
+      if (
+        controller.signal.aborted &&
+        controller.signal.reason instanceof DOMException &&
+        controller.signal.reason.name === 'TimeoutError'
+      ) {
+        throw new SchoolHandoffError(503);
+      }
+      throw error;
+    })
+    .finally(() => {
+      window.clearTimeout(timer);
+      if (activeSessionAlignment?.promise === promise) activeSessionAlignment = undefined;
+    });
+
+  activeSessionAlignment = { controller, promise, source };
   return promise;
 };
