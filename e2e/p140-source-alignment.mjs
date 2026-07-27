@@ -875,6 +875,49 @@ const exerciseMoodleMobileEndClearance = async (api, browser) => {
         (await page.locator('#askcore-source-mobile-content-spacer').count()) === 1,
         `Moodle reload duplicated its spacer at ${width}px`,
       );
+      await page.goto(
+        `${baseURL}/__p140/source/moodle?fixture-role=student&fixture-modal=1`,
+        { waitUntil: 'domcontentloaded' },
+      );
+      await page.waitForFunction(() =>
+        document.documentElement.classList.contains('askcore-session-ready'),
+      );
+      const overlayState = await page.evaluate(() => {
+        const bridge = document.querySelector('#askcore-source-return-bridge');
+        const dialog = document.querySelector('.modal.show .modal-dialog');
+        const body = document.querySelector('.modal.show .modal-body');
+        const action = document.querySelector('.modal.show .modal-footer button');
+        if (
+          !(bridge instanceof HTMLElement) ||
+          !(dialog instanceof HTMLElement) ||
+          !(body instanceof HTMLElement) ||
+          !(action instanceof HTMLElement)
+        ) {
+          return null;
+        }
+        body.scrollTop = body.scrollHeight;
+        const bridgeRect = bridge.getBoundingClientRect();
+        const dialogRect = dialog.getBoundingClientRect();
+        const actionRect = action.getBoundingClientRect();
+        return {
+          actionClearance: bridgeRect.top - actionRect.bottom,
+          bodyScrollable: body.scrollHeight > body.clientHeight,
+          dialogClearance: bridgeRect.top - dialogRect.bottom,
+        };
+      });
+      assert(overlayState, `Moodle activity chooser fixture missing at ${width}px`);
+      assert(
+        overlayState.bodyScrollable,
+        `Moodle activity chooser body stopped scrolling at ${width}px`,
+      );
+      assert(
+        overlayState.actionClearance >= 8,
+        `Moodle activity chooser action is covered at ${width}px`,
+      );
+      assert(
+        overlayState.dialogClearance >= 8,
+        `Moodle activity chooser viewport is covered at ${width}px`,
+      );
     } finally {
       await context.close();
     }
