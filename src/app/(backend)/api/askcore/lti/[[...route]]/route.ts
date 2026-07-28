@@ -20,7 +20,9 @@ type RouteContext = {
 
 const DEFAULT_API_BASE_URL = 'http://api:8000';
 const ALLOWED_METHODS = ['GET', 'POST', 'PATCH', 'OPTIONS'];
-const PROTOCOL_COOKIE_NAMES = new Set(['askcore_lti_handoff', 'askcore_lti_processing']);
+const PROTOCOL_HANDOFF_COOKIE_PREFIX = 'askcore_lti_handoff_';
+const PROTOCOL_CONTEXT_COOKIE_PREFIX = 'askcore_lti_processing_';
+const PROTOCOL_LAUNCH_SCOPE = /^[a-f0-9]{32}$/;
 
 const isAllowedPublicProtocolRoute = (method: string, route: string[]) => {
   const path = route.join('/');
@@ -34,7 +36,6 @@ const isAllowedProcessingRoute = (method: string, route: string[]) => {
   if (method === 'OPTIONS') return path.startsWith('processing/');
   if (method === 'GET') {
     return (
-      path === 'processing/context' ||
       path === 'processing/current' ||
       path === 'processing/current/report/preview' ||
       path === 'processing/capture/scanners' ||
@@ -45,6 +46,7 @@ const isAllowedProcessingRoute = (method: string, route: string[]) => {
   if (method === 'PATCH') return path === 'processing/current/result';
   if (method === 'POST') {
     return (
+      path === 'processing/context' ||
       path === 'processing/current/report' ||
       path === 'processing/capture/jobs' ||
       /^processing\/capture\/jobs\/[\w.~-]+\/(?:continue|cancel)$/.test(path)
@@ -61,12 +63,22 @@ const isAllowedIdentityLinkWriteRoute = (method: string, route: string[]) =>
 
 const jsonError = (status: number, detail: string) => NextResponse.json({ detail }, { status });
 
-const protocolCookies = (request: NextRequest) =>
-  request.cookies
+const protocolLaunchScope = (request: NextRequest) => {
+  const value = request.nextUrl.searchParams.get('launch')?.trim().toLowerCase() || '';
+  return PROTOCOL_LAUNCH_SCOPE.test(value) ? value : null;
+};
+
+const protocolCookies = (request: NextRequest, launchScope: string) => {
+  const names = new Set([
+    `${PROTOCOL_HANDOFF_COOKIE_PREFIX}${launchScope}`,
+    `${PROTOCOL_CONTEXT_COOKIE_PREFIX}${launchScope}`,
+  ]);
+  return request.cookies
     .getAll()
-    .filter((cookie) => PROTOCOL_COOKIE_NAMES.has(cookie.name))
+    .filter((cookie) => names.has(cookie.name))
     .map((cookie) => `${cookie.name}=${cookie.value}`)
     .join('; ');
+};
 
 const upstreamSetCookies = (headers: Headers) => {
   const values =
@@ -75,7 +87,13 @@ const upstreamSetCookies = (headers: Headers) => {
       : [headers.get('set-cookie') || ''];
   return values.filter((value) => {
     const name = value.split('=', 1)[0]?.trim();
-    return Boolean(name && PROTOCOL_COOKIE_NAMES.has(name));
+    if (!name) return false;
+    for (const prefix of [PROTOCOL_HANDOFF_COOKIE_PREFIX, PROTOCOL_CONTEXT_COOKIE_PREFIX]) {
+      if (name.startsWith(prefix) && PROTOCOL_LAUNCH_SCOPE.test(name.slice(prefix.length))) {
+        return true;
+      }
+    }
+    return false;
   });
 };
 
@@ -109,6 +127,10 @@ const forwardProtocolRequest = async (request: NextRequest, context: RouteContex
     (!processingRoute && !identityLinkRoute && !publicRoute)
   ) {
     return jsonError(404, 'AskCore protocol route is unavailable');
+  }
+  const launchScope = processingRoute ? protocolLaunchScope(request) : null;
+  if (processingRoute && !launchScope) {
+    return jsonError(400, 'AskCore protocol launch scope is invalid');
   }
   if (request.method === 'OPTIONS') {
     return new NextResponse(null, {
@@ -147,7 +169,7 @@ const forwardProtocolRequest = async (request: NextRequest, context: RouteContex
     }
     headers.set(askCoreAssertionHeaderName(), assertion);
     if (processingRoute) {
-      const cookie = protocolCookies(request);
+      const cookie = protocolCookies(request, launchScope!);
       if (cookie) headers.set('cookie', cookie);
     }
   }

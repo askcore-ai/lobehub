@@ -44,8 +44,10 @@ describe('AskCore processing proxy', () => {
     const { GET } = await loadRoute();
 
     const response = await GET(
-      new NextRequest('https://askcore.cn/api/askcore/lti/processing/context'),
-      routeContext(['processing', 'context']),
+      new NextRequest(
+        'https://askcore.cn/api/askcore/lti/processing/current?launch=0123456789abcdef0123456789abcdef',
+      ),
+      routeContext(['processing', 'current']),
     );
 
     expect(response.status).toBe(401);
@@ -148,11 +150,14 @@ describe('AskCore processing proxy', () => {
   it('rejects cross-origin protocol mutations before session lookup', async () => {
     const { PATCH } = await loadRoute();
     const response = await PATCH(
-      new NextRequest('https://askcore.cn/api/askcore/lti/processing/current/result', {
-        body: JSON.stringify({ expected_latest_artifact_id: 'artifact-1', questions: [] }),
-        headers: { origin: 'https://evil.example' },
-        method: 'PATCH',
-      }),
+      new NextRequest(
+        'https://askcore.cn/api/askcore/lti/processing/current/result?launch=0123456789abcdef0123456789abcdef',
+        {
+          body: JSON.stringify({ expected_latest_artifact_id: 'artifact-1', questions: [] }),
+          headers: { origin: 'https://evil.example' },
+          method: 'PATCH',
+        },
+      ),
       routeContext(['processing', 'current', 'result']),
     );
 
@@ -314,14 +319,18 @@ describe('AskCore processing proxy', () => {
     const { GET } = await loadRoute();
 
     const response = await GET(
-      new NextRequest('https://askcore.cn/api/askcore/lti/processing/capture/scanners'),
+      new NextRequest(
+        'https://askcore.cn/api/askcore/lti/processing/capture/scanners?launch=0123456789abcdef0123456789abcdef',
+      ),
       routeContext(['processing', 'capture', 'scanners']),
     );
 
     expect(response.status).toBe(200);
     expect(authApi.getFullOrganization).not.toHaveBeenCalled();
     const [target, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
-    expect(target.toString()).toBe('http://api:8000/api/lti/v1/processing/capture/scanners');
+    expect(target.toString()).toBe(
+      'http://api:8000/api/lti/v1/processing/capture/scanners?launch=0123456789abcdef0123456789abcdef',
+    );
     const assertion = (init.headers as Headers).get('X-AskCore-Billing-Assertion');
     const { payload } = await jwtVerify(
       assertion!,

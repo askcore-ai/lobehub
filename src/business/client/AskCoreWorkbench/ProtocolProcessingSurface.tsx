@@ -195,7 +195,7 @@ const styles = createStaticStyles(({ css }) => ({
 
 type PreviewChoice =
   | { input: ProtocolProcessingInput; key: string; label: string; type: 'input' }
-  | { key: 'report'; label: string; type: 'report' };
+  | { key: 'report'; label: string; previewUrl: string; type: 'report' };
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
@@ -280,12 +280,8 @@ const PreviewPane = ({
       ) : choice.type === 'report' || choice.input.content_type === 'application/pdf' ? (
         <iframe
           className={styles.previewFrame}
+          src={choice.type === 'report' ? choice.previewUrl : choice.input.preview_url}
           title={choice.label}
-          src={
-            choice.type === 'report'
-              ? '/api/askcore/lti/processing/current/report/preview'
-              : choice.input.preview_url
-          }
         />
       ) : (
         <img alt={choice.label} className={styles.previewImage} src={choice.input.preview_url} />
@@ -294,7 +290,7 @@ const PreviewPane = ({
   </section>
 );
 
-export const ProtocolProcessingSurface = memo(() => {
+export const ProtocolProcessingSurface = memo(({ launchScope }: { launchScope: string }) => {
   const { t } = useTranslation('common');
   const [context, setContext] = useState<ProtocolProcessingContext | null>(null);
   const [surface, setSurface] = useState<ProtocolProcessingSurfacePayload | null>(null);
@@ -312,7 +308,7 @@ export const ProtocolProcessingSurface = memo(() => {
       if (!quiet) setLoading(true);
       setError(undefined);
       try {
-        const nextContext = await fetchProtocolProcessingContext();
+        const nextContext = await fetchProtocolProcessingContext(launchScope);
         setContext(nextContext);
         if (!nextContext.account_linked) {
           setSurface(null);
@@ -326,7 +322,7 @@ export const ProtocolProcessingSurface = memo(() => {
           setDirty(false);
           return;
         }
-        const nextSurface = await fetchCurrentProtocolProcessingSurface();
+        const nextSurface = await fetchCurrentProtocolProcessingSurface(launchScope);
         setSurface(nextSurface);
         setContext(nextSurface.context);
         const resultContent = nextSurface.result?.content;
@@ -349,7 +345,7 @@ export const ProtocolProcessingSurface = memo(() => {
         setLoading(false);
       }
     },
-    [t],
+    [launchScope, t],
   );
 
   useEffect(() => {
@@ -367,27 +363,32 @@ export const ProtocolProcessingSurface = memo(() => {
     return () => window.clearInterval(timer);
   }, [context, refresh]);
 
+  const referenceMode = context?.run_kind === 'reference';
   const choices = useMemo<PreviewChoice[]>(() => {
-    const inputs: PreviewChoice[] = (surface?.inputs || []).map((input) => ({
-      input,
-      key: `input:${input.slot_id}`,
-      label: t(
-        input.kind === 'reference'
-          ? 'askcoreProcessing.editor.preview.referencePage'
-          : 'askcoreProcessing.editor.preview.responsePage',
-        { page: input.page_order },
-      ),
-      type: 'input' as const,
-    }));
-    if (surface?.report?.available) {
+    const sourceKind = referenceMode ? 'reference' : 'response';
+    const inputs: PreviewChoice[] = (surface?.inputs || [])
+      .filter((input) => input.kind === sourceKind)
+      .map((input) => ({
+        input,
+        key: `input:${input.slot_id}`,
+        label: t(
+          input.kind === 'reference'
+            ? 'askcoreProcessing.editor.preview.referencePage'
+            : 'askcoreProcessing.editor.preview.responsePage',
+          { page: input.page_order },
+        ),
+        type: 'input' as const,
+      }));
+    if (inputs.length && surface?.report?.available && surface.report.preview_url) {
       inputs.push({
         key: 'report',
         label: t('askcoreProcessing.editor.report'),
+        previewUrl: surface.report.preview_url,
         type: 'report',
       });
     }
     return inputs;
-  }, [surface, t]);
+  }, [referenceMode, surface, t]);
 
   useEffect(() => {
     if (!choices.length) {
@@ -436,7 +437,7 @@ export const ProtocolProcessingSurface = memo(() => {
     setError(undefined);
     try {
       const referenceMode = context?.run_kind === 'reference';
-      await editCurrentProtocolProcessingResult({
+      await editCurrentProtocolProcessingResult(launchScope, {
         expected_latest_artifact_id: artifactId,
         questions: questions.map((question) =>
           referenceMode
@@ -477,7 +478,7 @@ export const ProtocolProcessingSurface = memo(() => {
     setReporting(true);
     setError(undefined);
     try {
-      await generateCurrentProtocolProcessingReport();
+      await generateCurrentProtocolProcessingReport(launchScope);
       message.success(t('askcoreProcessing.editor.reportGenerated'));
       await refresh(true);
       setSelectedPreview('report');
@@ -686,7 +687,6 @@ export const ProtocolProcessingSurface = memo(() => {
     [t, updateQuestion],
   );
 
-  const referenceMode = context?.run_kind === 'reference';
   const state = processingState(context?.processing_state, t as Translate);
   const score = surface?.result?.content.score;
   const total = surface?.result?.content.total_score;
@@ -714,7 +714,7 @@ export const ProtocolProcessingSurface = memo(() => {
   }
 
   if (context?.context_kind === 'capture') {
-    return <ProtocolCaptureSurface context={context} />;
+    return <ProtocolCaptureSurface context={context} launchScope={launchScope} />;
   }
 
   return (
@@ -757,15 +757,13 @@ export const ProtocolProcessingSurface = memo(() => {
       {error ? <Alert showIcon title={error} type="error" /> : null}
       {validationError ? <Alert showIcon title={validationError} type="warning" /> : null}
 
-      <div className={`${styles.body} ${choices.length ? '' : styles.singleBody}`}>
-        {choices.length ? (
-          <PreviewPane
-            choice={selectedChoice}
-            choices={choices}
-            t={t as Translate}
-            onChange={setSelectedPreview}
-          />
-        ) : null}
+      <div className={styles.body}>
+        <PreviewPane
+          choice={selectedChoice}
+          choices={choices}
+          t={t as Translate}
+          onChange={setSelectedPreview}
+        />
 
         <section className={styles.editor}>
           <div className={styles.editorHeader}>
@@ -782,9 +780,9 @@ export const ProtocolProcessingSurface = memo(() => {
             <div className={styles.actions}>
               {!referenceMode ? (
                 <Button
+                  disabled={!surface?.result || dirty || !context?.capabilities.can_generate_report}
                   icon={<FileText size={14} />}
                   loading={reporting}
-                  disabled={!surface?.result || dirty || !context?.capabilities.can_generate_report}
                   onClick={() => void generateReport()}
                 >
                   {t('askcoreProcessing.editor.generateReport')}

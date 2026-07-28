@@ -306,13 +306,13 @@ const captureFailureMessage = (
 ) => t(CAPTURE_FAILURE_MESSAGE_KEYS[failure.code] || 'askcoreProcessing.capture.failure.generic');
 
 const terminalCaptureStatuses = new Set(['cancelled', 'completed', 'failed']);
-const fetchAvailableScanners = async () => {
-  const payload = await fetchProtocolCaptureScanners();
+const fetchAvailableScanners = async (launchScope: string) => {
+  const payload = await fetchProtocolCaptureScanners(launchScope);
   return payload.scanners.filter((scanner) => scanner.online);
 };
 
 export const ProtocolCaptureSurface = memo(
-  ({ context }: { context: ProtocolProcessingContext }) => {
+  ({ context, launchScope }: { context: ProtocolProcessingContext; launchScope: string }) => {
     const { t } = useTranslation('common');
     const [scanners, setScanners] = useState<ProtocolScanner[]>([]);
     const [scannerRef, setScannerRef] = useState('');
@@ -349,7 +349,7 @@ export const ProtocolCaptureSurface = memo(
       setLoading(true);
       setError(undefined);
       try {
-        const available = await fetchAvailableScanners();
+        const available = await fetchAvailableScanners(launchScope);
         setScanners(available);
         setScannerRef((current) =>
           available.some((scanner) => scanner.scanner_ref === current)
@@ -363,7 +363,7 @@ export const ProtocolCaptureSurface = memo(
       } finally {
         setLoading(false);
       }
-    }, [t]);
+    }, [launchScope, t]);
 
     useEffect(() => {
       void loadScanners();
@@ -387,7 +387,7 @@ export const ProtocolCaptureSurface = memo(
           const persisted = readPersistedCapture(binding);
           if (!persisted) return;
           try {
-            const restored = await fetchProtocolCaptureStatus(persisted.capture_id);
+            const restored = await fetchProtocolCaptureStatus(launchScope, persisted.capture_id);
             if (!active) return;
             setCapture(restored);
             persistCapture(binding, restored.capture_id);
@@ -416,7 +416,7 @@ export const ProtocolCaptureSurface = memo(
       return () => {
         active = false;
       };
-    }, [context, t]);
+    }, [context, launchScope, t]);
 
     const scanner = scanners.find((item) => item.scanner_ref === scannerRef);
     const hasPlaten = scanner?.capabilities.input_sources.includes('platen') === true;
@@ -438,7 +438,7 @@ export const ProtocolCaptureSurface = memo(
       if (!capture || terminalCaptureStatuses.has(capture.status)) return;
       const timer = window.setInterval(async () => {
         try {
-          setCapture(await fetchProtocolCaptureStatus(capture.capture_id));
+          setCapture(await fetchProtocolCaptureStatus(launchScope, capture.capture_id));
         } catch (reason) {
           setError(
             captureError(
@@ -450,7 +450,7 @@ export const ProtocolCaptureSurface = memo(
         }
       }, 2000);
       return () => window.clearInterval(timer);
-    }, [capture, t]);
+    }, [capture, launchScope, t]);
 
     const sourceOptions = useMemo(() => {
       const options: Array<{
@@ -499,7 +499,7 @@ export const ProtocolCaptureSurface = memo(
           setError(t('askcoreProcessing.capture.error.start'));
           return;
         }
-        const next = await startProtocolCapture({
+        const next = await startProtocolCapture(launchScope, {
           back_side_rotation_degrees: duplex ? backRotation : 0,
           duplex,
           input_source_mode: inputSource,
@@ -524,7 +524,7 @@ export const ProtocolCaptureSurface = memo(
       setMutating(true);
       setError(undefined);
       try {
-        const next = await continueProtocolCapture(capture.capture_id);
+        const next = await continueProtocolCapture(launchScope, capture.capture_id);
         setCapture(next);
         persistCapture(resumeBinding, next.capture_id);
       } catch (reason) {
@@ -545,7 +545,7 @@ export const ProtocolCaptureSurface = memo(
       setMutating(true);
       setError(undefined);
       try {
-        setCapture(await cancelProtocolCapture(capture.capture_id));
+        setCapture(await cancelProtocolCapture(launchScope, capture.capture_id));
       } catch (reason) {
         setError(
           captureError(reason, t('askcoreProcessing.capture.error.cancel'), t as CaptureTranslate),

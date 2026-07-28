@@ -8,6 +8,14 @@ import enUS from '../../../../locales/en-US/common.json';
 import zhCN from '../../../../locales/zh-CN/common.json';
 import { ProtocolProcessingSurface } from './ProtocolProcessingSurface';
 
+const launchScope = '0123456789abcdef0123456789abcdef';
+const scopedProtocolUrl = (path: string) => `${path}?launch=${launchScope}`;
+const protocolPath = (input: RequestInfo | URL) => {
+  const url = new URL(String(input), 'https://askcore.test');
+  expect(url.searchParams.get('launch')).toBe(launchScope);
+  return url.pathname;
+};
+
 const messageMock = vi.hoisted(() => ({
   success: vi.fn(),
 }));
@@ -80,14 +88,14 @@ const surfacePayload = (artifactId = 'grading-1') => ({
       content_type: 'image/png',
       kind: 'reference',
       page_order: 1,
-      preview_url: '/api/askcore/lti/processing/current/inputs/reference-1/preview',
+      preview_url: `/api/askcore/lti/processing/current/inputs/reference-1/preview?launch=${launchScope}`,
       slot_id: 'reference-1',
     },
     {
       content_type: 'application/pdf',
       kind: 'response',
       page_order: 1,
-      preview_url: '/api/askcore/lti/processing/current/inputs/response-1/preview',
+      preview_url: `/api/askcore/lti/processing/current/inputs/response-1/preview?launch=${launchScope}`,
       slot_id: 'response-1',
     },
   ],
@@ -132,8 +140,7 @@ const referenceSurfacePayload = (artifactId = 'reference-1') => ({
       content_type: 'image/png',
       kind: 'reference',
       page_order: 1,
-      preview_url:
-        '/api/askcore/lti/processing/current/inputs/reference-1/preview?launch=reference-tab-scope',
+      preview_url: `/api/askcore/lti/processing/current/inputs/reference-1/preview?launch=${launchScope}`,
       slot_id: 'reference-1',
     },
   ],
@@ -190,7 +197,7 @@ describe('ProtocolProcessingSurface', () => {
   it('renders only processing controls and saves an identifier-free revision', async () => {
     let artifactId = 'grading-1';
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
+      const url = protocolPath(input);
       if (url === '/api/askcore/lti/processing/context') {
         return new Response(JSON.stringify(contextPayload), {
           headers: { 'content-type': 'application/json' },
@@ -227,10 +234,15 @@ describe('ProtocolProcessingSurface', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<ProtocolProcessingSurface />);
+    render(<ProtocolProcessingSurface launchScope={launchScope} />);
 
     expect(await screen.findByRole('heading', { name: '智能批改' })).toBeInTheDocument();
     expect(screen.getByLabelText('预览内容')).toBeInTheDocument();
+    expect(screen.getByTitle('学生答卷 · 第 1 页')).toHaveAttribute(
+      'src',
+      scopedProtocolUrl('/api/askcore/lti/processing/current/inputs/response-1/preview'),
+    );
+    expect(screen.queryByText('参考材料 · 第 1 页')).not.toBeInTheDocument();
     expect(screen.getByLabelText('第 1 题 OCR 文本')).toHaveValue('x=2');
     for (const retired of ['创建作业', '提交作业', '班级', '组织', '截止时间']) {
       expect(screen.queryByText(retired)).not.toBeInTheDocument();
@@ -243,13 +255,14 @@ describe('ProtocolProcessingSurface', () => {
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        '/api/askcore/lti/processing/current/result',
+        scopedProtocolUrl('/api/askcore/lti/processing/current/result'),
         expect.objectContaining({ method: 'PATCH' }),
       ),
     );
     const revisionCall = fetchMock.mock.calls.find(
       ([input, init]) =>
-        String(input) === '/api/askcore/lti/processing/current/result' && init?.method === 'PATCH',
+        String(input) === scopedProtocolUrl('/api/askcore/lti/processing/current/result') &&
+        init?.method === 'PATCH',
     );
     const body = String(revisionCall?.[1]?.body || '');
     expect(body).toContain('expected_latest_artifact_id');
@@ -265,7 +278,7 @@ describe('ProtocolProcessingSurface', () => {
     fireEvent.click(screen.getByRole('button', { name: '生成报告' }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        '/api/askcore/lti/processing/current/report',
+        scopedProtocolUrl('/api/askcore/lti/processing/current/report'),
         expect.objectContaining({ method: 'POST' }),
       ),
     );
@@ -273,23 +286,14 @@ describe('ProtocolProcessingSurface', () => {
 
   it('renders a restrained reference OCR editor and saves only reference fields', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (
-        url === '/api/askcore/lti/processing/context?launch=reference-tab-scope' &&
-        init?.method === 'POST'
-      ) {
+      const url = protocolPath(input);
+      if (url === '/api/askcore/lti/processing/context' && init?.method === 'POST') {
         return Response.json(referenceContextPayload);
       }
-      if (
-        url === '/api/askcore/lti/processing/current?launch=reference-tab-scope' &&
-        !init?.method
-      ) {
+      if (url === '/api/askcore/lti/processing/current' && !init?.method) {
         return Response.json(referenceSurfacePayload());
       }
-      if (
-        url === '/api/askcore/lti/processing/current/result?launch=reference-tab-scope' &&
-        init?.method === 'PATCH'
-      ) {
+      if (url === '/api/askcore/lti/processing/current/result' && init?.method === 'PATCH') {
         return Response.json({
           artifact_id: 'reference-2',
           content: referenceSurfacePayload().result.content,
@@ -299,12 +303,12 @@ describe('ProtocolProcessingSurface', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<ProtocolProcessingSurface launchScope="reference-tab-scope" />);
+    render(<ProtocolProcessingSurface launchScope={launchScope} />);
 
     expect(await screen.findByRole('heading', { name: '参考材料 OCR' })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: '参考材料 · 第 1 页' })).toHaveAttribute(
       'src',
-      expect.stringContaining('launch=reference-tab-scope'),
+      expect.stringContaining(`launch=${launchScope}`),
     );
     expect(screen.getByLabelText('第 1 题题干')).toHaveValue('计算 2+3');
     expect(screen.getByLabelText('第 1 题参考答案')).toHaveValue('5');
@@ -321,19 +325,47 @@ describe('ProtocolProcessingSurface', () => {
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        '/api/askcore/lti/processing/current/result?launch=reference-tab-scope',
+        scopedProtocolUrl('/api/askcore/lti/processing/current/result'),
         expect.objectContaining({ method: 'PATCH' }),
       ),
     );
     const revisionCall = fetchMock.mock.calls.find(
       ([input, init]) =>
-        String(input) === '/api/askcore/lti/processing/current/result?launch=reference-tab-scope' &&
+        String(input) === scopedProtocolUrl('/api/askcore/lti/processing/current/result') &&
         init?.method === 'PATCH',
     );
     const body = String(revisionCall?.[1]?.body || '');
     expect(body).toContain('"reference_answer":"答案为 5"');
     expect(body).toContain('"question_content":"计算 2+3"');
     expect(body).not.toMatch(/student_answer|is_correct|feedback|teacher_summary/);
+  });
+
+  it('states when historical source material is unavailable without substituting a report', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = protocolPath(input);
+      if (url === '/api/askcore/lti/processing/context' && init?.method === 'POST') {
+        return Response.json(contextPayload);
+      }
+      if (url === '/api/askcore/lti/processing/current' && !init?.method) {
+        return Response.json({
+          ...surfacePayload(),
+          inputs: [],
+          report: {
+            artifact_id: 'report-1',
+            available: true,
+            preview_url: scopedProtocolUrl('/api/askcore/lti/processing/current/report/preview'),
+          },
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ProtocolProcessingSurface launchScope={launchScope} />);
+
+    expect(await screen.findByText('该历史结果没有可用的原始材料')).toBeInTheDocument();
+    expect(screen.queryByTitle('反馈报告')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('第 1 题 OCR 文本')).toHaveValue('x=2');
   });
 
   it('fails closed when the school identity is not linked', async () => {
@@ -352,7 +384,7 @@ describe('ProtocolProcessingSurface', () => {
       ),
     );
 
-    render(<ProtocolProcessingSurface />);
+    render(<ProtocolProcessingSurface launchScope={launchScope} />);
 
     expect(await screen.findByText('学校身份尚未绑定到当前账号')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '保存修订' })).not.toBeInTheDocument();
@@ -371,7 +403,7 @@ describe('ProtocolProcessingSurface', () => {
       ),
     );
 
-    render(<ProtocolProcessingSurface />);
+    render(<ProtocolProcessingSurface launchScope={launchScope} />);
 
     expect(
       await screen.findByText(zhCN['askcoreProcessing.editor.error.invalidContext']),
@@ -387,7 +419,7 @@ describe('ProtocolProcessingSurface', () => {
     let scannerAvailable = true;
     let scannerFetchCount = 0;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
+      const url = protocolPath(input);
       if (url === '/api/askcore/lti/processing/context') {
         return Response.json(captureContextPayload);
       }
@@ -494,7 +526,7 @@ describe('ProtocolProcessingSurface', () => {
 
     const firstView = render(
       <ConfigProvider motion={m}>
-        <ProtocolProcessingSurface />
+        <ProtocolProcessingSurface launchScope={launchScope} />
       </ConfigProvider>,
     );
 
@@ -517,13 +549,14 @@ describe('ProtocolProcessingSurface', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start scan' }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        '/api/askcore/lti/processing/capture/jobs',
+        scopedProtocolUrl('/api/askcore/lti/processing/capture/jobs'),
         expect.objectContaining({ method: 'POST' }),
       ),
     );
     const startCall = fetchMock.mock.calls.find(
       ([input, init]) =>
-        String(input) === '/api/askcore/lti/processing/capture/jobs' && init?.method === 'POST',
+        String(input) === scopedProtocolUrl('/api/askcore/lti/processing/capture/jobs') &&
+        init?.method === 'POST',
     );
     const startBody = String(startCall?.[1]?.body || '');
     expect(startBody).toContain('"scanner_ref":"opaque-scanner-ref-2"');
@@ -544,12 +577,12 @@ describe('ProtocolProcessingSurface', () => {
     firstView.unmount();
     const continuationView = render(
       <ConfigProvider motion={m}>
-        <ProtocolProcessingSurface />
+        <ProtocolProcessingSurface launchScope={launchScope} />
       </ConfigProvider>,
     );
     expect(await screen.findByRole('button', { name: 'Continue scanning' })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/askcore/lti/processing/capture/jobs/capture-1',
+      scopedProtocolUrl('/api/askcore/lti/processing/capture/jobs/capture-1'),
       expect.anything(),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Continue scanning' }));
@@ -577,7 +610,7 @@ describe('ProtocolProcessingSurface', () => {
     scannerAvailable = false;
     render(
       <ConfigProvider motion={m}>
-        <ProtocolProcessingSurface />
+        <ProtocolProcessingSurface launchScope={launchScope} />
       </ConfigProvider>,
     );
     expect(
@@ -586,7 +619,7 @@ describe('ProtocolProcessingSurface', () => {
       }),
     ).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/askcore/lti/processing/capture/jobs/capture-2',
+      scopedProtocolUrl('/api/askcore/lti/processing/capture/jobs/capture-2'),
       expect.anything(),
     );
   }, 15_000);
@@ -600,7 +633,7 @@ describe('ProtocolProcessingSurface', () => {
     async (status, messageKey) => {
       const backendDetail = `backend capture detail ${status}`;
       const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input);
+        const url = protocolPath(input);
         if (url === '/api/askcore/lti/processing/context') {
           return Response.json(captureContextPayload);
         }
@@ -631,7 +664,7 @@ describe('ProtocolProcessingSurface', () => {
 
       render(
         <ConfigProvider motion={m}>
-          <ProtocolProcessingSurface />
+          <ProtocolProcessingSurface launchScope={launchScope} />
         </ConfigProvider>,
       );
 
@@ -645,7 +678,7 @@ describe('ProtocolProcessingSurface', () => {
   it('starts the exact opaque scanner reference when scanner labels are duplicated', async () => {
     localeState.messages = enUS;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
+      const url = protocolPath(input);
       if (url === '/api/askcore/lti/processing/context') {
         return Response.json(captureContextPayload);
       }
@@ -691,7 +724,7 @@ describe('ProtocolProcessingSurface', () => {
 
     render(
       <ConfigProvider motion={m}>
-        <ProtocolProcessingSurface />
+        <ProtocolProcessingSurface launchScope={launchScope} />
       </ConfigProvider>,
     );
 
@@ -706,7 +739,7 @@ describe('ProtocolProcessingSurface', () => {
     await waitFor(() => {
       const startCall = fetchMock.mock.calls.find(
         ([input, request]) =>
-          String(input) === '/api/askcore/lti/processing/capture/jobs' &&
+          String(input) === scopedProtocolUrl('/api/askcore/lti/processing/capture/jobs') &&
           request?.method === 'POST',
       );
       expect(String(startCall?.[1]?.body || '')).toContain('"scanner_ref":"exact-ref-2"');
@@ -724,7 +757,7 @@ describe('ProtocolProcessingSurface', () => {
     async (failureCode, messageKey) => {
       const deviceMessage = `raw device failure for ${failureCode}`;
       const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input);
+        const url = protocolPath(input);
         if (url === '/api/askcore/lti/processing/context') {
           return Response.json(captureContextPayload);
         }
@@ -769,7 +802,7 @@ describe('ProtocolProcessingSurface', () => {
 
       render(
         <ConfigProvider motion={m}>
-          <ProtocolProcessingSurface />
+          <ProtocolProcessingSurface launchScope={launchScope} />
         </ConfigProvider>,
       );
 
@@ -794,7 +827,7 @@ describe('ProtocolProcessingSurface', () => {
     );
     let restoredStatusCode: number | undefined;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
+      const url = protocolPath(input);
       if (url === '/api/askcore/lti/processing/context') {
         return Response.json(captureContextPayload);
       }
@@ -859,7 +892,7 @@ describe('ProtocolProcessingSurface', () => {
 
     const firstView = render(
       <ConfigProvider motion={m}>
-        <ProtocolProcessingSurface />
+        <ProtocolProcessingSurface launchScope={launchScope} />
       </ConfigProvider>,
     );
 
@@ -871,13 +904,14 @@ describe('ProtocolProcessingSurface', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start scan' }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        '/api/askcore/lti/processing/capture/jobs',
+        scopedProtocolUrl('/api/askcore/lti/processing/capture/jobs'),
         expect.objectContaining({ method: 'POST' }),
       ),
     );
     const startCall = fetchMock.mock.calls.find(
       ([input, init]) =>
-        String(input) === '/api/askcore/lti/processing/capture/jobs' && init?.method === 'POST',
+        String(input) === scopedProtocolUrl('/api/askcore/lti/processing/capture/jobs') &&
+        init?.method === 'POST',
     );
     expect(JSON.parse(String(startCall?.[1]?.body || '{}'))).toMatchObject({
       duplex: false,
@@ -888,14 +922,14 @@ describe('ProtocolProcessingSurface', () => {
     firstView.unmount();
     const resumedView = render(
       <ConfigProvider motion={m}>
-        <ProtocolProcessingSurface />
+        <ProtocolProcessingSurface launchScope={launchScope} />
       </ConfigProvider>,
     );
     expect(
       await screen.findByText(enUS['askcoreProcessing.capture.status.pending']),
     ).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/askcore/lti/processing/capture/jobs/capture-platen',
+      scopedProtocolUrl('/api/askcore/lti/processing/capture/jobs/capture-platen'),
       expect.anything(),
     );
 
@@ -903,7 +937,7 @@ describe('ProtocolProcessingSurface', () => {
     restoredStatusCode = 403;
     const otherAccountView = render(
       <ConfigProvider motion={m}>
-        <ProtocolProcessingSurface />
+        <ProtocolProcessingSurface launchScope={launchScope} />
       </ConfigProvider>,
     );
     await screen.findByText(enUS['askcoreProcessing.capture.error.status']);
@@ -913,7 +947,7 @@ describe('ProtocolProcessingSurface', () => {
     restoredStatusCode = undefined;
     const originalAccountView = render(
       <ConfigProvider motion={m}>
-        <ProtocolProcessingSurface />
+        <ProtocolProcessingSurface launchScope={launchScope} />
       </ConfigProvider>,
     );
     expect(
@@ -925,7 +959,7 @@ describe('ProtocolProcessingSurface', () => {
     restoredStatusCode = 404;
     render(
       <ConfigProvider motion={m}>
-        <ProtocolProcessingSurface />
+        <ProtocolProcessingSurface launchScope={launchScope} />
       </ConfigProvider>,
     );
     await screen.findByText(enUS['askcoreProcessing.capture.error.expired']);

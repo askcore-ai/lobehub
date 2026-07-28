@@ -162,8 +162,14 @@ const protocolMutation = (method: 'PATCH' | 'POST', payload?: unknown): RequestI
   method,
 });
 
-export const fetchProtocolProcessingContext = () =>
-  protocolJson<ProtocolProcessingContext>('/processing/context');
+const protocolLaunchPath = (path: string, launchScope: string) =>
+  `${path}${buildQuery({ launch: launchScope })}`;
+
+export const fetchProtocolProcessingContext = (launchScope: string) =>
+  protocolJson<ProtocolProcessingContext>(
+    protocolLaunchPath('/processing/context', launchScope),
+    protocolMutation('POST'),
+  );
 
 export const acceptProtocolIdentityLinkInvitation = (invitationToken: string) =>
   protocolJson<ProtocolIdentityLinkAcceptResult>(
@@ -174,42 +180,55 @@ export const acceptProtocolIdentityLinkInvitation = (invitationToken: string) =>
 export const fetchCurrentProtocolIdentityLinkAccountSubject = () =>
   protocolJson<ProtocolIdentityLinkAccountSubjectResult>('/identity-links/account-subject');
 
-export const fetchCurrentProtocolProcessingSurface = () =>
-  protocolJson<ProtocolProcessingSurface>('/processing/current');
+export const fetchCurrentProtocolProcessingSurface = (launchScope: string) =>
+  protocolJson<ProtocolProcessingSurface>(protocolLaunchPath('/processing/current', launchScope));
 
-export const editCurrentProtocolProcessingResult = (payload: ProtocolProcessingEditInput) =>
+export const editCurrentProtocolProcessingResult = (
+  launchScope: string,
+  payload: ProtocolProcessingEditInput,
+) =>
   protocolJson<ProtocolProcessingEditResult>(
-    '/processing/current/result',
+    protocolLaunchPath('/processing/current/result', launchScope),
     protocolMutation('PATCH', payload),
   );
 
-export const generateCurrentProtocolProcessingReport = () =>
+export const generateCurrentProtocolProcessingReport = (launchScope: string) =>
   protocolJson<ProtocolProcessingReportResult>(
-    '/processing/current/report',
+    protocolLaunchPath('/processing/current/report', launchScope),
     protocolMutation('POST'),
   );
 
-export const fetchProtocolCaptureScanners = () =>
-  protocolJson<ProtocolScannerList>('/processing/capture/scanners');
+export const fetchProtocolCaptureScanners = (launchScope: string) =>
+  protocolJson<ProtocolScannerList>(
+    protocolLaunchPath('/processing/capture/scanners', launchScope),
+  );
 
-export const startProtocolCapture = (payload: ProtocolCaptureStartInput) =>
+export const startProtocolCapture = (launchScope: string, payload: ProtocolCaptureStartInput) =>
   protocolJson<ProtocolCaptureStatus>(
-    '/processing/capture/jobs',
+    protocolLaunchPath('/processing/capture/jobs', launchScope),
     protocolMutation('POST', payload),
   );
 
-export const fetchProtocolCaptureStatus = (captureId: string) =>
-  protocolJson<ProtocolCaptureStatus>(`/processing/capture/jobs/${encodeURIComponent(captureId)}`);
-
-export const continueProtocolCapture = (captureId: string) =>
+export const fetchProtocolCaptureStatus = (launchScope: string, captureId: string) =>
   protocolJson<ProtocolCaptureStatus>(
-    `/processing/capture/jobs/${encodeURIComponent(captureId)}/continue`,
+    protocolLaunchPath(`/processing/capture/jobs/${encodeURIComponent(captureId)}`, launchScope),
+  );
+
+export const continueProtocolCapture = (launchScope: string, captureId: string) =>
+  protocolJson<ProtocolCaptureStatus>(
+    protocolLaunchPath(
+      `/processing/capture/jobs/${encodeURIComponent(captureId)}/continue`,
+      launchScope,
+    ),
     protocolMutation('POST', {}),
   );
 
-export const cancelProtocolCapture = (captureId: string) =>
+export const cancelProtocolCapture = (launchScope: string, captureId: string) =>
   protocolJson<ProtocolCaptureStatus>(
-    `/processing/capture/jobs/${encodeURIComponent(captureId)}/cancel`,
+    protocolLaunchPath(
+      `/processing/capture/jobs/${encodeURIComponent(captureId)}/cancel`,
+      launchScope,
+    ),
     protocolMutation('POST', {}),
   );
 
