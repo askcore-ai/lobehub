@@ -238,7 +238,7 @@ describe('ProtocolProcessingSurface', () => {
 
     expect(await screen.findByRole('heading', { name: '智能批改' })).toBeInTheDocument();
     expect(screen.getByLabelText('预览内容')).toBeInTheDocument();
-    expect(screen.getByTitle('学生答卷 · 第 1 页')).toHaveAttribute(
+    expect(document.querySelector('iframe[title="学生答卷 · 第 1 页"]')).toHaveAttribute(
       'src',
       scopedProtocolUrl('/api/askcore/lti/processing/current/inputs/response-1/preview'),
     );
