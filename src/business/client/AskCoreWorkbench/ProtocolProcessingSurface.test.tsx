@@ -127,7 +127,16 @@ const referenceContextPayload = {
 
 const referenceSurfacePayload = (artifactId = 'reference-1') => ({
   context: referenceContextPayload,
-  inputs: [],
+  inputs: [
+    {
+      content_type: 'image/png',
+      kind: 'reference',
+      page_order: 1,
+      preview_url:
+        '/api/askcore/lti/processing/current/inputs/reference-1/preview?launch=reference-tab-scope',
+      slot_id: 'reference-1',
+    },
+  ],
   report: { artifact_id: null, available: false },
   result: {
     artifact_id: artifactId,
@@ -265,13 +274,22 @@ describe('ProtocolProcessingSurface', () => {
   it('renders a restrained reference OCR editor and saves only reference fields', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === '/api/askcore/lti/processing/context') {
+      if (
+        url === '/api/askcore/lti/processing/context?launch=reference-tab-scope' &&
+        init?.method === 'POST'
+      ) {
         return Response.json(referenceContextPayload);
       }
-      if (url === '/api/askcore/lti/processing/current' && !init?.method) {
+      if (
+        url === '/api/askcore/lti/processing/current?launch=reference-tab-scope' &&
+        !init?.method
+      ) {
         return Response.json(referenceSurfacePayload());
       }
-      if (url === '/api/askcore/lti/processing/current/result' && init?.method === 'PATCH') {
+      if (
+        url === '/api/askcore/lti/processing/current/result?launch=reference-tab-scope' &&
+        init?.method === 'PATCH'
+      ) {
         return Response.json({
           artifact_id: 'reference-2',
           content: referenceSurfacePayload().result.content,
@@ -281,9 +299,13 @@ describe('ProtocolProcessingSurface', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<ProtocolProcessingSurface />);
+    render(<ProtocolProcessingSurface launchScope="reference-tab-scope" />);
 
     expect(await screen.findByRole('heading', { name: '参考材料 OCR' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: '参考材料 · 第 1 页' })).toHaveAttribute(
+      'src',
+      expect.stringContaining('launch=reference-tab-scope'),
+    );
     expect(screen.getByLabelText('第 1 题题干')).toHaveValue('计算 2+3');
     expect(screen.getByLabelText('第 1 题参考答案')).toHaveValue('5');
     expect(screen.getByLabelText('第 1 题参考思路')).toHaveValue('直接相加');
@@ -299,13 +321,14 @@ describe('ProtocolProcessingSurface', () => {
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        '/api/askcore/lti/processing/current/result',
+        '/api/askcore/lti/processing/current/result?launch=reference-tab-scope',
         expect.objectContaining({ method: 'PATCH' }),
       ),
     );
     const revisionCall = fetchMock.mock.calls.find(
       ([input, init]) =>
-        String(input) === '/api/askcore/lti/processing/current/result' && init?.method === 'PATCH',
+        String(input) === '/api/askcore/lti/processing/current/result?launch=reference-tab-scope' &&
+        init?.method === 'PATCH',
     );
     const body = String(revisionCall?.[1]?.body || '');
     expect(body).toContain('"reference_answer":"答案为 5"');

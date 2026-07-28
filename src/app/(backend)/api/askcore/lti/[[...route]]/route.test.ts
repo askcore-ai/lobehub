@@ -109,11 +109,12 @@ describe('AskCore processing proxy', () => {
 
   it('forwards a cross-site Resource Link launch and only its handoff cookie', async () => {
     const responseHeaders = new Headers({
-      location: 'https://askcore.cn/askcore/workbench?protocol=processing',
+      location:
+        'https://askcore.cn/askcore/workbench?protocol=processing&launch=0123456789abcdef0123456789abcdef',
     });
     responseHeaders.append(
       'set-cookie',
-      'askcore_lti_handoff=handoff-token; Path=/; HttpOnly; Secure; SameSite=None',
+      'askcore_lti_handoff_0123456789abcdef0123456789abcdef=handoff-token; Path=/; HttpOnly; Secure; SameSite=None',
     );
     responseHeaders.append('set-cookie', 'unrelated_cookie=blocked; Path=/');
     const fetchMock = vi
@@ -137,7 +138,9 @@ describe('AskCore processing proxy', () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get('location')).toContain('protocol=processing');
-    expect(response.headers.get('set-cookie')).toContain('askcore_lti_handoff=handoff-token');
+    expect(response.headers.get('set-cookie')).toContain(
+      'askcore_lti_handoff_0123456789abcdef0123456789abcdef=handoff-token',
+    );
     expect(response.headers.get('set-cookie')).not.toContain('unrelated_cookie');
     expect(authApi.getSession).not.toHaveBeenCalled();
   });
@@ -247,7 +250,7 @@ describe('AskCore processing proxy', () => {
     const responseHeaders = new Headers({ 'content-type': 'application/json' });
     responseHeaders.append(
       'set-cookie',
-      'askcore_lti_processing=context-token; Path=/; HttpOnly; Secure; SameSite=None',
+      'askcore_lti_processing_0123456789abcdef0123456789abcdef=context-token; Path=/; HttpOnly; Secure; SameSite=None',
     );
     responseHeaders.append('set-cookie', 'unrelated_cookie=blocked; Path=/');
     const fetchMock = vi.fn().mockResolvedValue(
@@ -257,23 +260,32 @@ describe('AskCore processing proxy', () => {
       }),
     );
     vi.stubGlobal('fetch', fetchMock);
-    const { GET } = await loadRoute();
+    const { POST } = await loadRoute();
 
-    const response = await GET(
-      new NextRequest('https://askcore.cn/api/askcore/lti/processing/context', {
-        headers: {
-          cookie:
-            'better-auth.session=private; askcore_lti_handoff=handoff-token; tracking=private',
+    const response = await POST(
+      new NextRequest(
+        'https://askcore.cn/api/askcore/lti/processing/context?launch=0123456789abcdef0123456789abcdef',
+        {
+          headers: {
+            cookie:
+              'better-auth.session=private; askcore_lti_handoff_0123456789abcdef0123456789abcdef=handoff-token; askcore_lti_handoff_ffffffffffffffffffffffffffffffff=foreign; tracking=private',
+            origin: 'https://askcore.cn',
+          },
+          method: 'POST',
         },
-      }),
+      ),
       routeContext(['processing', 'context']),
     );
 
     expect(response.status).toBe(200);
     const [target, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
-    expect(target.toString()).toBe('http://api:8000/api/lti/v1/processing/context');
+    expect(target.toString()).toBe(
+      'http://api:8000/api/lti/v1/processing/context?launch=0123456789abcdef0123456789abcdef',
+    );
     const headers = init.headers as Headers;
-    expect(headers.get('cookie')).toBe('askcore_lti_handoff=handoff-token');
+    expect(headers.get('cookie')).toBe(
+      'askcore_lti_handoff_0123456789abcdef0123456789abcdef=handoff-token',
+    );
     expect(headers.get('cookie')).not.toContain('better-auth');
     const assertion = headers.get('X-AskCore-Billing-Assertion');
     expect(assertion).toBeTruthy();
@@ -286,7 +298,9 @@ describe('AskCore processing proxy', () => {
     expect(payload.org_id).toBeUndefined();
     expect(payload.active_org_id).toBeUndefined();
     expect(authApi.getFullOrganization).not.toHaveBeenCalled();
-    expect(response.headers.get('set-cookie')).toContain('askcore_lti_processing=context-token');
+    expect(response.headers.get('set-cookie')).toContain(
+      'askcore_lti_processing_0123456789abcdef0123456789abcdef=context-token',
+    );
     expect(response.headers.get('set-cookie')).not.toContain('unrelated_cookie');
   });
 

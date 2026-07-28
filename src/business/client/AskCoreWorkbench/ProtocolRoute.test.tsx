@@ -5,7 +5,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { AskCoreProtocolRoute, askCoreProtocolRouteMode } from './ProtocolRoute';
 
 vi.mock('./ProtocolProcessingSurface', () => ({
-  ProtocolProcessingSurface: () => <div>processing-surface</div>,
+  ProtocolProcessingSurface: ({ launchScope }: { launchScope: string }) => (
+    <div>processing-surface:{launchScope}</div>
+  ),
 }));
 
 vi.mock('./ProtocolIdentityLinkSurface', () => ({
@@ -25,10 +27,10 @@ const renderRoute = (entry: string) =>
   );
 
 describe('AskCoreProtocolRoute', () => {
-  it('renders the same processing surface without consuming signed query parameters', () => {
+  it('binds the opaque per-tab launch scope to the processing surface', () => {
     renderRoute('/askcore/workbench?protocol=processing&launch=opaque-launch');
 
-    expect(screen.getByText('processing-surface')).toBeInTheDocument();
+    expect(screen.getByText('processing-surface:opaque-launch')).toBeInTheDocument();
   });
 
   it('passes the one-time identity token through on desktop and mobile routes', () => {
