@@ -204,16 +204,18 @@ export type ProtocolProcessingQuestion = {
   max_score?: number | null;
   ocr_meta?: JsonRecord;
   order_index: number;
-  question_content?: JsonRecord;
+  question_content?: JsonRecord | string | null;
   question_number?: string | null;
   question_type?: string | null;
-  reference_answer?: JsonRecord;
+  reference_answer?: JsonRecord | string | null;
+  reference_thinking?: string | null;
   score?: number | null;
   student_answer?: string | null;
 };
 
 export type ProtocolProcessingResultContent = {
-  questions: ProtocolProcessingQuestion[];
+  questions?: ProtocolProcessingQuestion[];
+  question_refs?: ProtocolProcessingQuestion[];
   score?: number | null;
   teacher_summary?: string | null;
   total_score?: number | null;
@@ -238,6 +240,11 @@ export type ProtocolProcessingQuestionEdit = {
   is_correct?: boolean | null;
   max_score?: number | null;
   order_index: number;
+  question_content?: string | null;
+  question_number?: string | null;
+  question_type?: string | null;
+  reference_answer?: string | null;
+  reference_thinking?: string | null;
   score?: number | null;
   student_answer?: string | null;
 };

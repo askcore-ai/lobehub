@@ -175,6 +175,9 @@ const styles = createStaticStyles(({ css }) => ({
     font-weight: 650;
     font-variant-numeric: tabular-nums;
   `,
+  singleBody: css`
+    grid-template-columns: minmax(0, 1fr);
+  `,
   summary: css`
     padding-block: 14px 16px;
     padding-inline: 16px;
@@ -206,7 +209,8 @@ const processingState = (value: string | undefined, t: Translate) => {
   return { color: 'blue', label: t('askcoreProcessing.editor.state.running') };
 };
 
-const recordText = (value: JsonRecord | undefined) => {
+const recordText = (value: JsonRecord | string | null | undefined) => {
+  if (typeof value === 'string') return value.trim();
   if (!value) return '';
   for (const key of ['text', 'content', 'value']) {
     const candidate = value[key];
@@ -325,8 +329,17 @@ export const ProtocolProcessingSurface = memo(() => {
         const nextSurface = await fetchCurrentProtocolProcessingSurface();
         setSurface(nextSurface);
         setContext(nextSurface.context);
-        setQuestions(cloneQuestions(nextSurface.result?.content.questions));
-        setTeacherSummary(nextSurface.result?.content.teacher_summary || '');
+        const resultContent = nextSurface.result?.content;
+        setQuestions(
+          cloneQuestions(
+            nextSurface.context.run_kind === 'reference'
+              ? resultContent?.question_refs
+              : resultContent?.questions,
+          ),
+        );
+        setTeacherSummary(
+          nextSurface.context.run_kind === 'reference' ? '' : resultContent?.teacher_summary || '',
+        );
         setDirty(false);
       } catch (reason) {
         setError(
@@ -422,19 +435,34 @@ export const ProtocolProcessingSurface = memo(() => {
     setSaving(true);
     setError(undefined);
     try {
+      const referenceMode = context?.run_kind === 'reference';
       await editCurrentProtocolProcessingResult({
         expected_latest_artifact_id: artifactId,
-        questions: questions.map((question) => ({
-          feedback: question.feedback ?? null,
-          is_correct: question.is_correct ?? null,
-          max_score: question.max_score ?? null,
-          order_index: question.order_index,
-          score: question.score ?? null,
-          student_answer: question.student_answer ?? null,
-        })),
-        teacher_summary: teacherSummary,
+        questions: questions.map((question) =>
+          referenceMode
+            ? {
+                max_score: question.max_score ?? null,
+                order_index: question.order_index,
+                question_content: recordText(question.question_content),
+                question_number: question.question_number ?? null,
+                question_type: question.question_type ?? null,
+                reference_answer: recordText(question.reference_answer),
+                reference_thinking: question.reference_thinking ?? null,
+              }
+            : {
+                feedback: question.feedback ?? null,
+                is_correct: question.is_correct ?? null,
+                max_score: question.max_score ?? null,
+                order_index: question.order_index,
+                score: question.score ?? null,
+                student_answer: question.student_answer ?? null,
+              },
+        ),
+        ...(referenceMode ? {} : { teacher_summary: teacherSummary }),
       });
-      message.success(t('askcoreProcessing.editor.saved'));
+      message.success(
+        t(referenceMode ? 'askcoreProcessing.reference.saved' : 'askcoreProcessing.editor.saved'),
+      );
       await refresh(true);
     } catch (reason) {
       setError(
@@ -462,7 +490,7 @@ export const ProtocolProcessingSurface = memo(() => {
     }
   };
 
-  const columns = useMemo<ColumnsType<ProtocolProcessingQuestion>>(
+  const submissionColumns = useMemo<ColumnsType<ProtocolProcessingQuestion>>(
     () => [
       {
         fixed: 'left',
@@ -561,6 +589,104 @@ export const ProtocolProcessingSurface = memo(() => {
     [t, updateQuestion],
   );
 
+  const referenceColumns = useMemo<ColumnsType<ProtocolProcessingQuestion>>(
+    () => [
+      {
+        fixed: 'left',
+        render: (_, row) => (
+          <Space direction="vertical" size={6}>
+            <Input
+              value={row.question_number || ''}
+              aria-label={t('askcoreProcessing.reference.aria.number', {
+                number: row.order_index,
+              })}
+              onChange={(event) =>
+                updateQuestion(row.order_index, { question_number: event.target.value })
+              }
+            />
+            <Input
+              value={row.question_type || ''}
+              aria-label={t('askcoreProcessing.reference.aria.type', {
+                number: row.question_number || row.order_index,
+              })}
+              onChange={(event) =>
+                updateQuestion(row.order_index, { question_type: event.target.value })
+              }
+            />
+          </Space>
+        ),
+        title: t('askcoreProcessing.reference.columns.question'),
+        width: 150,
+      },
+      {
+        render: (_, row) => (
+          <Input.TextArea
+            autoSize={{ maxRows: 10, minRows: 4 }}
+            value={recordText(row.question_content)}
+            aria-label={t('askcoreProcessing.reference.aria.content', {
+              number: row.question_number || row.order_index,
+            })}
+            onChange={(event) =>
+              updateQuestion(row.order_index, { question_content: event.target.value })
+            }
+          />
+        ),
+        title: t('askcoreProcessing.reference.columns.content'),
+        width: 300,
+      },
+      {
+        render: (_, row) => (
+          <Input.TextArea
+            autoSize={{ maxRows: 10, minRows: 4 }}
+            value={recordText(row.reference_answer)}
+            aria-label={t('askcoreProcessing.reference.aria.answer', {
+              number: row.question_number || row.order_index,
+            })}
+            onChange={(event) =>
+              updateQuestion(row.order_index, { reference_answer: event.target.value })
+            }
+          />
+        ),
+        title: t('askcoreProcessing.reference.columns.answer'),
+        width: 280,
+      },
+      {
+        render: (_, row) => (
+          <Input.TextArea
+            autoSize={{ maxRows: 10, minRows: 4 }}
+            value={row.reference_thinking || ''}
+            aria-label={t('askcoreProcessing.reference.aria.thinking', {
+              number: row.question_number || row.order_index,
+            })}
+            onChange={(event) =>
+              updateQuestion(row.order_index, { reference_thinking: event.target.value })
+            }
+          />
+        ),
+        title: t('askcoreProcessing.reference.columns.thinking'),
+        width: 280,
+      },
+      {
+        render: (_, row) => (
+          <InputNumber
+            min={0}
+            precision={2}
+            style={{ width: 90 }}
+            value={row.max_score}
+            aria-label={t('askcoreProcessing.editor.aria.maximum', {
+              number: row.question_number || row.order_index,
+            })}
+            onChange={(value) => updateQuestion(row.order_index, { max_score: value })}
+          />
+        ),
+        title: t('askcoreProcessing.reference.columns.maximum'),
+        width: 110,
+      },
+    ],
+    [t, updateQuestion],
+  );
+
+  const referenceMode = context?.run_kind === 'reference';
   const state = processingState(context?.processing_state, t as Translate);
   const score = surface?.result?.content.score;
   const total = surface?.result?.content.total_score;
@@ -599,13 +725,25 @@ export const ProtocolProcessingSurface = memo(() => {
             <WandSparkles size={20} />
           </div>
           <div>
-            <h1 className={styles.title}>{t('askcoreProcessing.editor.title')}</h1>
-            <div className={styles.meta}>{t('askcoreProcessing.editor.subtitle')}</div>
+            <h1 className={styles.title}>
+              {t(
+                referenceMode
+                  ? 'askcoreProcessing.reference.title'
+                  : 'askcoreProcessing.editor.title',
+              )}
+            </h1>
+            <div className={styles.meta}>
+              {t(
+                referenceMode
+                  ? 'askcoreProcessing.reference.subtitle'
+                  : 'askcoreProcessing.editor.subtitle',
+              )}
+            </div>
           </div>
         </div>
         <div className={styles.actions}>
           <Tag color={state.color}>{state.label}</Tag>
-          {score != null || total != null ? (
+          {!referenceMode && (score != null || total != null) ? (
             <span className={styles.score}>
               {score ?? '--'} / {total ?? '--'}
             </span>
@@ -619,29 +757,39 @@ export const ProtocolProcessingSurface = memo(() => {
       {error ? <Alert showIcon title={error} type="error" /> : null}
       {validationError ? <Alert showIcon title={validationError} type="warning" /> : null}
 
-      <div className={styles.body}>
-        <PreviewPane
-          choice={selectedChoice}
-          choices={choices}
-          t={t as Translate}
-          onChange={setSelectedPreview}
-        />
+      <div className={`${styles.body} ${choices.length ? '' : styles.singleBody}`}>
+        {choices.length ? (
+          <PreviewPane
+            choice={selectedChoice}
+            choices={choices}
+            t={t as Translate}
+            onChange={setSelectedPreview}
+          />
+        ) : null}
 
         <section className={styles.editor}>
           <div className={styles.editorHeader}>
             <div className={styles.heading}>
               <ScanText size={18} />
-              <strong>{t('askcoreProcessing.editor.result')}</strong>
+              <strong>
+                {t(
+                  referenceMode
+                    ? 'askcoreProcessing.reference.result'
+                    : 'askcoreProcessing.editor.result',
+                )}
+              </strong>
             </div>
             <div className={styles.actions}>
-              <Button
-                disabled={!surface?.result || dirty || !context?.capabilities.can_generate_report}
-                icon={<FileText size={14} />}
-                loading={reporting}
-                onClick={() => void generateReport()}
-              >
-                {t('askcoreProcessing.editor.generateReport')}
-              </Button>
+              {!referenceMode ? (
+                <Button
+                  icon={<FileText size={14} />}
+                  loading={reporting}
+                  disabled={!surface?.result || dirty || !context?.capabilities.can_generate_report}
+                  onClick={() => void generateReport()}
+                >
+                  {t('askcoreProcessing.editor.generateReport')}
+                </Button>
+              ) : null}
               <Button
                 icon={<Save size={14} />}
                 loading={saving}
@@ -651,7 +799,11 @@ export const ProtocolProcessingSurface = memo(() => {
                 }
                 onClick={() => void save()}
               >
-                {t('askcoreProcessing.editor.saveRevision')}
+                {t(
+                  referenceMode
+                    ? 'askcoreProcessing.reference.saveRevision'
+                    : 'askcoreProcessing.editor.saveRevision',
+                )}
               </Button>
             </div>
           </div>
@@ -659,25 +811,27 @@ export const ProtocolProcessingSurface = memo(() => {
           {surface?.result ? (
             <>
               <Table
-                columns={columns}
+                columns={referenceMode ? referenceColumns : submissionColumns}
                 dataSource={questions}
                 pagination={false}
                 rowKey="order_index"
-                scroll={{ x: 900 }}
+                scroll={{ x: referenceMode ? 1020 : 900 }}
                 size="small"
               />
-              <div className={styles.summary}>
-                <Input.TextArea
-                  aria-label={t('askcoreProcessing.editor.teacherSummary')}
-                  autoSize={{ maxRows: 8, minRows: 3 }}
-                  placeholder={t('askcoreProcessing.editor.teacherSummary')}
-                  value={teacherSummary}
-                  onChange={(event) => {
-                    setDirty(true);
-                    setTeacherSummary(event.target.value);
-                  }}
-                />
-              </div>
+              {!referenceMode ? (
+                <div className={styles.summary}>
+                  <Input.TextArea
+                    aria-label={t('askcoreProcessing.editor.teacherSummary')}
+                    autoSize={{ maxRows: 8, minRows: 3 }}
+                    placeholder={t('askcoreProcessing.editor.teacherSummary')}
+                    value={teacherSummary}
+                    onChange={(event) => {
+                      setDirty(true);
+                      setTeacherSummary(event.target.value);
+                    }}
+                  />
+                </div>
+              ) : null}
             </>
           ) : context?.processing_state === 'failed' ? (
             <Empty
