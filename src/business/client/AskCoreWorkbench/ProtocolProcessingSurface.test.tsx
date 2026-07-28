@@ -115,6 +115,39 @@ const surfacePayload = (artifactId = 'grading-1') => ({
   },
 });
 
+const referenceContextPayload = {
+  ...contextPayload,
+  capabilities: {
+    ...contextPayload.capabilities,
+    can_generate_report: false,
+    can_grade: false,
+  },
+  run_kind: 'reference',
+};
+
+const referenceSurfacePayload = (artifactId = 'reference-1') => ({
+  context: referenceContextPayload,
+  inputs: [],
+  report: { artifact_id: null, available: false },
+  result: {
+    artifact_id: artifactId,
+    content: {
+      contract: 'assessment.reference.ocr@v2',
+      question_refs: [
+        {
+          max_score: 5,
+          order_index: 1,
+          question_content: '计算 2+3',
+          question_number: '1',
+          question_type: '计算题',
+          reference_answer: '5',
+          reference_thinking: '直接相加',
+        },
+      ],
+    },
+  },
+});
+
 describe('ProtocolProcessingSurface', () => {
   beforeEach(() => {
     localeState.messages = zhCN;
@@ -227,6 +260,57 @@ describe('ProtocolProcessingSurface', () => {
         expect.objectContaining({ method: 'POST' }),
       ),
     );
+  });
+
+  it('renders a restrained reference OCR editor and saves only reference fields', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/askcore/lti/processing/context') {
+        return Response.json(referenceContextPayload);
+      }
+      if (url === '/api/askcore/lti/processing/current' && !init?.method) {
+        return Response.json(referenceSurfacePayload());
+      }
+      if (url === '/api/askcore/lti/processing/current/result' && init?.method === 'PATCH') {
+        return Response.json({
+          artifact_id: 'reference-2',
+          content: referenceSurfacePayload().result.content,
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ProtocolProcessingSurface />);
+
+    expect(await screen.findByRole('heading', { name: '参考材料 OCR' })).toBeInTheDocument();
+    expect(screen.getByLabelText('第 1 题题干')).toHaveValue('计算 2+3');
+    expect(screen.getByLabelText('第 1 题参考答案')).toHaveValue('5');
+    expect(screen.getByLabelText('第 1 题参考思路')).toHaveValue('直接相加');
+    expect(screen.queryByRole('button', { name: '生成报告' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('教师总结')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('第 1 题 OCR 文本')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('第 1 题正确')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('第 1 题参考答案'), {
+      target: { value: '答案为 5' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存参考材料修订' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/askcore/lti/processing/current/result',
+        expect.objectContaining({ method: 'PATCH' }),
+      ),
+    );
+    const revisionCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input) === '/api/askcore/lti/processing/current/result' && init?.method === 'PATCH',
+    );
+    const body = String(revisionCall?.[1]?.body || '');
+    expect(body).toContain('"reference_answer":"答案为 5"');
+    expect(body).toContain('"question_content":"计算 2+3"');
+    expect(body).not.toMatch(/student_answer|is_correct|feedback|teacher_summary/);
   });
 
   it('fails closed when the school identity is not linked', async () => {
