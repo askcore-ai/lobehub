@@ -244,6 +244,9 @@ describe('ProtocolProcessingSurface', () => {
       scopedProtocolUrl('/api/askcore/lti/processing/current/inputs/response-1/preview'),
     );
     expect(screen.queryByText('参考材料 · 第 1 页')).not.toBeInTheDocument();
+    expect(screen.getByText('计算结果')).toBeInTheDocument();
+    expect(screen.queryByLabelText('第 1 题 OCR 文本')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '编辑第 1 题' }));
     expect(screen.getByLabelText('第 1 题 OCR 文本')).toHaveValue('x=2');
     for (const retired of ['创建作业', '提交作业', '班级', '组织', '截止时间']) {
       expect(screen.queryByText(retired)).not.toBeInTheDocument();
@@ -252,6 +255,7 @@ describe('ProtocolProcessingSurface', () => {
     fireEvent.change(screen.getByLabelText('第 1 题得分'), {
       target: { value: '3' },
     });
+    expect(screen.getByText('未保存')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '保存修订' }));
 
     await waitFor(() =>
@@ -311,6 +315,9 @@ describe('ProtocolProcessingSurface', () => {
       'src',
       expect.stringContaining(`launch=${launchScope}`),
     );
+    expect(screen.getByText('计算 2+3')).toBeInTheDocument();
+    expect(screen.queryByLabelText('第 1 题题干')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '编辑第 1 题' }));
     expect(screen.getByLabelText('第 1 题题干')).toHaveValue('计算 2+3');
     expect(screen.getByLabelText('第 1 题参考答案')).toHaveValue('5');
     expect(screen.getByLabelText('第 1 题参考思路')).toHaveValue('直接相加');
@@ -341,6 +348,87 @@ describe('ProtocolProcessingSurface', () => {
     expect(body).not.toMatch(/student_answer|is_correct|feedback|teacher_summary/);
   });
 
+  it('keeps every reference page selectable and renders mathematical question content', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = protocolPath(input);
+      if (url === '/api/askcore/lti/processing/context' && init?.method === 'POST') {
+        return Response.json(referenceContextPayload);
+      }
+      if (url === '/api/askcore/lti/processing/current' && !init?.method) {
+        const payload = referenceSurfacePayload();
+        return Response.json({
+          ...payload,
+          inputs: [
+            ...payload.inputs,
+            {
+              content_type: 'image/png',
+              kind: 'reference',
+              page_order: 2,
+              preview_url: `/api/askcore/lti/processing/current/inputs/reference-2/preview?launch=${launchScope}`,
+              slot_id: 'reference-2',
+            },
+          ],
+          result: {
+            ...payload.result,
+            content: {
+              ...payload.result.content,
+              question_refs: [
+                {
+                  ...payload.result.content.question_refs[0],
+                  question_content: '若 $x^2=4$，求 $x$',
+                },
+              ],
+            },
+          },
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { container } = render(<ProtocolProcessingSurface launchScope={launchScope} />);
+
+    expect(await screen.findByText('共 2 页')).toBeInTheDocument();
+    await waitFor(() => expect(container.querySelector('.katex')).not.toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: '查看第 2 页' }));
+    expect(screen.getByRole('img', { name: '参考材料 · 第 2 页' })).toHaveAttribute(
+      'src',
+      expect.stringContaining('/inputs/reference-2/preview'),
+    );
+    expect(screen.queryByLabelText('第 1 题题干')).not.toBeInTheDocument();
+  });
+
+  it('keeps question cards read-only when the launch has no edit capability', async () => {
+    const readOnlyContext = {
+      ...referenceContextPayload,
+      capabilities: {
+        ...referenceContextPayload.capabilities,
+        can_edit: false,
+      },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = protocolPath(input);
+      if (url === '/api/askcore/lti/processing/context' && init?.method === 'POST') {
+        return Response.json(readOnlyContext);
+      }
+      if (url === '/api/askcore/lti/processing/current' && !init?.method) {
+        return Response.json({
+          ...referenceSurfacePayload(),
+          context: readOnlyContext,
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ProtocolProcessingSurface launchScope={launchScope} />);
+
+    expect(await screen.findByText('计算 2+3')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '编辑第 1 题' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('第 1 题题干')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '保存参考材料修订' })).toBeDisabled();
+  });
+
   it('states when historical source material is unavailable without substituting a report', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = protocolPath(input);
@@ -366,6 +454,7 @@ describe('ProtocolProcessingSurface', () => {
 
     expect(await screen.findByText('该历史结果没有可用的原始材料')).toBeInTheDocument();
     expect(screen.queryByTitle('反馈报告')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '编辑第 1 题' }));
     expect(screen.getByLabelText('第 1 题 OCR 文本')).toHaveValue('x=2');
   });
 
