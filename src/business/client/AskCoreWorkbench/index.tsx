@@ -54,7 +54,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import type { AskCoreWorkbenchApiClient, BlobDownloadProgress } from './api';
 import {
@@ -65,12 +65,9 @@ import {
 } from './api';
 import {
   ASKCORE_WORKBENCH_TABS,
-  askCoreProtocolMode,
   askCoreWorkbenchTabOptionsForProfile,
   askCoreWorkbenchTabsForProfile,
 } from './config';
-import { ProtocolIdentityLinkSurface } from './ProtocolIdentityLinkSurface';
-import { ProtocolProcessingSurface } from './ProtocolProcessingSurface';
 import {
   buildQuestionPreviewDataFromModel,
   buildQuestionPreviewDataFromPayload,
@@ -8749,19 +8746,5 @@ const LegacyAskCoreWorkbenchPage = memo(() => {
 
 LegacyAskCoreWorkbenchPage.displayName = 'LegacyAskCoreWorkbenchPage';
 
-const AskCoreWorkbenchPage = memo(() => {
-  const location = useLocation();
-  const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
-  const protocolMode = askCoreProtocolMode(query.get('protocol'));
-
-  if (protocolMode === 'processing') return <ProtocolProcessingSurface />;
-  if (protocolMode === 'identity-link') {
-    return <ProtocolIdentityLinkSurface invitationToken={query.get('token') || undefined} />;
-  }
-  return <Navigate replace to="/" />;
-});
-
-AskCoreWorkbenchPage.displayName = 'AskCoreWorkbenchPage';
-
-export const AskCoreWorkbenchRoute = AskCoreWorkbenchPage;
+export { AskCoreProtocolRoute as AskCoreWorkbenchRoute } from './ProtocolRoute';
 export const LegacyAskCoreWorkbenchRoute = LegacyAskCoreWorkbenchPage;
