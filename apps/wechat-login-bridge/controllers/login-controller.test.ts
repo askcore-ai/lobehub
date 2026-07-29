@@ -26,7 +26,9 @@ describe('WeChat login bridge controller', () => {
   });
 
   it('sends only code and transient server capabilities', async () => {
-    const request = vi.fn(({ success }) => success({ data: { state: 'authorized' }, statusCode: 200 }));
+    const request = vi.fn(({ success }) =>
+      success({ data: { state: 'authorized' }, statusCode: 200 }),
+    );
     const wxApi = {
       login: ({ success }: { success: (value: { code: string }) => void }) =>
         success({ code: 'one-time-code' }),
