@@ -1,17 +1,23 @@
 'use client';
 
 import { CURRENT_ONBOARDING_VERSION } from '@lobechat/const';
-import { Alert, Button, Result, Skeleton, Space } from 'antd';
+import { Button } from '@lobehub/ui';
+import { Alert, Result, Skeleton, Space } from 'antd';
 import { createStaticStyles, cssVar } from 'antd-style';
 import { Home, LogIn, RefreshCw } from 'lucide-react';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
 import { userService } from '@/services/user';
 import { useUserStore } from '@/store/user';
 import { onboardingSelectors } from '@/store/user/selectors';
 
-import { acceptProtocolIdentityLinkInvitation, AskCoreWorkbenchApiError } from './api';
+import {
+  acceptProtocolIdentityLinkInvitation,
+  AskCoreWorkbenchApiError,
+  fetchCurrentProtocolIdentityLinkAccountSubject,
+} from './api';
 import { ASKCORE_IDENTITY_LINK_TOKEN_STORAGE_KEY } from './config';
 
 const styles = createStaticStyles(({ css }) => ({
@@ -88,6 +94,7 @@ const identityLinkErrorMessage = (reason: unknown) => {
 export const ProtocolIdentityLinkSurface = memo(
   ({ invitationToken }: { invitationToken?: string }) => {
     const navigate = useNavigate();
+    const { t } = useTranslation('error');
     const currentOnboardingStep = useUserStore(onboardingSelectors.currentStep);
     const needsOnboarding = useUserStore(onboardingSelectors.needsOnboarding);
     const refreshUserState = useUserStore((state) => state.refreshUserState);
@@ -99,8 +106,22 @@ export const ProtocolIdentityLinkSurface = memo(
     const accept = useCallback(async () => {
       const token = invitationToken?.trim() || invitationTokenFromSession();
       if (!token) {
-        setError('邀请令牌缺失或已被使用');
-        setState('error');
+        setAuthenticationRequired(false);
+        setError('');
+        setState('loading');
+        try {
+          const accountSubject = await fetchCurrentProtocolIdentityLinkAccountSubject();
+          if (!accountSubject.linked) throw new Error('Current account is not linked');
+          try {
+            await refreshUserState();
+          } catch {
+            // The read-only ownership check is authoritative for this recovery path.
+          }
+          navigate('/', { replace: true });
+        } catch {
+          setError('邀请令牌缺失或已被使用');
+          setState('error');
+        }
         return;
       }
 
@@ -109,8 +130,21 @@ export const ProtocolIdentityLinkSurface = memo(
       setAuthenticationRequired(false);
       setError('');
       setState('loading');
+      let acceptance: Awaited<ReturnType<typeof acceptProtocolIdentityLinkInvitation>>;
       try {
-        await acceptProtocolIdentityLinkInvitation(token);
+        acceptance = await acceptProtocolIdentityLinkInvitation(token);
+      } catch (reason) {
+        setAuthenticationRequired(
+          reason instanceof AskCoreWorkbenchApiError && reason.status === 401,
+        );
+        setError(identityLinkErrorMessage(reason));
+        setState('error');
+        return;
+      }
+
+      discardInvitationToken();
+      setState('success');
+      try {
         if (needsOnboarding) {
           await userService.updateOnboarding({
             currentStep: currentOnboardingStep,
@@ -119,15 +153,9 @@ export const ProtocolIdentityLinkSurface = memo(
           });
         }
         await refreshUserState();
-        discardInvitationToken();
-        setState('success');
-        navigate('/school', { replace: true });
-      } catch (reason) {
-        setAuthenticationRequired(
-          reason instanceof AskCoreWorkbenchApiError && reason.status === 401,
-        );
-        setError(identityLinkErrorMessage(reason));
-        setState('error');
+        navigate(acceptance.replayed ? '/' : '/school', { replace: true });
+      } catch {
+        // The identity link is already committed. Keep the success state and let the user leave safely.
       }
     }, [currentOnboardingStep, invitationToken, navigate, needsOnboarding, refreshUserState]);
 
@@ -151,6 +179,11 @@ export const ProtocolIdentityLinkSurface = memo(
             status="success"
             subTitle="当前 AskCore 账号已完成关联"
             title="学校身份已关联"
+            extra={
+              <Button icon={<Home size={16} />} onClick={() => navigate('/')}>
+                {t('error.backHome')}
+              </Button>
+            }
           />
         ) : (
           <Result
@@ -176,7 +209,7 @@ export const ProtocolIdentityLinkSurface = memo(
                   </Button>
                 )}
                 <Button icon={<Home size={16} />} onClick={() => navigate('/')}>
-                  返回首页
+                  {t('error.backHome')}
                 </Button>
               </Space>
             }

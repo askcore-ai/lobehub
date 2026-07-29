@@ -10,10 +10,10 @@ describe('proxy matcher', () => {
     expect(source).toContain("'/askcore'");
     expect(source).toContain("'/askcore(.*)'");
     expect(source).toContain("'/school'");
-    expect(source).toContain("'/school/billing'");
-    expect(source).toContain("'/school/learning-space'");
-    expect(source).toContain("'/school/operations-center'");
-    expect(source).toContain("'/school/teaching-center'");
+    expect(source).not.toContain("'/school/billing'");
+    expect(source).not.toContain("'/school/learning-space'");
+    expect(source).not.toContain("'/school/operations-center'");
+    expect(source).not.toContain("'/school/teaching-center'");
     expect(source).not.toContain("'/school(.*)'");
     expect(source).not.toContain("'/organization'");
     expect(source).not.toContain("'/organization(.*)'");

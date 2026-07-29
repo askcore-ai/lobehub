@@ -41,6 +41,50 @@ describe('Better Auth proxy behavior', () => {
     await expect(response.json()).resolves.toEqual({ detail: 'Authentication required' });
   });
 
+  it('lets only the exact actor-observation readiness probe reach its HMAC route', async () => {
+    getSession.mockResolvedValue(null);
+    const { middleware } = defineConfig();
+
+    const response = await middleware(
+      new NextRequest('https://askcore.cn/api/askcore/school/actor-observation?readiness=1', {
+        method: 'POST',
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+    expect(getSession).not.toHaveBeenCalled();
+
+    const protectedResponse = await middleware(
+      new NextRequest('https://askcore.cn/api/askcore/school/actor-observation?readiness=1&extra=1', {
+        method: 'POST',
+      }),
+    );
+    expect(protectedResponse.status).toBe(401);
+    expect(getSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets only the exact composite source authorization GET reach its guarded route', async () => {
+    getSession.mockResolvedValue(null);
+    const { middleware } = defineConfig();
+
+    const response = await middleware(
+      new NextRequest('https://askcore.cn/api/askcore/school/source-auth', {
+        headers: { 'x-askcore-internal-request': '1' },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+    expect(getSession).not.toHaveBeenCalled();
+
+    const protectedResponse = await middleware(
+      new NextRequest('https://askcore.cn/api/askcore/school/source-auth-child'),
+    );
+    expect(protectedResponse.status).toBe(401);
+    expect(getSession).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps browser page redirects to Better Auth sign-in', async () => {
     getSession.mockResolvedValue(null);
     const { middleware } = defineConfig();

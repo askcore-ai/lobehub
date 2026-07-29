@@ -6,15 +6,12 @@ import {
 } from './BusinessMobileRoutes';
 
 describe('BusinessMobileRoutes', () => {
-  it('matches the desktop P130 processing and identity callback route', () => {
+  it('matches the desktop direct school and processing routes', () => {
     const paths = BusinessMobileRoutesWithMainLayout.map((route) => route.path);
 
     expect(paths).toContain('askcore/workbench');
-    expect(paths).toContain('school');
-    expect(paths).toContain('school/teaching-center');
-    expect(paths).toContain('school/learning-space');
-    expect(paths).toContain('school/operations-center');
-    expect(paths).toContain('school/billing');
+    expect(paths.filter((path) => path === 'school')).toHaveLength(1);
+    expect(paths.some((path) => path?.startsWith('school/'))).toBe(false);
     expect(paths).not.toContain('organization');
   });
 

@@ -9,6 +9,9 @@ import { auth } from '@/auth';
 
 import { DELETE, GET, POST, PUT } from './route';
 
+const currentSchoolBinding = 'b'.repeat(64);
+const resolveCurrentSchoolBinding = vi.hoisted(() => vi.fn());
+
 vi.mock('@/auth', () => ({
   auth: {
     api: {
@@ -18,6 +21,7 @@ vi.mock('@/auth', () => ({
     },
   },
 }));
+vi.mock('@/server/services/schoolSessionBroker', () => ({ resolveCurrentSchoolBinding }));
 
 const authApi = auth.api as typeof auth.api & {
   getFullOrganization: ReturnType<typeof vi.fn>;
@@ -32,7 +36,7 @@ const routeContext = (route: string[] = ['account']) => ({
 const schoolSourceProof = async ({
   schoolKey = 'askcore-online-school',
   sourceCellKey = 'askcore-online-school',
-  sub = 'user-1',
+  sub = currentSchoolBinding,
 } = {}) =>
   new SignJWT({
     administrator: true,
@@ -40,7 +44,7 @@ const schoolSourceProof = async ({
     school_key: schoolKey,
     source_cell_key: sourceCellKey,
     sub,
-    typ: 'askcore-school-source-proof',
+    typ: 'askcore-school-source-proof-v2',
   })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setIssuedAt()
@@ -51,10 +55,19 @@ const schoolSourceProof = async ({
     .sign(new TextEncoder().encode('test-gibbon-source-proof-secret'));
 
 describe('AskCore billing proxy route', () => {
+  resolveCurrentSchoolBinding.mockResolvedValue({
+    binding: currentSchoolBinding,
+    schoolSubject: 'school_0123456789abcdef0123456789abcdef',
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
+    resolveCurrentSchoolBinding.mockResolvedValue({
+      binding: currentSchoolBinding,
+      schoolSubject: 'school_0123456789abcdef0123456789abcdef',
+    });
   });
 
   it('returns 401 when the LobeHub session is missing', async () => {
@@ -235,11 +248,13 @@ describe('AskCore billing proxy route', () => {
       method: 'GET',
       path: '/api/billing/v1/schools/askcore-online-school',
       school_key: 'askcore-online-school',
+      source_binding: currentSchoolBinding,
       source_cell_key: 'askcore-online-school',
       source_proof: sourceProof,
       sub: 'user-1',
       typ: 'askcore-school-billing-request',
     });
+    expect(resolveCurrentSchoolBinding).toHaveBeenCalledWith(expect.any(Headers));
   });
 
   it('hashes school mutation bodies and forwards the idempotency key', async () => {

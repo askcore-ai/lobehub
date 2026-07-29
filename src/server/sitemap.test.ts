@@ -53,7 +53,7 @@ describe('Sitemap', () => {
     it('should clear the timeout after model identifiers resolve', async () => {
       vi.useFakeTimers();
 
-      const isolatedSitemap = new Sitemap({ modelPageCountTimeoutMs: 15 * 60 * 1000 });
+      const isolatedSitemap = new Sitemap({ identifierTimeoutMs: 15 * 60 * 1000 });
       const isolatedSitemapWithService = isolatedSitemap as unknown as SitemapWithDiscoverService;
       vi.spyOn(isolatedSitemapWithService.discoverService, 'getModelIdentifiers').mockResolvedValue(
         [{ identifier: 'test-model', lastModified: LAST_MODIFIED }],
@@ -67,7 +67,7 @@ describe('Sitemap', () => {
       vi.useFakeTimers();
       vi.spyOn(console, 'error').mockImplementation(() => {});
 
-      const isolatedSitemap = new Sitemap({ modelPageCountTimeoutMs: 100 });
+      const isolatedSitemap = new Sitemap({ identifierTimeoutMs: 100 });
       const isolatedSitemapWithService = isolatedSitemap as unknown as SitemapWithDiscoverService;
       vi.spyOn(isolatedSitemapWithService.discoverService, 'getModelIdentifiers').mockReturnValue(
         new Promise(() => {}),
@@ -77,6 +77,26 @@ describe('Sitemap', () => {
       await vi.advanceTimersByTimeAsync(100);
 
       await expect(pageCountPromise).resolves.toBe(0);
+    });
+  });
+
+  describe('optional catalog timeout', () => {
+    it.each([
+      ['assistant', 'getAssistantIdentifiers', 'getAssistants'],
+      ['plugin', 'getPluginIdentifiers', 'getPlugins'],
+      ['model', 'getModelIdentifiers', 'getModels'],
+      ['provider', 'getProviderIdentifiers', 'getProviders'],
+    ] as const)('returns an empty %s sitemap when the catalog stalls', async (_, service, method) => {
+      vi.useFakeTimers();
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const isolatedSitemap = new Sitemap({ identifierTimeoutMs: 100 });
+      vi.spyOn(isolatedSitemap['discoverService'], service).mockReturnValue(new Promise(() => {}));
+
+      const sitemapPromise = isolatedSitemap[method]();
+      await vi.advanceTimersByTimeAsync(100);
+
+      await expect(sitemapPromise).resolves.toEqual([]);
     });
   });
 

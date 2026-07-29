@@ -1,34 +1,8 @@
-import {
-  BookOpenCheckIcon,
-  CreditCardIcon,
-  GraduationCapIcon,
-  HomeIcon,
-  SchoolIcon,
-  SearchIcon,
-  ShieldCheckIcon,
-} from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { HomeIcon, SchoolIcon, SearchIcon } from 'lucide-react';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation } from 'react-router-dom';
-import useSWR, { type SWRConfiguration } from 'swr';
 
-import {
-  fetchSchoolPortalManifestForGeneration,
-  fetchSchoolSourceSessionForGeneration,
-  readSchoolPortalBootstrapSnapshot,
-  schoolPortalAuthorizationDenied,
-  schoolPortalManifestCacheKey,
-  schoolPortalManifestScope,
-  schoolSourceSessionCacheKey,
-  stableSchoolSessionGeneration,
-} from '@/business/client/AskCoreSchoolPortal/api';
-import {
-  type SchoolPortalManifest,
-  schoolRoleCanAccessWorkspace,
-  type SchoolSourceSession,
-} from '@/business/client/AskCoreSchoolPortal/types';
 import { getRouteById } from '@/config/routes';
-import { useSession } from '@/libs/better-auth/auth-client';
 import { useGlobalStore } from '@/store/global';
 import { SidebarTabKey } from '@/store/global/initialState';
 import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
@@ -58,167 +32,10 @@ export interface NavLayout {
   };
 }
 
-const SCHOOL_BOOTSTRAP_RETRY_LIMIT = 2;
-const SCHOOL_BOOTSTRAP_RETRY_DELAY_MS = 250;
-const shouldRetrySchoolBootstrap = (error: unknown) => !schoolPortalAuthorizationDenied(error);
-
 export const useNavLayout = (): NavLayout => {
   const { t } = useTranslation('common');
-  const { pathname } = useLocation();
   const toggleCommandMenu = useGlobalStore((s) => s.toggleCommandMenu);
   const { showMarket, hideGitHub } = useServerConfigStore(featureFlagsSelectors);
-  const {
-    data: accountSession,
-    isPending: accountSessionPending,
-    isRefetching: accountSessionRefetching,
-  } = useSession();
-  const sessionGeneration = stableSchoolSessionGeneration(accountSession, {
-    isPending: accountSessionPending,
-    isRefetching: accountSessionRefetching,
-  });
-  const retryLifecycleRef = useRef({ epoch: 0, generation: sessionGeneration });
-  if (retryLifecycleRef.current.generation !== sessionGeneration) {
-    retryLifecycleRef.current = {
-      epoch: retryLifecycleRef.current.epoch + 1,
-      generation: sessionGeneration,
-    };
-  }
-  const retrySchoolBootstrap = useCallback<NonNullable<SWRConfiguration['onErrorRetry']>>(
-    (error, _key, _config, revalidate, { retryCount }) => {
-      if (!shouldRetrySchoolBootstrap(error) || retryCount > SCHOOL_BOOTSTRAP_RETRY_LIMIT) return;
-      const lifecycleEpoch = retryLifecycleRef.current.epoch;
-      const delay = SCHOOL_BOOTSTRAP_RETRY_DELAY_MS * 2 ** Math.max(0, retryCount - 1);
-      window.setTimeout(() => {
-        if (retryLifecycleRef.current.epoch !== lifecycleEpoch) return;
-        void revalidate({ retryCount });
-      }, delay);
-    },
-    [],
-  );
-  useEffect(
-    () => () => {
-      retryLifecycleRef.current = {
-        epoch: retryLifecycleRef.current.epoch + 1,
-        generation: undefined,
-      };
-    },
-    [],
-  );
-  const portalScope = schoolPortalManifestScope(pathname);
-  const bootstrapSnapshot = sessionGeneration
-    ? readSchoolPortalBootstrapSnapshot(sessionGeneration)
-    : undefined;
-
-  const {
-    data: liveSchoolPortal,
-    error: schoolPortalError,
-    isValidating: schoolPortalValidating,
-  } = useSWR(
-    schoolPortalManifestCacheKey(sessionGeneration, portalScope),
-    ([, generation]) => fetchSchoolPortalManifestForGeneration(generation),
-    {
-      fallbackData: bootstrapSnapshot?.portal,
-      onErrorRetry: retrySchoolBootstrap,
-      revalidateOnFocus: false,
-      shouldRetryOnError: shouldRetrySchoolBootstrap,
-    },
-  );
-  const {
-    data: liveSchoolSession,
-    error: schoolSessionError,
-    isValidating: schoolSessionValidating,
-  } = useSWR(
-    schoolSourceSessionCacheKey(sessionGeneration),
-    ([url, generation]) => fetchSchoolSourceSessionForGeneration(url, generation),
-    {
-      fallbackData: bootstrapSnapshot?.sourceSession,
-      onErrorRetry: retrySchoolBootstrap,
-      refreshInterval: 30_000,
-      revalidateOnFocus: true,
-      shouldRetryOnError: shouldRetrySchoolBootstrap,
-    },
-  );
-  const exactBootstrapPair =
-    bootstrapSnapshot?.portal === liveSchoolPortal &&
-    bootstrapSnapshot?.sourceSession === liveSchoolSession;
-  const livePairConfirmed =
-    !schoolPortalError &&
-    !schoolSessionError &&
-    !schoolPortalValidating &&
-    !schoolSessionValidating &&
-    liveSchoolPortal?.state === 'ready' &&
-    liveSchoolSession?.authenticated === true;
-  const bootstrapPairTrusted =
-    !schoolPortalError &&
-    !schoolSessionError &&
-    exactBootstrapPair &&
-    liveSchoolPortal?.state === 'ready' &&
-    liveSchoolSession?.authenticated === true;
-  const authorizationDenied =
-    schoolPortalAuthorizationDenied(schoolPortalError) ||
-    schoolPortalAuthorizationDenied(schoolSessionError);
-  const sourceSessionUnauthenticated =
-    !schoolSessionError &&
-    !schoolSessionValidating &&
-    !!liveSchoolSession &&
-    liveSchoolSession.authenticated !== true;
-  const authorizationLost = authorizationDenied || sourceSessionUnauthenticated;
-  const [confirmedPair, setConfirmedPair] = useState<{
-    generation: string;
-    portal: SchoolPortalManifest;
-    sourceSession: SchoolSourceSession;
-  }>();
-
-  useEffect(() => {
-    if (!sessionGeneration || authorizationLost) {
-      setConfirmedPair(undefined);
-      return;
-    }
-    if (liveSchoolPortal && liveSchoolSession && livePairConfirmed) {
-      setConfirmedPair({
-        generation: sessionGeneration,
-        portal: liveSchoolPortal,
-        sourceSession: liveSchoolSession,
-      });
-      return;
-    }
-    if (
-      !schoolPortalError &&
-      !schoolPortalValidating &&
-      liveSchoolPortal &&
-      liveSchoolPortal.state !== 'ready'
-    ) {
-      setConfirmedPair(undefined);
-    }
-  }, [
-    authorizationLost,
-    livePairConfirmed,
-    liveSchoolPortal,
-    liveSchoolSession,
-    schoolPortalError,
-    schoolPortalValidating,
-    sessionGeneration,
-  ]);
-
-  const activePair = livePairConfirmed
-    ? { portal: liveSchoolPortal, sourceSession: liveSchoolSession }
-    : bootstrapPairTrusted
-      ? { portal: liveSchoolPortal, sourceSession: liveSchoolSession }
-      : confirmedPair?.generation === sessionGeneration && !authorizationLost
-        ? confirmedPair
-        : undefined;
-  const schoolPortal = activePair?.portal;
-  const schoolSession = activePair?.sourceSession;
-  const sharedSchool = schoolPortal?.state === 'ready' ? schoolPortal.schools[0] : undefined;
-  const hasTeachingDestination = sharedSchool?.destinations.some(
-    (destination) => destination.key === 'teaching',
-  );
-  const sourceRole = schoolSession?.authenticated ? schoolSession.role : undefined;
-  const canAccessTeaching = schoolRoleCanAccessWorkspace(sourceRole, 'teaching');
-  const canAccessOperations = schoolRoleCanAccessWorkspace(sourceRole, 'operations');
-  const canAccessLearning = schoolRoleCanAccessWorkspace(sourceRole, 'learning');
-  const canAccessBilling = schoolRoleCanAccessWorkspace(sourceRole, 'billing');
-
   const topNavItems = useMemo(
     () =>
       [
@@ -237,36 +54,8 @@ export const useNavLayout = (): NavLayout => {
         {
           icon: SchoolIcon,
           key: 'school',
-          title: '学校',
+          title: t('schoolPortal.surface.schoolLearningSpace'),
           url: '/school',
-        },
-        {
-          hidden: !canAccessBilling || !sharedSchool,
-          icon: CreditCardIcon,
-          key: 'school-billing',
-          title: t('schoolPortal.surface.billing'),
-          url: '/school/billing',
-        },
-        {
-          hidden: !canAccessTeaching || !hasTeachingDestination,
-          icon: BookOpenCheckIcon,
-          key: 'teaching-center',
-          title: '教学中心',
-          url: '/school/teaching-center',
-        },
-        {
-          hidden: !canAccessOperations || !hasTeachingDestination,
-          icon: ShieldCheckIcon,
-          key: 'operations-center',
-          title: '运维中心',
-          url: '/school/operations-center',
-        },
-        {
-          hidden: !canAccessLearning || !hasTeachingDestination,
-          icon: GraduationCapIcon,
-          key: 'learning-space',
-          title: '学习空间',
-          url: '/school/learning-space',
         },
         {
           icon: getRouteById('tasks')!.icon,
@@ -281,15 +70,7 @@ export const useNavLayout = (): NavLayout => {
           url: '/page',
         },
       ] as NavItem[],
-    [
-      canAccessLearning,
-      canAccessBilling,
-      canAccessOperations,
-      canAccessTeaching,
-      hasTeachingDestination,
-      t,
-      toggleCommandMenu,
-    ],
+    [t, toggleCommandMenu],
   );
 
   const bottomMenuItems = useMemo(

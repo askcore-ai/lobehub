@@ -8,6 +8,7 @@ import { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
+import { enterSchoolSource } from '@/business/client/AskCoreSchoolPortal/handoffClient';
 import NavItem from '@/features/NavPanel/components/NavItem';
 import { useActiveTabKey } from '@/hooks/useActiveTabKey';
 import type { NavItem as NavItemType } from '@/hooks/useNavLayout';
@@ -35,12 +36,7 @@ const ACCORDION_KEYS = new Set<string>([GroupKey.Recents, GroupKey.Agent]);
 /** Keys rendered in the header — must be excluded from the body to avoid duplicates
  * when migrating users whose persisted sidebarItems still include them. */
 const HEADER_KEYS = new Set<string>(['home', 'search']);
-const REQUIRED_NAV_KEYS = [
-  'school',
-  'operations-center',
-  'teaching-center',
-  'learning-space',
-] as const;
+const REQUIRED_NAV_KEYS = ['school'] as const;
 const REQUIRED_NAV_KEY_SET = new Set<string>(REQUIRED_NAV_KEYS);
 
 const accordionComponents: Record<string, (key: string) => ReactElement> = {
@@ -150,6 +146,10 @@ const Body = memo(() => {
           onClick={(e) => {
             if (isModifierClick(e)) return;
             e.preventDefault();
+            if (key === 'school') {
+              void enterSchoolSource('moodle').catch(() => navigate('/school'));
+              return;
+            }
             navigate(navItem.url!);
           }}
         >

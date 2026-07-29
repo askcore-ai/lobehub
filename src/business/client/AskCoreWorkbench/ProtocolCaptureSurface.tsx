@@ -306,12 +306,16 @@ const captureFailureMessage = (
 ) => t(CAPTURE_FAILURE_MESSAGE_KEYS[failure.code] || 'askcoreProcessing.capture.failure.generic');
 
 const terminalCaptureStatuses = new Set(['cancelled', 'completed', 'failed']);
+const fetchAvailableScanners = async (launchScope: string) => {
+  const payload = await fetchProtocolCaptureScanners(launchScope);
+  return payload.scanners.filter((scanner) => scanner.online);
+};
 
 export const ProtocolCaptureSurface = memo(
-  ({ context }: { context: ProtocolProcessingContext }) => {
+  ({ context, launchScope }: { context: ProtocolProcessingContext; launchScope: string }) => {
     const { t } = useTranslation('common');
     const [scanners, setScanners] = useState<ProtocolScanner[]>([]);
-    const [scannerId, setScannerId] = useState('');
+    const [scannerRef, setScannerRef] = useState('');
     const [media, setMedia] = useState<ProtocolCaptureMedia | undefined>();
     const [inputSource, setInputSource] = useState<ProtocolCaptureInputSource>('auto');
     const [duplex, setDuplex] = useState(false);
@@ -345,13 +349,12 @@ export const ProtocolCaptureSurface = memo(
       setLoading(true);
       setError(undefined);
       try {
-        const payload = await fetchProtocolCaptureScanners();
-        const available = payload.scanners.filter((scanner) => scanner.online);
+        const available = await fetchAvailableScanners(launchScope);
         setScanners(available);
-        setScannerId((current) =>
-          available.some((scanner) => scanner.scanner_id === current)
+        setScannerRef((current) =>
+          available.some((scanner) => scanner.scanner_ref === current)
             ? current
-            : available[0]?.scanner_id || '',
+            : available[0]?.scanner_ref || '',
         );
       } catch (reason) {
         setError(
@@ -360,7 +363,7 @@ export const ProtocolCaptureSurface = memo(
       } finally {
         setLoading(false);
       }
-    }, [t]);
+    }, [launchScope, t]);
 
     useEffect(() => {
       void loadScanners();
@@ -384,7 +387,7 @@ export const ProtocolCaptureSurface = memo(
           const persisted = readPersistedCapture(binding);
           if (!persisted) return;
           try {
-            const restored = await fetchProtocolCaptureStatus(persisted.capture_id);
+            const restored = await fetchProtocolCaptureStatus(launchScope, persisted.capture_id);
             if (!active) return;
             setCapture(restored);
             persistCapture(binding, restored.capture_id);
@@ -413,9 +416,9 @@ export const ProtocolCaptureSurface = memo(
       return () => {
         active = false;
       };
-    }, [context, t]);
+    }, [context, launchScope, t]);
 
-    const scanner = scanners.find((item) => item.scanner_id === scannerId);
+    const scanner = scanners.find((item) => item.scanner_ref === scannerRef);
     const hasPlaten = scanner?.capabilities.input_sources.includes('platen') === true;
     const hasAdf =
       scanner?.capabilities.input_sources.some((source) => source.startsWith('adf_')) === true;
@@ -435,7 +438,7 @@ export const ProtocolCaptureSurface = memo(
       if (!capture || terminalCaptureStatuses.has(capture.status)) return;
       const timer = window.setInterval(async () => {
         try {
-          setCapture(await fetchProtocolCaptureStatus(capture.capture_id));
+          setCapture(await fetchProtocolCaptureStatus(launchScope, capture.capture_id));
         } catch (reason) {
           setError(
             captureError(
@@ -447,7 +450,7 @@ export const ProtocolCaptureSurface = memo(
         }
       }, 2000);
       return () => window.clearInterval(timer);
-    }, [capture, t]);
+    }, [capture, launchScope, t]);
 
     const sourceOptions = useMemo(() => {
       const options: Array<{
@@ -480,13 +483,29 @@ export const ProtocolCaptureSurface = memo(
       setMutating(true);
       setError(undefined);
       try {
-        const next = await startProtocolCapture({
+        const selectedHasPlaten = scanner.capabilities.input_sources.includes('platen');
+        const selectedHasAdf = scanner.capabilities.input_sources.some((source) =>
+          source.startsWith('adf_'),
+        );
+        const planIsStillSupported =
+          scanner.capabilities.media.includes(media) &&
+          (inputSource === 'auto' ||
+            (inputSource === 'platen' && selectedHasPlaten) ||
+            (inputSource === 'adf' && selectedHasAdf)) &&
+          (!duplex ||
+            (inputSource !== 'platen' &&
+              scanner.capabilities.input_sources.includes('adf_duplex')));
+        if (!planIsStillSupported) {
+          setError(t('askcoreProcessing.capture.error.start'));
+          return;
+        }
+        const next = await startProtocolCapture(launchScope, {
           back_side_rotation_degrees: duplex ? backRotation : 0,
           duplex,
           input_source_mode: inputSource,
           media,
           rotation_degrees: rotation,
-          scanner_id: scanner.scanner_id,
+          scanner_ref: scanner.scanner_ref,
         });
         setCapture(next);
         persistCapture(resumeBinding, next.capture_id);
@@ -505,7 +524,7 @@ export const ProtocolCaptureSurface = memo(
       setMutating(true);
       setError(undefined);
       try {
-        const next = await continueProtocolCapture(capture.capture_id);
+        const next = await continueProtocolCapture(launchScope, capture.capture_id);
         setCapture(next);
         persistCapture(resumeBinding, next.capture_id);
       } catch (reason) {
@@ -526,7 +545,7 @@ export const ProtocolCaptureSurface = memo(
       setMutating(true);
       setError(undefined);
       try {
-        setCapture(await cancelProtocolCapture(capture.capture_id));
+        setCapture(await cancelProtocolCapture(launchScope, capture.capture_id));
       } catch (reason) {
         setError(
           captureError(reason, t('askcoreProcessing.capture.error.cancel'), t as CaptureTranslate),
@@ -590,12 +609,12 @@ export const ProtocolCaptureSurface = memo(
                       </span>
                       <Select
                         aria-label={t('askcoreProcessing.capture.scanner')}
-                        value={scannerId}
+                        value={scannerRef}
                         options={scanners.map((item) => ({
-                          label: item.display_name,
-                          value: item.scanner_id,
+                          label: `${item.display_name} · ${item.device_assistant_name}`,
+                          value: item.scanner_ref,
                         }))}
-                        onChange={setScannerId}
+                        onChange={setScannerRef}
                       />
                     </label>
                     <label className={styles.field}>

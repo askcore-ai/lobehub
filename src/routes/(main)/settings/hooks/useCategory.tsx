@@ -5,6 +5,7 @@ import {
   BellIcon,
   Brain,
   BrainCircuit,
+  Building2,
   ChartColumnBigIcon,
   Coins,
   CreditCard,
@@ -20,6 +21,7 @@ import {
   MessageCircleIcon,
   MonitorSmartphoneIcon,
   PaletteIcon,
+  School,
   Sparkles,
   TerminalSquare,
 } from 'lucide-react';
@@ -42,6 +44,7 @@ import { userGeneralSettingsSelectors } from '@/store/user/slices/settings/selec
 export enum SettingsGroupKey {
   Agent = 'agent',
   General = 'general',
+  School = 'school',
   Subscription = 'subscription',
   System = 'system',
 }
@@ -124,6 +127,21 @@ export const useCategory = () => {
       items: generalItems,
       key: SettingsGroupKey.General,
       title: t('group.common'),
+    });
+
+    const schoolItems: CategoryItem[] = [
+      { icon: School, key: SettingsTabs.SchoolAffairs, label: t('tab.schoolAffairs') },
+      enableAskCoreBilling && {
+        icon: Building2,
+        key: SettingsTabs.SchoolPlan,
+        label: t('tab.schoolPlan'),
+      },
+    ].filter(Boolean) as CategoryItem[];
+
+    groups.push({
+      items: schoolItems,
+      key: SettingsGroupKey.School,
+      title: t('group.school'),
     });
 
     // Subscription group

@@ -3,6 +3,8 @@ import Credits from '@/business/client/BusinessSettingPages/Credits';
 import Notification from '@/business/client/BusinessSettingPages/Notification';
 import Plans from '@/business/client/BusinessSettingPages/Plans';
 import Referral from '@/business/client/BusinessSettingPages/Referral';
+import SchoolAffairs from '@/business/client/BusinessSettingPages/SchoolAffairs';
+import SchoolPlan from '@/business/client/BusinessSettingPages/SchoolPlan';
 import Usage from '@/business/client/BusinessSettingPages/Usage';
 import { SettingsTabs } from '@/store/global/initialState';
 
@@ -51,5 +53,7 @@ export const componentMap = {
   [SettingsTabs.Plans]: Plans,
   [SettingsTabs.Credits]: Credits,
   [SettingsTabs.Billing]: Billing,
+  [SettingsTabs.SchoolAffairs]: SchoolAffairs,
+  [SettingsTabs.SchoolPlan]: SchoolPlan,
   [SettingsTabs.Referral]: Referral,
 };

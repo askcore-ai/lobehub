@@ -5,7 +5,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { AskCoreProtocolRoute, askCoreProtocolRouteMode } from './ProtocolRoute';
 
 vi.mock('./ProtocolProcessingSurface', () => ({
-  ProtocolProcessingSurface: () => <div>processing-surface</div>,
+  ProtocolProcessingSurface: ({ launchScope }: { launchScope: string }) => (
+    <div>processing-surface:{launchScope}</div>
+  ),
 }));
 
 vi.mock('./ProtocolIdentityLinkSurface', () => ({
@@ -25,10 +27,17 @@ const renderRoute = (entry: string) =>
   );
 
 describe('AskCoreProtocolRoute', () => {
-  it('renders the same processing surface without consuming signed query parameters', () => {
-    renderRoute('/askcore/workbench?protocol=processing&launch=opaque-launch');
+  it('binds the opaque per-tab launch scope to the processing surface', () => {
+    const launchScope = '0123456789abcdef0123456789abcdef';
+    renderRoute(`/askcore/workbench?protocol=processing&launch=${launchScope}`);
 
-    expect(screen.getByText('processing-surface')).toBeInTheDocument();
+    expect(screen.getByText(`processing-surface:${launchScope}`)).toBeInTheDocument();
+  });
+
+  it('rejects a processing route without a valid tab scope', () => {
+    renderRoute('/askcore/workbench?protocol=processing&launch=shared-cookie');
+
+    expect(screen.getByText('home')).toBeInTheDocument();
   });
 
   it('passes the one-time identity token through on desktop and mobile routes', () => {

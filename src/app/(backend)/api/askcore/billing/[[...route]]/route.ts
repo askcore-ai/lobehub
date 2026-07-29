@@ -10,6 +10,7 @@ import {
   isAllowedAskCoreSameOriginWrite,
   validateAskCoreRouteSegments,
 } from '@/server/services/askcoreAssertion';
+import { resolveCurrentSchoolBinding } from '@/server/services/schoolSessionBroker';
 
 type RouteContext = {
   params: Promise<{
@@ -60,6 +61,7 @@ const buildSchoolBillingAssertion = async ({
   method,
   path,
   schoolKey,
+  sessionBinding,
   sourceProof,
 }: {
   body: Uint8Array;
@@ -67,6 +69,7 @@ const buildSchoolBillingAssertion = async ({
   method: string;
   path: string;
   schoolKey: string;
+  sessionBinding: string;
   sourceProof: string;
 }) => {
   const source = decodeSourceProof(sourceProof);
@@ -76,9 +79,9 @@ const buildSchoolBillingAssertion = async ({
   const sourceCellKey =
     typeof source?.source_cell_key === 'string' ? source.source_cell_key.trim() : '';
   if (
-    source?.typ !== 'askcore-school-source-proof' ||
+    source?.typ !== 'askcore-school-source-proof-v2' ||
     !accountUserId ||
-    sourceSubject !== accountUserId ||
+    sourceSubject !== sessionBinding ||
     sourceSchoolKey !== schoolKey ||
     !sourceCellKey ||
     sourceCellKey.length > 120
@@ -97,6 +100,7 @@ const buildSchoolBillingAssertion = async ({
     method,
     path,
     school_key: schoolKey,
+    source_binding: sessionBinding,
     source_cell_key: sourceCellKey,
     source_proof: sourceProof,
     sub: accountUserId,
@@ -158,12 +162,14 @@ const forwardBillingRequest = async (request: NextRequest, context: RouteContext
         : new Uint8Array(await request.arrayBuffer());
     let schoolAssertion: string;
     try {
+      const { binding } = await resolveCurrentSchoolBinding(request.headers);
       schoolAssertion = await buildSchoolBillingAssertion({
         body,
         claims: assertionResult.claims,
         method: request.method,
         path: target.pathname,
         schoolKey,
+        sessionBinding: binding,
         sourceProof,
       });
     } catch {

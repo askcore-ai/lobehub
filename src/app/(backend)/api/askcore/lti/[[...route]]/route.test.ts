@@ -44,8 +44,10 @@ describe('AskCore processing proxy', () => {
     const { GET } = await loadRoute();
 
     const response = await GET(
-      new NextRequest('https://askcore.cn/api/askcore/lti/processing/context'),
-      routeContext(['processing', 'context']),
+      new NextRequest(
+        'https://askcore.cn/api/askcore/lti/processing/current?launch=0123456789abcdef0123456789abcdef',
+      ),
+      routeContext(['processing', 'current']),
     );
 
     expect(response.status).toBe(401);
@@ -109,11 +111,12 @@ describe('AskCore processing proxy', () => {
 
   it('forwards a cross-site Resource Link launch and only its handoff cookie', async () => {
     const responseHeaders = new Headers({
-      location: 'https://askcore.cn/askcore/workbench?protocol=processing',
+      location:
+        'https://askcore.cn/askcore/workbench?protocol=processing&launch=0123456789abcdef0123456789abcdef',
     });
     responseHeaders.append(
       'set-cookie',
-      'askcore_lti_handoff=handoff-token; Path=/; HttpOnly; Secure; SameSite=None',
+      'askcore_lti_handoff_0123456789abcdef0123456789abcdef=handoff-token; Path=/; HttpOnly; Secure; SameSite=None',
     );
     responseHeaders.append('set-cookie', 'unrelated_cookie=blocked; Path=/');
     const fetchMock = vi
@@ -137,7 +140,9 @@ describe('AskCore processing proxy', () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get('location')).toContain('protocol=processing');
-    expect(response.headers.get('set-cookie')).toContain('askcore_lti_handoff=handoff-token');
+    expect(response.headers.get('set-cookie')).toContain(
+      'askcore_lti_handoff_0123456789abcdef0123456789abcdef=handoff-token',
+    );
     expect(response.headers.get('set-cookie')).not.toContain('unrelated_cookie');
     expect(authApi.getSession).not.toHaveBeenCalled();
   });
@@ -145,11 +150,14 @@ describe('AskCore processing proxy', () => {
   it('rejects cross-origin protocol mutations before session lookup', async () => {
     const { PATCH } = await loadRoute();
     const response = await PATCH(
-      new NextRequest('https://askcore.cn/api/askcore/lti/processing/current/result', {
-        body: JSON.stringify({ expected_latest_artifact_id: 'artifact-1', questions: [] }),
-        headers: { origin: 'https://evil.example' },
-        method: 'PATCH',
-      }),
+      new NextRequest(
+        'https://askcore.cn/api/askcore/lti/processing/current/result?launch=0123456789abcdef0123456789abcdef',
+        {
+          body: JSON.stringify({ expected_latest_artifact_id: 'artifact-1', questions: [] }),
+          headers: { origin: 'https://evil.example' },
+          method: 'PATCH',
+        },
+      ),
       routeContext(['processing', 'current', 'result']),
     );
 
@@ -198,6 +206,40 @@ describe('AskCore processing proxy', () => {
     expect(headers.has('cookie')).toBe(false);
   });
 
+  it('reads identity-link ownership only for the current Better Auth account', async () => {
+    vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'protocol-proxy-secret');
+    authApi.getSession.mockResolvedValue({
+      user: { email: 'student@askcore.cn', id: 'student-1' },
+    } as any);
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        deployment_id: 7,
+        linked: true,
+        school_subject: 'school_opaque_subject',
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const { GET } = await loadRoute();
+
+    const response = await GET(
+      new NextRequest('https://askcore.cn/api/askcore/lti/identity-links/account-subject'),
+      routeContext(['identity-links', 'account-subject']),
+    );
+
+    expect(response.status).toBe(200);
+    expect(authApi.getFullOrganization).not.toHaveBeenCalled();
+    const [target, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(target.toString()).toBe('http://api:8000/api/lti/v1/identity-links/account-subject');
+    const assertion = (init.headers as Headers).get('X-AskCore-Billing-Assertion');
+    const { payload } = await jwtVerify(
+      assertion!,
+      new TextEncoder().encode('protocol-proxy-secret'),
+      { audience: 'aitutor-billing', issuer: 'askcore-lobehub' },
+    );
+    expect(payload.sub).toBe('student-1');
+    expect(payload.org_id).toBeUndefined();
+  });
+
   it('forwards only protocol cookies and propagates the context cookie', async () => {
     vi.stubEnv('AITUTOR_API_BASE_URL', 'http://api:8000');
     vi.stubEnv('BILLING_LOBEHUB_ASSERTION_SECRET', 'protocol-proxy-secret');
@@ -213,7 +255,7 @@ describe('AskCore processing proxy', () => {
     const responseHeaders = new Headers({ 'content-type': 'application/json' });
     responseHeaders.append(
       'set-cookie',
-      'askcore_lti_processing=context-token; Path=/; HttpOnly; Secure; SameSite=None',
+      'askcore_lti_processing_0123456789abcdef0123456789abcdef=context-token; Path=/; HttpOnly; Secure; SameSite=None',
     );
     responseHeaders.append('set-cookie', 'unrelated_cookie=blocked; Path=/');
     const fetchMock = vi.fn().mockResolvedValue(
@@ -223,23 +265,32 @@ describe('AskCore processing proxy', () => {
       }),
     );
     vi.stubGlobal('fetch', fetchMock);
-    const { GET } = await loadRoute();
+    const { POST } = await loadRoute();
 
-    const response = await GET(
-      new NextRequest('https://askcore.cn/api/askcore/lti/processing/context', {
-        headers: {
-          cookie:
-            'better-auth.session=private; askcore_lti_handoff=handoff-token; tracking=private',
+    const response = await POST(
+      new NextRequest(
+        'https://askcore.cn/api/askcore/lti/processing/context?launch=0123456789abcdef0123456789abcdef',
+        {
+          headers: {
+            cookie:
+              'better-auth.session=private; askcore_lti_handoff_0123456789abcdef0123456789abcdef=handoff-token; askcore_lti_handoff_ffffffffffffffffffffffffffffffff=foreign; tracking=private',
+            origin: 'https://askcore.cn',
+          },
+          method: 'POST',
         },
-      }),
+      ),
       routeContext(['processing', 'context']),
     );
 
     expect(response.status).toBe(200);
     const [target, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
-    expect(target.toString()).toBe('http://api:8000/api/lti/v1/processing/context');
+    expect(target.toString()).toBe(
+      'http://api:8000/api/lti/v1/processing/context?launch=0123456789abcdef0123456789abcdef',
+    );
     const headers = init.headers as Headers;
-    expect(headers.get('cookie')).toBe('askcore_lti_handoff=handoff-token');
+    expect(headers.get('cookie')).toBe(
+      'askcore_lti_handoff_0123456789abcdef0123456789abcdef=handoff-token',
+    );
     expect(headers.get('cookie')).not.toContain('better-auth');
     const assertion = headers.get('X-AskCore-Billing-Assertion');
     expect(assertion).toBeTruthy();
@@ -252,7 +303,9 @@ describe('AskCore processing proxy', () => {
     expect(payload.org_id).toBeUndefined();
     expect(payload.active_org_id).toBeUndefined();
     expect(authApi.getFullOrganization).not.toHaveBeenCalled();
-    expect(response.headers.get('set-cookie')).toContain('askcore_lti_processing=context-token');
+    expect(response.headers.get('set-cookie')).toContain(
+      'askcore_lti_processing_0123456789abcdef0123456789abcdef=context-token',
+    );
     expect(response.headers.get('set-cookie')).not.toContain('unrelated_cookie');
   });
 
@@ -266,14 +319,18 @@ describe('AskCore processing proxy', () => {
     const { GET } = await loadRoute();
 
     const response = await GET(
-      new NextRequest('https://askcore.cn/api/askcore/lti/processing/capture/scanners'),
+      new NextRequest(
+        'https://askcore.cn/api/askcore/lti/processing/capture/scanners?launch=0123456789abcdef0123456789abcdef',
+      ),
       routeContext(['processing', 'capture', 'scanners']),
     );
 
     expect(response.status).toBe(200);
     expect(authApi.getFullOrganization).not.toHaveBeenCalled();
     const [target, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
-    expect(target.toString()).toBe('http://api:8000/api/lti/v1/processing/capture/scanners');
+    expect(target.toString()).toBe(
+      'http://api:8000/api/lti/v1/processing/capture/scanners?launch=0123456789abcdef0123456789abcdef',
+    );
     const assertion = (init.headers as Headers).get('X-AskCore-Billing-Assertion');
     const { payload } = await jwtVerify(
       assertion!,

@@ -154,10 +154,11 @@ export type ProtocolScanner = {
     input_sources: Array<'adf_duplex' | 'adf_simplex' | 'platen'>;
     media: ProtocolCaptureMedia[];
   };
+  device_assistant_name: string;
   display_name: string;
   online: boolean;
   protocol: 'escl';
-  scanner_id: string;
+  scanner_ref: string;
 };
 
 export type ProtocolScannerList = {
@@ -170,7 +171,7 @@ export type ProtocolCaptureStartInput = {
   input_source_mode: ProtocolCaptureInputSource;
   media: ProtocolCaptureMedia;
   rotation_degrees: 0 | 90 | 180 | 270;
-  scanner_id: string;
+  scanner_ref: string;
 };
 
 export type ProtocolCaptureStatus = {
@@ -203,16 +204,18 @@ export type ProtocolProcessingQuestion = {
   max_score?: number | null;
   ocr_meta?: JsonRecord;
   order_index: number;
-  question_content?: JsonRecord;
+  question_content?: JsonRecord | string | null;
   question_number?: string | null;
   question_type?: string | null;
-  reference_answer?: JsonRecord;
+  reference_answer?: JsonRecord | string | null;
+  reference_thinking?: string | null;
   score?: number | null;
   student_answer?: string | null;
 };
 
 export type ProtocolProcessingResultContent = {
-  questions: ProtocolProcessingQuestion[];
+  questions?: ProtocolProcessingQuestion[];
+  question_refs?: ProtocolProcessingQuestion[];
   score?: number | null;
   teacher_summary?: string | null;
   total_score?: number | null;
@@ -237,6 +240,11 @@ export type ProtocolProcessingQuestionEdit = {
   is_correct?: boolean | null;
   max_score?: number | null;
   order_index: number;
+  question_content?: string | null;
+  question_number?: string | null;
+  question_type?: string | null;
+  reference_answer?: string | null;
+  reference_thinking?: string | null;
   score?: number | null;
   student_answer?: string | null;
 };
@@ -265,6 +273,13 @@ export type ProtocolIdentityLinkAcceptResult = {
   invitation_id: string;
   invitation_status: 'accepted';
   link_status: 'active';
+  replayed: boolean;
+};
+
+export type ProtocolIdentityLinkAccountSubjectResult = {
+  deployment_id: number;
+  linked: boolean;
+  school_subject: string;
 };
 
 export type FileDescriptor = {

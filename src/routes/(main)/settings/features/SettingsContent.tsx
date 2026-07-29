@@ -25,6 +25,7 @@ const BUSINESS_SETTINGS_TABS = [
   SettingsTabs.Referral,
   SettingsTabs.Usage,
   SettingsTabs.Notification,
+  SettingsTabs.SchoolPlan,
 ];
 
 interface SettingsContentProps {
@@ -80,7 +81,6 @@ const SettingsContent = ({ mobile, activeTab }: SettingsContentProps) => {
   ) {
     return null;
   }
-
   if (mobile) {
     return activeTab ? renderComponent(activeTab) : renderComponent(SettingsTabs.Profile);
   }

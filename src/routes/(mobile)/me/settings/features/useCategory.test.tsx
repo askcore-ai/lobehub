@@ -32,7 +32,10 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-const createWrapper = (showProvider: boolean) => {
+const createWrapper = (
+  showProvider: boolean,
+  options: { enableAskCoreBilling?: boolean; enableBusinessFeatures?: boolean } = {},
+) => {
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <Provider
       createStore={() =>
@@ -42,6 +45,12 @@ const createWrapper = (showProvider: boolean) => {
               provider_settings: true,
             }),
             showProvider,
+          },
+          serverConfig: {
+            aiProvider: {},
+            enableAskCoreBilling: options.enableAskCoreBilling,
+            enableBusinessFeatures: options.enableBusinessFeatures,
+            telemetry: {},
           },
         })
       }
@@ -85,5 +94,28 @@ describe('mobile settings useCategory', () => {
     const keys = result.current.flatMap((group) => group.items.map((item) => item.key));
 
     expect(keys).not.toContain(SettingsTabs.Provider);
+  });
+
+  it('exposes School Affairs and School Plan with generic Business/OIDC disabled', () => {
+    const { result } = renderHook(() => useCategory(), {
+      wrapper: createWrapper(true, {
+        enableAskCoreBilling: true,
+        enableBusinessFeatures: false,
+      }),
+    });
+    const items = result.current.flatMap((group) => group.items);
+
+    expect(items.map((item) => item.key)).toEqual(
+      expect.arrayContaining([SettingsTabs.SchoolAffairs, SettingsTabs.SchoolPlan]),
+    );
+    expect(items.find((item) => item.key === SettingsTabs.SchoolAffairs)?.label).toBe(
+      'setting:tab.schoolAffairs',
+    );
+    expect(items.find((item) => item.key === SettingsTabs.SchoolPlan)?.label).toBe(
+      'setting:tab.schoolPlan',
+    );
+
+    items.find((item) => item.key === SettingsTabs.SchoolAffairs)?.onClick?.();
+    expect(navigate).toHaveBeenCalledWith('/settings/school-affairs');
   });
 });

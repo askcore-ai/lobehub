@@ -4,6 +4,7 @@ import {
   Book,
   CircleUserRound,
   Cloudy,
+  Compass,
   Download,
   Feather,
   FileClockIcon,
@@ -46,6 +47,12 @@ export const useCategory = () => {
   ];
 
   const settings: CellProps[] = [
+    {
+      icon: Compass,
+      key: 'community',
+      label: t('tab.community'),
+      onClick: () => navigate('/community'),
+    },
     {
       icon: Settings2,
       key: 'setting',

@@ -2,6 +2,7 @@ import { SkillsIcon } from '@lobehub/ui/icons';
 import {
   Brain,
   BrainCircuit,
+  Building2,
   ChartColumnBigIcon,
   Coins,
   CreditCard,
@@ -13,6 +14,7 @@ import {
   KeyRound,
   Map,
   PaletteIcon,
+  School,
   Sparkles,
   UserCircle,
 } from 'lucide-react';
@@ -33,6 +35,7 @@ import { userGeneralSettingsSelectors } from '@/store/user/slices/settings/selec
 export enum SettingsGroupKey {
   Agent = 'agent',
   General = 'general',
+  School = 'school',
   Subscription = 'subscription',
   System = 'system',
 }
@@ -99,6 +102,20 @@ export const useCategory = (): CategoryGroup[] => {
         ]
       : [];
 
+    const school: CategoryItem[] = [
+      makeItem({
+        icon: School,
+        key: SettingsTabs.SchoolAffairs,
+        label: t('setting:tab.schoolAffairs'),
+      }),
+      enableAskCoreBilling &&
+        makeItem({
+          icon: Building2,
+          key: SettingsTabs.SchoolPlan,
+          label: t('setting:tab.schoolPlan'),
+        }),
+    ].filter((item): item is CategoryItem => Boolean(item));
+
     const agent: CategoryItem[] = [
       // Provider settings should not depend on Advanced tools: new users may need
       // non-LobeHub providers, and desktop users often bring their own API keys.
@@ -130,6 +147,7 @@ export const useCategory = (): CategoryGroup[] => {
 
     return [
       { items: general, key: SettingsGroupKey.General, title: t('setting:group.common') },
+      { items: school, key: SettingsGroupKey.School, title: t('setting:group.school') },
       {
         items: subscription,
         key: SettingsGroupKey.Subscription,

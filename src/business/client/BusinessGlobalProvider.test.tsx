@@ -1,351 +1,109 @@
 // @vitest-environment happy-dom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import '@testing-library/jest-dom/vitest';
+
+import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { isGibbonSessionProbeSurface } from './AskCoreSchoolPortal/api';
-import BusinessGlobalProvider from './BusinessGlobalProvider';
-
-const state = vi.hoisted(() => ({
-  authenticated: true,
-  liveRole: undefined as
-    | { authenticated: false }
-    | { authenticated: true; role: 'student' | 'teacher' }
-    | undefined,
-  portalValidating: false,
-  roleError: true,
-  sessionPending: false,
-  sessionRefetching: false,
-  sessionId: 'session-1',
-  userId: 'user-1',
+const { setSchoolHandoffSessionState, useSession } = vi.hoisted(() => ({
+  setSchoolHandoffSessionState: vi.fn(),
+  useSession: vi.fn(),
 }));
-const fetchSchoolSourceSession = vi.hoisted(() => vi.fn());
-const mutateRole = vi.hoisted(() => vi.fn());
-const requestedKeys = vi.hoisted(() => [] as (readonly string[])[]);
-
-const portal = {
-  can_manage_integrations: false,
-  contract: 'askcore.school-portal.v2',
-  schools: [
-    {
-      destinations: [
-        {
-          description: '课程、作业、提交与成绩',
-          key: 'teaching',
-          label: '教学中心',
-          launch_url: '/api/askcore/school/launch/teaching',
-          session_launch_url: 'about:blank#teaching-session',
-        },
-        {
-          description: '校务资料与学校服务',
-          key: 'school-services',
-          label: '校务中心',
-          launch_url: '/api/askcore/school/launch/services',
-          session_launch_url: 'about:blank#services-session',
-        },
-      ],
-      key: 'askcore-online-school',
-      name: 'AskCore 在线学校',
-      role_source_url: 'https://askcore.cn/school/services/askcore/session.php',
-    },
-  ],
-  selection_required: false,
-  show_school_entry: true,
-  state: 'ready',
-};
-
-const markSessionReady = (frame: HTMLIFrameElement) => {
-  const marker = frame.contentDocument!.createElement('meta');
-  marker.setAttribute('content', 'ready');
-  marker.setAttribute('name', 'askcore-session');
-  frame.contentDocument!.head.append(marker);
-};
-
-const renderProvider = (initialEntry = '/') =>
-  render(
-    <MemoryRouter initialEntries={[initialEntry]}>
-      <BusinessGlobalProvider>
-        <div>personal workspace</div>
-      </BusinessGlobalProvider>
-    </MemoryRouter>,
-  );
-
-vi.mock('swr', () => ({
-  default: (key: readonly string[] | null) => {
-    if (!key) return { data: undefined, isValidating: false, mutate: vi.fn() };
-    requestedKeys.push(key);
-    if (key[0] === '/api/askcore/school/portal') {
-      return { data: portal, isValidating: state.portalValidating, mutate: vi.fn() };
-    }
-    return {
-      data: state.liveRole,
-      error: state.roleError ? new Error('source session is not ready') : undefined,
-      isValidating: false,
-      mutate: mutateRole,
-    };
-  },
+vi.mock('@/libs/better-auth/auth-client', () => ({ useSession }));
+vi.mock('@/business/client/AskCoreSchoolPortal/handoffClient', () => ({
+  setSchoolHandoffSessionState,
 }));
 
-vi.mock('@/libs/better-auth/auth-client', () => ({
-  useSession: () => ({
-    data:
-      state.authenticated && !state.sessionPending
-        ? { session: { id: state.sessionId }, user: { id: state.userId } }
-        : null,
-    isPending: state.sessionPending,
-    isRefetching: state.sessionRefetching,
-  }),
-}));
+const messages: unknown[] = [];
+class FakeBroadcastChannel {
+  close = vi.fn();
+  postMessage = vi.fn((message: unknown) => messages.push(message));
+}
 
-vi.mock('@/business/client/AskCoreSchoolPortal/api', async (importOriginal) => ({
-  ...(await importOriginal()),
-  fetchSchoolSourceSession,
-}));
-
-describe('BusinessGlobalProvider', () => {
+describe('P140 school session generation notifier', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
-    fetchSchoolSourceSession.mockReset();
-    fetchSchoolSourceSession.mockRejectedValue(new Error('source session is not ready'));
-    mutateRole.mockReset();
-    mutateRole.mockImplementation(() =>
-      fetchSchoolSourceSession('/school/services/askcore/session.php'),
-    );
-    state.authenticated = true;
-    state.liveRole = undefined;
-    state.portalValidating = false;
-    state.roleError = true;
-    state.sessionPending = false;
-    state.sessionRefetching = false;
-    state.sessionId = 'session-1';
-    state.userId = 'user-1';
-    requestedKeys.length = 0;
+    messages.length = 0;
+    setSchoolHandoffSessionState.mockReset();
     window.localStorage.clear();
-    window.history.replaceState({}, '', '/');
+    window.sessionStorage.clear();
+    vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
   });
-
   afterEach(() => {
-    cleanup();
-    vi.runOnlyPendingTimers();
-    vi.useRealTimers();
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
-  it('warms Gibbon and Moodle sessions without replacing the personal workspace', async () => {
-    fetchSchoolSourceSession.mockResolvedValue({ authenticated: true, role: 'student' });
-    renderProvider();
-
-    expect(screen.getByText('personal workspace')).toBeInTheDocument();
-    let frames = document.querySelectorAll<HTMLIFrameElement>(
-      'iframe[data-askcore-school-session]',
-    );
-    expect(frames).toHaveLength(1);
-    expect(frames[0]?.dataset.askcoreSchoolSession).toBe('school-services');
-    expect(frames[0]?.getAttribute('src')).toBe('about:blank#services-session');
-    expect(frames[0]?.hidden).toBe(true);
-    expect(requestedKeys).toContainEqual([
-      '/school/services/askcore/session.php',
-      'user-1:session-1',
-    ]);
-
-    markSessionReady(frames[0]!);
-    await act(async () => {
-      fireEvent.load(frames[0]!);
-      await Promise.resolve();
+  it('broadcasts account-generation changes without rendering source frames', async () => {
+    let session = { session: { id: 'session-a' }, user: { id: 'account-a' } };
+    useSession.mockImplementation(() => ({ data: session, isPending: false, isRefetching: false }));
+    const { default: Provider } = await import('./BusinessGlobalProvider');
+    const view = render(<Provider><span>child</span></Provider>);
+    expect(screen.getByText('child')).toBeVisible();
+    await waitFor(() => expect(messages).toHaveLength(1));
+    expect(messages[0]).toMatchObject({
+      sessionState: 'stable',
+      type: 'generation-changed',
     });
-    expect(mutateRole).toHaveBeenCalledTimes(1);
-
-    frames = document.querySelectorAll<HTMLIFrameElement>('iframe[data-askcore-school-session]');
-    expect(frames).toHaveLength(1);
-    expect(frames[0]?.dataset.askcoreSchoolSession).toBe('teaching');
-    markSessionReady(frames[0]!);
-    fireEvent.load(frames[0]!);
-    expect(document.querySelectorAll('iframe[data-askcore-school-session]')).toHaveLength(0);
-  });
-
-  it('probes only a completed Gibbon session surface', () => {
-    expect(isGibbonSessionProbeSurface('/oidc/auth/interaction', false)).toBe(false);
-    expect(isGibbonSessionProbeSurface('/school/services/login.php', false)).toBe(false);
-    expect(isGibbonSessionProbeSurface('/school/services/askcore/warmup.php', false)).toBe(false);
-    expect(isGibbonSessionProbeSurface('/school/services/index.php', false)).toBe(true);
-    expect(isGibbonSessionProbeSurface('/school/services/askcore/warmup.php', true)).toBe(true);
-  });
-
-  it('revalidates the stable account-session role cache after a BFCache restore', async () => {
-    renderProvider();
-    window.localStorage.setItem('askcore.school-bootstrap.v1', '{"generationHash":"stale"}');
-
-    const pageshow = new Event('pageshow') as PageTransitionEvent;
-    Object.defineProperty(pageshow, 'persisted', { value: true });
-    await act(async () => {
-      window.dispatchEvent(pageshow);
-      await Promise.resolve();
-    });
-
-    expect(requestedKeys).toContainEqual([
-      '/school/services/askcore/session.php',
-      'user-1:session-1',
-    ]);
-    expect(
-      requestedKeys.filter(([url]) => url === '/school/services/askcore/session.php'),
-    ).not.toContainEqual(['/school/services/askcore/session.php', 'user-1:session-1', 1]);
-    expect(requestedKeys).toContainEqual([
-      '/api/askcore/school/portal',
-      'user-1:session-1',
-      'navigation',
-    ]);
-    expect(requestedKeys).not.toContainEqual(['/api/askcore/school/portal', 'user-1:session-1', 1]);
-    expect(mutateRole).toHaveBeenCalledTimes(1);
-    expect(window.localStorage.getItem('askcore.school-bootstrap.v1')).toBeNull();
-  });
-
-  it('continues after Gibbon establishes a source role on its native dashboard', async () => {
-    fetchSchoolSourceSession.mockResolvedValue({ authenticated: true, role: 'teacher' });
-    renderProvider();
-
-    const gibbonFrame = document.querySelector<HTMLIFrameElement>(
-      'iframe[data-askcore-school-session="school-services"]',
+    expect(setSchoolHandoffSessionState).toHaveBeenCalledWith(
+      'stable',
+      expect.any(String),
     );
-    markSessionReady(gibbonFrame!);
-    await act(async () => {
-      fireEvent.load(gibbonFrame!);
-      await Promise.resolve();
-    });
+    expect(view.container.querySelector('iframe')).toBeNull();
 
-    expect(fetchSchoolSourceSession).toHaveBeenCalledWith('/school/services/askcore/session.php');
-    expect(mutateRole).toHaveBeenCalledTimes(1);
-    expect(
-      document.querySelector<HTMLIFrameElement>('iframe[data-askcore-school-session="teaching"]'),
-    ).not.toBeNull();
+    session = { session: { id: 'session-b' }, user: { id: 'account-b' } };
+    view.rerender(<Provider><span>child</span></Provider>);
+    await waitFor(() => expect(messages).toHaveLength(2));
+    expect(JSON.stringify(messages)).not.toContain('account-a');
+    expect(JSON.stringify(messages)).not.toContain('session-a');
   });
 
-  it('retries the source role while a newly established Gibbon session settles', async () => {
-    fetchSchoolSourceSession
-      .mockRejectedValueOnce(new Error('source session is still redirecting'))
-      .mockResolvedValue({ authenticated: true, role: 'teacher' });
-    renderProvider();
+  it('broadcasts logout as a null generation and keeps no persistent state', async () => {
+    let session: null | { session: { id: string }; user: { id: string } } = {
+      session: { id: 'session-a' },
+      user: { id: 'account-a' },
+    };
+    useSession.mockImplementation(() => ({ data: session, isPending: false, isRefetching: false }));
+    const { default: Provider } = await import('./BusinessGlobalProvider');
+    const view = render(<Provider><span>child</span></Provider>);
+    await waitFor(() => expect(messages).toHaveLength(1));
+    messages.length = 0;
+    session = null;
+    view.rerender(<Provider><span>child</span></Provider>);
+    await waitFor(() => expect(messages).toEqual([
+      { generationHash: null, sessionState: 'signed-out', type: 'generation-changed' },
+    ]));
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
+  });
 
-    const gibbonFrame = document.querySelector<HTMLIFrameElement>(
-      'iframe[data-askcore-school-session="school-services"]',
+  it('broadcasts fail-closed invalidation before a refetch resolves to another account', async () => {
+    let session = { session: { id: 'session-a' }, user: { id: 'account-a' } };
+    let isRefetching = false;
+    useSession.mockImplementation(() => ({
+      data: session,
+      isPending: false,
+      isRefetching,
+    }));
+    const { default: Provider } = await import('./BusinessGlobalProvider');
+    const view = render(<Provider><span>child</span></Provider>);
+    await waitFor(() => expect(messages).toHaveLength(1));
+
+    isRefetching = true;
+    view.rerender(<Provider><span>child</span></Provider>);
+    await waitFor(() =>
+      expect(messages.at(-1)).toEqual({
+        generationHash: null,
+        sessionState: 'unstable',
+        type: 'generation-changed',
+      }),
     );
-    markSessionReady(gibbonFrame!);
-    await act(async () => {
-      fireEvent.load(gibbonFrame!);
-      await Promise.resolve();
-      await vi.advanceTimersByTimeAsync(250);
-    });
+    expect(setSchoolHandoffSessionState).toHaveBeenLastCalledWith('unstable', null);
 
-    expect(mutateRole).toHaveBeenCalledTimes(2);
-    expect(
-      document.querySelector<HTMLIFrameElement>('iframe[data-askcore-school-session="teaching"]'),
-    ).not.toBeNull();
-  });
-
-  it('does not contact school sources before Better Auth is authenticated', () => {
-    state.authenticated = false;
-
-    renderProvider();
-
-    expect(document.querySelector('iframe[data-askcore-school-session]')).toBeNull();
-  });
-
-  it('starts Gibbon recovery when the source explicitly reports an unauthenticated session', () => {
-    state.roleError = false;
-    state.liveRole = { authenticated: false };
-
-    renderProvider();
-
-    expect(
-      document.querySelector<HTMLIFrameElement>(
-        'iframe[data-askcore-school-session="school-services"]',
-      ),
-    ).not.toBeNull();
-  });
-
-  it('retains the same-generation source warmup while Better Auth is refetching', () => {
-    state.roleError = false;
-    state.liveRole = { authenticated: true, role: 'student' };
-    const view = renderProvider();
-    expect(document.querySelector('iframe[data-askcore-school-session]')).not.toBeNull();
-
-    state.sessionRefetching = true;
-    view.rerender(
-      <MemoryRouter>
-        <BusinessGlobalProvider>
-          <div>personal workspace</div>
-        </BusinessGlobalProvider>
-      </MemoryRouter>,
-    );
-
-    expect(document.querySelector('iframe[data-askcore-school-session]')).not.toBeNull();
-  });
-
-  it('clears the school bootstrap after Better Auth confirms logout', () => {
-    window.localStorage.setItem('askcore.school-bootstrap.v1', '{"generationHash":"stale"}');
-    state.authenticated = false;
-
-    renderProvider();
-
-    expect(window.localStorage.getItem('askcore.school-bootstrap.v1')).toBeNull();
-  });
-
-  it('does not clear the school bootstrap while Better Auth is still loading', () => {
-    const snapshot = '{"generationHash":"pending"}';
-    window.localStorage.setItem('askcore.school-bootstrap.v1', snapshot);
-    state.sessionPending = true;
-
-    renderProvider();
-
-    expect(window.localStorage.getItem('askcore.school-bootstrap.v1')).toBe(snapshot);
-  });
-
-  it('does not launch cached source-session tokens while the portal is refreshing', () => {
-    state.portalValidating = true;
-
-    renderProvider();
-
-    expect(document.querySelector('iframe[data-askcore-school-session]')).toBeNull();
-  });
-
-  it('does not trust a cached positive role after the live role probe fails', () => {
-    state.liveRole = { authenticated: true, role: 'student' };
-    state.roleError = true;
-
-    renderProvider();
-
-    const frame = document.querySelector<HTMLIFrameElement>('iframe[data-askcore-school-session]');
-    expect(frame?.dataset.askcoreSchoolSession).toBe('school-services');
-    expect(document.querySelector('iframe[data-askcore-school-session="teaching"]')).toBeNull();
-  });
-
-  it('does not warm source sessions until a directed identity invitation is accepted', () => {
-    window.history.replaceState(
-      {},
-      '',
-      '/askcore/workbench?protocol=identity-link&token=opaque-invitation',
-    );
-
-    renderProvider('/askcore/workbench?protocol=identity-link&token=opaque-invitation');
-
-    expect(screen.getByText('personal workspace')).toBeInTheDocument();
-    expect(document.querySelector('iframe[data-askcore-school-session]')).toBeNull();
-  });
-
-  it('does not race a visible school surface with a hidden source login', () => {
-    renderProvider('/school');
-
-    expect(screen.getByText('personal workspace')).toBeInTheDocument();
-    expect(document.querySelector('iframe[data-askcore-school-session]')).toBeNull();
-  });
-
-  it('stops a source flow that never reports a ready session', () => {
-    renderProvider();
-
-    const frame = document.querySelector<HTMLIFrameElement>('iframe[data-askcore-school-session]');
-    expect(frame?.dataset.askcoreSchoolSession).toBe('school-services');
-    fireEvent.load(frame!);
-    expect(mutateRole).not.toHaveBeenCalled();
-
-    act(() => vi.advanceTimersByTime(30_000));
-    expect(document.querySelector('iframe[data-askcore-school-session]')).toBeNull();
+    session = { session: { id: 'session-b' }, user: { id: 'account-b' } };
+    isRefetching = false;
+    view.rerender(<Provider><span>child</span></Provider>);
+    await waitFor(() => expect(messages).toHaveLength(3));
+    expect(messages.at(-1)).toMatchObject({ sessionState: 'stable' });
+    expect(JSON.stringify(messages)).not.toContain('account-a');
+    expect(JSON.stringify(messages)).not.toContain('account-b');
   });
 });

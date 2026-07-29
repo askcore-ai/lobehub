@@ -15,6 +15,15 @@ vi.mock('react-i18next', () => ({
 const sourceProof = 'header.payload.signature';
 const sponsorship = {
   contract: 'askcore.school-sponsorship.v1',
+  credit_summary: {
+    period_end: '2026-09-01T00:00:00Z',
+    period_start: '2026-08-01T00:00:00Z',
+    rollover: false,
+    school_available_credits: 750,
+    school_granted_credits: 1000,
+    seat_monthly_credits: 100,
+    seat_settled_credits: 25,
+  },
   current_funding_priority: 'school_then_personal',
   personal_fallback_enabled: true,
   safe_reason: null,
@@ -52,7 +61,7 @@ afterEach(() => {
 });
 
 describe('SchoolBillingPage', () => {
-  it('shows only the current sponsorship and payer priority to an ordinary member', async () => {
+  it('shows the current sponsorship, shared balance, and seat credits to an ordinary member', async () => {
     const sourceProofBodies: Array<Record<string, unknown>> = [];
     vi.stubGlobal(
       'fetch',
@@ -82,10 +91,30 @@ describe('SchoolBillingPage', () => {
     expect(await screen.findByText('schoolBilling.member.title')).toBeInTheDocument();
     expect(screen.getByText('schoolBilling.member.status.assigned')).toBeInTheDocument();
     expect(screen.getByText('schoolBilling.payer.schoolThenPersonal')).toBeInTheDocument();
+    expect(screen.getByText('schoolBilling.member.credit.title')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'schoolBilling.member.credit.available:{"credits":"750"}',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'schoolBilling.member.credit.monthly:{"credits":"100"}',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'schoolBilling.member.credit.total:{"credits":"1,000"}',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'schoolBilling.member.credit.used:{"credits":"25"}',
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText('schoolBilling.summary.totalSeats')).not.toBeInTheDocument();
     expect(sourceProofBodies).toEqual([
       {
-        account_user_id: 'user-1',
         action: 'session_proof',
         school_key: 'askcore-online-school',
       },

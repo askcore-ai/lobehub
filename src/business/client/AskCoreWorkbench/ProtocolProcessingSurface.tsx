@@ -175,6 +175,9 @@ const styles = createStaticStyles(({ css }) => ({
     font-weight: 650;
     font-variant-numeric: tabular-nums;
   `,
+  singleBody: css`
+    grid-template-columns: minmax(0, 1fr);
+  `,
   summary: css`
     padding-block: 14px 16px;
     padding-inline: 16px;
@@ -192,7 +195,7 @@ const styles = createStaticStyles(({ css }) => ({
 
 type PreviewChoice =
   | { input: ProtocolProcessingInput; key: string; label: string; type: 'input' }
-  | { key: 'report'; label: string; type: 'report' };
+  | { key: 'report'; label: string; previewUrl: string; type: 'report' };
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
@@ -206,7 +209,8 @@ const processingState = (value: string | undefined, t: Translate) => {
   return { color: 'blue', label: t('askcoreProcessing.editor.state.running') };
 };
 
-const recordText = (value: JsonRecord | undefined) => {
+const recordText = (value: JsonRecord | string | null | undefined) => {
+  if (typeof value === 'string') return value.trim();
   if (!value) return '';
   for (const key of ['text', 'content', 'value']) {
     const candidate = value[key];
@@ -276,12 +280,8 @@ const PreviewPane = ({
       ) : choice.type === 'report' || choice.input.content_type === 'application/pdf' ? (
         <iframe
           className={styles.previewFrame}
+          src={choice.type === 'report' ? choice.previewUrl : choice.input.preview_url}
           title={choice.label}
-          src={
-            choice.type === 'report'
-              ? '/api/askcore/lti/processing/current/report/preview'
-              : choice.input.preview_url
-          }
         />
       ) : (
         <img alt={choice.label} className={styles.previewImage} src={choice.input.preview_url} />
@@ -290,7 +290,7 @@ const PreviewPane = ({
   </section>
 );
 
-export const ProtocolProcessingSurface = memo(() => {
+export const ProtocolProcessingSurface = memo(({ launchScope }: { launchScope: string }) => {
   const { t } = useTranslation('common');
   const [context, setContext] = useState<ProtocolProcessingContext | null>(null);
   const [surface, setSurface] = useState<ProtocolProcessingSurfacePayload | null>(null);
@@ -308,7 +308,7 @@ export const ProtocolProcessingSurface = memo(() => {
       if (!quiet) setLoading(true);
       setError(undefined);
       try {
-        const nextContext = await fetchProtocolProcessingContext();
+        const nextContext = await fetchProtocolProcessingContext(launchScope);
         setContext(nextContext);
         if (!nextContext.account_linked) {
           setSurface(null);
@@ -322,11 +322,21 @@ export const ProtocolProcessingSurface = memo(() => {
           setDirty(false);
           return;
         }
-        const nextSurface = await fetchCurrentProtocolProcessingSurface();
+        const nextSurface = await fetchCurrentProtocolProcessingSurface(launchScope);
         setSurface(nextSurface);
         setContext(nextSurface.context);
-        setQuestions(cloneQuestions(nextSurface.result?.content.questions));
-        setTeacherSummary(nextSurface.result?.content.teacher_summary || '');
+        const resultContent = nextSurface.result?.content;
+        setQuestions(
+          cloneQuestions(
+            nextSurface.context.run_kind === 'reference'
+              ? resultContent?.question_refs
+              : resultContent?.questions,
+          ),
+        );
+        setTeacherSummary(
+          nextSurface.context.run_kind === 'reference' ? '' : resultContent?.teacher_summary || '',
+        );
+        setError(undefined);
         setDirty(false);
       } catch (reason) {
         setError(
@@ -336,7 +346,7 @@ export const ProtocolProcessingSurface = memo(() => {
         setLoading(false);
       }
     },
-    [t],
+    [launchScope, t],
   );
 
   useEffect(() => {
@@ -354,27 +364,32 @@ export const ProtocolProcessingSurface = memo(() => {
     return () => window.clearInterval(timer);
   }, [context, refresh]);
 
+  const referenceMode = context?.run_kind === 'reference';
   const choices = useMemo<PreviewChoice[]>(() => {
-    const inputs: PreviewChoice[] = (surface?.inputs || []).map((input) => ({
-      input,
-      key: `input:${input.slot_id}`,
-      label: t(
-        input.kind === 'reference'
-          ? 'askcoreProcessing.editor.preview.referencePage'
-          : 'askcoreProcessing.editor.preview.responsePage',
-        { page: input.page_order },
-      ),
-      type: 'input' as const,
-    }));
-    if (surface?.report?.available) {
+    const sourceKind = referenceMode ? 'reference' : 'response';
+    const inputs: PreviewChoice[] = (surface?.inputs || [])
+      .filter((input) => input.kind === sourceKind)
+      .map((input) => ({
+        input,
+        key: `input:${input.slot_id}`,
+        label: t(
+          input.kind === 'reference'
+            ? 'askcoreProcessing.editor.preview.referencePage'
+            : 'askcoreProcessing.editor.preview.responsePage',
+          { page: input.page_order },
+        ),
+        type: 'input' as const,
+      }));
+    if (inputs.length && surface?.report?.available && surface.report.preview_url) {
       inputs.push({
         key: 'report',
         label: t('askcoreProcessing.editor.report'),
+        previewUrl: surface.report.preview_url,
         type: 'report',
       });
     }
     return inputs;
-  }, [surface, t]);
+  }, [referenceMode, surface, t]);
 
   useEffect(() => {
     if (!choices.length) {
@@ -422,19 +437,34 @@ export const ProtocolProcessingSurface = memo(() => {
     setSaving(true);
     setError(undefined);
     try {
-      await editCurrentProtocolProcessingResult({
+      const referenceMode = context?.run_kind === 'reference';
+      await editCurrentProtocolProcessingResult(launchScope, {
         expected_latest_artifact_id: artifactId,
-        questions: questions.map((question) => ({
-          feedback: question.feedback ?? null,
-          is_correct: question.is_correct ?? null,
-          max_score: question.max_score ?? null,
-          order_index: question.order_index,
-          score: question.score ?? null,
-          student_answer: question.student_answer ?? null,
-        })),
-        teacher_summary: teacherSummary,
+        questions: questions.map((question) =>
+          referenceMode
+            ? {
+                max_score: question.max_score ?? null,
+                order_index: question.order_index,
+                question_content: recordText(question.question_content),
+                question_number: question.question_number ?? null,
+                question_type: question.question_type ?? null,
+                reference_answer: recordText(question.reference_answer),
+                reference_thinking: question.reference_thinking ?? null,
+              }
+            : {
+                feedback: question.feedback ?? null,
+                is_correct: question.is_correct ?? null,
+                max_score: question.max_score ?? null,
+                order_index: question.order_index,
+                score: question.score ?? null,
+                student_answer: question.student_answer ?? null,
+              },
+        ),
+        ...(referenceMode ? {} : { teacher_summary: teacherSummary }),
       });
-      message.success(t('askcoreProcessing.editor.saved'));
+      message.success(
+        t(referenceMode ? 'askcoreProcessing.reference.saved' : 'askcoreProcessing.editor.saved'),
+      );
       await refresh(true);
     } catch (reason) {
       setError(
@@ -449,7 +479,7 @@ export const ProtocolProcessingSurface = memo(() => {
     setReporting(true);
     setError(undefined);
     try {
-      await generateCurrentProtocolProcessingReport();
+      await generateCurrentProtocolProcessingReport(launchScope);
       message.success(t('askcoreProcessing.editor.reportGenerated'));
       await refresh(true);
       setSelectedPreview('report');
@@ -462,7 +492,7 @@ export const ProtocolProcessingSurface = memo(() => {
     }
   };
 
-  const columns = useMemo<ColumnsType<ProtocolProcessingQuestion>>(
+  const submissionColumns = useMemo<ColumnsType<ProtocolProcessingQuestion>>(
     () => [
       {
         fixed: 'left',
@@ -561,6 +591,103 @@ export const ProtocolProcessingSurface = memo(() => {
     [t, updateQuestion],
   );
 
+  const referenceColumns = useMemo<ColumnsType<ProtocolProcessingQuestion>>(
+    () => [
+      {
+        fixed: 'left',
+        render: (_, row) => (
+          <Space direction="vertical" size={6}>
+            <Input
+              value={row.question_number || ''}
+              aria-label={t('askcoreProcessing.reference.aria.number', {
+                number: row.order_index,
+              })}
+              onChange={(event) =>
+                updateQuestion(row.order_index, { question_number: event.target.value })
+              }
+            />
+            <Input
+              value={row.question_type || ''}
+              aria-label={t('askcoreProcessing.reference.aria.type', {
+                number: row.question_number || row.order_index,
+              })}
+              onChange={(event) =>
+                updateQuestion(row.order_index, { question_type: event.target.value })
+              }
+            />
+          </Space>
+        ),
+        title: t('askcoreProcessing.reference.columns.question'),
+        width: 150,
+      },
+      {
+        render: (_, row) => (
+          <Input.TextArea
+            autoSize={{ maxRows: 10, minRows: 4 }}
+            value={recordText(row.question_content)}
+            aria-label={t('askcoreProcessing.reference.aria.content', {
+              number: row.question_number || row.order_index,
+            })}
+            onChange={(event) =>
+              updateQuestion(row.order_index, { question_content: event.target.value })
+            }
+          />
+        ),
+        title: t('askcoreProcessing.reference.columns.content'),
+        width: 300,
+      },
+      {
+        render: (_, row) => (
+          <Input.TextArea
+            autoSize={{ maxRows: 10, minRows: 4 }}
+            value={recordText(row.reference_answer)}
+            aria-label={t('askcoreProcessing.reference.aria.answer', {
+              number: row.question_number || row.order_index,
+            })}
+            onChange={(event) =>
+              updateQuestion(row.order_index, { reference_answer: event.target.value })
+            }
+          />
+        ),
+        title: t('askcoreProcessing.reference.columns.answer'),
+        width: 280,
+      },
+      {
+        render: (_, row) => (
+          <Input.TextArea
+            autoSize={{ maxRows: 10, minRows: 4 }}
+            value={row.reference_thinking || ''}
+            aria-label={t('askcoreProcessing.reference.aria.thinking', {
+              number: row.question_number || row.order_index,
+            })}
+            onChange={(event) =>
+              updateQuestion(row.order_index, { reference_thinking: event.target.value })
+            }
+          />
+        ),
+        title: t('askcoreProcessing.reference.columns.thinking'),
+        width: 280,
+      },
+      {
+        render: (_, row) => (
+          <InputNumber
+            min={0}
+            precision={2}
+            style={{ width: 90 }}
+            value={row.max_score}
+            aria-label={t('askcoreProcessing.editor.aria.maximum', {
+              number: row.question_number || row.order_index,
+            })}
+            onChange={(value) => updateQuestion(row.order_index, { max_score: value })}
+          />
+        ),
+        title: t('askcoreProcessing.reference.columns.maximum'),
+        width: 110,
+      },
+    ],
+    [t, updateQuestion],
+  );
+
   const state = processingState(context?.processing_state, t as Translate);
   const score = surface?.result?.content.score;
   const total = surface?.result?.content.total_score;
@@ -588,7 +715,7 @@ export const ProtocolProcessingSurface = memo(() => {
   }
 
   if (context?.context_kind === 'capture') {
-    return <ProtocolCaptureSurface context={context} />;
+    return <ProtocolCaptureSurface context={context} launchScope={launchScope} />;
   }
 
   return (
@@ -599,13 +726,25 @@ export const ProtocolProcessingSurface = memo(() => {
             <WandSparkles size={20} />
           </div>
           <div>
-            <h1 className={styles.title}>{t('askcoreProcessing.editor.title')}</h1>
-            <div className={styles.meta}>{t('askcoreProcessing.editor.subtitle')}</div>
+            <h1 className={styles.title}>
+              {t(
+                referenceMode
+                  ? 'askcoreProcessing.reference.title'
+                  : 'askcoreProcessing.editor.title',
+              )}
+            </h1>
+            <div className={styles.meta}>
+              {t(
+                referenceMode
+                  ? 'askcoreProcessing.reference.subtitle'
+                  : 'askcoreProcessing.editor.subtitle',
+              )}
+            </div>
           </div>
         </div>
         <div className={styles.actions}>
           <Tag color={state.color}>{state.label}</Tag>
-          {score != null || total != null ? (
+          {!referenceMode && (score != null || total != null) ? (
             <span className={styles.score}>
               {score ?? '--'} / {total ?? '--'}
             </span>
@@ -631,17 +770,25 @@ export const ProtocolProcessingSurface = memo(() => {
           <div className={styles.editorHeader}>
             <div className={styles.heading}>
               <ScanText size={18} />
-              <strong>{t('askcoreProcessing.editor.result')}</strong>
+              <strong>
+                {t(
+                  referenceMode
+                    ? 'askcoreProcessing.reference.result'
+                    : 'askcoreProcessing.editor.result',
+                )}
+              </strong>
             </div>
             <div className={styles.actions}>
-              <Button
-                disabled={!surface?.result || dirty || !context?.capabilities.can_generate_report}
-                icon={<FileText size={14} />}
-                loading={reporting}
-                onClick={() => void generateReport()}
-              >
-                {t('askcoreProcessing.editor.generateReport')}
-              </Button>
+              {!referenceMode ? (
+                <Button
+                  disabled={!surface?.result || dirty || !context?.capabilities.can_generate_report}
+                  icon={<FileText size={14} />}
+                  loading={reporting}
+                  onClick={() => void generateReport()}
+                >
+                  {t('askcoreProcessing.editor.generateReport')}
+                </Button>
+              ) : null}
               <Button
                 icon={<Save size={14} />}
                 loading={saving}
@@ -651,7 +798,11 @@ export const ProtocolProcessingSurface = memo(() => {
                 }
                 onClick={() => void save()}
               >
-                {t('askcoreProcessing.editor.saveRevision')}
+                {t(
+                  referenceMode
+                    ? 'askcoreProcessing.reference.saveRevision'
+                    : 'askcoreProcessing.editor.saveRevision',
+                )}
               </Button>
             </div>
           </div>
@@ -659,25 +810,27 @@ export const ProtocolProcessingSurface = memo(() => {
           {surface?.result ? (
             <>
               <Table
-                columns={columns}
+                columns={referenceMode ? referenceColumns : submissionColumns}
                 dataSource={questions}
                 pagination={false}
                 rowKey="order_index"
-                scroll={{ x: 900 }}
+                scroll={{ x: referenceMode ? 1020 : 900 }}
                 size="small"
               />
-              <div className={styles.summary}>
-                <Input.TextArea
-                  aria-label={t('askcoreProcessing.editor.teacherSummary')}
-                  autoSize={{ maxRows: 8, minRows: 3 }}
-                  placeholder={t('askcoreProcessing.editor.teacherSummary')}
-                  value={teacherSummary}
-                  onChange={(event) => {
-                    setDirty(true);
-                    setTeacherSummary(event.target.value);
-                  }}
-                />
-              </div>
+              {!referenceMode ? (
+                <div className={styles.summary}>
+                  <Input.TextArea
+                    aria-label={t('askcoreProcessing.editor.teacherSummary')}
+                    autoSize={{ maxRows: 8, minRows: 3 }}
+                    placeholder={t('askcoreProcessing.editor.teacherSummary')}
+                    value={teacherSummary}
+                    onChange={(event) => {
+                      setDirty(true);
+                      setTeacherSummary(event.target.value);
+                    }}
+                  />
+                </div>
+              ) : null}
             </>
           ) : context?.processing_state === 'failed' ? (
             <Empty

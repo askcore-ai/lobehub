@@ -9,6 +9,7 @@ interface CustomNextConfig {
   outputFileTracingIncludes?: NextConfig['outputFileTracingIncludes'];
   redirects?: Redirect[];
   serverExternalPackages?: NextConfig['serverExternalPackages'];
+  staticPageGenerationTimeout?: NextConfig['staticPageGenerationTimeout'];
   turbopack?: NextConfig['turbopack'];
 }
 
@@ -362,6 +363,9 @@ export function defineConfig(config: CustomNextConfig) {
       'ajv',
       'oidc-provider',
     ],
+    ...(config.staticPageGenerationTimeout !== undefined && {
+      staticPageGenerationTimeout: config.staticPageGenerationTimeout,
+    }),
 
     transpilePackages: ['mermaid', 'better-auth-harmony'],
     turbopack: {

@@ -81,6 +81,14 @@ export const componentMap = {
   [SettingsTabs.Billing]: dynamic(() => import('@/business/client/BusinessSettingPages/Billing'), {
     loading: loading('Settings > Billing'),
   }),
+  [SettingsTabs.SchoolAffairs]: dynamic(
+    () => import('@/business/client/BusinessSettingPages/SchoolAffairs'),
+    { loading: loading('Settings > SchoolAffairs') },
+  ),
+  [SettingsTabs.SchoolPlan]: dynamic(
+    () => import('@/business/client/BusinessSettingPages/SchoolPlan'),
+    { loading: loading('Settings > SchoolPlan') },
+  ),
   [SettingsTabs.Referral]: dynamic(
     () => import('@/business/client/BusinessSettingPages/Referral'),
     {

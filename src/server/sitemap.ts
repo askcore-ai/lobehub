@@ -37,36 +37,45 @@ export const LAST_MODIFIED = new Date().toISOString();
 
 // Number of items per page
 const ITEMS_PER_PAGE = 100;
-const DEFAULT_MODEL_PAGE_COUNT_TIMEOUT_MS = 15 * 60 * 1000;
+const DEFAULT_IDENTIFIER_TIMEOUT_MS = 30 * 1000;
+
+type IdentifierList = Awaited<ReturnType<DiscoverService['getModelIdentifiers']>>;
 
 interface SitemapOptions {
-  modelPageCountTimeoutMs?: number;
+  identifierTimeoutMs?: number;
 }
 
 export class Sitemap {
-  private modelPageCountTimeoutMs: number;
+  private identifierTimeoutMs: number;
 
   sitemapIndexs = [{ id: SitemapType.Pages }, { id: SitemapType.Providers }];
 
   private discoverService = new DiscoverService();
 
   constructor(options: SitemapOptions = {}) {
-    this.modelPageCountTimeoutMs =
-      options.modelPageCountTimeoutMs ?? DEFAULT_MODEL_PAGE_COUNT_TIMEOUT_MS;
+    this.identifierTimeoutMs = options.identifierTimeoutMs ?? DEFAULT_IDENTIFIER_TIMEOUT_MS;
   }
 
-  private _withModelPageCountTimeout = async <T>(promise: Promise<T>) => {
+  private _getIdentifiers = async (
+    catalog: string,
+    promise: Promise<IdentifierList>,
+  ): Promise<IdentifierList> => {
     const timeoutController = new AbortController();
 
     try {
       return await Promise.race([
         promise,
-        sleep(this.modelPageCountTimeoutMs, undefined, { signal: timeoutController.signal }).then(
+        sleep(this.identifierTimeoutMs, undefined, { signal: timeoutController.signal }).then(
           () => {
-            throw new Error('Timed out while getting model identifiers for sitemap');
+            throw new Error(`Timed out while getting ${catalog} identifiers for sitemap`);
           },
         ),
       ]);
+    } catch (error) {
+      // Community catalog SEO is optional at build time. Keep the application
+      // releasable when that remote service is slow or unavailable.
+      console.error(`[Sitemap] Failed to get ${catalog} identifiers for sitemap`, error);
+      return [];
     } finally {
       timeoutController.abort();
     }
@@ -74,27 +83,25 @@ export class Sitemap {
 
   // Get total number of plugin pages
   async getPluginPageCount(): Promise<number> {
-    const list = await this.discoverService.getPluginIdentifiers();
+    const list = await this._getIdentifiers(
+      'plugin',
+      this.discoverService.getPluginIdentifiers(),
+    );
     return Math.ceil(list.length / ITEMS_PER_PAGE);
   }
 
   // Get total number of assistant pages
   async getAssistantPageCount(): Promise<number> {
-    const list = await this.discoverService.getAssistantIdentifiers();
+    const list = await this._getIdentifiers(
+      'assistant',
+      this.discoverService.getAssistantIdentifiers(),
+    );
     return Math.ceil(list.length / ITEMS_PER_PAGE);
   }
 
   // Get total number of model pages
   async getModelPageCount(): Promise<number> {
-    let list: Awaited<ReturnType<DiscoverService['getModelIdentifiers']>>;
-    try {
-      list = await this._withModelPageCountTimeout(this.discoverService.getModelIdentifiers());
-    } catch (error) {
-      // Keep sitemap generation from blocking deployment when model identifiers are unavailable.
-      console.error('[Sitemap] Failed to get model identifiers for sitemap', error);
-      return 0;
-    }
-
+    const list = await this._getIdentifiers('model', this.discoverService.getModelIdentifiers());
     return Math.ceil(list.length / ITEMS_PER_PAGE);
   }
 
@@ -243,7 +250,10 @@ export class Sitemap {
   }
 
   async getAssistants(page?: number): Promise<MetadataRoute.Sitemap> {
-    const list = await this.discoverService.getAssistantIdentifiers();
+    const list = await this._getIdentifiers(
+      'assistant',
+      this.discoverService.getAssistantIdentifiers(),
+    );
 
     if (page !== undefined) {
       const startIndex = (page - 1) * ITEMS_PER_PAGE;
@@ -272,7 +282,10 @@ export class Sitemap {
   }
 
   async getPlugins(page?: number): Promise<MetadataRoute.Sitemap> {
-    const list = await this.discoverService.getPluginIdentifiers();
+    const list = await this._getIdentifiers(
+      'plugin',
+      this.discoverService.getPluginIdentifiers(),
+    );
 
     if (page !== undefined) {
       const startIndex = (page - 1) * ITEMS_PER_PAGE;
@@ -301,7 +314,7 @@ export class Sitemap {
   }
 
   async getModels(page?: number): Promise<MetadataRoute.Sitemap> {
-    const list = await this.discoverService.getModelIdentifiers();
+    const list = await this._getIdentifiers('model', this.discoverService.getModelIdentifiers());
 
     if (page !== undefined) {
       const startIndex = (page - 1) * ITEMS_PER_PAGE;
@@ -330,7 +343,10 @@ export class Sitemap {
   }
 
   async getProviders(): Promise<MetadataRoute.Sitemap> {
-    const list = await this.discoverService.getProviderIdentifiers();
+    const list = await this._getIdentifiers(
+      'provider',
+      this.discoverService.getProviderIdentifiers(),
+    );
     const sitmap = list
       .filter((item) => item.identifier) // Filter out items with empty identifiers
       .map((item) =>

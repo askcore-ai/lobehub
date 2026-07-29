@@ -16,6 +16,7 @@ type MockNavItem = { hidden?: boolean; key: string; title: string; url: string }
 
 const mocks = vi.hoisted(() => ({
   activeTabKey: 'home',
+  enterSchoolSource: vi.fn(),
   globalState: undefined as unknown as MockGlobalState,
   navLayout: {
     bottomMenuItems: [] as MockNavItem[],
@@ -77,6 +78,10 @@ vi.mock('@/features/NavPanel/components/NavItem', () => ({
   ),
 }));
 
+vi.mock('@/business/client/AskCoreSchoolPortal/handoffClient', () => ({
+  enterSchoolSource: mocks.enterSchoolSource,
+}));
+
 vi.mock('@/hooks/useActiveTabKey', () => ({
   useActiveTabKey: () => mocks.activeTabKey,
 }));
@@ -107,6 +112,8 @@ vi.mock('@/store/global', () => ({
 
 beforeEach(() => {
   mocks.activeTabKey = 'home';
+  mocks.enterSchoolSource.mockReset();
+  mocks.enterSchoolSource.mockResolvedValue('navigating');
   mocks.updateSystemStatus.mockReset();
   mocks.navigate.mockReset();
   mocks.pathname = '/';
@@ -212,76 +219,60 @@ describe('Home sidebar body', () => {
     expect(screen.getByText('学校')).toBeInTheDocument();
   });
 
-  it.each([
-    ['teaching-center', '教学中心', 'learning-space', '学习空间'],
-    ['learning-space', '学习空间', 'teaching-center', '教学中心'],
-    ['operations-center', '运维中心', 'teaching-center', '教学中心'],
-  ] as const)(
-    'injects the live %s role entry when persisted sidebar items predate it',
-    (visibleKey, visibleTitle, hiddenKey, hiddenTitle) => {
-      mocks.navLayout = {
-        bottomMenuItems: [],
-        topNavItems: [
-          { key: 'school', title: '学校', url: '/school' },
-          { key: visibleKey, title: visibleTitle, url: `/school/${visibleKey}` },
-          { hidden: true, key: hiddenKey, title: hiddenTitle, url: `/school/${hiddenKey}` },
-        ],
-      };
-      mocks.globalState.status.sidebarItems = ['recents', 'agent'];
-
-      render(<Body />);
-
-      expect(screen.getByText('学校')).toBeInTheDocument();
-      expect(screen.getByText(visibleTitle)).toBeInTheDocument();
-      expect(screen.queryByText(hiddenTitle)).not.toBeInTheDocument();
-    },
-  );
-
-  it('navigates the teaching entry to the stable AskCore surface route', () => {
+  it('injects the single School / Learning Space entry and drops persisted duplicates', () => {
     mocks.navLayout = {
       bottomMenuItems: [],
-      topNavItems: [{ key: 'teaching-center', title: '教学中心', url: '/school/teaching-center' }],
+      topNavItems: [{ key: 'school', title: '学校/学习空间', url: '/school' }],
     };
-    mocks.globalState.status.sidebarItems = ['teaching-center'];
+    mocks.globalState.status.sidebarItems = ['learning-space', 'school-billing', 'recents', 'agent'];
 
     render(<Body />);
-    fireEvent.click(screen.getByRole('link', { name: '教学中心' }));
 
-    expect(mocks.navigate).toHaveBeenCalledWith('/school/teaching-center');
+    expect(screen.getAllByText('学校/学习空间')).toHaveLength(1);
+    expect(screen.queryByText('学习空间')).not.toBeInTheDocument();
+    expect(screen.queryByText('学校计费')).not.toBeInTheDocument();
   });
 
-  it.each([
-    ['/school', '学校'],
-    ['/school/operations-center', '运维中心'],
-    ['/school/teaching-center', '教学中心'],
-    ['/school/learning-space', '学习空间'],
-  ] as const)('marks only the exact %s school navigation item active', (pathname, activeTitle) => {
-    mocks.activeTabKey = 'school';
-    mocks.pathname = pathname;
+  it('prepares the direct Moodle handoff without changing the current AskCore route', () => {
     mocks.navLayout = {
       bottomMenuItems: [],
-      topNavItems: [
-        { key: 'school', title: '学校', url: '/school' },
-        { key: 'operations-center', title: '运维中心', url: '/school/operations-center' },
-        { key: 'teaching-center', title: '教学中心', url: '/school/teaching-center' },
-        { key: 'learning-space', title: '学习空间', url: '/school/learning-space' },
-      ],
+      topNavItems: [{ key: 'school', title: '学校/学习空间', url: '/school' }],
     };
-    mocks.globalState.status.sidebarItems = [
-      'school',
-      'operations-center',
-      'teaching-center',
-      'learning-space',
-    ];
+    mocks.globalState.status.sidebarItems = ['school'];
+
+    render(<Body />);
+    fireEvent.click(screen.getByRole('link', { name: '学校/学习空间' }));
+
+    expect(mocks.enterSchoolSource).toHaveBeenCalledWith('moodle');
+    expect(mocks.navigate).not.toHaveBeenCalled();
+  });
+
+  it('uses /school only as the bounded recovery route after preparation fails', async () => {
+    mocks.enterSchoolSource.mockRejectedValueOnce(new Error('unavailable'));
+    mocks.navLayout = {
+      bottomMenuItems: [],
+      topNavItems: [{ key: 'school', title: '学校/学习空间', url: '/school' }],
+    };
+    mocks.globalState.status.sidebarItems = ['school'];
+
+    render(<Body />);
+    fireEvent.click(screen.getByRole('link', { name: '学校/学习空间' }));
+
+    await vi.waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith('/school'));
+  });
+
+  it('marks the combined school navigation item active at /school', () => {
+    mocks.activeTabKey = 'school';
+    mocks.pathname = '/school';
+    mocks.navLayout = {
+      bottomMenuItems: [],
+      topNavItems: [{ key: 'school', title: '学校/学习空间', url: '/school' }],
+    };
+    mocks.globalState.status.sidebarItems = ['school'];
 
     render(<Body />);
 
-    expect(screen.getByText(activeTitle)).toHaveAttribute('data-active', 'true');
-    expect(
-      screen
-        .getAllByText(/^(学校|运维中心|教学中心|学习空间)$/)
-        .filter((item) => item.getAttribute('data-active') === 'true'),
-    ).toHaveLength(1);
+    expect(screen.getByText('学校/学习空间')).toHaveAttribute('data-active', 'true');
   });
 
   it('keeps a top item that was dragged past the spacer in its new position', () => {

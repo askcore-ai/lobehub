@@ -28,6 +28,11 @@ describe('AskCore billing embed helpers', () => {
     vi.unstubAllGlobals();
   });
 
+  it('distinguishes the existing personal plans surface from school plans', () => {
+    expect(getBillingCopy('zh-CN').page.titles.plans).toBe('个人套餐');
+    expect(getBillingCopy('en-US').page.titles.plans).toBe('Personal Plans');
+  });
+
   it('builds same-origin AskCore embed URLs by default', () => {
     const url = buildAskCoreBillingEmbedUrl({
       language: 'zh-CN',

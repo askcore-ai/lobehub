@@ -373,6 +373,16 @@ class CalculatorExecutor
         }
 
         const result = nerdamer.solveEquations(equation, solveVariables);
+        if (result === null) {
+          return {
+            content: 'No distinct solution found for the given system',
+            error: {
+              message: 'No distinct solution found',
+              type: 'SolveError',
+            },
+            success: false,
+          };
+        }
         const rawResult = result.toString();
 
         const pairs = rawResult.split(',');
