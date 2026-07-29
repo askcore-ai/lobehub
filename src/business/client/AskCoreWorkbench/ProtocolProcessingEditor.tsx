@@ -467,10 +467,10 @@ const SourceRail = ({
                 className={styles.sourceTab}
                 key={source.slot_id}
                 type="button"
-                onClick={() => setSelectedSlot(source.slot_id)}
                 aria-label={t('askcoreProcessing.editor.source.selectPage', {
                   page: source.page_order,
                 })}
+                onClick={() => setSelectedSlot(source.slot_id)}
               >
                 {source.content_type === 'application/pdf' ? (
                   <FileText aria-hidden size={16} />
@@ -564,10 +564,10 @@ const ReferenceQuestionBody = ({
         <div className={styles.fieldLabel}>{t('askcoreProcessing.editor.question.number')}</div>
         <Input
           value={question.question_number || ''}
-          onChange={(event) => onChange({ question_number: event.target.value })}
           aria-label={t('askcoreProcessing.reference.aria.number', {
             number: question.order_index,
           })}
+          onChange={(event) => onChange({ question_number: event.target.value })}
         />
       </div>
       <div className={styles.field}>

@@ -410,10 +410,10 @@ export const ProtocolProcessingSurface = memo(({ launchScope }: { launchScope: s
               icon={<Save size={14} />}
               loading={saving}
               type="primary"
-              onClick={() => void save()}
               disabled={
                 !surface?.result || Boolean(validationError) || !context?.capabilities.can_edit
               }
+              onClick={() => void save()}
             >
               {t(
                 referenceMode
