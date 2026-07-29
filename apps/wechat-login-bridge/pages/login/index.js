@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 /* global Page, wx */
 
-const controller = require('../../lib/login-controller');
+const controller = require('../../controllers/login-controller');
 
 let launch = null;
 
