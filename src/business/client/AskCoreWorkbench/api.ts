@@ -38,6 +38,7 @@ const WORKBENCH_API_BASE = '/api/askcore/workbench';
 const ORGANIZATION_API_BASE = '/api/askcore/organizations';
 const PROTOCOL_API_BASE = '/api/askcore/lti';
 const DEFAULT_PAGE_SIZE = 100;
+const processingContextExchanges = new Map<string, Promise<ProtocolProcessingContext>>();
 
 type AskCoreOrganizationPayloadSummary = {
   createdAt?: string;
@@ -165,11 +166,22 @@ const protocolMutation = (method: 'PATCH' | 'POST', payload?: unknown): RequestI
 const protocolLaunchPath = (path: string, launchScope: string) =>
   `${path}${buildQuery({ launch: launchScope })}`;
 
-export const fetchProtocolProcessingContext = (launchScope: string) =>
-  protocolJson<ProtocolProcessingContext>(
+export const fetchProtocolProcessingContext = (launchScope: string) => {
+  const existing = processingContextExchanges.get(launchScope);
+  if (existing) return existing;
+  const exchange = protocolJson<ProtocolProcessingContext>(
     protocolLaunchPath('/processing/context', launchScope),
     protocolMutation('POST'),
   );
+  processingContextExchanges.set(launchScope, exchange);
+  const clear = () => {
+    if (processingContextExchanges.get(launchScope) === exchange) {
+      processingContextExchanges.delete(launchScope);
+    }
+  };
+  void exchange.then(clear, clear);
+  return exchange;
+};
 
 export const acceptProtocolIdentityLinkInvitation = (invitationToken: string) =>
   protocolJson<ProtocolIdentityLinkAcceptResult>(

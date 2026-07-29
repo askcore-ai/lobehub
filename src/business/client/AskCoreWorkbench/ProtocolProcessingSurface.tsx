@@ -336,6 +336,7 @@ export const ProtocolProcessingSurface = memo(({ launchScope }: { launchScope: s
         setTeacherSummary(
           nextSurface.context.run_kind === 'reference' ? '' : resultContent?.teacher_summary || '',
         );
+        setError(undefined);
         setDirty(false);
       } catch (reason) {
         setError(
