@@ -554,7 +554,7 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
                     adapterFor(ctx) as never,
                   )) as WechatMobileDatabaseAdapter,
                 ),
-              ),
+              ).then((result) => result),
           });
           requireTruthy(session, 'CONFLICT', 'WECHAT_TRANSACTION_REPLAYED');
           return issueCookie(session as unknown as Record<string, unknown>);

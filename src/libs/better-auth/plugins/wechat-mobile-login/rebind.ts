@@ -110,6 +110,7 @@ export async function completeWechatRebindProof(input: {
   unionid: string;
   userId: string;
 }) {
+  if (!input.adapter.transaction) throw new Error('wechat_transactions_required');
   return input.adapter.transaction(async (transactionAdapter) => {
     const claim = await createWechatRebindClaim({
       ...input,

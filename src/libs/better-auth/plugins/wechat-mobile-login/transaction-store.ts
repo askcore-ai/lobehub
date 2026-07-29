@@ -49,7 +49,7 @@ export interface WechatMobileDatabaseAdapter {
     where: Where[];
   }) => Promise<T[]>;
   findOne: <T>(input: { model: string; where: Where[] }) => Promise<T | null>;
-  transaction: <R>(
+  transaction?: <R>(
     callback: (transaction: WechatMobileDatabaseAdapter) => Promise<R>,
   ) => Promise<R>;
   update: <T>(input: {
@@ -351,8 +351,10 @@ export class WechatMobileTransactionStore {
     const now = input.now ?? new Date();
     const transactionRunner =
       input.transactionRunner ??
-      (<R>(callback: (adapter: WechatMobileDatabaseAdapter) => Promise<R>) =>
-        this.adapter.transaction(callback));
+      (<R>(callback: (adapter: WechatMobileDatabaseAdapter) => Promise<R>) => {
+        if (!this.adapter.transaction) throw new Error('wechat_transactions_required');
+        return this.adapter.transaction(callback);
+      });
     return transactionRunner(async (transactionAdapter) => {
       const reserved = await transactionAdapter.update<WechatMobileTransaction>({
         model: MODEL,
