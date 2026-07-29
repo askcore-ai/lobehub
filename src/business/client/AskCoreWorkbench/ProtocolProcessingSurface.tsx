@@ -379,11 +379,11 @@ export const ProtocolProcessingSurface = memo(({ launchScope }: { launchScope: s
         inputs={surface?.inputs || []}
         questions={questions}
         referenceMode={Boolean(referenceMode)}
+        t={t as Translate}
+        teacherSummary={teacherSummary}
         resultState={
           surface?.result ? 'ready' : context?.processing_state === 'failed' ? 'failed' : 'loading'
         }
-        t={t as Translate}
-        teacherSummary={teacherSummary}
         toolbar={
           <div className={styles.actions}>
             {!referenceMode && surface?.report?.available && surface.report.preview_url ? (
@@ -407,13 +407,13 @@ export const ProtocolProcessingSurface = memo(({ launchScope }: { launchScope: s
               </Button>
             ) : null}
             <Button
-              disabled={
-                !surface?.result || Boolean(validationError) || !context?.capabilities.can_edit
-              }
               icon={<Save size={14} />}
               loading={saving}
               type="primary"
               onClick={() => void save()}
+              disabled={
+                !surface?.result || Boolean(validationError) || !context?.capabilities.can_edit
+              }
             >
               {t(
                 referenceMode

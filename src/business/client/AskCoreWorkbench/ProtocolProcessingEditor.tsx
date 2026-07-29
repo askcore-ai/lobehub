@@ -11,7 +11,7 @@ import {
   RotateCcw,
   ScanText,
 } from 'lucide-react';
-import { type ReactNode, memo, useEffect, useMemo, useState } from 'react';
+import { memo, type ReactNode, useEffect, useMemo, useState } from 'react';
 
 import { MarkdownPreview } from './questionPreview';
 import type {
@@ -463,14 +463,14 @@ const SourceRail = ({
             const label = labelFor(source);
             return (
               <button
-                aria-label={t('askcoreProcessing.editor.source.selectPage', {
-                  page: source.page_order,
-                })}
                 aria-pressed={source.slot_id === selected?.slot_id}
                 className={styles.sourceTab}
                 key={source.slot_id}
                 type="button"
                 onClick={() => setSelectedSlot(source.slot_id)}
+                aria-label={t('askcoreProcessing.editor.source.selectPage', {
+                  page: source.page_order,
+                })}
               >
                 {source.content_type === 'application/pdf' ? (
                   <FileText aria-hidden size={16} />
@@ -539,10 +539,10 @@ const ReferenceQuestionBody = ({
     return (
       <div className={styles.readGrid}>
         <ReadSection
+          wide
           content={protocolQuestionText(question.question_content)}
           empty={t('askcoreProcessing.editor.question.emptyContent')}
           label={t('askcoreProcessing.reference.columns.content')}
-          wide
         />
         <ReadSection
           content={protocolQuestionText(question.reference_answer)}
@@ -563,11 +563,11 @@ const ReferenceQuestionBody = ({
       <div className={styles.field}>
         <div className={styles.fieldLabel}>{t('askcoreProcessing.editor.question.number')}</div>
         <Input
+          value={question.question_number || ''}
+          onChange={(event) => onChange({ question_number: event.target.value })}
           aria-label={t('askcoreProcessing.reference.aria.number', {
             number: question.order_index,
           })}
-          value={question.question_number || ''}
-          onChange={(event) => onChange({ question_number: event.target.value })}
         />
       </div>
       <div className={styles.field}>
@@ -633,10 +633,10 @@ const SubmissionQuestionBody = ({
       <div className={styles.readGrid}>
         {protocolQuestionText(question.question_content) ? (
           <ReadSection
+            wide
             content={protocolQuestionText(question.question_content)}
             empty={t('askcoreProcessing.editor.question.emptyContent')}
             label={t('askcoreProcessing.editor.question.content')}
-            wide
           />
         ) : null}
         <ReadSection
@@ -882,10 +882,10 @@ const TeacherSummaryCard = ({
           />
         ) : (
           <ReadSection
+            wide
             content={value}
             empty={t('askcoreProcessing.editor.summary.empty')}
             label={t('askcoreProcessing.editor.teacherSummary')}
-            wide
           />
         )}
       </div>
@@ -976,8 +976,8 @@ export const ProtocolProcessingEditor = memo(
               {questions.map((question) => (
                 <QuestionCard
                   baseline={baselines.get(question.order_index)}
-                  editing={editingOrderIndex === question.order_index}
                   editable={editable}
+                  editing={editingOrderIndex === question.order_index}
                   key={question.order_index}
                   question={question}
                   referenceMode={referenceMode}
