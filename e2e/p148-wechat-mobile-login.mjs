@@ -51,7 +51,7 @@ const verifySourceBoundary = async () => {
   const signIn = await read('src/app/[variants]/(auth)/signin/useSignIn.ts');
   const plugin = await read('src/libs/better-auth/plugins/wechat-mobile-login/index.ts');
   const store = await read('src/libs/better-auth/plugins/wechat-mobile-login/transaction-store.ts');
-  const bridge = await read('apps/wechat-login-bridge/lib/login-controller.js');
+  const bridge = await read('apps/wechat-login-bridge/controllers/login-controller.js');
 
   assert.match(signIn, /phase: 'prepared'/);
   assert.match(signIn, /window\.location\.assign\(target\)/);
