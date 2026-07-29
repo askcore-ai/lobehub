@@ -60,7 +60,7 @@ interface SignedCookieContext {
       sameSite: 'lax';
       secure: boolean;
     },
-  ) => Promise<void>;
+  ) => Promise<unknown>;
 }
 
 interface AuthorizationFailure {
