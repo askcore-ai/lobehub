@@ -25,17 +25,6 @@ const mockLocalStorage = vi.hoisted(() => {
     setItem: (key: string, value: string) => store.set(key, value),
   };
 });
-const mockSessionStorage = vi.hoisted(() => {
-  const store = new Map<string, string>();
-
-  return {
-    clear: () => store.clear(),
-    getItem: (key: string) => store.get(key) ?? null,
-    removeItem: (key: string) => store.delete(key),
-    setItem: (key: string, value: string) => store.set(key, value),
-  };
-});
-
 const useMobileNavigator = () => {
   vi.spyOn(navigator, 'maxTouchPoints', 'get').mockReturnValue(5);
   vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
@@ -120,7 +109,6 @@ vi.mock('antd', async () => {
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 vi.stubGlobal('localStorage', mockLocalStorage);
-vi.stubGlobal('sessionStorage', mockSessionStorage);
 
 describe('classifyWechatClient', () => {
   it.each([
@@ -143,7 +131,7 @@ describe('useSignIn', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLocalStorage.clear();
-    mockSessionStorage.clear();
+    sessionStorage.clear();
     mockWechatMobileEnabled.value = true;
     mockSearchParamsGet.mockReturnValue(null);
   });
@@ -361,7 +349,7 @@ describe('useSignIn', () => {
           method: 'POST',
         }),
       );
-      expect(mockSessionStorage.getItem('askcore:wechat-mobile:tab:wxm_transaction_1234')).toBe(
+      expect(sessionStorage.getItem('askcore:wechat-mobile:tab:wxm_transaction_1234')).toBe(
         'a'.repeat(43),
       );
       expect(result.current.wechatMobileLogin).toEqual({
