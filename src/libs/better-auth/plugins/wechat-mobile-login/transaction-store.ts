@@ -155,6 +155,13 @@ export class WechatMobileTransactionStore {
     });
   }
 
+  findByOauthState(oauthState: string): Promise<null | WechatMobileTransaction> {
+    return this.adapter.findOne({
+      model: MODEL,
+      where: [{ field: 'oauthStateHash', value: hashCapability('oauth-state', oauthState) }],
+    });
+  }
+
   async cleanupExpired(now: Date = new Date(), limit = 50): Promise<number> {
     if (!this.adapter.findMany || !this.adapter.deleteMany) return 0;
     const responseSafetyCutoff = new Date(

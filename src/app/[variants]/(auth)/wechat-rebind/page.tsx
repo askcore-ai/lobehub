@@ -1,7 +1,7 @@
 'use client';
 
 import { Button, Flexbox, Text } from '@lobehub/ui';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -130,7 +130,6 @@ const request = async <T,>(
 const WechatRebindPage = () => {
   const { t } = useTranslation('auth');
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { data: session, isPending } = useSession();
   const [accounts, setAccounts] = useState<RebindAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState('');
@@ -149,9 +148,12 @@ const WechatRebindPage = () => {
       setAccounts(wechatAccounts);
       setSelectedAccountId(wechatAccounts.length === 1 ? wechatAccounts[0].id : '');
 
-      const transactionId = searchParams.get('transactionId');
-      const callbackError = stableErrorCode(searchParams.get('error'), 'WECHAT_REBIND_FAILED');
-      if (searchParams.get('error')) {
+      const callback = new URLSearchParams(window.location.hash.slice(1));
+      const transactionId = callback.get('t');
+      const rawCallbackError = callback.get('e');
+      const callbackError = stableErrorCode(rawCallbackError, 'WECHAT_REBIND_FAILED');
+      if (window.location.hash) window.history.replaceState(null, '', '/wechat-rebind');
+      if (rawCallbackError) {
         setState({ code: callbackError, phase: 'failed', retryable: true });
       } else if (transactionId) {
         setState({
@@ -164,7 +166,7 @@ const WechatRebindPage = () => {
         setState({ phase: 'idle' });
       }
     });
-  }, [isPending, router, searchParams, session]);
+  }, [isPending, router, session]);
 
   const poll = async (
     transactionId: string,

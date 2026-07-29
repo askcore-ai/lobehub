@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // The mini-program runtime consumes CommonJS directly.
 const controller = require('./login-controller');
@@ -8,6 +8,10 @@ const launch = {
   p: 'signin',
   t: `wxm_${'b'.repeat(24)}`,
 };
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('WeChat login bridge controller', () => {
   it('routes only server-issued purpose values', () => {
@@ -61,5 +65,41 @@ describe('WeChat login bridge controller', () => {
     await expect(
       controller.authorize(wxApi, controller.parseLaunchOptions(launch)),
     ).rejects.toThrow('askcore_unavailable');
+  });
+
+  it('captures a new Scheme transaction when an existing mini-program is shown again', () => {
+    let app:
+      | {
+          globalData: {
+            wechatLaunch: null | {
+              key: string;
+              options: Record<string, string>;
+              version: number;
+            };
+          };
+          onShow: (options: { query: Record<string, string> }) => void;
+        }
+      | undefined;
+    vi.stubGlobal('App', (definition: typeof app) => {
+      app = definition;
+    });
+    vi.resetModules();
+    require('../app');
+
+    app!.onShow({ query: launch });
+    expect(app!.globalData.wechatLaunch).toMatchObject({
+      options: launch,
+      version: 1,
+    });
+
+    app!.onShow({ query: launch });
+    expect(app!.globalData.wechatLaunch?.version).toBe(1);
+
+    const nextLaunch = { ...launch, t: `wxm_${'c'.repeat(24)}` };
+    app!.onShow({ query: nextLaunch });
+    expect(app!.globalData.wechatLaunch).toMatchObject({
+      options: nextLaunch,
+      version: 2,
+    });
   });
 });

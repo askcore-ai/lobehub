@@ -47,6 +47,22 @@ const signedCookieName = (id: string) => `__Host-askcore-wxm-${id}`;
 const noStore = { 'Cache-Control': 'private, no-store' };
 type EndpointStatus = ConstructorParameters<typeof APIError>[0];
 
+interface SignedCookieContext {
+  context: { secret: string };
+  setSignedCookie: (
+    name: string,
+    value: string,
+    secret: string,
+    attributes: {
+      httpOnly: boolean;
+      maxAge: number;
+      path: string;
+      sameSite: 'lax';
+      secure: boolean;
+    },
+  ) => Promise<void>;
+}
+
 interface AuthorizationFailure {
   code: string;
   failureCode: string;
@@ -205,29 +221,20 @@ const publicState = (transaction: WechatMobileTransaction) => ({
 
 const websiteRebindTarget = (
   options: WechatMobileLoginOptions,
-  transactionIdValue: string,
   oauthState: string,
 ): string => {
-  const state = `${transactionIdValue}.${oauthState}`;
   const callback = new URL('/api/auth/wechat-rebind/callback', options.appURL);
   const authorization = new URL('https://open.weixin.qq.com/connect/qrconnect');
   authorization.searchParams.set('appid', options.appId);
   authorization.searchParams.set('redirect_uri', callback.toString());
   authorization.searchParams.set('response_type', 'code');
   authorization.searchParams.set('scope', 'snsapi_login');
-  authorization.searchParams.set('state', state);
+  authorization.searchParams.set('state', oauthState);
   authorization.hash = 'wechat_redirect';
   return authorization.toString();
 };
 
-const parseWebsiteRebindState = (state: string) => {
-  const delimiter = state.lastIndexOf('.');
-  if (delimiter <= 0) endpointError('BAD_REQUEST', 'INVALID_WECHAT_REBIND_STATE');
-  return {
-    oauthState: capability.parse(state.slice(delimiter + 1)),
-    transactionId: transactionId.parse(state.slice(0, delimiter)),
-  };
-};
+const parseWebsiteRebindState = (state: string) => capability.parse(state);
 
 const readBrowserCookieProof = async (
   ctx: {
@@ -239,6 +246,16 @@ const readBrowserCookieProof = async (
   const browserCookie = await ctx.getSignedCookie(signedCookieName(id), ctx.context.secret);
   requireTruthy(browserCookie, 'UNAUTHORIZED', 'INVALID_BROWSER_BINDING');
   return browserCookie;
+};
+
+const expireBrowserBindingCookie = async (ctx: SignedCookieContext, id: string) => {
+  await ctx.setSignedCookie(signedCookieName(id), '', ctx.context.secret, {
+    httpOnly: true,
+    maxAge: 0,
+    path: '/',
+    sameSite: 'lax',
+    secure: true,
+  });
 };
 
 const readBrowserProofs = async (
@@ -432,6 +449,7 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
           if (!cancelled && transaction.state !== 'cancelled') {
             endpointError('CONFLICT', 'WECHAT_TRANSACTION_NOT_CANCELLABLE');
           }
+          await expireBrowserBindingCookie(ctx, transaction.id);
           return ctx.json({ state: 'cancelled' }, { headers: noStore });
         },
       ),
@@ -580,9 +598,14 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
               !transaction.recoveryUntil ||
               transaction.recoveryUntil <= now)
           ) {
+            await expireBrowserBindingCookie(ctx, transaction.id);
             endpointError('GONE', 'WECHAT_TRANSACTION_EXPIRED');
           }
-          return ctx.json(publicState(transaction), { headers: noStore });
+          const state = publicState(transaction);
+          if (state.state === 'cancelled' || state.state === 'expired' || state.state === 'failed') {
+            await expireBrowserBindingCookie(ctx, transaction.id);
+          }
+          return ctx.json(state, { headers: noStore });
         },
       ),
       startWechatMobileLogin: createAuthEndpoint(
@@ -692,7 +715,6 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
                     )
                   : websiteRebindTarget(
                       options,
-                      created.transaction.id,
                       created.capabilities.oauthState,
                     ),
               pollAfterMs: WECHAT_MOBILE_POLL_AFTER_MS,
@@ -754,13 +776,13 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
         },
         async (ctx) => {
           requireWebsiteRebind(options);
-          const state = parseWebsiteRebindState(ctx.query.state);
+          const oauthState = parseWebsiteRebindState(ctx.query.state);
           const session = await currentSession(ctx);
           requireTruthy(session, 'UNAUTHORIZED', 'AUTHENTICATED_REBIND_REQUIRED');
           const store = storeFor(ctx);
-          const pending = await store.find(state.transactionId);
+          const pending = await store.findByOauthState(oauthState);
           requireTruthy(pending, 'UNAUTHORIZED', 'INVALID_BROWSER_BINDING');
-          const browserCookie = await readBrowserCookieProof(ctx, state.transactionId);
+          const browserCookie = await readBrowserCookieProof(ctx, pending.id);
           if (
             pending.purpose !== 'rebind' ||
             pending.initiatingUserId !== session.user.id ||
@@ -771,16 +793,17 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
             endpointError('UNAUTHORIZED', 'INVALID_BROWSER_BINDING');
           }
           const started = await store.beginWebsiteAuthorization({
-            oauthState: state.oauthState,
+            oauthState,
             purpose: 'rebind',
-            transactionId: state.transactionId,
+            transactionId: pending.id,
           });
           requireTruthy(started, 'NOT_FOUND', 'WECHAT_TRANSACTION_NOT_FOUND');
           requireTruthy(started.rebindAccountRowId, 'NOT_FOUND', 'WECHAT_TRANSACTION_NOT_FOUND');
           const redirect = (error?: string): never => {
             const target = new URL('/wechat-rebind', options.appURL);
-            target.searchParams.set('transactionId', started.id);
-            if (error) target.searchParams.set('error', error);
+            const fragment = new URLSearchParams({ t: started.id });
+            if (error) fragment.set('e', error);
+            target.hash = fragment.toString();
             ctx.setHeader('Cache-Control', noStore['Cache-Control']);
             throw ctx.redirect(target.toString());
           };

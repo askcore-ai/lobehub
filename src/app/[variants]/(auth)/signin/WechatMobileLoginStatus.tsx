@@ -1,6 +1,7 @@
 'use client';
 
-import { Button, Modal, Space, Typography } from 'antd';
+import { Modal } from '@lobehub/ui/base-ui';
+import { Button, Space, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 
 import type { WechatMobileLoginState } from './useSignIn';

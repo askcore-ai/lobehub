@@ -7,8 +7,6 @@ import WechatRebindPage from './page';
 const mocks = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   router: { replace: vi.fn() },
-  search: new Map<string, string>(),
-  searchParams: { get: vi.fn() },
   sessionResult: {
     data: { session: { id: 'session-1' }, user: { id: 'user-1' } },
     isPending: false,
@@ -58,7 +56,6 @@ vi.mock('@/libs/better-auth/auth-client', () => ({
 
 vi.mock('next/navigation', () => ({
   useRouter: () => mocks.router,
-  useSearchParams: () => mocks.searchParams,
 }));
 
 vi.mock('react-i18next', () => ({
@@ -71,8 +68,7 @@ describe('WechatRebindPage', () => {
       data: [{ id: 'legacy-account-1', providerId: 'wechat' }],
     });
     mocks.router.replace.mockReset();
-    mocks.search.clear();
-    mocks.searchParams.get.mockImplementation((key: string) => mocks.search.get(key) || null);
+    window.history.replaceState(null, '', '/wechat-rebind');
     sessionStorage.clear();
     vi.stubGlobal('fetch', vi.fn());
   });
@@ -113,7 +109,7 @@ describe('WechatRebindPage', () => {
   });
 
   it('requires a second explicit confirmation after the provider proof', async () => {
-    mocks.search.set('transactionId', 'wxm_transaction_123');
+    window.location.hash = 't=wxm_transaction_123';
     sessionStorage.setItem('askcore:wechat-mobile:tab:wxm_transaction_123', 'tab-binding');
     vi.mocked(fetch)
       .mockResolvedValueOnce({

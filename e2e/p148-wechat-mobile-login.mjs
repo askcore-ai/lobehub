@@ -52,6 +52,7 @@ const verifySourceBoundary = async () => {
   const plugin = await read('src/libs/better-auth/plugins/wechat-mobile-login/index.ts');
   const store = await read('src/libs/better-auth/plugins/wechat-mobile-login/transaction-store.ts');
   const bridge = await read('apps/wechat-login-bridge/controllers/login-controller.js');
+  const bridgeApp = await read('apps/wechat-login-bridge/app.js');
   const bridgePage = await read('apps/wechat-login-bridge/pages/login/index.js');
 
   assert.match(signIn, /phase: 'prepared'/);
@@ -76,6 +77,12 @@ const verifySourceBoundary = async () => {
     /browserBindingMaxAge = options\.transactionTtlSeconds \+ options\.recoverySeconds/,
   );
   assert.match(plugin, /maxAge: browserBindingMaxAge/);
+  assert.match(plugin, /expireBrowserBindingCookie/);
+  assert.match(plugin, /maxAge: 0/);
+  assert.match(plugin, /target\.hash = fragment\.toString\(\)/);
+  assert.doesNotMatch(plugin, /searchParams\.set\('transactionId'/);
+  assert.match(plugin, /authorization\.searchParams\.set\('state', oauthState\)/);
+  assert.match(plugin, /store\.findByOauthState\(oauthState\)/);
   assert.match(plugin, /WECHAT_IDENTITY_MAINTENANCE/);
   assert.match(plugin, /transaction\.state === 'authorizing' \? 'pending'/);
   assert.doesNotMatch(plugin, /openid[\s\S]*allowCreate/);
@@ -86,7 +93,9 @@ const verifySourceBoundary = async () => {
   assert.match(store, /recoveryUntil/);
 
   assert.match(bridge, /wxApi\.login/);
+  assert.match(bridgeApp, /onShow\(options\)/);
   assert.match(bridgePage, /controller\.authorize\(wx, launch\)/);
+  assert.match(bridgePage, /pending\.version <= handledLaunchVersion/);
   assert.match(bridge, /\[429, 502, 503\]/);
   assert.doesNotMatch(bridge, /AppSecret|session_key|access_token|refresh_token/i);
 };
