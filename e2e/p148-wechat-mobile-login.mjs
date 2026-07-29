@@ -52,6 +52,7 @@ const verifySourceBoundary = async () => {
   const plugin = await read('src/libs/better-auth/plugins/wechat-mobile-login/index.ts');
   const store = await read('src/libs/better-auth/plugins/wechat-mobile-login/transaction-store.ts');
   const bridge = await read('apps/wechat-login-bridge/controllers/login-controller.js');
+  const bridgePage = await read('apps/wechat-login-bridge/pages/login/index.js');
 
   assert.match(signIn, /phase: 'prepared'/);
   assert.match(signIn, /window\.location\.assign\(target\)/);
@@ -84,7 +85,8 @@ const verifySourceBoundary = async () => {
   assert.match(store, /state: 'consumed'/);
   assert.match(store, /recoveryUntil/);
 
-  assert.match(bridge, /wx\.login/);
+  assert.match(bridge, /wxApi\.login/);
+  assert.match(bridgePage, /controller\.authorize\(wx, launch\)/);
   assert.match(bridge, /\[429, 502, 503\]/);
   assert.doesNotMatch(bridge, /AppSecret|session_key|access_token|refresh_token/i);
 };
