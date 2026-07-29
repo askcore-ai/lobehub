@@ -10,8 +10,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-const renderStatus = (ui: ReactElement) =>
-  render(<ConfigProvider motion={m}>{ui}</ConfigProvider>);
+const renderStatus = (ui: ReactElement) => render(<ConfigProvider motion={m}>{ui}</ConfigProvider>);
 
 describe('WechatMobileLoginStatus', () => {
   it('requires an explicit second click before asking the browser to open WeChat', () => {
