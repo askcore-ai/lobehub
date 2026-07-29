@@ -219,10 +219,7 @@ const publicState = (transaction: WechatMobileTransaction) => ({
   state: transaction.state === 'authorizing' ? 'pending' : transaction.state,
 });
 
-const websiteRebindTarget = (
-  options: WechatMobileLoginOptions,
-  oauthState: string,
-): string => {
+const websiteRebindTarget = (options: WechatMobileLoginOptions, oauthState: string): string => {
   const callback = new URL('/api/auth/wechat-rebind/callback', options.appURL);
   const authorization = new URL('https://open.weixin.qq.com/connect/qrconnect');
   authorization.searchParams.set('appid', options.appId);
@@ -602,7 +599,11 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
             endpointError('GONE', 'WECHAT_TRANSACTION_EXPIRED');
           }
           const state = publicState(transaction);
-          if (state.state === 'cancelled' || state.state === 'expired' || state.state === 'failed') {
+          if (
+            state.state === 'cancelled' ||
+            state.state === 'expired' ||
+            state.state === 'failed'
+          ) {
             await expireBrowserBindingCookie(ctx, transaction.id);
           }
           return ctx.json(state, { headers: noStore });
@@ -713,10 +714,7 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
                       created.transaction.id,
                       created.capabilities.completionCapability,
                     )
-                  : websiteRebindTarget(
-                      options,
-                      created.capabilities.oauthState,
-                    ),
+                  : websiteRebindTarget(options, created.capabilities.oauthState),
               pollAfterMs: WECHAT_MOBILE_POLL_AFTER_MS,
               tabBinding: created.capabilities.tabBinding,
               transactionId: created.transaction.id,

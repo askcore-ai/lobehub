@@ -132,7 +132,9 @@ describe('WechatMobileTransactionStore', () => {
     const store = new WechatMobileTransactionStore(new MemoryAdapter());
     const created = await store.create({ callbackUrl: '/', purpose: 'rebind' });
 
-    await expect(store.findByOauthState(created.capabilities.completionCapability)).resolves.toBeNull();
+    await expect(
+      store.findByOauthState(created.capabilities.completionCapability),
+    ).resolves.toBeNull();
     await expect(store.findByOauthState(created.capabilities.oauthState)).resolves.toMatchObject({
       id: created.transaction.id,
     });
