@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import enUS from '../../../../locales/en-US/common.json';
 import zhCN from '../../../../locales/zh-CN/common.json';
+import { fetchProtocolProcessingContext } from './api';
 import { ProtocolProcessingSurface } from './ProtocolProcessingSurface';
 
 const launchScope = '0123456789abcdef0123456789abcdef';
@@ -413,43 +414,23 @@ describe('ProtocolProcessingSurface', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('serializes repeated refreshes so one handoff cannot retain a false permission error', async () => {
-    let contextCalls = 0;
-    let holdRefresh = false;
+  it('serializes simultaneous context exchanges for one launch scope', async () => {
     let releaseRefresh: ((response: Response) => void) | undefined;
     const pendingRefresh = new Promise<Response>((resolve) => {
       releaseRefresh = resolve;
     });
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = protocolPath(input);
-      if (url === '/api/askcore/lti/processing/context' && init?.method === 'POST') {
-        contextCalls += 1;
-        if (!holdRefresh) return Response.json(referenceContextPayload);
-        if (contextCalls === 2) return pendingRefresh;
-        return Response.json({ detail: 'protocol handoff was already consumed' }, { status: 403 });
-      }
-      if (url === '/api/askcore/lti/processing/current' && !init?.method) {
-        return Response.json(referenceSurfacePayload());
-      }
-      throw new Error(`unexpected fetch: ${url}`);
-    });
+    const fetchMock = vi.fn(() => pendingRefresh);
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<ProtocolProcessingSurface launchScope={launchScope} />);
-    expect(await screen.findByRole('heading', { name: '参考材料 OCR' })).toBeInTheDocument();
+    const first = fetchProtocolProcessingContext(launchScope);
+    const repeated = fetchProtocolProcessingContext(launchScope);
 
-    holdRefresh = true;
-    const refresh = screen.getByRole('button', { name: '刷新' });
-    fireEvent.click(refresh);
-    fireEvent.click(refresh);
-
-    await waitFor(() => expect(contextCalls).toBe(2));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     releaseRefresh?.(Response.json(referenceContextPayload));
-
-    expect(await screen.findByRole('heading', { name: '参考材料 OCR' })).toBeInTheDocument();
-    expect(
-      screen.queryByText(zhCN['askcoreProcessing.editor.error.forbidden']),
-    ).not.toBeInTheDocument();
+    await expect(Promise.all([first, repeated])).resolves.toEqual([
+      referenceContextPayload,
+      referenceContextPayload,
+    ]);
   });
 
   it('renders only device-reported capture options with localized explanations and no page limit', async () => {
