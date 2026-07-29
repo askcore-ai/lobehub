@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import WechatRebindPage from './page';
 
@@ -77,7 +77,15 @@ describe('WechatRebindPage', () => {
     vi.stubGlobal('fetch', vi.fn());
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('prepares proof first and does not mutate the account from the initial action', async () => {
+    vi.spyOn(navigator, 'maxTouchPoints', 'get').mockReturnValue(5);
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)',
+    );
     vi.mocked(fetch).mockResolvedValueOnce({
       json: async () => ({
         expiresAt: '2026-07-29T12:05:00.000Z',

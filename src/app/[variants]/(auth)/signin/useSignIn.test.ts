@@ -36,6 +36,13 @@ const mockSessionStorage = vi.hoisted(() => {
   };
 });
 
+const useMobileNavigator = () => {
+  vi.spyOn(navigator, 'maxTouchPoints', 'get').mockReturnValue(5);
+  vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)',
+  );
+};
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
   useSearchParams: () => ({ get: mockSearchParamsGet }),
@@ -329,6 +336,7 @@ describe('useSignIn', () => {
 
   describe('handleSocialSignIn', () => {
     it('prepares a mobile WeChat transaction without opening WeChat on the first click', async () => {
+      useMobileNavigator();
       mockFetch.mockResolvedValueOnce({
         json: async () => ({
           expiresAt: '2026-07-29T12:05:00.000Z',
@@ -387,6 +395,7 @@ describe('useSignIn', () => {
     });
 
     it('keeps a malformed provider response retryable', async () => {
+      useMobileNavigator();
       mockFetch.mockResolvedValueOnce({
         json: async () => ({ code: 'WECHAT_PROVIDER_MALFORMED' }),
         ok: false,
