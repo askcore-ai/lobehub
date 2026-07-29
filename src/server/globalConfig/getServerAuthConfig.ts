@@ -21,6 +21,7 @@ export const getServerAuthConfig = (): GlobalServerConfig => {
     enableMarketTrustedClient: !!(
       appEnv.MARKET_TRUSTED_CLIENT_SECRET && appEnv.MARKET_TRUSTED_CLIENT_ID
     ),
+    enableWechatMobileLogin: authEnv.AUTH_WECHAT_MOBILE_LOGIN_ENABLED,
     oAuthSSOProviders: getBetterAuthSSOProviders(),
     telemetry: {},
   };

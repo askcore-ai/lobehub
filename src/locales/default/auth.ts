@@ -112,6 +112,38 @@ export default {
   'betterAuth.signin.ssoOnlyNoProviders':
     'Email registration is disabled and no SSO providers are configured. Please contact your administrator.',
   'betterAuth.signin.submit': 'Sign In',
+  'betterAuth.wechatMobile.accountSwitch':
+    'This WeChat belongs to a different AskCore account. Confirm to switch accounts; the accounts will not be linked.',
+  'betterAuth.wechatMobile.cancel': 'Cancel',
+  'betterAuth.wechatMobile.confirmSwitch': 'Switch to this WeChat account',
+  'betterAuth.wechatMobile.failed': 'WeChat sign in could not be completed.',
+  'betterAuth.wechatMobile.openWechat': 'Open WeChat',
+  'betterAuth.wechatMobile.prepared':
+    'The login request is ready. Tap Open WeChat, authorize there, then return to this browser.',
+  'betterAuth.wechatMobile.retry': 'Try again',
+  'betterAuth.wechatMobile.returnGuidance':
+    'Complete authorization in WeChat, then use system navigation to return to this Safari or Chrome tab.',
+  'betterAuth.wechatMobile.title': 'Sign in with WeChat',
+  'betterAuth.wechatRebind.accountLabel': 'WeChat association {{index}}',
+  'betterAuth.wechatRebind.confirm': 'Confirm verified identity',
+  'betterAuth.wechatRebind.confirmExplanation':
+    'WeChat control has been proved. Confirm once more to submit this claim for reviewed reconciliation. This does not merge or change an account now.',
+  'betterAuth.wechatRebind.explanation':
+    'Verify an existing WeChat association. The proof is reviewed before any identity correction; accounts are never merged automatically.',
+  'betterAuth.wechatRebind.failed': 'WeChat identity verification could not be completed.',
+  'betterAuth.wechatRebind.noAccount':
+    'This AskCore account has no historical WeChat association to verify.',
+  'betterAuth.wechatRebind.openDesktopProof': 'Open WeChat QR verification',
+  'betterAuth.wechatRebind.openWechat': 'Open WeChat',
+  'betterAuth.wechatRebind.retry': 'Try again',
+  'betterAuth.wechatRebind.returnGuidance':
+    'Complete the proof in WeChat, then use system navigation to return to this browser.',
+  'betterAuth.wechatRebind.selectAccount': 'Association to verify',
+  'betterAuth.wechatRebind.selectPlaceholder': 'Select a WeChat association',
+  'betterAuth.wechatRebind.start': 'Prepare WeChat verification',
+  'betterAuth.wechatRebind.title': 'Verify historical WeChat identity',
+  'betterAuth.wechatRebind.verified':
+    'The verified claim was recorded. No account was changed or merged; reconciliation remains separately reviewed.',
   'betterAuth.signup.confirmPasswordPlaceholder': 'Confirm your password',
   'betterAuth.signup.emailPlaceholder': 'Enter your email address',
   'betterAuth.signup.error': 'Sign up failed, please try again',

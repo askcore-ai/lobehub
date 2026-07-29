@@ -86,6 +86,79 @@ export const account = pgTable(
   (table) => [index('account_userId_idx').on(table.userId)],
 );
 
+export const wechatMobileLoginTransaction = pgTable(
+  'wechat_mobile_login_transactions',
+  {
+    accountSwitchConfirmedAt: timestamp('account_switch_confirmed_at'),
+    attemptCount: integer('attempt_count').default(0).notNull(),
+    authorizedAt: timestamp('authorized_at'),
+    authorizedUserId: text('authorized_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    browserCookieBindingHash: text('browser_cookie_binding_hash').notNull(),
+    callbackUrl: text('callback_url').notNull(),
+    completionCapabilityHash: text('completion_capability_hash').notNull(),
+    consumedAt: timestamp('consumed_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    expiresAt: timestamp('expires_at').notNull(),
+    failureCode: text('failure_code'),
+    id: text('id').primaryKey(),
+    initiatingSessionIdHash: text('initiating_session_id_hash'),
+    initiatingUserId: text('initiating_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    issuedSessionId: text('issued_session_id'),
+    oauthStateHash: text('oauth_state_hash').notNull(),
+    purpose: text('purpose').notNull(),
+    rebindAccountRowId: text('rebind_account_row_id').references(() => account.id, {
+      onDelete: 'set null',
+    }),
+    recoveryUntil: timestamp('recovery_until'),
+    state: text('state').default('pending').notNull(),
+    tabBindingHash: text('tab_binding_hash').notNull(),
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (table) => [
+    index('wechat_mobile_login_expires_at_idx').on(table.expiresAt),
+    index('wechat_mobile_login_state_expires_at_idx').on(table.state, table.expiresAt),
+    index('wechat_mobile_login_authorized_user_id_idx').on(table.authorizedUserId),
+  ],
+);
+
+export const wechatRebindClaim = pgTable(
+  'wechat_rebind_claims',
+  {
+    applyBefore: timestamp('apply_before'),
+    confirmationExpiresAt: timestamp('confirmation_expires_at').notNull(),
+    confirmedAt: timestamp('confirmed_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    id: text('id').primaryKey(),
+    legacyAccountRowId: text('legacy_account_row_id')
+      .notNull()
+      .references(() => account.id, { onDelete: 'cascade' }),
+    sourceTransactionId: text('source_transaction_id')
+      .notNull()
+      .references(() => wechatMobileLoginTransaction.id, { onDelete: 'cascade' }),
+    state: text('state').default('pending_confirmation').notNull(),
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    verifiedUnionid: text('verified_unionid').notNull(),
+  },
+  (table) => [
+    index('wechat_rebind_claim_state_apply_before_idx').on(table.state, table.applyBefore),
+    uniqueIndex('wechat_rebind_claim_source_transaction_unique').on(table.sourceTransactionId),
+    index('wechat_rebind_claim_user_id_idx').on(table.userId),
+  ],
+);
+
 export const member = pgTable(
   'member',
   {

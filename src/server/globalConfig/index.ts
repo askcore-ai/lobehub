@@ -126,6 +126,7 @@ export const getServerGlobalConfig = async (user?: ServerGlobalConfigUser) => {
     enableVisualUnderstanding: !!(
       toolsEnv.VISUAL_UNDERSTANDING_PROVIDER && toolsEnv.VISUAL_UNDERSTANDING_MODEL
     ),
+    enableWechatMobileLogin: authEnv.AUTH_WECHAT_MOBILE_LOGIN_ENABLED,
     ...(toolsEnv.VISUAL_UNDERSTANDING_PROVIDER && toolsEnv.VISUAL_UNDERSTANDING_MODEL
       ? {
           visualUnderstanding: {

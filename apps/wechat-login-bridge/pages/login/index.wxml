@@ -1,0 +1,17 @@
+<view class="page">
+  <view class="card">
+    <view class="brand">AskCore</view>
+    <view class="title">{{title}}</view>
+    <view class="detail">{{detail}}</view>
+    <button
+      wx:if="{{status !== 'authorized' && !invalid}}"
+      class="primary"
+      disabled="{{busy}}"
+      loading="{{busy}}"
+      bindtap="onAuthorize"
+    >
+      {{actionText}}
+    </button>
+    <view wx:if="{{status === 'authorized'}}" class="success">✓ 可以返回浏览器</view>
+  </view>
+</view>

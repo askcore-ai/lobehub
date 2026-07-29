@@ -1,0 +1,9 @@
+{
+  "desc": "AskCore login bridge is reachable only through a server-issued Scheme.",
+  "rules": [
+    {
+      "action": "disallow",
+      "page": "*"
+    }
+  ]
+}

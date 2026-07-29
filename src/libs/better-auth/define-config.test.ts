@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   betterAuth: vi.fn((options) => options),
   businessEmailHarmonyOptions: { allowNormalizedSignin: false },
+  drizzleAdapter: vi.fn(() => ({ id: 'drizzle-adapter' })),
   emailHarmony: vi.fn((options) => ({ id: 'email-harmony', options })),
+  wechatMobileLogin: vi.fn((options) => ({ id: 'wechat-mobile-login', options })),
 }));
 
 vi.mock('@better-auth/expo', () => ({
@@ -29,7 +31,7 @@ vi.mock('bcryptjs', () => ({
 }));
 
 vi.mock('better-auth/adapters/drizzle', () => ({
-  drizzleAdapter: vi.fn(() => ({ id: 'drizzle-adapter' })),
+  drizzleAdapter: mocks.drizzleAdapter,
 }));
 
 vi.mock('better-auth/crypto', () => ({
@@ -74,6 +76,16 @@ vi.mock('@/envs/auth', () => ({
     AUTH_ENABLE_MAGIC_LINK: false,
     AUTH_SECRET: 'test-secret',
     AUTH_SSO_PROVIDERS: '',
+    AUTH_WECHAT_ID: 'wx-open-platform-app',
+    AUTH_WECHAT_IDENTITY_MODE: 'legacy',
+    AUTH_WECHAT_MINI_PROGRAM_APP_ID: '',
+    AUTH_WECHAT_MINI_PROGRAM_SECRET: '',
+    AUTH_WECHAT_MOBILE_LOGIN_ENABLED: false,
+    AUTH_WECHAT_REBIND_ENABLED: false,
+    AUTH_WECHAT_SCHEME_PATH: 'pages/login/index',
+    AUTH_WECHAT_SECRET: 'wx-website-secret',
+    AUTH_WECHAT_SESSION_RECOVERY_SECONDS: 60,
+    AUTH_WECHAT_TRANSACTION_TTL_SECONDS: 300,
   },
 }));
 
@@ -87,6 +99,10 @@ vi.mock('@/libs/better-auth/email-templates', () => ({
 
 vi.mock('@/libs/better-auth/plugins/email-whitelist', () => ({
   emailWhitelist: vi.fn(() => ({ id: 'email-whitelist' })),
+}));
+
+vi.mock('@/libs/better-auth/plugins/wechat-mobile-login', () => ({
+  wechatMobileLogin: mocks.wechatMobileLogin,
 }));
 
 vi.mock('@/libs/better-auth/sso', () => ({
@@ -169,6 +185,30 @@ describe('defineConfig', () => {
           },
         },
       }),
+    );
+  });
+
+  it('registers the disabled Release A WeChat bridge inside Better Auth', async () => {
+    const { defineConfig } = await import('./define-config');
+
+    defineConfig({ plugins: [] });
+
+    expect(mocks.wechatMobileLogin).toHaveBeenCalledWith({
+      appId: 'wx-open-platform-app',
+      appSecret: '',
+      appURL: 'https://example.com',
+      identityMode: 'legacy',
+      miniProgramAppId: '',
+      mobileLoginEnabled: false,
+      rebindEnabled: false,
+      recoverySeconds: 60,
+      schemePath: 'pages/login/index',
+      transactionTtlSeconds: 300,
+      websiteAppSecret: 'wx-website-secret',
+    });
+    expect(mocks.drizzleAdapter).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({ provider: 'pg', transaction: true }),
     );
   });
 });

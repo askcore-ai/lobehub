@@ -1,0 +1,17 @@
+{
+  "appid": "touristappid",
+  "compileType": "miniprogram",
+  "condition": {},
+  "description": "AskCore private WeChat login bridge",
+  "libVersion": "3.7.12",
+  "miniprogramRoot": "./",
+  "projectname": "askcore-wechat-login-bridge",
+  "setting": {
+    "checkInvalidKey": true,
+    "checkSiteMap": true,
+    "es6": true,
+    "minified": true,
+    "postcss": true,
+    "urlCheck": true
+  }
+}

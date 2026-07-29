@@ -32,6 +32,7 @@ import {
   getVerificationOTPEmailTemplate,
 } from '@/libs/better-auth/email-templates';
 import { emailWhitelist } from '@/libs/better-auth/plugins/email-whitelist';
+import { wechatMobileLogin } from '@/libs/better-auth/plugins/wechat-mobile-login';
 import { initBetterAuthSSOProviders } from '@/libs/better-auth/sso';
 import { createSecondaryStorage, getTrustedOrigins } from '@/libs/better-auth/utils/config';
 import { parseSSOProviders } from '@/libs/better-auth/utils/server';
@@ -246,6 +247,8 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
       provider: 'pg',
       // experimental joins feature needs schema to pass full relation
       schema,
+      // P148 consumes the authorization and creates the Better Auth session atomically.
+      transaction: true,
     }),
     secondaryStorage: createSecondaryStorage(),
     /**
@@ -329,6 +332,19 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
     },
     plugins: [
       ...customOptions.plugins,
+      wechatMobileLogin({
+        appId: authEnv.AUTH_WECHAT_ID || '',
+        appSecret: authEnv.AUTH_WECHAT_MINI_PROGRAM_SECRET,
+        appURL: appEnv.APP_URL || 'http://localhost:3210',
+        identityMode: authEnv.AUTH_WECHAT_IDENTITY_MODE,
+        miniProgramAppId: authEnv.AUTH_WECHAT_MINI_PROGRAM_APP_ID,
+        mobileLoginEnabled: authEnv.AUTH_WECHAT_MOBILE_LOGIN_ENABLED,
+        rebindEnabled: authEnv.AUTH_WECHAT_REBIND_ENABLED,
+        recoverySeconds: authEnv.AUTH_WECHAT_SESSION_RECOVERY_SECONDS,
+        schemePath: authEnv.AUTH_WECHAT_SCHEME_PATH,
+        transactionTtlSeconds: authEnv.AUTH_WECHAT_TRANSACTION_TTL_SECONDS,
+        websiteAppSecret: authEnv.AUTH_WECHAT_SECRET || '',
+      }),
       emailWhitelist(),
       expo(),
       emailHarmony(businessEmailHarmonyOptions),

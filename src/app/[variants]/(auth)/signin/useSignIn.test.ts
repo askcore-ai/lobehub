@@ -2,11 +2,12 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── import under test ──────────────────────────────────────────
-import { useSignIn } from './useSignIn';
+import { classifyWechatClient, useSignIn } from './useSignIn';
 
 // ── hoisted mocks ──────────────────────────────────────────────
 const mockPush = vi.hoisted(() => vi.fn());
 const mockSearchParamsGet = vi.hoisted(() => vi.fn().mockReturnValue(null));
+const mockWechatMobileEnabled = vi.hoisted(() => ({ value: true }));
 const mockMessageError = vi.hoisted(() => vi.fn());
 const mockMessageSuccess = vi.hoisted(() => vi.fn());
 const mockSignInSocial = vi.hoisted(() => vi.fn());
@@ -15,6 +16,16 @@ const mockSignInEmail = vi.hoisted(() => vi.fn());
 const mockSignInMagicLink = vi.hoisted(() => vi.fn());
 const mockRequestPasswordReset = vi.hoisted(() => vi.fn());
 const mockLocalStorage = vi.hoisted(() => {
+  const store = new Map<string, string>();
+
+  return {
+    clear: () => store.clear(),
+    getItem: (key: string) => store.get(key) ?? null,
+    removeItem: (key: string) => store.delete(key),
+    setItem: (key: string, value: string) => store.set(key, value),
+  };
+});
+const mockSessionStorage = vi.hoisted(() => {
   const store = new Map<string, string>();
 
   return {
@@ -68,6 +79,7 @@ vi.mock('../_layout/AuthServerConfigProvider', () => ({
       serverConfig: {
         disableEmailPassword: false,
         enableMagicLink: false,
+        enableWechatMobileLogin: mockWechatMobileEnabled.value,
         oAuthSSOProviders: ['google', 'github'],
       },
       serverConfigInit: true,
@@ -101,11 +113,31 @@ vi.mock('antd', async () => {
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 vi.stubGlobal('localStorage', mockLocalStorage);
+vi.stubGlobal('sessionStorage', mockSessionStorage);
+
+describe('classifyWechatClient', () => {
+  it.each([
+    [{ maxTouchPoints: 5, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0)' }, 'mobile'],
+    [
+      {
+        maxTouchPoints: 0,
+        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+        userAgentData: { mobile: false },
+      },
+      'desktop',
+    ],
+    [{ maxTouchPoints: 1, userAgent: 'Unknown Browser' }, 'mobile'],
+  ] as const)('classifies %o as %s', (client, expected) => {
+    expect(classifyWechatClient(client)).toBe(expected);
+  });
+});
 
 describe('useSignIn', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLocalStorage.clear();
+    mockSessionStorage.clear();
+    mockWechatMobileEnabled.value = true;
     mockSearchParamsGet.mockReturnValue(null);
   });
 
@@ -296,6 +328,84 @@ describe('useSignIn', () => {
   });
 
   describe('handleSocialSignIn', () => {
+    it('prepares a mobile WeChat transaction without opening WeChat on the first click', async () => {
+      mockFetch.mockResolvedValueOnce({
+        json: async () => ({
+          expiresAt: '2026-07-29T12:05:00.000Z',
+          openTarget: 'weixin://dl/business/?redacted=1',
+          pollAfterMs: 1200,
+          tabBinding: 'a'.repeat(43),
+          transactionId: 'wxm_transaction_1234',
+        }),
+        ok: true,
+      });
+
+      const { result } = renderHook(() => useSignIn());
+
+      await act(async () => {
+        await result.current.handleSocialSignIn('wechat');
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/auth/wechat-mobile/start',
+        expect.objectContaining({
+          body: JSON.stringify({ callbackURL: '/' }),
+          method: 'POST',
+        }),
+      );
+      expect(mockSessionStorage.getItem('askcore:wechat-mobile:tab:wxm_transaction_1234')).toBe(
+        'a'.repeat(43),
+      );
+      expect(result.current.wechatMobileLogin).toEqual({
+        expiresAt: '2026-07-29T12:05:00.000Z',
+        phase: 'prepared',
+        transactionId: 'wxm_transaction_1234',
+      });
+      expect(mockSignInSocial).not.toHaveBeenCalled();
+      expect(mockSignInOauth2).not.toHaveBeenCalled();
+    });
+
+    it('keeps legacy WeChat QR login on mobile while the feature gate is disabled', async () => {
+      mockWechatMobileEnabled.value = false;
+      mockSignInOauth2.mockResolvedValue({
+        url: 'https://open.weixin.qq.com/connect/qrconnect',
+      });
+
+      const { result } = renderHook(() => useSignIn());
+
+      await act(async () => {
+        await result.current.handleSocialSignIn('wechat');
+      });
+
+      expect(mockFetch).not.toHaveBeenCalledWith(
+        '/api/auth/wechat-mobile/start',
+        expect.anything(),
+      );
+      expect(mockSignInOauth2).toHaveBeenCalledWith(
+        expect.objectContaining({ providerId: 'wechat' }),
+      );
+    });
+
+    it('keeps a malformed provider response retryable', async () => {
+      mockFetch.mockResolvedValueOnce({
+        json: async () => ({ code: 'WECHAT_PROVIDER_MALFORMED' }),
+        ok: false,
+        status: 502,
+      });
+
+      const { result } = renderHook(() => useSignIn());
+
+      await act(async () => {
+        await result.current.handleSocialSignIn('wechat');
+      });
+
+      expect(result.current.wechatMobileLogin).toEqual({
+        message: 'WECHAT_PROVIDER_MALFORMED',
+        phase: 'failed',
+        retryable: true,
+      });
+    });
+
     it('should call signIn.social for builtin providers', async () => {
       mockSignInSocial.mockResolvedValue({ url: 'https://google.com/auth' });
 
