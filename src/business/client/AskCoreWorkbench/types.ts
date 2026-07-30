@@ -1,6 +1,6 @@
 'use client';
 
-export type AskCoreWorkbenchTab = 'overview' | 'activities' | 'questions' | 'attempts';
+export type AskCoreWorkbenchTab = 'overview' | 'activities' | 'attempts';
 
 export type JsonPrimitive = boolean | number | string | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | JsonRecord;

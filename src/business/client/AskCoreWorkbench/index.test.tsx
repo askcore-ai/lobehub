@@ -7,7 +7,6 @@ import { ASKCORE_WORKBENCH_TABS } from './config';
 import {
   AskCoreWorkbenchRoute as ProductionAskCoreWorkbenchRoute,
   buildAssignmentOcrRunSummary,
-  buildQuestionOcrRunSummary,
   buildSubmissionOcrAssignmentSelectOption,
   buildSubmissionOcrRunSummary,
   LegacyAskCoreWorkbenchRoute as AskCoreWorkbenchRoute,
@@ -868,73 +867,6 @@ describe('AskCoreWorkbenchRoute assignment OCR run summary', () => {
   });
 });
 
-describe('AskCoreWorkbenchRoute question OCR run summary', () => {
-  const invocation = {
-    action_id: 'question.create_from_ocr',
-    artifact_count: 1,
-    created_at: '2026-06-16T00:00:00Z',
-    current_question_order_index: null,
-    failure_reason: null,
-    finished_at: '2026-06-16T00:02:00Z',
-    invocation_id: 'inv-question-ocr-1',
-    last_event_at: '2026-06-16T00:02:00Z',
-    plugin_id: 'aitutor-suite',
-    progress_stage: 'succeeded',
-    question_failed: 1,
-    question_succeeded: 4,
-    question_total: 5,
-    run_id: 30,
-    started_at: '2026-06-16T00:00:10Z',
-    state: 'succeeded',
-    workflow_name: 'workbench.question_ocr',
-  };
-
-  const artifact = (type: string, artifactId: string, content = {}) => ({
-    artifact_id: artifactId,
-    content,
-    created_at: '2026-06-16T00:02:00Z',
-    redaction: {},
-    references: [],
-    run_id: 30,
-    schema_version: 'v1',
-    summary: null,
-    title: null,
-    type,
-  });
-
-  it('summarizes created, reused, generated-answer, failure, and similarity counts', () => {
-    const summary = buildQuestionOcrRunSummary({
-      artifacts: [
-        artifact('assignment.draft', 'draft-hidden'),
-        artifact('question.ocr.import.result', 'question-import-1', {
-          created_question_ids: [101, 102],
-          failed_questions: [{ error: 'schema_invalid' }],
-          generated_answer_question_ids: [102],
-          reused_question_ids: [88],
-          similarity_decisions: [{ decision: 'duplicate' }, { decision: 'create_new' }],
-          skipped_duplicates: [{ existing_question_id: 88 }],
-        }),
-      ],
-      busy: false,
-      error: null,
-      invocation,
-      notice: null,
-      tracking: 'polling',
-    });
-
-    expect(summary.statusTitle).toBe('题库 OCR 已完成');
-    expect(summary.progressLabel).toBe('已处理 5/5');
-    expect(summary.visibleArtifacts.map((item) => item.type)).toEqual([
-      'question.ocr.import.result',
-    ]);
-    expect(summary.hiddenArtifacts.map((item) => item.type)).toEqual(['assignment.draft']);
-    expect(summary.resultItems[0]).toMatchObject({
-      description: '新建 2 · 复用 1 · 补全答案 1 · 跳过重复 1 · 失败 1 · 相似度判定 2',
-      title: '题库导入结果',
-    });
-  });
-});
-
 describe('AskCoreWorkbenchRoute submission list batch actions', () => {
   afterEach(() => {
     message.destroy();
@@ -1657,52 +1589,6 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     ).toBe(false);
   });
 
-  it('renders P41 Gaokao question content in question list cards', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-
-      if (url.startsWith('/api/askcore/workbench/questions?')) {
-        return jsonResponse(
-          listResponse('questions', [
-            {
-              answer: { raw_markdown: 'A', version: 'question.answer@gaokao.v1' },
-              content: {
-                assets: [],
-                content_markdown: '已知函数 $f(x)=x^2+1$，求 $f(1)$。',
-                options: [
-                  { content_markdown: '$1$', label: 'A' },
-                  { content_markdown: '$2$', label: 'B' },
-                ],
-                schema_ref: 'choice_question',
-                subquestions: [],
-                version: 'question.content@gaokao.v1',
-              },
-              grade_id: 3,
-              grade_name: '高三',
-              question_id: 481,
-              question_type: '选择题',
-              subject_id: 1002,
-              subject_name: '数学',
-            },
-          ]),
-        );
-      }
-
-      return emptyLookupFetch(url);
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    render(
-      <MemoryRouter initialEntries={['/askcore/workbench?tab=questions']}>
-        <AskCoreWorkbenchRoute />
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => expect(document.body.textContent || '').toContain('已知函数'));
-    expect(document.body.textContent || '').toContain('求');
-    expect(document.body.textContent || '').not.toContain('[object Object]');
-  });
-
   it('hides attempt rows while an activity tab request is still loading', async () => {
     const activityResponse = deferredResponse();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -1757,58 +1643,6 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     );
 
     expect(await screen.findAllByText('期中练习')).toHaveLength(2);
-    expect(screen.queryByText('正在加载…')).not.toBeInTheDocument();
-  });
-
-  it('hides activity rows while a question tab request is still loading', async () => {
-    const questionResponse = deferredResponse();
-    let activityCalls = 0;
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-
-      if (url.startsWith('/api/askcore/workbench/activities?')) {
-        activityCalls += 1;
-        return jsonResponse(listResponse('activities', [{ activity_id: 501, title: '旧活动' }]));
-      }
-
-      if (url.startsWith('/api/askcore/workbench/questions?')) {
-        return questionResponse.promise;
-      }
-
-      return emptyLookupFetch(url);
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    render(
-      <MemoryRouter initialEntries={['/askcore/workbench?tab=activities']}>
-        <AskCoreWorkbenchRoute />
-      </MemoryRouter>,
-    );
-
-    await screen.findAllByText('旧活动');
-    await waitFor(() => expect(activityCalls).toBeGreaterThanOrEqual(1));
-
-    fireEvent.click(screen.getByRole('radio', { name: '题目' }));
-    await waitFor(() =>
-      expect(
-        fetchMock.mock.calls.some(([input]) =>
-          String(input).startsWith('/api/askcore/workbench/questions?'),
-        ),
-      ).toBe(true),
-    );
-
-    expect(screen.queryAllByText('旧活动')).toHaveLength(0);
-    expect(screen.getByText('正在加载…')).toBeInTheDocument();
-
-    questionResponse.resolve(
-      jsonResponse(
-        listResponse('questions', [
-          { question_id: 301, question_type: 'short_answer', title: '压轴题' },
-        ]),
-      ),
-    );
-
-    expect(await screen.findAllByText('压轴题')).toHaveLength(1);
     expect(screen.queryByText('正在加载…')).not.toBeInTheDocument();
   });
 
