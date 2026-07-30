@@ -68,6 +68,7 @@ import {
   askCoreWorkbenchTabOptionsForProfile,
   askCoreWorkbenchTabsForProfile,
 } from './config';
+import { AskCoreProtocolRoute } from './ProtocolRoute';
 import {
   buildQuestionPreviewDataFromModel,
   buildQuestionPreviewDataFromPayload,
@@ -8342,5 +8343,9 @@ const LegacyAskCoreWorkbenchPage = memo(() => {
 
 LegacyAskCoreWorkbenchPage.displayName = 'LegacyAskCoreWorkbenchPage';
 
-export { AskCoreProtocolRoute as AskCoreWorkbenchRoute } from './ProtocolRoute';
+const AskCoreWorkbenchPage = memo(() => <AskCoreProtocolRoute />);
+
+AskCoreWorkbenchPage.displayName = 'AskCoreWorkbenchPage';
+
+export const AskCoreWorkbenchRoute = AskCoreWorkbenchPage;
 export const LegacyAskCoreWorkbenchRoute = LegacyAskCoreWorkbenchPage;
