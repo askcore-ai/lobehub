@@ -3,6 +3,7 @@ import { message, Modal } from 'antd';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { ASKCORE_WORKBENCH_TABS } from './config';
 import {
   AskCoreWorkbenchRoute as ProductionAskCoreWorkbenchRoute,
   buildAssignmentOcrRunSummary,
@@ -1631,19 +1632,9 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
     });
   });
 
-  it('adds a question-bank OCR entrypoint without assignment publishing controls', async () => {
+  it('does not expose an independent AskCore question editor or OCR route', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-
-      if (url.startsWith('/api/askcore/workbench/questions?')) {
-        return jsonResponse(listResponse('questions', []));
-      }
-
-      if (url === '/api/askcore/workbench/devices/scanners') {
-        return jsonResponse({ default_scanner_id: null, items: [] });
-      }
-
-      return emptyLookupFetch(url);
+      return emptyLookupFetch(String(input));
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -1653,16 +1644,17 @@ describe('AskCoreWorkbenchRoute resource list loading states', () => {
       </MemoryRouter>,
     );
 
-    const ocrButton = await screen.findByRole('button', { name: 'OCR 录入' });
-    expect(screen.getByRole('button', { name: '手动新建' })).toBeInTheDocument();
-
-    fireEvent.click(ocrButton);
-
-    expect(await screen.findByText('OCR 录入题库')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '开始 OCR 录入题库' })).toBeInTheDocument();
-    expect(screen.queryByText('发布范围')).not.toBeInTheDocument();
-    expect(screen.queryByText('错题变式训练')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '开始 OCR 创建并发布' })).not.toBeInTheDocument();
+    expect(ASKCORE_WORKBENCH_TABS.map((tab) => tab.key)).not.toContain('questions');
+    await waitFor(() =>
+      expect(screen.queryByRole('radio', { name: '题目' })).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('button', { name: 'OCR 录入' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '手动新建' })).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).startsWith('/api/askcore/workbench/questions?'),
+      ),
+    ).toBe(false);
   });
 
   it('renders P41 Gaokao question content in question list cards', async () => {
