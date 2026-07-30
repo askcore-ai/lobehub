@@ -24,6 +24,7 @@ describe('AskCoreWorkbench utils', () => {
     expect(askCoreWorkbenchTabFromRoute('/assignments/new/manual')).toBe('assignments');
     expect(askCoreWorkbenchTabFromRoute('/submissions/new/ocr')).toBe('submissions');
     expect(askCoreWorkbenchTabFromRoute('/submissions/7')).toBe('submissions');
+    expect(askCoreWorkbenchTabFromRoute('/questions/new/ocr')).toBe('overview');
     expect(askCoreWorkbenchTabFromRoute('/ops')).toBe('overview');
     expect(askCoreWorkbenchTabFromRoute('/subjects')).toBe('overview');
     expect(askCoreWorkbenchTabFromRoute('/missing')).toBe('overview');
