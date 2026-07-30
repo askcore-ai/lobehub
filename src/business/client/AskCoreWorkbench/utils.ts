@@ -31,7 +31,6 @@ export const askCoreWorkbenchTabFromRoute = (route?: string | null): AskCoreWork
     attempts: 'attempts',
     dashboard: 'overview',
     grades: 'overview',
-    questions: 'questions',
     submission: 'attempts',
     submissions: 'attempts',
   };
