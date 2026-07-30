@@ -19,11 +19,11 @@ describe('AskCoreWorkbench utils', () => {
   });
 
   it('maps plugin routes to first-party workbench tabs', () => {
-    expect(askCoreWorkbenchTabFromRoute('/assignments/12')).toBe('assignments');
-    expect(askCoreWorkbenchTabFromRoute('/assignments/new/ocr')).toBe('assignments');
-    expect(askCoreWorkbenchTabFromRoute('/assignments/new/manual')).toBe('assignments');
-    expect(askCoreWorkbenchTabFromRoute('/submissions/new/ocr')).toBe('submissions');
-    expect(askCoreWorkbenchTabFromRoute('/submissions/7')).toBe('submissions');
+    expect(askCoreWorkbenchTabFromRoute('/assignments/12')).toBe('activities');
+    expect(askCoreWorkbenchTabFromRoute('/assignments/new/ocr')).toBe('activities');
+    expect(askCoreWorkbenchTabFromRoute('/assignments/new/manual')).toBe('activities');
+    expect(askCoreWorkbenchTabFromRoute('/submissions/new/ocr')).toBe('attempts');
+    expect(askCoreWorkbenchTabFromRoute('/submissions/7')).toBe('attempts');
     expect(askCoreWorkbenchTabFromRoute('/questions/new/ocr')).toBe('overview');
     expect(askCoreWorkbenchTabFromRoute('/ops')).toBe('overview');
     expect(askCoreWorkbenchTabFromRoute('/subjects')).toBe('overview');
@@ -32,7 +32,7 @@ describe('AskCoreWorkbench utils', () => {
 
   it('builds deep links with route query preserved', () => {
     expect(buildAskCoreWorkbenchUrl({ route: '/submissions/7' })).toBe(
-      '/askcore/workbench?tab=submissions&route=%2Fsubmissions%2F7',
+      '/askcore/workbench?tab=attempts&route=%2Fsubmissions%2F7',
     );
     expect(buildAskCoreWorkbenchUrl({ tab: 'teachers' })).toBe('/askcore/workbench?tab=overview');
   });
