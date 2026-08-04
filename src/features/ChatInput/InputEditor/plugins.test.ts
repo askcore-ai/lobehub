@@ -71,4 +71,44 @@ describe('chat input scientific content', () => {
     });
     expect(serializedMarkdown.trim()).toBe(markdown);
   });
+
+  it.each([
+    {
+      markdown: '```TikZ\n\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}\n```',
+      name: 'case-variant info string',
+    },
+    {
+      markdown:
+        '```tikz title=diagram\n\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}\n```',
+      name: 'fence metadata',
+    },
+  ])('should not normalize $name into an eligible TikZ fence', async ({ markdown }) => {
+    let editor: IEditor | undefined;
+
+    render(
+      createElement(Editor, {
+        content: '',
+        onInit: (instance: IEditor) => {
+          editor = instance;
+        },
+        plugins: createChatInputRichPlugins({ linkPlugin: false }),
+        type: 'text',
+        variant: 'chat',
+      }),
+    );
+
+    await act(async () => {
+      await moment();
+    });
+    await waitFor(() => expect(editor).toBeDefined());
+
+    await act(async () => {
+      editor!.setDocument('markdown', markdown);
+      await moment();
+    });
+
+    const editorData = editor!.getDocument('json') as any;
+
+    expect(editorData.root.children[0]).not.toMatchObject({ language: 'tikz', type: 'code' });
+  });
 });
