@@ -196,4 +196,11 @@ describe('RichTextMessage', () => {
     );
     expect((chunks[2] as any).editorState.root.children[0].children[0].text).toBe('after');
   });
+
+  it('should leave non-TikZ code nodes in the rich-text path', () => {
+    const editorState = structuredClone(codeNodeTikzEditorState);
+    editorState.root.children[1].language = 'javascript';
+
+    expect(splitRichTextTikz(editorState as any).map(({ type }) => type)).toEqual(['rich']);
+  });
 });

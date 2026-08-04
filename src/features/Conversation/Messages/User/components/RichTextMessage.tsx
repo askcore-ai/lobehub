@@ -42,6 +42,21 @@ export const splitRichTextTikz = (editorState: SerializedEditorState): RichTextC
   };
 
   for (const rootChild of root.children as Record<string, any>[]) {
+    if (
+      rootChild.type === 'code' &&
+      rootChild.language === 'tikz' &&
+      typeof rootChild.code === 'string'
+    ) {
+      const markdown = ['```tikz', rootChild.code, '```'].join('\n');
+      const fences = findCompleteTikzFences(markdown);
+      if (fences.length === 1 && fences[0].start === 0 && fences[0].end === markdown.length) {
+        found = true;
+        flushRoot();
+        chunks.push({ markdown, type: 'tikz' });
+        continue;
+      }
+    }
+
     if (!Array.isArray(rootChild.children)) {
       pendingRootChildren.push(rootChild);
       continue;

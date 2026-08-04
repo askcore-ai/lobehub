@@ -8,12 +8,17 @@ import {
   ReactMentionPlugin,
   ReactVirtualBlockPlugin,
 } from '@lobehub/editor';
+import { LANGUAGES } from '@lobehub/editor/codemirror';
 import { type Editor } from '@lobehub/editor/react';
 
 import { ReactActionTagPlugin } from './ActionTag';
 import { ReactReferTopicPlugin } from './ReferTopic';
 
 type EditorPlugins = NonNullable<Parameters<typeof Editor>[0]['plugins']>;
+
+if (!LANGUAGES.some(({ value }) => value === 'tikz')) {
+  LANGUAGES.push({ name: 'TikZ', syntax: 'text/x-stex', value: 'tikz' });
+}
 
 interface CreateChatInputRichPluginsOptions {
   linkPlugin?: EditorPlugins[number] | false;
