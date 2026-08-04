@@ -106,7 +106,7 @@ describe('TikZJax application policy', () => {
     expect(screen.getByText('before')).toBeInTheDocument();
     expect(screen.getByText('after')).toBeInTheDocument();
     expect(container.querySelector('.katex')).not.toBeNull();
-    expect(container.querySelector('code.language-latex')).not.toBeNull();
+    expect(screen.getByText(/\\begin\{tikzpicture\}/)).toBeInTheDocument();
   });
 
   it('loads no TikZJax asset for ordinary Markdown or an incomplete fence', () => {
