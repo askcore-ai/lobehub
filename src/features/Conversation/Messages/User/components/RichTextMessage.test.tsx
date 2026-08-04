@@ -137,6 +137,25 @@ const codeNodeEditorState = {
   },
 };
 
+const paragraph = (text: string) => ({
+  children: [
+    {
+      detail: 0,
+      format: 0,
+      mode: 'normal',
+      style: '',
+      text,
+      type: 'text',
+      version: 1,
+    },
+  ],
+  direction: null,
+  format: '',
+  indent: 0,
+  type: 'paragraph',
+  version: 1,
+});
+
 afterEach(() => {
   cleanup();
 });
@@ -195,5 +214,26 @@ describe('RichTextMessage', () => {
     editorState.root.children[1].language = 'tikz';
 
     expect(splitRichTextTikz(editorState as any).map(({ type }) => type)).toEqual(['rich']);
+  });
+
+  it('should route one complete TikZ fence split across paragraph nodes', () => {
+    const editorState = {
+      root: {
+        children: [
+          paragraph('```tikz'),
+          paragraph('\\begin{tikzpicture}'),
+          paragraph('\\draw (0,0) -- (1,1);'),
+          paragraph('\\end{tikzpicture}'),
+          paragraph('```'),
+        ],
+        direction: null,
+        format: '',
+        indent: 0,
+        type: 'root',
+        version: 1,
+      },
+    };
+
+    expect(splitRichTextTikz(editorState as any).map(({ type }) => type)).toEqual(['tikz']);
   });
 });

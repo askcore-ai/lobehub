@@ -22,14 +22,116 @@ const EXTRA_NODES = [ActionTagNode, ReferTopicNode];
 type RichTextChunk =
   { editorState: SerializedEditorState; type: 'rich' } | { markdown: string; type: 'tikz' };
 
+type RichTextPiece =
+  | {
+      node: Record<string, any>;
+      rootChild: Record<string, any>;
+      rootIndex: number;
+      type: 'child';
+    }
+  | { rootChild: Record<string, any>; type: 'root' }
+  | { markdown: string; type: 'tikz' };
+
+interface MarkdownToken {
+  node?: Record<string, any>;
+  rootChild?: Record<string, any>;
+  rootIndex?: number;
+  text: string;
+}
+
 export const splitRichTextTikz = (editorState: SerializedEditorState): RichTextChunk[] => {
   const root = editorState.root as Record<string, any>;
   if (!Array.isArray(root.children)) return [{ editorState, type: 'rich' }];
 
-  const chunks: RichTextChunk[] = [];
+  const pieces: RichTextPiece[] = [];
   let found = false;
+  let markdownRun: MarkdownToken[] = [];
+
+  const appendRichRange = (tokens: MarkdownToken[], start: number, end: number) => {
+    let offset = 0;
+    for (const token of tokens) {
+      const tokenStart = offset;
+      const tokenEnd = offset + token.text.length;
+      offset = tokenEnd;
+      if (!token.node || !token.rootChild || token.rootIndex === undefined) continue;
+
+      const sliceStart = Math.max(start, tokenStart) - tokenStart;
+      const sliceEnd = Math.min(end, tokenEnd) - tokenStart;
+      if (sliceStart >= sliceEnd) continue;
+
+      const node =
+        token.node.type === 'text'
+          ? { ...token.node, text: token.text.slice(sliceStart, sliceEnd) }
+          : token.node;
+      pieces.push({ node, rootChild: token.rootChild, rootIndex: token.rootIndex, type: 'child' });
+    }
+  };
+
+  const flushMarkdownRun = () => {
+    if (markdownRun.length === 0) return;
+
+    const markdown = markdownRun.map(({ text }) => text).join('');
+    const fences = findCompleteTikzFences(markdown);
+    if (fences.length === 0) {
+      appendRichRange(markdownRun, 0, markdown.length);
+      markdownRun = [];
+      return;
+    }
+
+    found = true;
+    let cursor = 0;
+    for (const fence of fences) {
+      appendRichRange(markdownRun, cursor, fence.start);
+      pieces.push({ markdown: fence.markdown, type: 'tikz' });
+      cursor = fence.end;
+    }
+    appendRichRange(markdownRun, cursor, markdown.length);
+    markdownRun = [];
+  };
+
+  for (const [rootIndex, rootChild] of (root.children as Record<string, any>[]).entries()) {
+    if (!Array.isArray(rootChild.children) || rootChild.children.length === 0) {
+      flushMarkdownRun();
+      pieces.push({ rootChild, type: 'root' });
+      continue;
+    }
+
+    for (const node of rootChild.children as Record<string, any>[]) {
+      const isText = node.type === 'text' && typeof node.text === 'string';
+      const isLineBreak = node.type === 'linebreak';
+      if (!isText && !isLineBreak) {
+        flushMarkdownRun();
+        pieces.push({ node, rootChild, rootIndex, type: 'child' });
+        continue;
+      }
+
+      const previous = markdownRun.at(-1);
+      if (previous?.rootIndex !== undefined && previous.rootIndex !== rootIndex) {
+        markdownRun.push({ text: '\n\n' });
+      }
+      markdownRun.push({
+        node,
+        rootChild,
+        rootIndex,
+        text: isText ? node.text : '\n',
+      });
+    }
+  }
+  flushMarkdownRun();
+
+  if (!found) return [{ editorState, type: 'rich' }];
+
+  const chunks: RichTextChunk[] = [];
   let pendingRootChildren: Record<string, any>[] = [];
+  let pendingChild:
+    { nodes: Record<string, any>[]; rootChild: Record<string, any>; rootIndex: number } | undefined;
+  const flushChild = () => {
+    if (!pendingChild) return;
+    pendingRootChildren.push({ ...pendingChild.rootChild, children: pendingChild.nodes });
+    pendingChild = undefined;
+  };
   const flushRoot = () => {
+    flushChild();
     if (pendingRootChildren.length === 0) return;
     chunks.push({
       editorState: {
@@ -41,53 +143,23 @@ export const splitRichTextTikz = (editorState: SerializedEditorState): RichTextC
     pendingRootChildren = [];
   };
 
-  for (const rootChild of root.children as Record<string, any>[]) {
-    if (!Array.isArray(rootChild.children)) {
-      pendingRootChildren.push(rootChild);
+  for (const piece of pieces) {
+    if (piece.type === 'tikz') {
+      flushRoot();
+      chunks.push(piece);
       continue;
     }
-
-    let childWasSplit = false;
-    let pendingChildNodes: Record<string, any>[] = [];
-    const flushChild = () => {
-      if (pendingChildNodes.length === 0) return;
-      pendingRootChildren.push({ ...rootChild, children: pendingChildNodes });
-      pendingChildNodes = [];
-    };
-
-    for (const node of rootChild.children as Record<string, any>[]) {
-      if (node.type !== 'text' || typeof node.text !== 'string') {
-        pendingChildNodes.push(node);
-        continue;
-      }
-
-      const fences = findCompleteTikzFences(node.text);
-      if (fences.length === 0) {
-        pendingChildNodes.push(node);
-        continue;
-      }
-
-      found = true;
-      childWasSplit = true;
-      let cursor = 0;
-      for (const fence of fences) {
-        const before = node.text.slice(cursor, fence.start);
-        if (before) pendingChildNodes.push({ ...node, text: before });
-        flushChild();
-        flushRoot();
-        chunks.push({ markdown: fence.markdown, type: 'tikz' });
-        cursor = fence.end;
-      }
-
-      const after = node.text.slice(cursor);
-      if (after) pendingChildNodes.push({ ...node, text: after });
+    if (piece.type === 'root') {
+      flushChild();
+      pendingRootChildren.push(piece.rootChild);
+      continue;
     }
-
-    if (childWasSplit) flushChild();
-    else pendingRootChildren.push(rootChild);
+    if (pendingChild?.rootIndex !== piece.rootIndex) {
+      flushChild();
+      pendingChild = { nodes: [], rootChild: piece.rootChild, rootIndex: piece.rootIndex };
+    }
+    pendingChild.nodes.push(piece.node);
   }
-
-  if (!found) return [{ editorState, type: 'rich' }];
   flushRoot();
   return chunks;
 };
