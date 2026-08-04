@@ -5,6 +5,17 @@ import Render from './Render';
 import { compileTikz } from './runtime';
 
 vi.mock('./runtime', () => ({ compileTikz: vi.fn() }));
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string) =>
+      ({
+        'tikz.diagramLabel': 'Scientific diagram',
+        'tikz.renderFailed': 'Scientific diagram could not be rendered',
+        'tikz.rendering': 'Rendering scientific diagram',
+        'tikz.sourceLabel': 'Original TikZ source',
+      })[key] || key,
+  }),
+}));
 
 const mockCompileTikz = vi.mocked(compileTikz);
 const source = String.raw`\begin{tikzpicture}
