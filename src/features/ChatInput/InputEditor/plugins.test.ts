@@ -6,12 +6,28 @@ import { LANGUAGES } from '@lobehub/editor/codemirror';
 import { Editor } from '@lobehub/editor/react';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { createElement } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createChatInputRichPlugins } from './plugins';
 
+beforeEach(() => {
+  const instance = {
+    blur: vi.fn(),
+    destroy: vi.fn(),
+    focus: vi.fn(),
+    getValue: () => '',
+    on: vi.fn(),
+    optionHelper: { theme: { reconfigure: vi.fn() } },
+    setOption: vi.fn(),
+    setSelectionToEnd: vi.fn(),
+    view: { constructor: { theme: vi.fn() }, dispatch: vi.fn(), hasFocus: false },
+  };
+  (window as any).CodeMirror = { default: { fromTextArea: () => instance } };
+});
+
 afterEach(() => {
   cleanup();
+  delete (window as any).CodeMirror;
 });
 
 describe('chat input scientific content', () => {
