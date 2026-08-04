@@ -300,6 +300,7 @@
     "@react-pdf/renderer": "4.4.1",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
+    "@rod2ik/tikzjax": "1.5.0",
     "@saintno/comfyui-sdk": "^0.2.49",
     "@t3-oss/env-core": "^0.13.10",
     "@t3-oss/env-nextjs": "^0.13.10",

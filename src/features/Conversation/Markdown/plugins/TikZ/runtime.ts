@@ -119,3 +119,111 @@ export const sanitizeTikzSvg = (content: string) => {
 
   return sanitized;
 };
+
+export type TikzCompileResult =
+  | { status: 'rendered'; svg: string }
+  | { reason: 'asset' | 'policy' | 'syntax' | 'timeout'; status: 'failed' };
+
+interface TikzJaxWindow extends Window {
+  TikzJax?: boolean;
+  TikzJaxOptions?: ReturnType<typeof createTikzJaxOptions>;
+}
+
+let runtimeLoad: Promise<void> | undefined;
+
+const loadTikzJaxRuntime = () => {
+  const tikzWindow = window as TikzJaxWindow;
+  if (tikzWindow.TikzJax) return Promise.resolve();
+  if (runtimeLoad) return runtimeLoad;
+
+  const assetBaseUrl = getTikzJaxAssetBaseUrl();
+  tikzWindow.TikzJaxOptions = createTikzJaxOptions();
+
+  if (!document.querySelector('link[data-askcore-tikzjax-fonts]')) {
+    const fonts = document.createElement('link');
+    fonts.dataset.askcoreTikzjaxFonts = '';
+    fonts.href = `${assetBaseUrl}/fonts.min.css`;
+    fonts.rel = 'stylesheet';
+    document.head.append(fonts);
+  }
+
+  runtimeLoad = new Promise<void>((resolve, reject) => {
+    const runtime = document.createElement('script');
+    runtime.async = true;
+    runtime.dataset.askcoreTikzjaxRuntime = '';
+    runtime.src = `${assetBaseUrl}/tikzjax.min.js`;
+    runtime.addEventListener('load', () => resolve(), { once: true });
+    runtime.addEventListener(
+      'error',
+      () => {
+        runtimeLoad = undefined;
+        reject(new Error('TikZJax runtime asset failed to load'));
+      },
+      { once: true },
+    );
+    document.head.append(runtime);
+  });
+
+  return runtimeLoad;
+};
+
+export const compileTikz = async (source: string): Promise<TikzCompileResult> => {
+  try {
+    await loadTikzJaxRuntime();
+  } catch {
+    return { reason: 'asset', status: 'failed' };
+  }
+
+  return new Promise<TikzCompileResult>((resolve) => {
+    const host = document.createElement('span');
+    host.dataset.askcoreTikzCompile = '';
+    host.style.height = '1px';
+    host.style.left = '-10000px';
+    host.style.opacity = '0';
+    host.style.overflow = 'hidden';
+    host.style.position = 'fixed';
+    host.style.top = '0';
+    host.style.width = '1px';
+
+    let settled = false;
+    const observer = new MutationObserver(() => inspect());
+    const finish = (result: TikzCompileResult) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      observer.disconnect();
+      host.remove();
+      resolve(result);
+    };
+    const inspect = () => {
+      if (host.querySelector('.tikzjax-broken-wrapper')) {
+        finish({ reason: 'syntax', status: 'failed' });
+        return;
+      }
+
+      const svg = host.querySelector<SVGSVGElement>(
+        '.tikzjax-wrapper:not(.tikzjax-loading) svg:not(.tikzjax-loader)',
+      );
+      if (!svg) return;
+
+      try {
+        finish({ status: 'rendered', svg: sanitizeTikzSvg(svg.outerHTML) });
+      } catch {
+        finish({ reason: 'policy', status: 'failed' });
+      }
+    };
+
+    host.addEventListener('tikzjax-load-finished', inspect);
+    observer.observe(host, { childList: true, subtree: true });
+    const timeout = window.setTimeout(
+      () => finish({ reason: 'timeout', status: 'failed' }),
+      TIKZJAX_RENDER_TIMEOUT_MS + 1000,
+    );
+
+    const input = document.createElement('script');
+    input.type = 'text/tikz';
+    input.textContent = source;
+    host.append(input);
+    document.body.append(host);
+  });
+};
