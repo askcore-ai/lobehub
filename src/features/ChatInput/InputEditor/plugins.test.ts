@@ -2,14 +2,21 @@
  * @vitest-environment happy-dom
  */
 import { type IEditor, moment } from '@lobehub/editor';
-import { LANGUAGES } from '@lobehub/editor/codemirror';
 import { Editor } from '@lobehub/editor/react';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
-import { $createParagraphNode, $createTextNode, $getRoot, KEY_ENTER_COMMAND } from 'lexical';
+import {
+  $createParagraphNode,
+  $createTextNode,
+  $getRoot,
+  $isElementNode,
+  KEY_ENTER_COMMAND,
+} from 'lexical';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createChatInputRichPlugins } from './plugins';
+
+const TIKZ_BODY = '\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}';
 
 beforeEach(() => {
   const instance = {
@@ -31,133 +38,108 @@ afterEach(() => {
   delete (window as any).CodeMirror;
 });
 
+const renderChatEditor = async () => {
+  let editor: IEditor | undefined;
+
+  render(
+    createElement(Editor, {
+      content: '',
+      onInit: (instance: IEditor) => {
+        editor = instance;
+      },
+      plugins: createChatInputRichPlugins({ linkPlugin: false }),
+      type: 'text',
+      variant: 'chat',
+    }),
+  );
+
+  await act(async () => {
+    await moment();
+  });
+  await waitFor(() => expect(editor).toBeDefined());
+
+  return editor!;
+};
+
+const typeOpeningShortcut = async (editor: IEditor, opening: string) => {
+  const lexicalEditor = editor.getLexicalEditor()!;
+
+  await act(async () => {
+    lexicalEditor.update(() => {
+      const paragraph = $createParagraphNode();
+      const text = $createTextNode(opening);
+      paragraph.append(text);
+      $getRoot().clear().append(paragraph);
+      text.selectEnd();
+    });
+    await moment();
+  });
+
+  await act(async () => {
+    const handled = lexicalEditor.dispatchCommand(
+      KEY_ENTER_COMMAND,
+      new KeyboardEvent('keydown', { key: 'Enter' }),
+    );
+    expect(handled).toBe(true);
+    await moment();
+  });
+};
+
 describe('chat input scientific content', () => {
-  it('should preserve an explicit TikZ fence through editor serialization', async () => {
-    const markdown =
-      '```tikz\n\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}\n```';
-    let editor: IEditor | undefined;
+  it('should preserve a typed exact TikZ fence as literal Markdown', async () => {
+    const editor = await renderChatEditor();
+    const markdown = `\`\`\`tikz\n${TIKZ_BODY}\n\`\`\``;
 
-    render(
-      createElement(Editor, {
-        content: '',
-        onInit: (instance: IEditor) => {
-          editor = instance;
-        },
-        plugins: createChatInputRichPlugins({ linkPlugin: false }),
-        type: 'text',
-        variant: 'chat',
-      }),
-    );
+    await typeOpeningShortcut(editor, '```tikz');
+
+    let editorData = editor.getDocument('json') as any;
+    expect(editorData.root.children[0]).toMatchObject({ type: 'paragraph' });
+    expect(editorData.root.children[0].children).toMatchObject([
+      { text: '```tikz', type: 'text' },
+      { type: 'linebreak' },
+    ]);
 
     await act(async () => {
-      await moment();
-    });
-    await waitFor(() => expect(editor).toBeDefined());
-
-    await act(async () => {
-      editor!.setDocument('markdown', markdown);
-      await moment();
-    });
-
-    const editorData = editor!.getDocument('json') as any;
-    const serializedMarkdown = editor!.getDocument('markdown') as unknown as string;
-
-    expect(LANGUAGES).toContainEqual(
-      expect.objectContaining({ syntax: 'text/x-stex', value: 'tikz' }),
-    );
-    expect(editorData.root.children[0]).toMatchObject({
-      code: '\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}',
-      language: 'tikz',
-      type: 'code',
-    });
-    expect(serializedMarkdown.trim()).toBe(markdown);
-  });
-
-  it.each([
-    {
-      markdown: '```TikZ\n\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}\n```',
-      name: 'case-variant info string',
-    },
-    {
-      markdown:
-        '```tikz title=diagram\n\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}\n```',
-      name: 'fence metadata',
-    },
-  ])('should not normalize $name into an eligible TikZ fence', async ({ markdown }) => {
-    let editor: IEditor | undefined;
-
-    render(
-      createElement(Editor, {
-        content: '',
-        onInit: (instance: IEditor) => {
-          editor = instance;
-        },
-        plugins: createChatInputRichPlugins({ linkPlugin: false }),
-        type: 'text',
-        variant: 'chat',
-      }),
-    );
-
-    await act(async () => {
-      await moment();
-    });
-    await waitFor(() => expect(editor).toBeDefined());
-
-    await act(async () => {
-      editor!.setDocument('markdown', markdown);
-      await moment();
-    });
-
-    const editorData = editor!.getDocument('json') as any;
-
-    expect(editorData.root.children[0]).not.toMatchObject({ language: 'tikz', type: 'code' });
-  });
-
-  it('should keep a typed case-variant fence out of the TikZ code path', async () => {
-    let editor: IEditor | undefined;
-
-    render(
-      createElement(Editor, {
-        content: '',
-        onInit: (instance: IEditor) => {
-          editor = instance;
-        },
-        plugins: createChatInputRichPlugins({ linkPlugin: false }),
-        type: 'text',
-        variant: 'chat',
-      }),
-    );
-
-    await act(async () => {
-      await moment();
-    });
-    await waitFor(() => expect(editor).toBeDefined());
-
-    await act(async () => {
-      const lexicalEditor = editor!.getLexicalEditor()!;
-      lexicalEditor.update(() => {
-        const paragraph = $createParagraphNode();
-        const text = $createTextNode('```TikZ');
-        paragraph.append(text);
-        $getRoot().clear().append(paragraph);
-        text.selectEnd();
+      editor.getLexicalEditor()!.update(() => {
+        const paragraph = $getRoot().getFirstChild();
+        if (!$isElementNode(paragraph)) throw new Error('Expected chat input paragraph');
+        paragraph.clear().append($createTextNode(markdown));
       });
       await moment();
     });
 
+    editorData = editor.getDocument('json') as any;
+    expect(editorData.root.children[0].children[0]).toMatchObject({ text: markdown });
+    expect((editor.getDocument('markdown') as unknown as string).trim()).toBe(markdown);
+  });
+
+  it.each([
+    { closing: '```', opening: '```TikZ', name: 'case-variant info string' },
+    { closing: '```', opening: '```tikz title=diagram', name: 'fence metadata' },
+    { closing: '````', opening: '````tikz', name: 'four-backtick fence' },
+    { closing: '~~~', opening: '~~~tikz', name: 'tilde fence' },
+  ])('should not normalize $name into an eligible TikZ code node', async ({ closing, opening }) => {
+    const editor = await renderChatEditor();
+
     await act(async () => {
-      const lexicalEditor = editor!.getLexicalEditor()!;
-      lexicalEditor.dispatchCommand(
-        KEY_ENTER_COMMAND,
-        new KeyboardEvent('keydown', { key: 'Enter' }),
-      );
+      editor.setDocument('markdown', `${opening}\n${TIKZ_BODY}\n${closing}`);
       await moment();
     });
 
-    const editorData = editor!.getDocument('json') as any;
-    const serializedMarkdown = editor!.getDocument('markdown') as unknown as string;
-
+    const editorData = editor.getDocument('json') as any;
     expect(editorData.root.children[0]).not.toMatchObject({ language: 'tikz', type: 'code' });
-    expect(serializedMarkdown).toContain('```TikZ');
   });
+
+  it.each(['```TikZ', '···tikz'])(
+    'should keep typed non-canonical opener %s out of the TikZ code path',
+    async (opening) => {
+      const editor = await renderChatEditor();
+
+      await typeOpeningShortcut(editor, opening);
+
+      const editorData = editor.getDocument('json') as any;
+      expect(editorData.root.children[0]).not.toMatchObject({ language: 'tikz', type: 'code' });
+      expect(editor.getDocument('markdown') as unknown as string).toContain(opening);
+    },
+  );
 });
