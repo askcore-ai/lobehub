@@ -142,6 +142,11 @@ describe('chat input scientific content', () => {
         $getRoot().clear().append(paragraph);
         text.selectEnd();
       });
+      await moment();
+    });
+
+    await act(async () => {
+      const lexicalEditor = editor!.getLexicalEditor()!;
       lexicalEditor.dispatchCommand(
         KEY_ENTER_COMMAND,
         new KeyboardEvent('keydown', { key: 'Enter' }),

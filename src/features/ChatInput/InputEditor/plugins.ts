@@ -1,5 +1,5 @@
 import {
-  type IEditor,
+  type getKernelFromEditor,
   IMarkdownShortCutService,
   MARKDOWN_READER_LEVEL_HIGH,
   ReactCodemirrorPlugin,
@@ -21,22 +21,24 @@ import { ReactActionTagPlugin } from './ActionTag';
 import { ReactReferTopicPlugin } from './ReferTopic';
 
 type EditorPlugins = NonNullable<Parameters<typeof Editor>[0]['plugins']>;
+type IEditorKernel = ReturnType<typeof getKernelFromEditor>;
 
 if (!LANGUAGES.some(({ value }) => value === 'tikz')) {
   LANGUAGES.push({ name: 'TikZ', syntax: 'text/x-stex', value: 'tikz' });
 }
 
-const guardedEditors = new WeakSet<IEditor>();
+class TikzFenceGuardPlugin {
+  static pluginName = 'TikzFenceGuardPlugin';
 
-const ReactTikzFenceGuardPlugin: FC = () => {
-  const [editor] = useLexicalComposerContext();
+  private kernel: IEditorKernel;
 
-  useLayoutEffect(() => {
-    if (guardedEditors.has(editor)) return;
+  constructor(kernel: IEditorKernel) {
+    this.kernel = kernel;
+  }
 
-    const markdownService = editor.requireService(IMarkdownShortCutService);
+  onInit(): void {
+    const markdownService = this.kernel.requireService(IMarkdownShortCutService);
     if (!markdownService) return;
-    guardedEditors.add(editor);
 
     // The upstream CodeMirror reader normalizes language case and drops fence metadata.
     // Reject TikZ-like variants before that lossy conversion can make them look eligible.
@@ -64,6 +66,14 @@ const ReactTikzFenceGuardPlugin: FC = () => {
       trigger: 'enter',
       type: 'element',
     });
+  }
+}
+
+const ReactTikzFenceGuardPlugin: FC = () => {
+  const [editor] = useLexicalComposerContext();
+
+  useLayoutEffect(() => {
+    editor.registerPlugin(TikzFenceGuardPlugin);
   }, [editor]);
 
   return null;
