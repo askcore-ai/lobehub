@@ -3,6 +3,8 @@ import { SKIP, visit } from 'unist-util-visit';
 export const TIKZ_DIAGRAM_TAG = 'tikz-diagram';
 
 const isTikzFence = (node: any) => {
+  if (node?.data?.meta !== undefined) return false;
+
   const className = node?.properties?.className;
 
   if (!Array.isArray(className)) return className === 'language-tikz';
