@@ -7,6 +7,7 @@ import Mention from './Mention';
 import Skill from './Skill';
 import Task from './Task';
 import Thinking from './Thinking';
+import TikZ from './TikZ';
 import Tool from './Tool';
 import { type MarkdownElement } from './type';
 import UserFeedback from './UserFeedback';
@@ -25,4 +26,5 @@ export const markdownElements: MarkdownElement[] = [
   UserFeedback,
   ImageSearchRef,
   LobeAgents,
+  TikZ,
 ];
