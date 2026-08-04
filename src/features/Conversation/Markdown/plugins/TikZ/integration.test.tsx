@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { Markdown } from '@lobehub/ui';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -16,6 +19,46 @@ import {
 
 afterEach(cleanup);
 
+interface ClassificationCase {
+  block: {
+    complete: boolean;
+    kind: 'code' | 'prose';
+    language: null | string;
+    source: string;
+  };
+  expected: 'diagram' | 'unchanged';
+  id: string;
+}
+
+const commonFixturePath = path.resolve(
+  process.cwd(),
+  '../aitutor/spec/rendering/scientific_content_rendering.fixtures.json',
+);
+const commonClassificationCases: ClassificationCase[] | undefined = fs.existsSync(commonFixturePath)
+  ? JSON.parse(fs.readFileSync(commonFixturePath, 'utf8')).classification_cases
+  : undefined;
+
+const blockMarkdown = ({ complete, kind, language, source }: ClassificationCase['block']) => {
+  if (kind === 'prose') return source;
+
+  return `\`\`\`${language || ''}\n${source}${complete ? '\n```' : ''}`;
+};
+
+const renderWithTikzRoute = (content: string) => {
+  const element = markdownElements.find(({ tag }) => tag === TIKZ_DIAGRAM_TAG)!;
+
+  return render(
+    <Markdown
+      rehypePlugins={[element.rehypePlugin]}
+      components={{
+        [TIKZ_DIAGRAM_TAG]: () => <div data-testid="tikz-routed" />,
+      }}
+    >
+      {content}
+    </Markdown>,
+  );
+};
+
 describe('TikZJax application policy', () => {
   it('registers one TikZ element for assistant and user Markdown', () => {
     const element = markdownElements.find(({ tag }) => tag === TIKZ_DIAGRAM_TAG);
@@ -28,24 +71,53 @@ describe('TikZJax application policy', () => {
   });
 
   it('does not route a fence whose info string contains extra tokens', () => {
-    const element = markdownElements.find(({ tag }) => tag === TIKZ_DIAGRAM_TAG)!;
     const source = String.raw`\begin{tikzpicture}
   \draw (0,0) -- (1,1);
 \end{tikzpicture}`;
 
-    render(
-      <Markdown
-        rehypePlugins={[element.rehypePlugin]}
-        components={{
-          [TIKZ_DIAGRAM_TAG]: () => <div data-testid="tikz-routed" />,
-        }}
-      >
-        {`\`\`\`tikz title=diagram\n${source}\n\`\`\``}
-      </Markdown>,
-    );
+    renderWithTikzRoute(`\`\`\`tikz title=diagram\n${source}\n\`\`\``);
 
     expect(screen.queryByTestId('tikz-routed')).not.toBeInTheDocument();
     expect(screen.getByText(/\\begin\{tikzpicture\}/)).toBeInTheDocument();
+  });
+
+  it.skipIf(!commonClassificationCases)(
+    'matches every classification case in the paired common fixture',
+    () => {
+      for (const fixture of commonClassificationCases!) {
+        cleanup();
+        renderWithTikzRoute(blockMarkdown(fixture.block));
+
+        expect(Boolean(screen.queryByTestId('tikz-routed')), fixture.id).toBe(
+          fixture.expected === 'diagram',
+        );
+      }
+    },
+  );
+
+  it('isolates two valid blocks from adjacent prose, KaTeX, and an invalid fence', () => {
+    const diagram = String.raw`\begin{tikzpicture}
+  \draw (0,0) -- (1,1);
+\end{tikzpicture}`;
+    const content = `before\n\n\`\`\`tikz\n${diagram}\n\`\`\`\n\nmiddle $x^2$\n\n\`\`\`latex\n${diagram}\n\`\`\`\n\nafter\n\n\`\`\`tikz\n${diagram}\n\`\`\``;
+    const { container } = renderWithTikzRoute(content);
+
+    expect(screen.getAllByTestId('tikz-routed')).toHaveLength(2);
+    expect(screen.getByText('before')).toBeInTheDocument();
+    expect(screen.getByText('after')).toBeInTheDocument();
+    expect(container.querySelector('.katex')).not.toBeNull();
+    expect(container.querySelector('code.language-latex')).not.toBeNull();
+  });
+
+  it('loads no TikZJax asset for ordinary Markdown or an incomplete fence', () => {
+    const incomplete = String.raw`\begin{tikzpicture}
+  \draw (0,0) -- (1,1);`;
+
+    renderWithTikzRoute(`ordinary $x$\n\n\`\`\`tikz\n${incomplete}`);
+
+    expect(document.querySelector('script[data-askcore-tikzjax-runtime]')).toBeNull();
+    expect(document.querySelector('link[data-askcore-tikzjax-fonts]')).toBeNull();
+    expect(screen.queryByTestId('tikz-routed')).not.toBeInTheDocument();
   });
 
   it('pins the selected runtime as an exact production dependency', () => {
