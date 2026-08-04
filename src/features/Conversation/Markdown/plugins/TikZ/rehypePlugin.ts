@@ -5,9 +5,11 @@ export const TIKZ_DIAGRAM_TAG = 'tikz-diagram';
 const isTikzFence = (node: any) => {
   const className = node?.properties?.className;
 
-  return Array.isArray(className)
-    ? className.includes('language-tikz')
-    : className === 'language-tikz';
+  if (!Array.isArray(className)) return className === 'language-tikz';
+
+  return (
+    className.filter((value) => String(value).startsWith('language-')).join() === 'language-tikz'
+  );
 };
 
 const hasOneCompleteTikzPicture = (source: string) => {
