@@ -33,11 +33,14 @@ type RichTextPiece =
   | { markdown: string; type: 'tikz' };
 
 interface MarkdownToken {
+  emptyRoot?: Record<string, any>;
   node?: Record<string, any>;
   rootChild?: Record<string, any>;
   rootIndex?: number;
   text: string;
 }
+
+const INLINE_RICH_NODE_SENTINEL = '\uFFFC';
 
 export const splitRichTextTikz = (editorState: SerializedEditorState): RichTextChunk[] => {
   const root = editorState.root as Record<string, any>;
@@ -53,11 +56,15 @@ export const splitRichTextTikz = (editorState: SerializedEditorState): RichTextC
       const tokenStart = offset;
       const tokenEnd = offset + token.text.length;
       offset = tokenEnd;
-      if (!token.node || !token.rootChild || token.rootIndex === undefined) continue;
 
       const sliceStart = Math.max(start, tokenStart) - tokenStart;
       const sliceEnd = Math.min(end, tokenEnd) - tokenStart;
       if (sliceStart >= sliceEnd) continue;
+      if (token.emptyRoot) {
+        pieces.push({ rootChild: token.emptyRoot, type: 'root' });
+        continue;
+      }
+      if (!token.node || !token.rootChild || token.rootIndex === undefined) continue;
 
       const node =
         token.node.type === 'text'
@@ -90,18 +97,35 @@ export const splitRichTextTikz = (editorState: SerializedEditorState): RichTextC
   };
 
   for (const [rootIndex, rootChild] of (root.children as Record<string, any>[]).entries()) {
-    if (!Array.isArray(rootChild.children) || rootChild.children.length === 0) {
+    const isPlainParagraph =
+      rootChild.type === 'paragraph' && rootChild.format === '' && rootChild.indent === 0;
+    if (!isPlainParagraph || !Array.isArray(rootChild.children)) {
       flushMarkdownRun();
       pieces.push({ rootChild, type: 'root' });
       continue;
     }
+    if (rootChild.children.length === 0) {
+      const previous = markdownRun.at(-1);
+      if (previous?.rootIndex !== undefined && previous.rootIndex !== rootIndex) {
+        markdownRun.push({ text: '\n\n' });
+      }
+      markdownRun.push({ emptyRoot: rootChild, rootIndex, text: '\n\n' });
+      continue;
+    }
 
     for (const node of rootChild.children as Record<string, any>[]) {
-      const isText = node.type === 'text' && typeof node.text === 'string';
+      const isText =
+        node.type === 'text' &&
+        typeof node.text === 'string' &&
+        node.format === 0 &&
+        node.mode === 'normal' &&
+        node.style === '';
       const isLineBreak = node.type === 'linebreak';
       if (!isText && !isLineBreak) {
+        markdownRun.push({ rootIndex, text: INLINE_RICH_NODE_SENTINEL });
         flushMarkdownRun();
         pieces.push({ node, rootChild, rootIndex, type: 'child' });
+        markdownRun.push({ rootIndex, text: INLINE_RICH_NODE_SENTINEL });
         continue;
       }
 
