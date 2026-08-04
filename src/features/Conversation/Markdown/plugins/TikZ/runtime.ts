@@ -197,7 +197,7 @@ export const compileTikz = async (source: string): Promise<TikzCompileResult> =>
     host.style.width = '1px';
 
     let settled = false;
-    const observer = new MutationObserver(() => inspect());
+    const observer = new MutationObserver(() => inspectFailure());
     const finish = (result: TikzCompileResult) => {
       if (settled) return;
       settled = true;
@@ -206,12 +206,15 @@ export const compileTikz = async (source: string): Promise<TikzCompileResult> =>
       host.remove();
       resolve(result);
     };
-    const inspect = () => {
+    const inspectFailure = () => {
       if (host.querySelector('.tikzjax-broken-wrapper')) {
         finish({ reason: 'syntax', status: 'failed' });
-        return;
       }
+    };
 
+    const inspectRendered = () => {
+      inspectFailure();
+      if (settled) return;
       const svg = host.querySelector<SVGSVGElement>(
         '.tikzjax-wrapper:not(.tikzjax-loading) svg:not(.tikzjax-loader)',
       );
@@ -224,7 +227,7 @@ export const compileTikz = async (source: string): Promise<TikzCompileResult> =>
       }
     };
 
-    host.addEventListener('tikzjax-load-finished', inspect);
+    host.addEventListener('tikzjax-load-finished', inspectRendered);
     observer.observe(host, { childList: true, subtree: true });
     const timeout = window.setTimeout(
       () => finish({ reason: 'timeout', status: 'failed' }),

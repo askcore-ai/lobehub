@@ -204,8 +204,17 @@ describe('TikZJax application policy', () => {
     const wrapper = document.createElement('span');
     wrapper.className = 'tikzjax-wrapper';
     wrapper.innerHTML =
-      '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0" stroke="#c00"/></svg>';
+      '<svg xmlns="http://www.w3.org/2000/svg"><style>transient runtime state</style></svg>';
     sourceScript!.replaceWith(wrapper);
+    let settled = false;
+    void compilation.finally(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+
+    wrapper.innerHTML =
+      '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0" stroke="#c00"/></svg>';
     wrapper
       .querySelector('svg')!
       .dispatchEvent(new Event('tikzjax-load-finished', { bubbles: true }));
