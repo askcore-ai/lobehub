@@ -2,6 +2,7 @@ import { Flexbox } from '@lobehub/ui';
 import { memo, useMemo } from 'react';
 
 import MarkdownMessage from '@/features/Conversation/Markdown';
+import { containsCompleteTikzFence } from '@/features/Conversation/Markdown/plugins/TikZ/rehypePlugin';
 import { cleanSpeakerTag } from '@/store/chat/utils/cleanSpeakerTag';
 import { type UIChatMessage } from '@/types/index';
 
@@ -25,12 +26,17 @@ const UserMessageContent = memo<UIChatMessage>(
 
     const hasEditorData =
       editorData && typeof editorData === 'object' && Object.keys(editorData).length > 0;
-
-    const textBody = hasEditorData ? (
-      <RichTextMessage editorState={editorData} />
-    ) : (
-      displayContent && <MarkdownMessage {...markdownProps}>{displayContent}</MarkdownMessage>
+    const hasTikzFence = useMemo(
+      () => !!displayContent && containsCompleteTikzFence(displayContent),
+      [displayContent],
     );
+
+    const textBody =
+      hasEditorData && !hasTikzFence ? (
+        <RichTextMessage editorState={editorData} />
+      ) : (
+        displayContent && <MarkdownMessage {...markdownProps}>{displayContent}</MarkdownMessage>
+      );
 
     return (
       <Flexbox gap={8} id={id}>

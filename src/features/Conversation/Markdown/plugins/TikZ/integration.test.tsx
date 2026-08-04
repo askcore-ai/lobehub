@@ -225,4 +225,26 @@ describe('TikZJax application policy', () => {
     });
     expect(document.querySelector('[data-askcore-tikz-compile]')).toBeNull();
   });
+
+  it('terminates a block when the runtime never reports a result', async () => {
+    const previousRuntime = (window as any).TikzJax;
+    (window as any).TikzJax = true;
+    vi.useFakeTimers();
+
+    try {
+      const compilation = compileTikz(String.raw`\begin{tikzpicture}
+  \draw (0,0) -- (1,1);
+\end{tikzpicture}`);
+      await Promise.resolve();
+
+      expect(document.querySelector('[data-askcore-tikz-compile]')).not.toBeNull();
+      await vi.advanceTimersByTimeAsync(TIKZJAX_RENDER_TIMEOUT_MS);
+
+      await expect(compilation).resolves.toEqual({ reason: 'timeout', status: 'failed' });
+      expect(document.querySelector('[data-askcore-tikz-compile]')).toBeNull();
+    } finally {
+      (window as any).TikzJax = previousRuntime;
+      vi.useRealTimers();
+    }
+  });
 });

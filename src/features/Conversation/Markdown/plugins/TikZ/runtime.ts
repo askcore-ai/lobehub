@@ -209,6 +209,7 @@ export const compileTikz = async (source: string): Promise<TikzCompileResult> =>
     const finish = (result: TikzCompileResult) => {
       if (settled) return;
       settled = true;
+      window.clearTimeout(timeout);
       observer.disconnect();
       host.remove();
       resolve(result);
@@ -236,6 +237,10 @@ export const compileTikz = async (source: string): Promise<TikzCompileResult> =>
 
     host.addEventListener('tikzjax-load-finished', inspectRendered);
     observer.observe(host, { childList: true, subtree: true });
+    const timeout = window.setTimeout(
+      () => finish({ reason: 'timeout', status: 'failed' }),
+      TIKZJAX_RENDER_TIMEOUT_MS,
+    );
 
     const input = document.createElement('script');
     input.type = 'text/tikz';

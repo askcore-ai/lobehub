@@ -62,9 +62,45 @@ describe('User MessageContent', () => {
     expect(screen.queryByTestId('rich-message')).not.toBeInTheDocument();
   });
 
+  it('should render a complete TikZ fence through Markdown when editorData exists', () => {
+    render(
+      <MessageContent
+        content={'```tikz\n\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}\n```'}
+        createdAt={Date.now()}
+        editorData={{ root: { children: [], type: 'root', version: 1 } }}
+        id={'msg-tikz'}
+        role={'user'}
+        updatedAt={Date.now()}
+      />,
+    );
+
+    expect(screen.getByTestId('markdown-message')).toBeInTheDocument();
+    expect(screen.queryByTestId('rich-message')).not.toBeInTheDocument();
+  });
+
+  it('should keep an incomplete TikZ fence in the rich-text path', () => {
+    render(
+      <MessageContent
+        content={'```tikz\n\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);'}
+        createdAt={Date.now()}
+        editorData={{ root: { children: [], type: 'root', version: 1 } }}
+        id={'msg-incomplete-tikz'}
+        role={'user'}
+        updatedAt={Date.now()}
+      />,
+    );
+
+    expect(screen.getByTestId('rich-message')).toBeInTheDocument();
+    expect(screen.queryByTestId('markdown-message')).not.toBeInTheDocument();
+  });
+
   it('should strip selected skill context from rendered markdown', () => {
     render(
       <MessageContent
+        createdAt={Date.now()}
+        id={'msg-3'}
+        role={'user'}
+        updatedAt={Date.now()}
         content={`Visible request
 
 <!-- SYSTEM CONTEXT (NOT PART OF USER QUERY) -->
@@ -73,10 +109,6 @@ describe('User MessageContent', () => {
 SEE5_SENTINEL_SKILL_SOURCE_DO_NOT_LEAK
 </selected_skill_context>
 <!-- END SYSTEM CONTEXT -->`}
-        createdAt={Date.now()}
-        id={'msg-3'}
-        role={'user'}
-        updatedAt={Date.now()}
       />,
     );
 

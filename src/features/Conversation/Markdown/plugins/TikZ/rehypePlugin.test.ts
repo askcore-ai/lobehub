@@ -1,8 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
-import rehypePlugin, { TIKZ_DIAGRAM_TAG } from './rehypePlugin';
+import rehypePlugin, { containsCompleteTikzFence, TIKZ_DIAGRAM_TAG } from './rehypePlugin';
 
 describe('TikZ conversation Markdown adapter', () => {
+  it('detects only a complete exact fence for rich sent-message routing', () => {
+    const source = String.raw`\begin{tikzpicture}
+  \draw (0,0) -- (1,1);
+\end{tikzpicture}`;
+
+    expect(containsCompleteTikzFence(`before\n\n\`\`\`tikz\n${source}\n\`\`\``)).toBe(true);
+    expect(containsCompleteTikzFence(`\`\`\`tikz\n${source}`)).toBe(false);
+    expect(containsCompleteTikzFence(`\`\`\`latex\n${source}\n\`\`\``)).toBe(false);
+    expect(containsCompleteTikzFence(`\`\`\`tikz title=x\n${source}\n\`\`\``)).toBe(false);
+  });
+
   it('routes one exact tikz fence with a complete tikzpicture environment', () => {
     const source = String.raw`\begin{tikzpicture}
   \draw (0,0) -- (1,1);

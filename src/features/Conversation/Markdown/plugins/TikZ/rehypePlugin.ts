@@ -28,6 +28,22 @@ const hasOneCompleteTikzPicture = (source: string) => {
   );
 };
 
+export const containsCompleteTikzFence = (markdown: string) => {
+  const lines = markdown.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
+
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!/^```tikz[\t ]*$/.test(lines[index])) continue;
+
+    const end = lines.findIndex((line, offset) => offset > index && /^```[\t ]*$/.test(line));
+    if (end === -1) return false;
+
+    if (hasOneCompleteTikzPicture(lines.slice(index + 1, end).join('\n'))) return true;
+    index = end;
+  }
+
+  return false;
+};
+
 const hasCompleteOuterFence = (node: any, file: any) => {
   const start = node?.position?.start?.offset;
   const end = node?.position?.end?.offset;
