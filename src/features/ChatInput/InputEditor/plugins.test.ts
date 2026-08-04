@@ -1,33 +1,58 @@
-import './plugins';
-
+/**
+ * @vitest-environment happy-dom
+ */
+import { type IEditor, moment } from '@lobehub/editor';
 import { LANGUAGES } from '@lobehub/editor/codemirror';
-import { createHeadlessEditor } from '@lobehub/editor/headless';
+import { Editor } from '@lobehub/editor/react';
+import { act, cleanup, render, waitFor } from '@testing-library/react';
+import { createElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 
-const editors: ReturnType<typeof createHeadlessEditor>[] = [];
+import { createChatInputRichPlugins } from './plugins';
 
 afterEach(() => {
-  for (const editor of editors) editor.destroy();
-  editors.length = 0;
+  cleanup();
 });
 
 describe('chat input scientific content', () => {
-  it('should preserve an explicit TikZ fence through editor serialization', () => {
+  it('should preserve an explicit TikZ fence through editor serialization', async () => {
     const markdown =
       '```tikz\n\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}\n```';
-    const editor = createHeadlessEditor().hydrateMarkdown(markdown);
-    editors.push(editor);
+    let editor: IEditor | undefined;
 
-    const exported = editor.export();
+    render(
+      createElement(Editor, {
+        content: '',
+        onInit: (instance: IEditor) => {
+          editor = instance;
+        },
+        plugins: createChatInputRichPlugins({ linkPlugin: false }),
+        type: 'text',
+        variant: 'chat',
+      }),
+    );
+
+    await act(async () => {
+      await moment();
+    });
+    await waitFor(() => expect(editor).toBeDefined());
+
+    await act(async () => {
+      editor!.setDocument('markdown', markdown);
+      await moment();
+    });
+
+    const editorData = editor!.getDocument('json') as any;
+    const serializedMarkdown = editor!.getDocument('markdown') as unknown as string;
 
     expect(LANGUAGES).toContainEqual(
       expect.objectContaining({ syntax: 'text/x-stex', value: 'tikz' }),
     );
-    expect(exported.editorData.root.children[0]).toMatchObject({
+    expect(editorData.root.children[0]).toMatchObject({
       code: '\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}',
       language: 'tikz',
       type: 'code',
     });
-    expect(exported.markdown.trim()).toBe(markdown);
+    expect(serializedMarkdown.trim()).toBe(markdown);
   });
 });
