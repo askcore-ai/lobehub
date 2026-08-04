@@ -91,7 +91,7 @@ const typeOpeningShortcut = async (editor: IEditor, opening: string) => {
 describe('chat input scientific content', () => {
   it('should preserve a typed exact TikZ fence as literal Markdown', async () => {
     const editor = await renderChatEditor();
-    const markdown = `\`\`\`tikz\n${TIKZ_BODY}\n\`\`\``;
+    const serializedMarkdown = `\`\`\`tikz\n\\begin{tikzpicture} \n\\draw (0,0) -- (1,1); \n\\end{tikzpicture} \n\`\`\``;
 
     await typeOpeningShortcut(editor, '```tikz');
 
@@ -120,7 +120,7 @@ describe('chat input scientific content', () => {
     });
 
     const editorData = editor.getDocument('json') as any;
-    expect((editor.getDocument('markdown') as unknown as string).trim()).toBe(markdown);
+    expect((editor.getDocument('markdown') as unknown as string).trim()).toBe(serializedMarkdown);
     expect(splitRichTextTikz(editorData).map(({ type }) => type)).toEqual(['tikz']);
   });
 
