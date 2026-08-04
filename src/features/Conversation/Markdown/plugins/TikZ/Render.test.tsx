@@ -64,6 +64,6 @@ describe('TikZ diagram renderer', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Scientific diagram could not be rendered',
     );
-    expect(screen.getByText(source)).toBeInTheDocument();
+    expect(screen.getByLabelText('Original TikZ source').textContent).toBe(source);
   });
 });
