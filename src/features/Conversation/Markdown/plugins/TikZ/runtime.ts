@@ -150,6 +150,12 @@ const loadTikzJaxRuntime = () => {
   runtimeLoad = new Promise<void>((resolve, reject) => {
     const runtime = document.createElement('script');
     let loaded = false;
+    const assetTimeout = window.setTimeout(() => {
+      if (loaded) return;
+      runtime.remove();
+      runtimeLoad = undefined;
+      reject(new Error('TikZJax runtime asset timed out'));
+    }, TIKZJAX_RENDER_TIMEOUT_MS);
     runtime.async = true;
     runtime.dataset.askcoreTikzjaxRuntime = '';
     runtime.src = `${assetBaseUrl}/tikzjax.min.js`;
@@ -157,6 +163,7 @@ const loadTikzJaxRuntime = () => {
       'load',
       () => {
         loaded = true;
+        window.clearTimeout(assetTimeout);
         resolve();
       },
       { once: true },
@@ -166,6 +173,7 @@ const loadTikzJaxRuntime = () => {
       () => {
         window.setTimeout(() => {
           if (loaded) return;
+          window.clearTimeout(assetTimeout);
           runtimeLoad = undefined;
           reject(new Error('TikZJax runtime asset failed to load'));
         }, 50);
@@ -201,7 +209,6 @@ export const compileTikz = async (source: string): Promise<TikzCompileResult> =>
     const finish = (result: TikzCompileResult) => {
       if (settled) return;
       settled = true;
-      window.clearTimeout(timeout);
       observer.disconnect();
       host.remove();
       resolve(result);
@@ -229,10 +236,6 @@ export const compileTikz = async (source: string): Promise<TikzCompileResult> =>
 
     host.addEventListener('tikzjax-load-finished', inspectRendered);
     observer.observe(host, { childList: true, subtree: true });
-    const timeout = window.setTimeout(
-      () => finish({ reason: 'timeout', status: 'failed' }),
-      TIKZJAX_RENDER_TIMEOUT_MS + 1000,
-    );
 
     const input = document.createElement('script');
     input.type = 'text/tikz';
