@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import rehypePlugin, { containsCompleteTikzFence, TIKZ_DIAGRAM_TAG } from './rehypePlugin';
+import rehypePlugin, { findCompleteTikzFences, TIKZ_DIAGRAM_TAG } from './rehypePlugin';
 
 describe('TikZ conversation Markdown adapter', () => {
   it('detects only a complete exact fence for rich sent-message routing', () => {
@@ -8,10 +8,21 @@ describe('TikZ conversation Markdown adapter', () => {
   \draw (0,0) -- (1,1);
 \end{tikzpicture}`;
 
-    expect(containsCompleteTikzFence(`before\n\n\`\`\`tikz\n${source}\n\`\`\``)).toBe(true);
-    expect(containsCompleteTikzFence(`\`\`\`tikz\n${source}`)).toBe(false);
-    expect(containsCompleteTikzFence(`\`\`\`latex\n${source}\n\`\`\``)).toBe(false);
-    expect(containsCompleteTikzFence(`\`\`\`tikz title=x\n${source}\n\`\`\``)).toBe(false);
+    const markdown = `before\n\n\`\`\`tikz\n${source}\n\`\`\`\nafter`;
+    expect(findCompleteTikzFences(markdown)).toEqual([
+      {
+        end: markdown.indexOf('\nafter'),
+        markdown: `\`\`\`tikz\n${source}\n\`\`\``,
+        source,
+        start: markdown.indexOf('```tikz'),
+      },
+    ]);
+    expect(findCompleteTikzFences(`\`\`\`tikz\n${source}`)).toEqual([]);
+    expect(findCompleteTikzFences(`\`\`\`latex\n${source}\n\`\`\``)).toEqual([]);
+    expect(findCompleteTikzFences(`\`\`\`tikz title=x\n${source}\n\`\`\``)).toEqual([]);
+    expect(findCompleteTikzFences(`\`\`\`\`text\n\`\`\`tikz\n${source}\n\`\`\`\n\`\`\`\``)).toEqual(
+      [],
+    );
   });
 
   it('routes one exact tikz fence with a complete tikzpicture environment', () => {

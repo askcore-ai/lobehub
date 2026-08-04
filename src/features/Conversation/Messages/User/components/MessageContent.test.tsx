@@ -12,8 +12,10 @@ vi.mock('../useMarkdown', () => ({
 }));
 
 vi.mock('./RichTextMessage', () => ({
-  default: ({ editorState }: any) => (
-    <div data-testid="rich-message">{JSON.stringify(editorState)}</div>
+  default: ({ editorState, markdownProps }: any) => (
+    <div data-has-markdown-props={String(!!markdownProps)} data-testid="rich-message">
+      {JSON.stringify(editorState)}
+    </div>
   ),
 }));
 
@@ -62,7 +64,7 @@ describe('User MessageContent', () => {
     expect(screen.queryByTestId('rich-message')).not.toBeInTheDocument();
   });
 
-  it('should render a complete TikZ fence through Markdown when editorData exists', () => {
+  it('should keep a complete TikZ fence in the rich-text composite path', () => {
     render(
       <MessageContent
         content={'```tikz\n\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}\n```'}
@@ -74,8 +76,8 @@ describe('User MessageContent', () => {
       />,
     );
 
-    expect(screen.getByTestId('markdown-message')).toBeInTheDocument();
-    expect(screen.queryByTestId('rich-message')).not.toBeInTheDocument();
+    expect(screen.getByTestId('rich-message')).toHaveAttribute('data-has-markdown-props', 'true');
+    expect(screen.queryByTestId('markdown-message')).not.toBeInTheDocument();
   });
 
   it('should keep an incomplete TikZ fence in the rich-text path', () => {
