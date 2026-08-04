@@ -237,6 +237,46 @@ describe('RichTextMessage', () => {
     expect(splitRichTextTikz(editorState as any).map(({ type }) => type)).toEqual(['tikz']);
   });
 
+  it('should route one complete TikZ fence containing an empty paragraph', () => {
+    const editorState = {
+      root: {
+        children: [
+          paragraph('```tikz'),
+          paragraph('\\begin{tikzpicture}'),
+          { ...paragraph(''), children: [] },
+          paragraph('\\draw (0,0) -- (1,1);'),
+          paragraph('\\end{tikzpicture}'),
+          paragraph('```'),
+        ],
+        direction: null,
+        format: '',
+        indent: 0,
+        type: 'root',
+        version: 1,
+      },
+    };
+
+    expect(splitRichTextTikz(editorState as any).map(({ type }) => type)).toEqual(['tikz']);
+  });
+
+  it('should not treat an inline rich node as a line break before a fence', () => {
+    const editorState = structuredClone(mixedTikzEditorState) as any;
+    editorState.root.children[0].children = [
+      editorState.root.children[0].children[0],
+      {
+        detail: 0,
+        format: 0,
+        mode: 'normal',
+        style: '',
+        text: '```tikz\n\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}\n```',
+        type: 'text',
+        version: 1,
+      },
+    ];
+
+    expect(splitRichTextTikz(editorState).map(({ type }) => type)).toEqual(['rich']);
+  });
+
   it.each([
     { name: 'quote root', rootType: 'quote', textFormat: 0, textStyle: '' },
     { name: 'heading root', rootType: 'heading', textFormat: 0, textStyle: '' },
