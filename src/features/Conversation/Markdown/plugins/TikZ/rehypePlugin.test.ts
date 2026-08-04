@@ -7,10 +7,12 @@ describe('TikZ conversation Markdown adapter', () => {
     const source = String.raw`\begin{tikzpicture}
   \draw (0,0) -- (1,1);
 \end{tikzpicture}`;
+    const markdown = `\`\`\`tikz\n${source}\n\`\`\``;
     const tree = {
       children: [
         {
           children: [{ children: [{ type: 'text', value: source }], type: 'element' }],
+          position: { end: { offset: markdown.length }, start: { offset: 0 } },
           properties: {},
           tagName: 'pre',
           type: 'element',
@@ -21,7 +23,7 @@ describe('TikZ conversation Markdown adapter', () => {
     tree.children[0].children[0].properties = { className: ['language-tikz'] };
     tree.children[0].children[0].tagName = 'code';
 
-    rehypePlugin()(tree);
+    rehypePlugin()(tree, { value: markdown });
 
     expect(tree).toEqual({
       children: [
@@ -40,6 +42,7 @@ describe('TikZ conversation Markdown adapter', () => {
     const source = String.raw`\begin{tikzpicture}
   \draw (0,0) -- (1,1);
 \end{tikzpicture}`;
+    const markdown = `\`\`\`tikz\n${source}\n\`\`\``;
     const tree = {
       children: [
         {
@@ -52,6 +55,7 @@ describe('TikZ conversation Markdown adapter', () => {
             },
           ],
           properties: {},
+          position: { end: { offset: markdown.length }, start: { offset: 0 } },
           tagName: 'pre',
           type: 'element',
         },
@@ -60,7 +64,7 @@ describe('TikZ conversation Markdown adapter', () => {
     } as any;
     const original = structuredClone(tree);
 
-    rehypePlugin()(tree);
+    rehypePlugin()(tree, { value: markdown });
 
     expect(tree).toEqual(original);
   });

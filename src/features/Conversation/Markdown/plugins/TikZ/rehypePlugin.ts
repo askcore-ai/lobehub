@@ -28,14 +28,34 @@ const hasOneCompleteTikzPicture = (source: string) => {
   );
 };
 
-const rehypeTikz = () => (tree: any) => {
+const hasCompleteOuterFence = (node: any, file: any) => {
+  const start = node?.position?.start?.offset;
+  const end = node?.position?.end?.offset;
+  if (!Number.isInteger(start) || !Number.isInteger(end) || end <= start) return false;
+
+  const markdown = String(file?.value ?? '')
+    .slice(start, end)
+    .replaceAll('\r\n', '\n')
+    .replaceAll('\r', '\n');
+  const lines = markdown.split('\n');
+
+  return /^```tikz[\t ]*$/.test(lines[0]) && /^```[\t ]*$/.test(lines.at(-1) ?? '');
+};
+
+const rehypeTikz = () => (tree: any, file: any) => {
   visit(tree, 'element', (node: any, index: number | undefined, parent: any) => {
     if (index === undefined || !parent || node.tagName !== 'pre' || node.children?.length !== 1) {
       return;
     }
 
     const code = node.children[0];
-    if (!isTikzFence(code) || code.tagName !== 'code' || code.children?.length !== 1) return;
+    if (
+      !hasCompleteOuterFence(node, file) ||
+      !isTikzFence(code) ||
+      code.tagName !== 'code' ||
+      code.children?.length !== 1
+    )
+      return;
 
     const text = code.children[0];
     if (text.type !== 'text' || !hasOneCompleteTikzPicture(text.value)) return;
