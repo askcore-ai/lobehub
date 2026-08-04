@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { Markdown } from '@lobehub/ui';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import packageJson from '../../../../../../package.json';
 import { markdownElements } from '../index';
@@ -12,6 +14,8 @@ import {
   TIKZJAX_VERSION,
 } from './runtime';
 
+afterEach(cleanup);
+
 describe('TikZJax application policy', () => {
   it('registers one TikZ element for assistant and user Markdown', () => {
     const element = markdownElements.find(({ tag }) => tag === TIKZ_DIAGRAM_TAG);
@@ -21,6 +25,27 @@ describe('TikZJax application policy', () => {
       scope: 'all',
       tag: TIKZ_DIAGRAM_TAG,
     });
+  });
+
+  it('does not route a fence whose info string contains extra tokens', () => {
+    const element = markdownElements.find(({ tag }) => tag === TIKZ_DIAGRAM_TAG)!;
+    const source = String.raw`\begin{tikzpicture}
+  \draw (0,0) -- (1,1);
+\end{tikzpicture}`;
+
+    render(
+      <Markdown
+        rehypePlugins={[element.rehypePlugin]}
+        components={{
+          [TIKZ_DIAGRAM_TAG]: () => <div data-testid="tikz-routed" />,
+        }}
+      >
+        {`\`\`\`tikz title=diagram\n${source}\n\`\`\``}
+      </Markdown>,
+    );
+
+    expect(screen.queryByTestId('tikz-routed')).not.toBeInTheDocument();
+    expect(screen.getByText(/\\begin\{tikzpicture\}/)).toBeInTheDocument();
   });
 
   it('pins the selected runtime as an exact production dependency', () => {
