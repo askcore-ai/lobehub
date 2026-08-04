@@ -149,15 +149,26 @@ const loadTikzJaxRuntime = () => {
 
   runtimeLoad = new Promise<void>((resolve, reject) => {
     const runtime = document.createElement('script');
+    let loaded = false;
     runtime.async = true;
     runtime.dataset.askcoreTikzjaxRuntime = '';
     runtime.src = `${assetBaseUrl}/tikzjax.min.js`;
-    runtime.addEventListener('load', () => resolve(), { once: true });
+    runtime.addEventListener(
+      'load',
+      () => {
+        loaded = true;
+        resolve();
+      },
+      { once: true },
+    );
     runtime.addEventListener(
       'error',
       () => {
-        runtimeLoad = undefined;
-        reject(new Error('TikZJax runtime asset failed to load'));
+        window.setTimeout(() => {
+          if (loaded) return;
+          runtimeLoad = undefined;
+          reject(new Error('TikZJax runtime asset failed to load'));
+        }, 50);
       },
       { once: true },
     );
