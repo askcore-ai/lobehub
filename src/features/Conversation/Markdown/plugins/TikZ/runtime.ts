@@ -96,10 +96,11 @@ const containsUnsafeSvgContent = (svg: SVGSVGElement) => {
 };
 
 const parseSvg = (content: string) => {
-  const document = new DOMParser().parseFromString(content, 'image/svg+xml');
-  const root = document.documentElement;
+  const template = document.createElement('template');
+  template.innerHTML = content.trim();
+  const root = template.content.firstElementChild;
 
-  if (root.localName.toLowerCase() !== 'svg' || document.querySelector('parsererror')) {
+  if (!root || root.localName.toLowerCase() !== 'svg' || template.content.children.length !== 1) {
     throw new Error('unsafe TikZ SVG');
   }
 
