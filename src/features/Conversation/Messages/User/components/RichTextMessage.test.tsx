@@ -81,6 +81,62 @@ const mixedTikzEditorState = {
   },
 };
 
+const codeNodeTikzEditorState = {
+  root: {
+    children: [
+      {
+        children: [
+          {
+            detail: 0,
+            format: 0,
+            mode: 'normal',
+            style: '',
+            text: 'before',
+            type: 'text',
+            version: 1,
+          },
+        ],
+        direction: null,
+        format: '',
+        indent: 0,
+        type: 'paragraph',
+        version: 1,
+      },
+      {
+        code: '\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}',
+        codeTheme: 'default',
+        language: 'tikz',
+        options: { indentWithTabs: false, lineNumbers: false, tabSize: 2 },
+        type: 'code',
+        version: 1,
+      },
+      {
+        children: [
+          {
+            detail: 0,
+            format: 0,
+            mode: 'normal',
+            style: '',
+            text: 'after',
+            type: 'text',
+            version: 1,
+          },
+        ],
+        direction: null,
+        format: '',
+        indent: 0,
+        type: 'paragraph',
+        version: 1,
+      },
+    ],
+    direction: null,
+    format: '',
+    indent: 0,
+    type: 'root',
+    version: 1,
+  },
+};
+
 afterEach(() => {
   cleanup();
 });
@@ -128,5 +184,16 @@ describe('RichTextMessage', () => {
     expect(getByTestId('markdown-message')).toBeInTheDocument();
     expect(container.textContent).toContain('Notebook');
     expect(container.textContent).toContain('Topic A');
+  });
+
+  it('should route the real chat-input TikZ code node without losing adjacent blocks', () => {
+    const chunks = splitRichTextTikz(codeNodeTikzEditorState as any);
+
+    expect(chunks.map(({ type }) => type)).toEqual(['rich', 'tikz', 'rich']);
+    expect((chunks[0] as any).editorState.root.children[0].children[0].text).toBe('before');
+    expect((chunks[1] as any).markdown).toBe(
+      '```tikz\n\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}\n```',
+    );
+    expect((chunks[2] as any).editorState.root.children[0].children[0].text).toBe('after');
   });
 });
