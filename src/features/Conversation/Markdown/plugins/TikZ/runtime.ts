@@ -112,6 +112,8 @@ export const sanitizeTikzSvg = (content: string) => {
   if (containsUnsafeSvgContent(source)) throw new Error('unsafe TikZ SVG');
 
   const sanitized = sanitizeSVGContent(content);
+  if (!sanitized.trim()) return source.outerHTML;
+
   const result = parseSvg(sanitized);
   if (containsUnsafeSvgContent(result)) throw new Error('unsafe TikZ SVG');
 
