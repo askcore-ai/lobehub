@@ -35,4 +35,33 @@ describe('TikZ conversation Markdown adapter', () => {
       type: 'root',
     });
   });
+
+  it('does not route a code node that declares another fence language', () => {
+    const source = String.raw`\begin{tikzpicture}
+  \draw (0,0) -- (1,1);
+\end{tikzpicture}`;
+    const tree = {
+      children: [
+        {
+          children: [
+            {
+              children: [{ type: 'text', value: source }],
+              properties: { className: ['language-tikz', 'language-latex'] },
+              tagName: 'code',
+              type: 'element',
+            },
+          ],
+          properties: {},
+          tagName: 'pre',
+          type: 'element',
+        },
+      ],
+      type: 'root',
+    } as any;
+    const original = structuredClone(tree);
+
+    rehypePlugin()(tree);
+
+    expect(tree).toEqual(original);
+  });
 });
