@@ -5,6 +5,7 @@ import { type IEditor, moment } from '@lobehub/editor';
 import { LANGUAGES } from '@lobehub/editor/codemirror';
 import { Editor } from '@lobehub/editor/react';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
+import { $createParagraphNode, $createTextNode, $getRoot, KEY_ENTER_COMMAND } from 'lexical';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -110,5 +111,48 @@ describe('chat input scientific content', () => {
     const editorData = editor!.getDocument('json') as any;
 
     expect(editorData.root.children[0]).not.toMatchObject({ language: 'tikz', type: 'code' });
+  });
+
+  it('should keep a typed case-variant fence out of the TikZ code path', async () => {
+    let editor: IEditor | undefined;
+
+    render(
+      createElement(Editor, {
+        content: '',
+        onInit: (instance: IEditor) => {
+          editor = instance;
+        },
+        plugins: createChatInputRichPlugins({ linkPlugin: false }),
+        type: 'text',
+        variant: 'chat',
+      }),
+    );
+
+    await act(async () => {
+      await moment();
+    });
+    await waitFor(() => expect(editor).toBeDefined());
+
+    await act(async () => {
+      const lexicalEditor = editor!.getLexicalEditor()!;
+      lexicalEditor.update(() => {
+        const paragraph = $createParagraphNode();
+        const text = $createTextNode('```TikZ');
+        paragraph.append(text);
+        $getRoot().clear().append(paragraph);
+        text.selectEnd();
+      });
+      lexicalEditor.dispatchCommand(
+        KEY_ENTER_COMMAND,
+        new KeyboardEvent('keydown', { key: 'Enter' }),
+      );
+      await moment();
+    });
+
+    const editorData = editor!.getDocument('json') as any;
+    const serializedMarkdown = editor!.getDocument('markdown') as unknown as string;
+
+    expect(editorData.root.children[0]).not.toMatchObject({ language: 'tikz', type: 'code' });
+    expect(serializedMarkdown).toContain('```TikZ');
   });
 });
