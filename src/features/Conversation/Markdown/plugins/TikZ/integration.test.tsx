@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import packageJson from '../../../../../../package.json';
+import { markdownElements } from '../index';
+import { TIKZ_DIAGRAM_TAG } from './rehypePlugin';
 import {
   compileTikz,
   createTikzJaxOptions,
@@ -11,6 +13,16 @@ import {
 } from './runtime';
 
 describe('TikZJax application policy', () => {
+  it('registers one TikZ element for assistant and user Markdown', () => {
+    const element = markdownElements.find(({ tag }) => tag === TIKZ_DIAGRAM_TAG);
+
+    expect(element).toMatchObject({
+      rehypePlugin: expect.any(Function),
+      scope: 'all',
+      tag: TIKZ_DIAGRAM_TAG,
+    });
+  });
+
   it('pins the selected runtime as an exact production dependency', () => {
     expect(packageJson.dependencies['@rod2ik/tikzjax']).toBe('1.5.0');
   });
