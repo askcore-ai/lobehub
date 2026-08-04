@@ -5,6 +5,7 @@ import { type IEditor, moment } from '@lobehub/editor';
 import { Editor } from '@lobehub/editor/react';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import {
+  $createLineBreakNode,
   $createParagraphNode,
   $createTextNode,
   $getRoot,
@@ -13,6 +14,8 @@ import {
 } from 'lexical';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { splitRichTextTikz } from '@/features/Conversation/Messages/User/components/RichTextMessage';
 
 import { createChatInputRichPlugins } from './plugins';
 
@@ -92,9 +95,9 @@ describe('chat input scientific content', () => {
 
     await typeOpeningShortcut(editor, '```tikz');
 
-    let editorData = editor.getDocument('json') as any;
-    expect(editorData.root.children[0]).toMatchObject({ type: 'paragraph' });
-    expect(editorData.root.children[0].children).toMatchObject([
+    const editorDataAfterOpening = editor.getDocument('json') as any;
+    expect(editorDataAfterOpening.root.children[0]).toMatchObject({ type: 'paragraph' });
+    expect(editorDataAfterOpening.root.children[0].children).toMatchObject([
       { text: '```tikz', type: 'text' },
       { type: 'linebreak' },
     ]);
@@ -103,14 +106,22 @@ describe('chat input scientific content', () => {
       editor.getLexicalEditor()!.update(() => {
         const paragraph = $getRoot().getFirstChild();
         if (!$isElementNode(paragraph)) throw new Error('Expected chat input paragraph');
-        paragraph.clear().append($createTextNode(markdown));
+        paragraph.append(
+          $createTextNode('\\begin{tikzpicture}'),
+          $createLineBreakNode(),
+          $createTextNode('\\draw (0,0) -- (1,1);'),
+          $createLineBreakNode(),
+          $createTextNode('\\end{tikzpicture}'),
+          $createLineBreakNode(),
+          $createTextNode('```'),
+        );
       });
       await moment();
     });
 
-    editorData = editor.getDocument('json') as any;
-    expect(editorData.root.children[0].children[0]).toMatchObject({ text: markdown });
+    const editorData = editor.getDocument('json') as any;
     expect((editor.getDocument('markdown') as unknown as string).trim()).toBe(markdown);
+    expect(splitRichTextTikz(editorData).map(({ type }) => type)).toEqual(['tikz']);
   });
 
   it.each([
