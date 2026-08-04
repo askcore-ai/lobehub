@@ -236,4 +236,23 @@ describe('RichTextMessage', () => {
 
     expect(splitRichTextTikz(editorState as any).map(({ type }) => type)).toEqual(['tikz']);
   });
+
+  it.each([
+    { name: 'quote root', rootType: 'quote', textFormat: 0, textStyle: '' },
+    { name: 'heading root', rootType: 'heading', textFormat: 0, textStyle: '' },
+    { name: 'formatted text', rootType: 'paragraph', textFormat: 1, textStyle: '' },
+    { name: 'styled text', rootType: 'paragraph', textFormat: 0, textStyle: 'color: red' },
+  ])(
+    'should keep a fence in $name in the rich-text path',
+    ({ rootType, textFormat, textStyle }) => {
+      const editorState = structuredClone(mixedTikzEditorState) as any;
+      const rootChild = editorState.root.children[0];
+      rootChild.type = rootType;
+      rootChild.children = [rootChild.children[1]];
+      rootChild.children[0].format = textFormat;
+      rootChild.children[0].style = textStyle;
+
+      expect(splitRichTextTikz(editorState).map(({ type }) => type)).toEqual(['rich']);
+    },
+  );
 });
