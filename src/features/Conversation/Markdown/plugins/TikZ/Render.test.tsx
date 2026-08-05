@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ScientificContentRenderContext } from './context';
 import Render from './Render';
 import { compileTikz } from './runtime';
 
@@ -40,6 +41,18 @@ describe('TikZ diagram renderer', () => {
     render(<Render {...props} />);
 
     expect(screen.getByRole('status')).toHaveTextContent('Rendering scientific diagram');
+  });
+
+  it('preserves source without compiling on excluded presentation surfaces', () => {
+    render(
+      <ScientificContentRenderContext value={false}>
+        <Render {...props} />
+      </ScientificContentRenderContext>,
+    );
+
+    expect(mockCompileTikz).not.toHaveBeenCalled();
+    expect(screen.getByText(source)).toBeInTheDocument();
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('renders sanitized SVG on a stable light canvas', async () => {
