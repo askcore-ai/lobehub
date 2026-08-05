@@ -256,7 +256,19 @@ describe('RichTextMessage', () => {
       },
     };
 
-    expect(splitRichTextTikz(editorState as any).map(({ type }) => type)).toEqual(['tikz']);
+    const chunks = splitRichTextTikz(editorState as any);
+
+    expect(chunks.map(({ type }) => type)).toEqual(['tikz']);
+    expect((chunks[0] as any).markdown).toBe(
+      [
+        '```tikz',
+        '\\begin{tikzpicture}',
+        '',
+        '\\draw (0,0) -- (1,1);',
+        '\\end{tikzpicture}',
+        '```',
+      ].join('\n\n'),
+    );
   });
 
   it('should not treat an inline rich node as a line break before a fence', () => {
