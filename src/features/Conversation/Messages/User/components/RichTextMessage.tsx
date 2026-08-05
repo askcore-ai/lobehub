@@ -105,10 +105,6 @@ export const splitRichTextTikz = (editorState: SerializedEditorState): RichTextC
       continue;
     }
     if (rootChild.children.length === 0) {
-      const previous = markdownRun.at(-1);
-      if (previous?.rootIndex !== undefined && previous.rootIndex !== rootIndex) {
-        markdownRun.push({ text: '\n\n' });
-      }
       markdownRun.push({ emptyRoot: rootChild, rootIndex, text: '\n\n' });
       continue;
     }
