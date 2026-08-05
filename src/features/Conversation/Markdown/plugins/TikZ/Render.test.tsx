@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ScientificContentRenderContext } from './context';
 import Render from './Render';
 import { compileTikz } from './runtime';
+import { stableScientificCanvas } from './tokens';
 
 vi.mock('./runtime', () => ({ compileTikz: vi.fn() }));
 vi.mock('react-i18next', () => ({
@@ -64,7 +65,10 @@ describe('TikZ diagram renderer', () => {
     render(<Render {...props} />);
 
     const canvas = await screen.findByTestId('tikz-diagram-canvas');
-    expect(canvas).toHaveStyle({ backgroundColor: '#fff', color: '#000' });
+    expect(canvas).toHaveStyle({
+      backgroundColor: stableScientificCanvas.backgroundColor,
+      color: stableScientificCanvas.foregroundColor,
+    });
     expect(canvas.querySelector('path')).toHaveAttribute('stroke', '#c00');
     expect(screen.queryByRole('alert')).toBeNull();
   });

@@ -1,21 +1,44 @@
 'use client';
 
+import { createStaticStyles } from 'antd-style';
 import { memo, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { type MarkdownElementProps } from '../type';
+import { useScientificContentRenderEnabled } from './context';
 import { compileTikz, type TikzCompileResult } from './runtime';
+import { stableScientificCanvas } from './tokens';
 
 interface TikzProperties {
   source: string;
 }
 
+const styles = createStaticStyles(({ css }) => ({
+  canvas: css`
+    overflow-x: auto;
+
+    max-width: 100%;
+    padding: 12px;
+
+    color: ${stableScientificCanvas.foregroundColor};
+
+    background-color: ${stableScientificCanvas.backgroundColor};
+  `,
+  source: css`
+    overflow-x: auto;
+    white-space: pre-wrap;
+  `,
+}));
+
 const Render = memo<MarkdownElementProps<TikzProperties>>(({ node }) => {
   const { t } = useTranslation('chat');
+  const enabled = useScientificContentRenderEnabled();
   const source = node.properties.source;
   const [result, setResult] = useState<TikzCompileResult>();
 
   useEffect(() => {
+    if (!enabled) return;
+
     let current = true;
     setResult(undefined);
     void compileTikz(source).then((nextResult) => {
@@ -25,7 +48,15 @@ const Render = memo<MarkdownElementProps<TikzProperties>>(({ node }) => {
     return () => {
       current = false;
     };
-  }, [source]);
+  }, [enabled, source]);
+
+  if (!enabled) {
+    return (
+      <pre className={styles.source}>
+        <code className="language-tikz">{source}</code>
+      </pre>
+    );
+  }
 
   if (!result) return <div role="status">{t('tikz.rendering')}</div>;
 
@@ -33,10 +64,7 @@ const Render = memo<MarkdownElementProps<TikzProperties>>(({ node }) => {
     return (
       <div role="alert">
         <strong>{t('tikz.renderFailed')}</strong>
-        <pre
-          aria-label={t('tikz.sourceLabel')}
-          style={{ overflowX: 'auto', whiteSpace: 'pre-wrap' }}
-        >
+        <pre aria-label={t('tikz.sourceLabel')} className={styles.source}>
           <code>{source}</code>
         </pre>
       </div>
@@ -46,16 +74,10 @@ const Render = memo<MarkdownElementProps<TikzProperties>>(({ node }) => {
   return (
     <div
       aria-label={t('tikz.diagramLabel')}
+      className={styles.canvas}
       dangerouslySetInnerHTML={{ __html: result.svg }}
       data-testid="tikz-diagram-canvas"
       role="img"
-      style={{
-        backgroundColor: '#fff',
-        color: '#000',
-        maxWidth: '100%',
-        overflowX: 'auto',
-        padding: 12,
-      }}
     />
   );
 });

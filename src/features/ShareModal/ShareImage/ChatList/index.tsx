@@ -39,6 +39,7 @@ const ChatList = memo<ChatListProps>(({ context, ids, messages }) => {
   return (
     <ConversationProvider
       context={context}
+      enableScientificContent={false}
       hasInitMessages={hasInitMessages}
       messages={messages}
       skipFetch={true}

@@ -1,6 +1,11 @@
 import { LexicalRenderer } from '@lobehub/editor/renderer';
 import type { MarkdownProps } from '@lobehub/ui';
-import type { SerializedEditorState } from 'lexical';
+import type {
+  SerializedEditorState,
+  SerializedElementNode,
+  SerializedLexicalNode,
+  SerializedTextNode,
+} from 'lexical';
 import type { CSSProperties } from 'react';
 import { memo, useMemo } from 'react';
 
@@ -22,29 +27,48 @@ const EXTRA_NODES = [ActionTagNode, ReferTopicNode];
 type RichTextChunk =
   { editorState: SerializedEditorState; type: 'rich' } | { markdown: string; type: 'tikz' };
 
+type SerializedRichElementNode = SerializedElementNode<SerializedRichNode>;
+type SerializedRichLineBreakNode = SerializedLexicalNode & { type: 'linebreak' };
+type SerializedRichNode =
+  | SerializedRichElementNode
+  | SerializedRichLineBreakNode
+  | SerializedTextNode
+  | SerializedLexicalNode;
+
 type RichTextPiece =
   | {
-      node: Record<string, any>;
-      rootChild: Record<string, any>;
+      node: SerializedRichNode;
+      rootChild: SerializedRichElementNode;
       rootIndex: number;
       type: 'child';
     }
-  | { rootChild: Record<string, any>; type: 'root' }
+  | { rootChild: SerializedRichNode; type: 'root' }
   | { markdown: string; type: 'tikz' };
 
 interface MarkdownToken {
-  emptyRoot?: Record<string, any>;
-  node?: Record<string, any>;
-  rootChild?: Record<string, any>;
+  emptyRoot?: SerializedRichNode;
+  node?: SerializedRichNode;
+  rootChild?: SerializedRichElementNode;
   rootIndex?: number;
   text: string;
 }
 
 const INLINE_RICH_NODE_SENTINEL = '\uFFFC';
 
+const isRichElementNode = (node: SerializedRichNode): node is SerializedRichElementNode =>
+  'children' in node && Array.isArray(node.children);
+
+const isRichTextNode = (node: SerializedRichNode): node is SerializedTextNode =>
+  node.type === 'text' &&
+  'text' in node &&
+  typeof node.text === 'string' &&
+  'format' in node &&
+  'mode' in node &&
+  'style' in node;
+
 export const splitRichTextTikz = (editorState: SerializedEditorState): RichTextChunk[] => {
-  const root = editorState.root as Record<string, any>;
-  if (!Array.isArray(root.children)) return [{ editorState, type: 'rich' }];
+  const richEditorState = editorState as SerializedEditorState<SerializedRichNode>;
+  const root = richEditorState.root;
 
   const pieces: RichTextPiece[] = [];
   let found = false;
@@ -66,10 +90,9 @@ export const splitRichTextTikz = (editorState: SerializedEditorState): RichTextC
       }
       if (!token.node || !token.rootChild || token.rootIndex === undefined) continue;
 
-      const node =
-        token.node.type === 'text'
-          ? { ...token.node, text: token.text.slice(sliceStart, sliceEnd) }
-          : token.node;
+      const node = isRichTextNode(token.node)
+        ? { ...token.node, text: token.text.slice(sliceStart, sliceEnd) }
+        : token.node;
       pieces.push({ node, rootChild: token.rootChild, rootIndex: token.rootIndex, type: 'child' });
     }
   };
@@ -96,10 +119,13 @@ export const splitRichTextTikz = (editorState: SerializedEditorState): RichTextC
     markdownRun = [];
   };
 
-  for (const [rootIndex, rootChild] of (root.children as Record<string, any>[]).entries()) {
+  for (const [rootIndex, rootChild] of root.children.entries()) {
     const isPlainParagraph =
-      rootChild.type === 'paragraph' && rootChild.format === '' && rootChild.indent === 0;
-    if (!isPlainParagraph || !Array.isArray(rootChild.children)) {
+      isRichElementNode(rootChild) &&
+      rootChild.type === 'paragraph' &&
+      rootChild.format === '' &&
+      rootChild.indent === 0;
+    if (!isPlainParagraph) {
       flushMarkdownRun();
       pieces.push({ rootChild, type: 'root' });
       continue;
@@ -109,13 +135,9 @@ export const splitRichTextTikz = (editorState: SerializedEditorState): RichTextC
       continue;
     }
 
-    for (const node of rootChild.children as Record<string, any>[]) {
+    for (const node of rootChild.children) {
       const isText =
-        node.type === 'text' &&
-        typeof node.text === 'string' &&
-        node.format === 0 &&
-        node.mode === 'normal' &&
-        node.style === '';
+        isRichTextNode(node) && node.format === 0 && node.mode === 'normal' && node.style === '';
       const isLineBreak = node.type === 'linebreak';
       if (!isText && !isLineBreak) {
         markdownRun.push({ rootIndex, text: INLINE_RICH_NODE_SENTINEL });
@@ -142,9 +164,14 @@ export const splitRichTextTikz = (editorState: SerializedEditorState): RichTextC
   if (!found) return [{ editorState, type: 'rich' }];
 
   const chunks: RichTextChunk[] = [];
-  let pendingRootChildren: Record<string, any>[] = [];
+  let pendingRootChildren: SerializedRichNode[] = [];
   let pendingChild:
-    { nodes: Record<string, any>[]; rootChild: Record<string, any>; rootIndex: number } | undefined;
+    | {
+        nodes: SerializedRichNode[];
+        rootChild: SerializedRichElementNode;
+        rootIndex: number;
+      }
+    | undefined;
   const flushChild = () => {
     if (!pendingChild) return;
     pendingRootChildren.push({ ...pendingChild.rootChild, children: pendingChild.nodes });
@@ -155,9 +182,9 @@ export const splitRichTextTikz = (editorState: SerializedEditorState): RichTextC
     if (pendingRootChildren.length === 0) return;
     chunks.push({
       editorState: {
-        ...editorState,
+        ...richEditorState,
         root: { ...root, children: pendingRootChildren },
-      } as SerializedEditorState,
+      },
       type: 'rich',
     });
     pendingRootChildren = [];
