@@ -35,6 +35,12 @@ const props = {
   tagName: 'tikz-diagram',
   type: 'element',
 } as any;
+const renderOnApprovedSurface = () =>
+  render(
+    <ScientificContentRenderContext value>
+      <Render {...props} />
+    </ScientificContentRenderContext>,
+  );
 
 describe('TikZ diagram renderer', () => {
   beforeEach(() => {
@@ -46,7 +52,7 @@ describe('TikZ diagram renderer', () => {
   it('shows a textual pending state while the independent block compiles', () => {
     mockCompileTikz.mockReturnValue(new Promise(() => {}));
 
-    render(<Render {...props} />);
+    renderOnApprovedSurface();
 
     expect(screen.getByRole('status')).toHaveTextContent('Rendering scientific diagram');
   });
@@ -67,6 +73,19 @@ describe('TikZ diagram renderer', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
+  it('preserves source without compiling when no surface provider is present', () => {
+    mockCompileTikz.mockReturnValue(new Promise(() => {}));
+
+    render(<Render {...props} />);
+
+    expect(mockCompileTikz).not.toHaveBeenCalled();
+    expect(
+      screen.getByText((_, element) =>
+        Boolean(element?.matches('code.language-tikz') && element.textContent === source),
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('renders sanitized SVG on a stable light canvas', async () => {
     const backgroundColor = 'rgb(241, 242, 243)';
     const foregroundColor = 'rgb(11, 12, 13)';
@@ -77,7 +96,7 @@ describe('TikZ diagram renderer', () => {
       svg: '<svg xmlns="http://www.w3.org/2000/svg"><path stroke="#c00"/></svg>',
     });
 
-    render(<Render {...props} />);
+    renderOnApprovedSurface();
 
     const canvas = await screen.findByTestId('tikz-diagram-canvas');
     expect(canvas).toHaveStyle({
@@ -99,7 +118,7 @@ describe('TikZ diagram renderer', () => {
       svg: '<svg xmlns="http://www.w3.org/2000/svg"><path stroke="#c00"/></svg>',
     });
 
-    render(<Render {...props} />);
+    renderOnApprovedSurface();
 
     const canvas = await screen.findByTestId('tikz-diagram-canvas');
     expect(canvas).toHaveStyle({
@@ -111,7 +130,7 @@ describe('TikZ diagram renderer', () => {
   it('shows a localized failure and the original source for one failed block', async () => {
     mockCompileTikz.mockResolvedValue({ reason: 'syntax', status: 'failed' });
 
-    render(<Render {...props} />);
+    renderOnApprovedSurface();
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Scientific diagram could not be rendered',
