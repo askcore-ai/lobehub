@@ -47,6 +47,7 @@ const Conversation = memo<ConversationAreaProps>(({ mobile = false }) => {
 
   return (
     <ConversationProvider
+      enableScientificContent
       actionsBar={actionsBarConfig}
       context={context}
       hasInitMessages={!!messages}

@@ -80,6 +80,7 @@ export const PageAgentProvider = memo<PageAgentProviderProps>(({ children }) => 
   return (
     <ConversationProvider
       context={context}
+      enableScientificContent={false}
       hasInitMessages={!!messages}
       messages={messages}
       operationState={operationState}

@@ -34,6 +34,7 @@ const props = {
 describe('TikZ diagram renderer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    document.documentElement.removeAttribute('data-theme');
   });
 
   it('shows a textual pending state while the independent block compiles', () => {
@@ -75,6 +76,22 @@ describe('TikZ diagram renderer', () => {
     });
     expect(canvas.querySelector('path')).toHaveAttribute('stroke', '#c00');
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('keeps a dark foreground on the light canvas in dark theme', async () => {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    mockCompileTikz.mockResolvedValue({
+      status: 'rendered',
+      svg: '<svg xmlns="http://www.w3.org/2000/svg"><path stroke="#c00"/></svg>',
+    });
+
+    render(<Render {...props} />);
+
+    const canvas = await screen.findByTestId('tikz-diagram-canvas');
+    expect(canvas).toHaveStyle({
+      backgroundColor: cssVar.colorWhite,
+      color: cssVar.colorBgBase,
+    });
   });
 
   it('shows a localized failure and the original source for one failed block', async () => {

@@ -100,7 +100,7 @@ export const ConversationProvider = memo<ConversationProviderProps>(
     skipFetch,
   }) => {
     const contextKey = useMemo(() => messageMapKey(context), [context]);
-    const scientificContentEnabled = enableScientificContent ?? !context.topicShareId;
+    const scientificContentEnabled = enableScientificContent === true && !context.topicShareId;
 
     log(
       '[Provider] render | contextKey=%s | messagesCount=%d | hasInitMessages=%s | skipFetch=%s',
