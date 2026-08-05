@@ -52,7 +52,11 @@ describe('TikZ diagram renderer', () => {
     );
 
     expect(mockCompileTikz).not.toHaveBeenCalled();
-    expect(screen.getByText(source)).toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) =>
+        Boolean(element?.matches('code.language-tikz') && element.textContent === source),
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('status')).toBeNull();
   });
 

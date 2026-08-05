@@ -1,8 +1,8 @@
 import { LexicalRenderer } from '@lobehub/editor/renderer';
 import type { MarkdownProps } from '@lobehub/ui';
 import type {
+  ElementFormatType,
   SerializedEditorState,
-  SerializedElementNode,
   SerializedLexicalNode,
   SerializedTextNode,
 } from 'lexical';
@@ -27,7 +27,15 @@ const EXTRA_NODES = [ActionTagNode, ReferTopicNode];
 type RichTextChunk =
   { editorState: SerializedEditorState; type: 'rich' } | { markdown: string; type: 'tikz' };
 
-type SerializedRichElementNode = SerializedElementNode<SerializedRichNode>;
+interface SerializedRichElementNode extends SerializedLexicalNode {
+  children: SerializedRichNode[];
+  direction: 'ltr' | 'rtl' | null;
+  format: ElementFormatType;
+  indent: number;
+  textFormat?: number;
+  textStyle?: string;
+}
+
 type SerializedRichLineBreakNode = SerializedLexicalNode & { type: 'linebreak' };
 type SerializedRichNode =
   | SerializedRichElementNode

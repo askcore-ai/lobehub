@@ -49,6 +49,10 @@ class TikzFenceGuardPlugin {
       type: 'element',
     });
   }
+
+  destroy(): void {
+    // The shared Markdown shortcut service owns registrations for the editor lifecycle.
+  }
 }
 
 const ReactTikzFenceGuardPlugin: FC = () => {
