@@ -91,6 +91,21 @@ beforeEach(() => {
 });
 
 describe('PageAgentProvider', () => {
+  it('keeps the PageEditor conversation seam outside scientific rendering', () => {
+    render(
+      <PageAgentProvider>
+        <div>child</div>
+      </PageAgentProvider>,
+    );
+
+    expect(conversationProviderSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        context: expect.objectContaining({ scope: 'page' }),
+        enableScientificContent: false,
+      }),
+    );
+  });
+
   it('resets a stale page topic on initial scoped agent sync only', async () => {
     const { rerender } = render(
       <PageAgentProvider>
