@@ -8,6 +8,8 @@ import { createServerAgentToolsEngine } from '@/server/modules/Mecha';
 
 import { AiAgentService } from '../index';
 
+const SCIENTIFIC_GUIDANCE_START_MARKER = '<scientific_diagram_output_guidance>';
+
 const {
   mockCreateOperation,
   mockGetAgentConfig,
@@ -308,6 +310,68 @@ describe('AiAgentService.execAgent - builtin agent runtime config', () => {
 
     const callArgs = mockCreateOperation.mock.calls[0][0];
     expect(callArgs.agentConfig.systemRole).toBe(customSystemRole);
+  });
+
+  it('appends scientific diagram guidance only in approved server conversation scopes', async () => {
+    const cases = [
+      { expectedCount: 1, label: 'main', scope: 'main' },
+      { expectedCount: 1, label: 'thread', scope: 'thread' },
+      { expectedCount: 1, label: 'group', scope: 'group' },
+      { expectedCount: 1, label: 'group_agent', scope: 'group_agent' },
+      { expectedCount: 0, label: 'missing', scope: undefined },
+      { expectedCount: 0, label: 'page', scope: 'page' },
+      { expectedCount: 0, label: 'task', scope: 'task' },
+      { expectedCount: 0, label: 'agent_builder', scope: 'agent_builder' },
+      { expectedCount: 0, label: 'group_agent_builder', scope: 'group_agent_builder' },
+      { expectedCount: 0, label: 'sub_agent', scope: 'sub_agent' },
+    ] as const;
+
+    const guidanceCounts: Record<string, number> = {};
+    for (const { label, scope } of cases) {
+      mockGetAgentConfig.mockResolvedValueOnce({
+        chatConfig: {},
+        id: `agent-${label}`,
+        model: 'gpt-4',
+        plugins: [],
+        provider: 'openai',
+        systemRole: 'Custom role.',
+      });
+
+      await service.execAgent({
+        agentId: `agent-${label}`,
+        appContext: { scope, topicId: 'topic-1' },
+        prompt: 'Hello',
+      });
+
+      const systemRole = mockCreateOperation.mock.calls.at(-1)![0].agentConfig.systemRole ?? '';
+      guidanceCounts[label] = systemRole.split(SCIENTIFIC_GUIDANCE_START_MARKER).length - 1;
+    }
+
+    expect(guidanceCounts).toEqual(
+      Object.fromEntries(cases.map(({ expectedCount, label }) => [label, expectedCount])),
+    );
+  });
+
+  it('appends guidance after a builtin runtime role in the server executor', async () => {
+    mockGetAgentConfig.mockResolvedValue({
+      chatConfig: {},
+      id: 'agent-inbox',
+      model: 'gpt-4',
+      plugins: [],
+      provider: 'openai',
+      slug: 'inbox',
+      systemRole: '',
+    });
+
+    await service.execAgent({
+      agentId: 'agent-inbox',
+      appContext: { scope: 'thread', topicId: 'topic-1' },
+      prompt: 'Hello',
+    });
+
+    const systemRole = mockCreateOperation.mock.calls[0][0].agentConfig.systemRole ?? '';
+    expect(systemRole).toContain('You are AskCore');
+    expect(systemRole.split(SCIENTIFIC_GUIDANCE_START_MARKER)).toHaveLength(2);
   });
 
   it('should not apply runtime config for non-builtin agents', async () => {
