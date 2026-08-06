@@ -169,6 +169,8 @@ export class StreamingExecutorActionImpl {
     initialState,
     initialContext,
     operationId,
+    scope: paramScope,
+    groupId: paramGroupId,
     subAgentId: paramSubAgentId,
     isSubAgent,
   }: {
@@ -179,6 +181,8 @@ export class StreamingExecutorActionImpl {
     topicId?: string | null;
     threadId?: string;
     operationId?: string;
+    scope?: ConversationContext['scope'];
+    groupId?: string;
     initialState?: AgentState;
     initialContext?: AgentRuntimeContext;
     /**
@@ -205,10 +209,11 @@ export class StreamingExecutorActionImpl {
     // - agentId: Default
     const effectiveAgentId = paramSubAgentId || agentId;
 
-    // Get scope and groupId from operation context if available
+    // Explicit execution context is authoritative. Operation context remains a
+    // fallback for direct internal callers that only hold an operation ID.
     const operation = operationId ? this.#get().operations[operationId] : undefined;
-    const scope = operation?.context.scope;
-    const groupId = operation?.context.groupId;
+    const scope = paramScope ?? operation?.context.scope;
+    const groupId = paramGroupId ?? operation?.context.groupId;
 
     // Resolve agent config with builtin agent runtime config merged
     // This ensures runtime plugins (e.g., 'lobe-agent-builder' for Agent Builder) are included
@@ -572,6 +577,8 @@ export class StreamingExecutorActionImpl {
       initialState: params.initialState,
       initialContext: params.initialContext,
       operationId,
+      scope,
+      groupId,
       subAgentId, // Pass subAgentId for agent config retrieval (behavior depends on scope)
       isSubAgent, // Pass isSubAgent to filter out lobe-agent tool in sub-agent context
     });
