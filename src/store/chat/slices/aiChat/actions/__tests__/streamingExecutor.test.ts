@@ -1662,6 +1662,39 @@ describe('StreamingExecutor actions', () => {
     });
   });
 
+  describe('scientific diagram guidance propagation', () => {
+    it('keeps the main-surface guidance in the resolved runtime config', () => {
+      const { result } = renderHook(() => useChatStore());
+      const userMessage = createMockMessage({
+        id: TEST_IDS.USER_MESSAGE_ID,
+        role: 'user',
+      });
+      const { operationId } = result.current.startOperation({
+        context: {
+          agentId: TEST_IDS.SESSION_ID,
+          scope: 'main',
+          topicId: TEST_IDS.TOPIC_ID,
+        },
+        type: 'execAgentRuntime',
+      });
+
+      const { agentConfig } = result.current.internal_createAgentState({
+        messages: [userMessage],
+        parentMessageId: userMessage.id,
+        agentId: TEST_IDS.SESSION_ID,
+        topicId: TEST_IDS.TOPIC_ID,
+        operationId,
+      });
+      const marker = '<scientific_diagram_output_guidance>';
+      const systemRole = agentConfig.agentConfig.systemRole ?? '';
+
+      expect(systemRole.split(marker)).toHaveLength(2);
+      expect(systemRole).toContain(
+        'Tools remain allowed when the user separately requests a file export',
+      );
+    });
+  });
+
   describe('operation status handling', () => {
     it('emits client.runtime.complete with the latest assistant message id', async () => {
       const { result } = renderHook(() => useChatStore());

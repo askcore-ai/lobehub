@@ -931,6 +931,32 @@ describe('contextEngineering', () => {
       ]);
     });
 
+    it('should preserve one scientific guidance block in the final system message', async () => {
+      const messages: UIChatMessage[] = [
+        {
+          role: 'user',
+          content: 'Draw a circuit',
+          createdAt: Date.now(),
+          id: 'test-scientific-guidance',
+          updatedAt: Date.now(),
+        },
+      ];
+      const marker = '<scientific_diagram_output_guidance>';
+      const systemRole = `Existing agent role\n\n${marker}\nDiagram capability\n</scientific_diagram_output_guidance>`;
+
+      const result = await contextEngineering({
+        messages,
+        model: 'gpt-4',
+        provider: 'openai',
+        systemRole,
+      });
+      const finalSystemContent = result[0].content as string;
+
+      expect(finalSystemContent.startsWith(systemRole)).toBe(true);
+      expect(finalSystemContent.split(marker)).toHaveLength(2);
+      expect(result[1]).toEqual({ content: 'Draw a circuit', role: 'user' });
+    });
+
     it('should combine system role and input template correctly', async () => {
       const messages: UIChatMessage[] = [
         {
