@@ -121,7 +121,7 @@ export const useSend = () => {
             await ensureAgentConfigLoaded(activeAgentId);
 
             sendMessage({
-              context: { agentId: activeAgentId, isolatedTopic: true },
+              context: { agentId: activeAgentId, isolatedTopic: true, scope: 'main' },
               contexts: contextList,
               editorData,
               files: fileList,
