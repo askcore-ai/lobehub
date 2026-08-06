@@ -14,6 +14,8 @@ import * as userSelectors from '@/store/user/selectors';
 
 import { resolveAgentConfig } from './agentConfigResolver';
 
+const SCIENTIFIC_GUIDANCE_START_MARKER = '<scientific_diagram_output_guidance>';
+
 vi.hoisted(() => {
   const storage = new Map<string, string>();
   Object.defineProperty(globalThis, 'localStorage', {
@@ -1308,6 +1310,23 @@ describe('resolveAgentConfig', () => {
       const result = resolveAgentConfig({ agentId: 'test-agent' });
 
       expect(result.agentConfig.systemRole).toBe('You are a helpful assistant');
+    });
+  });
+
+  describe('scientific diagram output guidance', () => {
+    it('appends the platform guidance once for a regular agent in the main conversation', () => {
+      vi.spyOn(agentSelectors.agentSelectors, 'getAgentSlugById').mockReturnValue(() => undefined);
+      vi.spyOn(
+        userSelectors.userGeneralSettingsSelectors,
+        'currentResponseLanguage',
+      ).mockReturnValue(undefined as any);
+
+      const result = resolveAgentConfig({ agentId: 'test-agent', scope: 'main' });
+      const systemRole = result.agentConfig.systemRole ?? '';
+
+      expect(systemRole.startsWith('You are a helpful assistant\n\n')).toBe(true);
+      expect(systemRole.match(new RegExp(SCIENTIFIC_GUIDANCE_START_MARKER, 'g'))).toHaveLength(1);
+      expect(result.plugins).toEqual(['plugin-a', 'plugin-b']);
     });
   });
 });
