@@ -5,7 +5,11 @@ import { type SWRResponse } from 'swr';
 import { type StateCreator } from 'zustand/vanilla';
 
 import { useClientDataSWRWithSync } from '@/libs/swr';
-import { messageService } from '@/services/message';
+import {
+  type MessageTransportTimestamp,
+  messageService,
+  normalizeMessageTimestamps,
+} from '@/services/message';
 import { getChatStoreState } from '@/store/chat';
 import { operationSelectors } from '@/store/chat/selectors';
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
@@ -18,7 +22,7 @@ import { stabilizeReferences } from './stabilizeReferences';
 
 const log = debug('lobe-render:features:Conversation');
 
-const messageUpdatedAtTimestamp = (value: unknown): number => {
+const messageUpdatedAtTimestamp = (value: MessageTransportTimestamp): number => {
   if (value instanceof Date) return value.getTime();
   if (typeof value === 'number') return value;
   if (typeof value === 'string') return Date.parse(value);
@@ -30,12 +34,22 @@ const mergeFetchedMessagesWithLocalState = (
   fetchedMessages: UIChatMessage[],
   localMessages: UIChatMessage[],
 ): UIChatMessage[] => {
-  if (localMessages.length === 0 || fetchedMessages.length === 0) return fetchedMessages;
+  const normalizedFetchedMessages = fetchedMessages.map(normalizeMessageTimestamps);
+  if (localMessages.length === 0 || fetchedMessages.length === 0) {
+    return normalizedFetchedMessages;
+  }
 
-  const localById = new Map(localMessages.map((message) => [message.id, message]));
-  let changed = false;
+  const localById = new Map(
+    localMessages.map((message) => {
+      const normalizedMessage = normalizeMessageTimestamps(message);
+      return [normalizedMessage.id, normalizedMessage];
+    }),
+  );
+  let changed = normalizedFetchedMessages.some(
+    (message, index) => message !== fetchedMessages[index],
+  );
 
-  const mergedMessages = fetchedMessages.map((message) => {
+  const mergedMessages = normalizedFetchedMessages.map((message) => {
     const localMessage = localById.get(message.id);
 
     if (!localMessage) return message;
@@ -52,7 +66,7 @@ const mergeFetchedMessagesWithLocalState = (
     return localMessage;
   });
 
-  return changed ? mergedMessages : fetchedMessages;
+  return changed ? mergedMessages : normalizedFetchedMessages;
 };
 
 /**

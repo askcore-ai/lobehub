@@ -48,17 +48,21 @@ export function appendScientificDiagramGuidance(
 export const extractScientificDiagramGuidance = (
   systemRole: string | undefined,
 ): { guidance: string | undefined; systemRole: string | undefined } => {
-  if (!systemRole?.includes(SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE)) {
+  if (systemRole === SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE) {
+    return {
+      guidance: SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE,
+      systemRole: undefined,
+    };
+  }
+
+  const guidanceSuffix = `\n\n${SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE}`;
+  if (!systemRole?.endsWith(guidanceSuffix)) {
     return { guidance: undefined, systemRole };
   }
 
-  const roleWithoutGuidance = systemRole
-    .replace(SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE, '')
-    .trimEnd();
-
   return {
     guidance: SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE,
-    systemRole: roleWithoutGuidance || undefined,
+    systemRole: systemRole.slice(0, -guidanceSuffix.length),
   };
 };
 
@@ -75,7 +79,12 @@ export const appendScientificDiagramGuidanceToFinalSystemMessage = (
     }
 
     appended = true;
-    const contentWithoutGuidance = message.content.replace(guidance, '').trimEnd();
+    const guidanceSuffix = `\n\n${guidance}`;
+    const contentWithoutGuidance = message.content.endsWith(guidanceSuffix)
+      ? message.content.slice(0, -guidanceSuffix.length)
+      : message.content === guidance
+        ? ''
+        : message.content;
 
     return {
       ...message,
