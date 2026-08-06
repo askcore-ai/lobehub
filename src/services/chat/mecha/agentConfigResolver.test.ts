@@ -1040,7 +1040,9 @@ describe('resolveAgentConfig', () => {
       // Should have group management tool injected
       expect(result.plugins).toContain(GroupManagementIdentifier);
       // Should have proper system role
-      expect(result.agentConfig.systemRole).toBe('Supervisor system role');
+      expect(result.agentConfig.systemRole).toMatch(
+        /^Supervisor system role\n\n<scientific_diagram_output_guidance>/,
+      );
     });
   });
 
