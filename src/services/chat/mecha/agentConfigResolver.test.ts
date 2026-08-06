@@ -1328,5 +1328,42 @@ describe('resolveAgentConfig', () => {
       expect(systemRole.match(new RegExp(SCIENTIFIC_GUIDANCE_START_MARKER, 'g'))).toHaveLength(1);
       expect(result.plugins).toEqual(['plugin-a', 'plugin-b']);
     });
+
+    it('uses the closed conversation-surface allow-list', () => {
+      vi.spyOn(agentSelectors.agentSelectors, 'getAgentSlugById').mockReturnValue(() => undefined);
+      vi.spyOn(
+        userSelectors.userGeneralSettingsSelectors,
+        'currentResponseLanguage',
+      ).mockReturnValue(undefined as any);
+
+      const cases: Array<{
+        expectedCount: number;
+        label: string;
+        scope?: Parameters<typeof resolveAgentConfig>[0]['scope'];
+      }> = [
+        { expectedCount: 1, label: 'main', scope: 'main' },
+        { expectedCount: 1, label: 'thread', scope: 'thread' },
+        { expectedCount: 1, label: 'group', scope: 'group' },
+        { expectedCount: 1, label: 'group_agent', scope: 'group_agent' },
+        { expectedCount: 0, label: 'missing' },
+        { expectedCount: 0, label: 'page', scope: 'page' },
+        { expectedCount: 0, label: 'task', scope: 'task' },
+        { expectedCount: 0, label: 'agent_builder', scope: 'agent_builder' },
+        { expectedCount: 0, label: 'group_agent_builder', scope: 'group_agent_builder' },
+        { expectedCount: 0, label: 'sub_agent', scope: 'sub_agent' },
+      ];
+
+      const guidanceCounts = Object.fromEntries(
+        cases.map(({ label, scope }) => {
+          const systemRole = resolveAgentConfig({ agentId: 'test-agent', scope }).agentConfig
+            .systemRole;
+          return [label, systemRole?.split(SCIENTIFIC_GUIDANCE_START_MARKER).length - 1];
+        }),
+      );
+
+      expect(guidanceCounts).toEqual(
+        Object.fromEntries(cases.map(({ expectedCount, label }) => [label, expectedCount])),
+      );
+    });
   });
 });
