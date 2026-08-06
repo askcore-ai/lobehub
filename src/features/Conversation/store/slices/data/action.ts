@@ -18,6 +18,14 @@ import { stabilizeReferences } from './stabilizeReferences';
 
 const log = debug('lobe-render:features:Conversation');
 
+const messageUpdatedAtTimestamp = (value: unknown): number => {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') return Date.parse(value);
+
+  return Number.NaN;
+};
+
 const mergeFetchedMessagesWithLocalState = (
   fetchedMessages: UIChatMessage[],
   localMessages: UIChatMessage[],
@@ -31,7 +39,14 @@ const mergeFetchedMessagesWithLocalState = (
     const localMessage = localById.get(message.id);
 
     if (!localMessage) return message;
-    if (localMessage.updatedAt <= message.updatedAt) return message;
+    const localUpdatedAt = messageUpdatedAtTimestamp(localMessage.updatedAt);
+    const fetchedUpdatedAt = messageUpdatedAtTimestamp(message.updatedAt);
+    if (
+      !Number.isFinite(localUpdatedAt) ||
+      !Number.isFinite(fetchedUpdatedAt) ||
+      localUpdatedAt <= fetchedUpdatedAt
+    )
+      return message;
 
     changed = true;
     return localMessage;
