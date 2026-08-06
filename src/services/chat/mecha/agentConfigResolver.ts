@@ -42,6 +42,7 @@ const appendScientificDiagramGuidance = (
   scope: MessageMapScope | undefined,
 ): string | undefined => {
   if (!scope || !SCIENTIFIC_DIAGRAM_GUIDANCE_SCOPES.has(scope)) return existingSystemRole;
+  if (existingSystemRole?.includes(SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE)) return existingSystemRole;
 
   return existingSystemRole
     ? `${existingSystemRole}\n\n${SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE}`
