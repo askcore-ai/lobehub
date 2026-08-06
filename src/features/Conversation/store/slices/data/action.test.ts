@@ -22,12 +22,17 @@ vi.mock('@lobechat/conversation-flow', () => ({
 }));
 
 // Mock messageService
-vi.mock('@/services/message', () => ({
-  messageService: {
-    getMessages: vi.fn(),
-    updateMessageMetadata: vi.fn().mockResolvedValue({ success: true, messages: [] }),
-  },
-}));
+vi.mock('@/services/message', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/message')>();
+
+  return {
+    ...actual,
+    messageService: {
+      getMessages: vi.fn(),
+      updateMessageMetadata: vi.fn().mockResolvedValue({ success: true, messages: [] }),
+    },
+  };
+});
 
 // Mock SWR
 vi.mock('@/libs/swr', () => ({
