@@ -68,6 +68,10 @@ import { KlavisServerStatus } from '@/store/tool/slices/klavisStore';
 
 import { isCanUseVideo, isCanUseVision } from '../helper';
 import { combineUserMemoryData, resolveTopicMemories, resolveUserPersona } from './memoryManager';
+import {
+  appendScientificDiagramGuidanceToFinalSystemMessage,
+  extractScientificDiagramGuidance,
+} from './scientificDiagramGuidance';
 import { resolveClientSkills } from './skillEngineering';
 
 const log = debug('context-engine:contextEngineering');
@@ -135,6 +139,7 @@ export const contextEngineering = async ({
   memoryContext,
 }: ContextEngineeringContext): Promise<OpenAIChatMessage[]> => {
   log('tools: %o', tools);
+  const scientificDiagramGuidance = extractScientificDiagramGuidance(systemRole);
 
   // Check if Agent Builder tool is enabled
   const isAgentBuilderEnabled = tools?.includes(AgentBuilderIdentifier) ?? false;
@@ -649,7 +654,7 @@ export const contextEngineering = async ({
     historyCount,
     historySummary,
     inputTemplate,
-    systemRole,
+    systemRole: scientificDiagramGuidance.systemRole,
 
     // Capability injection
     capabilities: {
@@ -779,5 +784,8 @@ export const contextEngineering = async ({
     );
   }
 
-  return result.messages;
+  return appendScientificDiagramGuidanceToFinalSystemMessage(
+    result.messages,
+    scientificDiagramGuidance.guidance,
+  );
 };

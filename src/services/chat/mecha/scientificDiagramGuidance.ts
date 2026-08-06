@@ -1,4 +1,4 @@
-import type { MessageMapScope } from '@lobechat/types';
+import type { MessageMapScope, OpenAIChatMessage } from '@lobechat/types';
 
 export const SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE =
   '<scientific_diagram_output_guidance>\n' +
@@ -35,3 +35,44 @@ export function appendScientificDiagramGuidance(
     ? `${existingSystemRole}\n\n${SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE}`
     : SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE;
 }
+
+export const extractScientificDiagramGuidance = (
+  systemRole: string | undefined,
+): { guidance: string | undefined; systemRole: string | undefined } => {
+  if (!systemRole?.includes(SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE)) {
+    return { guidance: undefined, systemRole };
+  }
+
+  const roleWithoutGuidance = systemRole
+    .replace(SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE, '')
+    .trimEnd();
+
+  return {
+    guidance: SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE,
+    systemRole: roleWithoutGuidance || undefined,
+  };
+};
+
+export const appendScientificDiagramGuidanceToFinalSystemMessage = (
+  messages: OpenAIChatMessage[],
+  guidance: string | undefined,
+): OpenAIChatMessage[] => {
+  if (!guidance) return messages;
+
+  let appended = false;
+  return messages.map((message) => {
+    if (appended || message.role !== 'system' || typeof message.content !== 'string') {
+      return message;
+    }
+
+    appended = true;
+    const contentWithoutGuidance = message.content.replace(guidance, '').trimEnd();
+
+    return {
+      ...message,
+      content: contentWithoutGuidance
+        ? `${contentWithoutGuidance}\n\n${guidance}`
+        : guidance,
+    };
+  });
+};

@@ -102,7 +102,7 @@ describe('serverMessagesEngine', () => {
       expect(systemContent.indexOf(activatorSystemPrompt)).toBeLessThan(
         systemContent.indexOf('<scientific_diagram_output_guidance>'),
       );
-      expect(systemContent.trimEnd()).toEndWith('</scientific_diagram_output_guidance>');
+      expect(systemContent.trimEnd().endsWith('</scientific_diagram_output_guidance>')).toBe(true);
       expect(systemContent).toContain('Current date:');
     });
 

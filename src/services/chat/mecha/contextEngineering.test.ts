@@ -934,6 +934,7 @@ describe('contextEngineering', () => {
     });
 
     it('should preserve one scientific guidance block in the final system message', async () => {
+      vi.spyOn(isCanUseFCModule, 'isCanUseFC').mockReturnValue(true);
       const messages: UIChatMessage[] = [
         {
           role: 'user',
@@ -969,7 +970,9 @@ describe('contextEngineering', () => {
       expect(finalSystemContent.indexOf(activatorSystemPrompt)).toBeLessThan(
         finalSystemContent.indexOf(marker),
       );
-      expect(finalSystemContent.trimEnd()).toEndWith('</scientific_diagram_output_guidance>');
+      expect(
+        finalSystemContent.trimEnd().endsWith('</scientific_diagram_output_guidance>'),
+      ).toBe(true);
       expect(result[1]).toEqual({ content: 'Draw a circuit', role: 'user' });
     });
 
