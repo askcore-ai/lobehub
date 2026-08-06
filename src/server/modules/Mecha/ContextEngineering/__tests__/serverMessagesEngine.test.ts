@@ -1,3 +1,4 @@
+import { systemPrompt as activatorSystemPrompt } from '@lobechat/builtin-tool-activator';
 import { MessagesEngine } from '@lobechat/context-engine';
 import { type UIChatMessage } from '@lobechat/types';
 import { describe, expect, it, vi } from 'vitest';
@@ -76,15 +77,32 @@ describe('serverMessagesEngine', () => {
       const systemRole = appendScientificDiagramGuidance('Existing server role', 'main');
 
       const result = await serverMessagesEngine({
+        capabilities: { isCanUseFC: () => true },
         messages: createBasicMessages(),
         model: 'gpt-4',
         provider: 'openai',
         systemRole,
+        toolsConfig: {
+          manifests: [
+            {
+              api: [{ description: 'Activate tools', name: 'activateTools', parameters: {} }],
+              identifier: 'lobe-activator',
+              meta: { title: 'Tools Activator' },
+              systemRole: activatorSystemPrompt,
+              type: 'default',
+            },
+          ],
+          tools: ['lobe-activator'],
+        },
       });
       const systemContent = String(result[0].content);
 
       expect(systemContent.startsWith('Existing server role\n\n')).toBe(true);
       expect(systemContent.split('<scientific_diagram_output_guidance>')).toHaveLength(2);
+      expect(systemContent.indexOf(activatorSystemPrompt)).toBeLessThan(
+        systemContent.indexOf('<scientific_diagram_output_guidance>'),
+      );
+      expect(systemContent.trimEnd()).toEndWith('</scientific_diagram_output_guidance>');
       expect(systemContent).toContain('Current date:');
     });
 
