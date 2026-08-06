@@ -339,7 +339,7 @@ describe('AiAgentService.execAgent - builtin agent runtime config', () => {
 
       await service.execAgent({
         agentId: `agent-${label}`,
-        appContext: { scope, topicId: 'topic-1' },
+        appContext: { ...(scope && { scope }), topicId: 'topic-1' },
         prompt: 'Hello',
       });
 
@@ -372,6 +372,35 @@ describe('AiAgentService.execAgent - builtin agent runtime config', () => {
     const systemRole = mockCreateOperation.mock.calls[0][0].agentConfig.systemRole ?? '';
     expect(systemRole).toContain('You are AskCore');
     expect(systemRole.split(SCIENTIFIC_GUIDANCE_START_MARKER)).toHaveLength(2);
+  });
+
+  it('labels group supervisor delegation with the approved group scope', async () => {
+    const execAgent = vi.spyOn(service, 'execAgent').mockResolvedValue({
+      agentId: 'agent-supervisor',
+      assistantMessageId: 'assistant-msg-1',
+      autoStarted: true,
+      createdAt: new Date().toISOString(),
+      message: 'Agent operation created successfully',
+      operationId: 'op-123',
+      status: 'created',
+      success: true,
+      timestamp: new Date().toISOString(),
+      topicId: 'topic-1',
+      userMessageId: 'user-msg-1',
+    });
+
+    await service.execGroupAgent({
+      agentId: 'agent-supervisor',
+      groupId: 'group-1',
+      message: 'Hello group',
+      topicId: 'topic-1',
+    });
+
+    expect(execAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appContext: { groupId: 'group-1', scope: 'group', topicId: 'topic-1' },
+      }),
+    );
   });
 
   it('should not apply runtime config for non-builtin agents', async () => {

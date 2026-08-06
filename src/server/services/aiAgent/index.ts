@@ -58,6 +58,7 @@ import { UserPersonaModel } from '@/database/models/userMemory/persona';
 import { toolsEnv } from '@/envs/tools';
 import { shouldEnableBuiltinSkill } from '@/helpers/skillFilters';
 import { signOperationJwt, signUserJWT } from '@/libs/trpc/utils/internalJwt';
+import { appendScientificDiagramGuidance } from '@/services/chat/mecha/scientificDiagramGuidance';
 import type { EvalContext, ServerAgentToolsContext } from '@/server/modules/Mecha';
 import { createServerAgentToolsEngine } from '@/server/modules/Mecha';
 import type { ServerUserMemoryConfig } from '@/server/modules/Mecha/ContextEngineering/types';
@@ -511,6 +512,11 @@ export class AiAgentService {
         : instructions;
       log('execAgent: appended additional instructions to systemRole');
     }
+
+    agentConfig.systemRole = appendScientificDiagramGuidance(
+      agentConfig.systemRole,
+      appContext?.scope,
+    );
 
     let resumeParentMessage;
 
@@ -2370,7 +2376,7 @@ export class AiAgentService {
     // 2. Delegate to execAgent with groupId in appContext
     const result = await this.execAgent({
       agentId,
-      appContext: { groupId, topicId },
+      appContext: { groupId, scope: 'group', topicId },
       autoStart: true,
       prompt: message,
       trigger: RequestTrigger.Chat,
