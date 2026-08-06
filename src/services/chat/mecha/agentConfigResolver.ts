@@ -481,7 +481,7 @@ export const resolveAgentConfig = (ctx: AgentConfigResolverContext): ResolvedAge
   // Merge runtime systemRole into agent config
   const resolvedAgentConfig: LobeAgentConfig = {
     ...agentConfig,
-    systemRole: resolvedSystemRole,
+    systemRole: appendScientificDiagramGuidance(resolvedSystemRole, ctx.scope),
   };
 
   // Apply params adjustments based on chatConfig
