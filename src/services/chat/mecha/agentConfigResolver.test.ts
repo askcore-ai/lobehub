@@ -1384,5 +1384,38 @@ describe('resolveAgentConfig', () => {
       expect(systemRole.match(new RegExp(SCIENTIFIC_GUIDANCE_START_MARKER, 'g'))).toHaveLength(1);
       expect(result.plugins).toEqual(['runtime-plugin']);
     });
+
+    it('deduplicates only the complete canonical block on retry', () => {
+      vi.spyOn(agentSelectors.agentSelectors, 'getAgentSlugById').mockReturnValue(() => undefined);
+      vi.spyOn(
+        userSelectors.userGeneralSettingsSelectors,
+        'currentResponseLanguage',
+      ).mockReturnValue(undefined as any);
+
+      const firstSystemRole = resolveAgentConfig({ agentId: 'test-agent', scope: 'main' }).agentConfig
+        .systemRole;
+      vi.spyOn(agentSelectors.agentSelectors, 'getAgentConfigById').mockReturnValue(
+        () => ({ ...mockAgentConfig, systemRole: firstSystemRole }) as any,
+      );
+      const retriedSystemRole = resolveAgentConfig({ agentId: 'test-agent', scope: 'main' })
+        .agentConfig.systemRole;
+
+      expect(retriedSystemRole).toBe(firstSystemRole);
+
+      vi.spyOn(agentSelectors.agentSelectors, 'getAgentConfigById').mockReturnValue(
+        () =>
+          ({
+            ...mockAgentConfig,
+            systemRole: `Custom text ${SCIENTIFIC_GUIDANCE_START_MARKER}`,
+          }) as any,
+      );
+      const partialMarkerRole = resolveAgentConfig({ agentId: 'test-agent', scope: 'main' })
+        .agentConfig.systemRole;
+
+      expect(partialMarkerRole).toMatch(
+        /^Custom text <scientific_diagram_output_guidance>\n\n<scientific_diagram_output_guidance>/,
+      );
+      expect(partialMarkerRole?.endsWith('</scientific_diagram_output_guidance>')).toBe(true);
+    });
   });
 });
