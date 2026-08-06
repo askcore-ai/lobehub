@@ -2,6 +2,8 @@ import { MessagesEngine } from '@lobechat/context-engine';
 import { type UIChatMessage } from '@lobechat/types';
 import { describe, expect, it, vi } from 'vitest';
 
+import { appendScientificDiagramGuidance } from '@/services/chat/mecha/scientificDiagramGuidance';
+
 import { serverMessagesEngine } from '../index';
 
 // Helper to compute expected date content from SystemDateProvider
@@ -68,6 +70,22 @@ describe('serverMessagesEngine', () => {
 
       expect(result[0].role).toBe('system');
       expect(result[0].content).toBe(systemRole + '\n\n' + getCurrentDateContent());
+    });
+
+    it('keeps exactly one scientific guidance block in the final server system message', async () => {
+      const systemRole = appendScientificDiagramGuidance('Existing server role', 'main');
+
+      const result = await serverMessagesEngine({
+        messages: createBasicMessages(),
+        model: 'gpt-4',
+        provider: 'openai',
+        systemRole,
+      });
+      const systemContent = String(result[0].content);
+
+      expect(systemContent.startsWith('Existing server role\n\n')).toBe(true);
+      expect(systemContent.split('<scientific_diagram_output_guidance>')).toHaveLength(2);
+      expect(systemContent).toContain('Current date:');
     });
 
     it('should handle empty messages', async () => {
