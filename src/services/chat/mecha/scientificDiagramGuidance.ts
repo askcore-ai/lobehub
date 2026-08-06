@@ -4,6 +4,7 @@ export const SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE =
   '<scientific_diagram_output_guidance>\n' +
   'This chat surface can directly render scientific diagrams from Markdown.\n' +
   '- When the user asks for a TikZ, Chemfig, Circuitikz, or PGFPlots diagram, output the source directly in a fenced code block whose language is exactly `tikz`.\n' +
+  '- For an eligible diagram request, answer immediately with the fenced source in the same response. The Tools Activator and Cloud Sandbox may be available, but do not call, activate, or announce them for rendering; this specific rule overrides general tool-activation instructions.\n' +
   '- Each `tikz` fence must contain exactly one complete `\\begin{tikzpicture}` ... `\\end{tikzpicture}` environment. Keep ordinary mathematics in normal Markdown/LaTeX and never emit a raw `tikzpicture` outside the fence.\n' +
   '- The renderer supports syntax shipped by AskCore\'s pinned TikZJax 1.5.0 runtime, including Chemfig, Circuitikz, calc, 3d, PGFPlots, physics, decorations, arrows, positioning, and graphs. Do not claim support for `modiagram`.\n' +
   '- Do not search for or activate a skill, sandbox, or other tool solely to compile, render, or convert an eligible diagram to an image; this chat surface renders it. Tools remain allowed when the user separately requests a file export such as PNG/PDF or another external operation.\n' +
