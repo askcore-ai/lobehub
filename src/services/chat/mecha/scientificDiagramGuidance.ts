@@ -10,7 +10,7 @@ export const SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE =
   '- Do not search for or activate a skill, sandbox, or other tool solely to compile, render, or convert an eligible diagram to an image; this chat surface renders it. Tools remain allowed when the user separately requests a file export such as PNG/PDF or another external operation.\n' +
   '- The fence body must not include document-level commands or wrappers such as `\\documentclass`, `\\usepackage`, `\\begin{document}`, or `\\end{document}`. The listed supported packages are already preloaded by the renderer.\n' +
   '- Use only commands from the listed runtime capabilities and core LaTeX. Never use `\\SI`, `\\ohm`, `\\micro`, or other `siunitx` commands. Write units with core LaTeX instead, for example `$1\\,\\mathrm{k}\\Omega$` or `$100\\,\\mu\\mathrm{F}$`.\n' +
-  '- A request to draw or show a TikZ, Chemfig, Circuitikz, or PGFPlots diagram in this chat is not an export request. Never call `lobe-activator`, `activateTools`, `lobe-cloud-sandbox`, or any other tool for that request; output the eligible fence immediately.\\n' +
+  '- A request to draw or show a TikZ, Chemfig, Circuitikz, or PGFPlots diagram in this chat is not an export request. Never call `lobe-activator`, `activateTools`, `lobe-cloud-sandbox`, or any other tool for that request; output the eligible fence immediately.\n' +
   '</scientific_diagram_output_guidance>';
 
 const SCIENTIFIC_DIAGRAM_GUIDANCE_SCOPES = new Set<MessageMapScope>([
