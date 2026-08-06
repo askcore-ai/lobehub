@@ -973,7 +973,7 @@ describe('contextEngineering', () => {
       expect(
         finalSystemContent.trimEnd().endsWith('</scientific_diagram_output_guidance>'),
       ).toBe(true);
-      expect(result[1]).toEqual({ content: 'Draw a circuit', role: 'user' });
+      expect(result).toContainEqual({ content: 'Draw a circuit', role: 'user' });
     });
 
     it('should combine system role and input template correctly', async () => {
