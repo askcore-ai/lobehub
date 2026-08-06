@@ -1693,6 +1693,49 @@ describe('StreamingExecutor actions', () => {
         'Tools remain allowed when the user separately requests a file export',
       );
     });
+
+    it('prefers the explicit execution scope when a reused operation has no scope', async () => {
+      act(() => {
+        useChatStore.setState({ executeClientAgent: realExecAgentRuntime });
+      });
+
+      const { result } = renderHook(() => useChatStore());
+      const userMessage = createMockMessage({
+        id: TEST_IDS.USER_MESSAGE_ID,
+        role: 'user',
+      });
+      const { operationId } = result.current.startOperation({
+        context: {
+          agentId: TEST_IDS.SESSION_ID,
+          topicId: TEST_IDS.TOPIC_ID,
+        },
+        type: 'execAgentRuntime',
+      });
+      const streamSpy = vi
+        .spyOn(chatService, 'createAssistantMessageStream')
+        .mockImplementation(async ({ onFinish }) => {
+          await onFinish?.(TEST_CONTENT.AI_RESPONSE, {} as any);
+        });
+
+      await act(async () => {
+        await result.current.executeClientAgent({
+          context: {
+            agentId: TEST_IDS.SESSION_ID,
+            scope: 'main',
+            topicId: TEST_IDS.TOPIC_ID,
+          },
+          messages: [userMessage],
+          operationId,
+          parentMessageId: userMessage.id,
+          parentMessageType: 'user',
+        });
+      });
+
+      const resolvedAgentConfig = streamSpy.mock.calls[0][0].params.resolvedAgentConfig;
+      expect(resolvedAgentConfig.agentConfig.systemRole).toContain(
+        '<scientific_diagram_output_guidance>',
+      );
+    });
   });
 
   describe('operation status handling', () => {
