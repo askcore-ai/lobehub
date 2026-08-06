@@ -1365,5 +1365,22 @@ describe('resolveAgentConfig', () => {
         Object.fromEntries(cases.map(({ expectedCount, label }) => [label, expectedCount])),
       );
     });
+
+    it('appends guidance after the builtin runtime role without changing its plugins', () => {
+      vi.spyOn(agentSelectors.agentSelectors, 'getAgentSlugById').mockReturnValue(
+        () => 'agent-builder',
+      );
+      vi.spyOn(builtinAgents, 'getAgentRuntimeConfig').mockReturnValue({
+        plugins: ['runtime-plugin'],
+        systemRole: 'Runtime system role',
+      });
+
+      const result = resolveAgentConfig({ agentId: 'builtin-agent', scope: 'thread' });
+      const systemRole = result.agentConfig.systemRole ?? '';
+
+      expect(systemRole.startsWith('Runtime system role\n\n')).toBe(true);
+      expect(systemRole.match(new RegExp(SCIENTIFIC_GUIDANCE_START_MARKER, 'g'))).toHaveLength(1);
+      expect(result.plugins).toEqual(['runtime-plugin']);
+    });
   });
 });
