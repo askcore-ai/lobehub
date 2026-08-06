@@ -936,6 +936,7 @@ describe('DataSlice', () => {
 
       await waitFor(() => {
         expect(store.getState().dbMessages[0].content).toContain('\\begin{tikzpicture}');
+        expect(store.getState().dbMessages[0].updatedAt).toBe(updatedAt.getTime());
       });
     });
   });

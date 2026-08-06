@@ -13,6 +13,11 @@ import * as agentGroupSelectors from '@/store/agentGroup/selectors';
 import * as userSelectors from '@/store/user/selectors';
 
 import { resolveAgentConfig } from './agentConfigResolver';
+import {
+  appendScientificDiagramGuidance,
+  appendScientificDiagramGuidanceToFinalSystemMessage,
+  extractScientificDiagramGuidance,
+} from './scientificDiagramGuidance';
 
 const SCIENTIFIC_GUIDANCE_START_MARKER = '<scientific_diagram_output_guidance>';
 
@@ -1416,6 +1421,22 @@ describe('resolveAgentConfig', () => {
         /^Custom text <scientific_diagram_output_guidance>\n\n<scientific_diagram_output_guidance>/,
       );
       expect(partialMarkerRole?.endsWith('</scientific_diagram_output_guidance>')).toBe(true);
+    });
+
+    it('preserves existing system-role bytes while placing guidance last', () => {
+      const existingRole = 'Existing role with trailing whitespace  \n ';
+      const appended = appendScientificDiagramGuidance(existingRole, 'main');
+      const extracted = extractScientificDiagramGuidance(appended);
+
+      expect(extracted.systemRole).toBe(existingRole);
+      const messages = appendScientificDiagramGuidanceToFinalSystemMessage(
+        [{ content: `${existingRole}Generated capability text  \n `, role: 'system' }],
+        extracted.guidance,
+      );
+
+      expect(messages[0].content).toBe(
+        `${existingRole}Generated capability text  \n \n\n${extracted.guidance}`,
+      );
     });
   });
 });
