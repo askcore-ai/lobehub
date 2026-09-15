@@ -2,11 +2,13 @@
 import '@testing-library/jest-dom/vitest';
 
 import { ConfigProvider } from '@lobehub/ui';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import * as m from 'motion/react-m';
+import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AskCoreSchoolPortalRoute } from './index';
+import { SourceHandoff } from './SourceHandoff';
 
 const mocks = vi.hoisted(() => ({
   cancel: vi.fn(),
@@ -88,5 +90,42 @@ describe('P140 direct School / Learning Space entry', () => {
     expect(screen.queryByText('schoolPortal.surface.learningSpace')).not.toBeInTheDocument();
     expect(screen.queryByText('schoolPortal.surface.schoolPlan')).not.toBeInTheDocument();
     expect(view.container.querySelector('iframe')).toBeNull();
+  });
+
+  it('ignores the cancelled StrictMode attempt after a new attempt has started', async () => {
+    let rejectOld!: (reason: unknown) => void;
+    mocks.enter.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectOld = reject; }));
+    render(
+      <StrictMode>
+        <ConfigProvider motion={m}>
+          <AskCoreSchoolPortalRoute />
+        </ConfigProvider>
+      </StrictMode>,
+    );
+    await waitFor(() => expect(mocks.enter).toHaveBeenCalledTimes(2));
+    expect(mocks.cancel).toHaveBeenCalledTimes(1);
+
+    await act(async () => { rejectOld(new DOMException('Aborted', 'AbortError')); });
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('schoolPortal.handoff.moodle.message');
+  });
+
+  it('does not let an old source attempt overwrite the replacement source state', async () => {
+    let rejectOld!: (reason: unknown) => void;
+    mocks.enter.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectOld = reject; }));
+    const view = render(
+      <ConfigProvider motion={m}><SourceHandoff source="moodle" /></ConfigProvider>,
+    );
+    await waitFor(() => expect(mocks.enter).toHaveBeenCalledWith('moodle'));
+    view.rerender(
+      <ConfigProvider motion={m}><SourceHandoff source="gibbon" /></ConfigProvider>,
+    );
+    await waitFor(() => expect(mocks.enter).toHaveBeenLastCalledWith('gibbon'));
+
+    await act(async () => { rejectOld(new mocks.SchoolHandoffError(401)); });
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('schoolPortal.handoff.gibbon.message');
   });
 });
