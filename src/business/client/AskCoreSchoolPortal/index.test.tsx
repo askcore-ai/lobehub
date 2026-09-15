@@ -42,6 +42,7 @@ const renderRoute = () =>
 
 describe('P140 direct School / Learning Space entry', () => {
   beforeEach(() => {
+    window.history.replaceState(null, '', '/school');
     mocks.cancel.mockReset();
     mocks.enter.mockReset();
     mocks.enter.mockReturnValue(new Promise(() => {}));
@@ -49,6 +50,7 @@ describe('P140 direct School / Learning Space entry', () => {
 
   afterEach(() => {
     cleanup();
+    window.history.replaceState(null, '', '/school');
   });
 
   it('prepares Moodle without rendering a visible success intermediary', async () => {
@@ -128,4 +130,22 @@ describe('P140 direct School / Learning Space entry', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('schoolPortal.handoff.gibbon.message');
   });
+
+  it('passes the exact resume query to a fresh Moodle preparation', async () => {
+    window.history.replaceState(null, '', '/school?handoff=resume');
+    renderRoute();
+
+    await waitFor(() => expect(mocks.enter).toHaveBeenCalledWith('moodle', true));
+    expect(mocks.enter).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['?handoff=resume&extra=1', '?handoff=resume&handoff=resume', '?handoff=other'])(
+    'does not accept a different continuation query: %s', async (query) => {
+      window.history.replaceState(null, '', `/school${query}`);
+      renderRoute();
+
+      await waitFor(() => expect(mocks.enter).toHaveBeenCalledWith('moodle'));
+      expect(mocks.enter).toHaveBeenCalledTimes(1);
+    },
+  );
 });

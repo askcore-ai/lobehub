@@ -78,13 +78,19 @@ export const SourceHandoff = memo<SourceHandoffProps>(({ source }) => {
   const translations = handoffTranslations[source];
   const [failureStatus, setFailureStatus] = useState<number>();
   const mounted = useRef(true);
+  const attempt = useRef(0);
 
   const startHandoff = useCallback(async () => {
+    const currentAttempt = ++attempt.current;
     setFailureStatus(undefined);
     try {
-      await enterSchoolSource(source);
+      if (source === 'moodle' && window.location.search === '?handoff=resume') {
+        await enterSchoolSource(source, true);
+      } else {
+        await enterSchoolSource(source);
+      }
     } catch (error) {
-      if (!mounted.current) return;
+      if (!mounted.current || currentAttempt !== attempt.current) return;
       setFailureStatus(error instanceof SchoolHandoffError ? error.status : 503);
     }
   }, [source]);
@@ -94,6 +100,7 @@ export const SourceHandoff = memo<SourceHandoffProps>(({ source }) => {
     void startHandoff();
     return () => {
       mounted.current = false;
+      attempt.current += 1;
       cancelSchoolSourceHandoff();
     };
   }, [startHandoff]);

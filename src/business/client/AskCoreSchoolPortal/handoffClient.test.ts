@@ -160,7 +160,7 @@ describe('invisible school source handoff client', () => {
   });
 
   it('does not transfer an entry intent created during refetch to a different account', async () => {
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ action: moodleAction, grant }));
     vi.stubGlobal('fetch', fetchMock);
     const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {});
     const { enterSchoolSource, setSchoolHandoffSessionState } = await import('./handoffClient');
@@ -176,7 +176,7 @@ describe('invisible school source handoff client', () => {
   });
 
   it('hard-cancels a waiting intent when another tab changes accounts, even while already unstable', async () => {
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ action: moodleAction, grant }));
     vi.stubGlobal('fetch', fetchMock);
     const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {});
     const { enterSchoolSource, setSchoolHandoffSessionState } = await import('./handoffClient');
@@ -226,6 +226,44 @@ describe('invisible school source handoff client', () => {
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
     expect(location.href).not.toContain(grant);
+  });
+
+  it.each([
+    ['moodle', true, moodleAction, '1'],
+    ['moodle', false, moodleAction, null],
+    ['gibbon', true, gibbonAction, null],
+  ] as const)('submits the continuation marker only for resumed Moodle entry (%s, %s)', async (source, resume, action, marker) => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ action, grant }));
+    vi.stubGlobal('fetch', fetchMock);
+    let submitted: FormData | undefined;
+    vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (this: HTMLFormElement) {
+      submitted = new FormData(this);
+    });
+    const { enterSchoolSource, setSchoolHandoffSessionState } = await import('./handoffClient');
+    setSchoolHandoffSessionState('stable', 'generation-a');
+
+    await expect(enterSchoolSource(source, resume)).resolves.toBe('navigating');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('/api/askcore/school/handoff', expect.objectContaining({
+      body: new URLSearchParams({ source }),
+    }));
+    expect(submitted?.get('grant')).toBe(grant);
+    expect(submitted?.get('resume')).toBe(marker);
+    expect(document.querySelector('form')).toBeNull();
+  });
+
+  it.each([false, true])('does not retry a genuine forbidden preparation (resume=%s)', async (resume) => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: 'forbidden' }, 403));
+    vi.stubGlobal('fetch', fetchMock);
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {});
+    const { enterSchoolSource, setSchoolHandoffSessionState } = await import('./handoffClient');
+    setSchoolHandoffSessionState('stable', 'generation-a');
+
+    await expect(enterSchoolSource('moodle', resume)).rejects.toMatchObject({ status: 403 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(submit).not.toHaveBeenCalled();
   });
 
   it('serializes repeated activation into one preparation and one source POST', async () => {
