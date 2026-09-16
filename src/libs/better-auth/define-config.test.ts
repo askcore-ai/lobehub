@@ -109,11 +109,27 @@ vi.mock('@/server/services/email', () => ({
   EmailService: vi.fn(),
 }));
 
+vi.mock('@/server/services/registrationProvisioning', () => ({
+  RegistrationProvisioningService: vi.fn(function () {
+    return { intentForNewUser: vi.fn(), bindMagicToken: vi.fn() };
+  }),
+  registrationProvisioningPlugin: vi.fn(() => ({ id: 'askcore-registration' })),
+}));
+
 vi.mock('@/server/services/user', () => ({
   UserService: vi.fn(),
 }));
 
 describe('defineConfig', () => {
+  it('guards registration before origin-rewriting plugins and hides intent provenance', async () => {
+    const { defineConfig } = await import('./define-config');
+    defineConfig({ plugins: [] });
+    const options = mocks.betterAuth.mock.calls.at(-1)![0];
+    expect(options.plugins[0].id).toBe('askcore-registration');
+    expect(options.user.additionalFields.registrationIntentId).toEqual({
+      input: false, returned: false, required: false, type: 'string',
+    });
+  });
   it('keeps native login methods linked to one Better Auth user', async () => {
     const { defineConfig } = await import('./define-config');
 
@@ -164,6 +180,9 @@ describe('defineConfig', () => {
         rateLimit: {
           customRules: {
             '/get-session': { max: 1000, window: 1 },
+            '/askcore-registration/prepare': { max: 10, window: 60 },
+            '/askcore-registration/recover': { max: 10, window: 60 },
+            '/askcore-registration/status': { max: 120, window: 60 },
             '/request-password-reset': { max: 3, window: 60 },
             '/send-verification-email': { max: 3, window: 60 },
           },

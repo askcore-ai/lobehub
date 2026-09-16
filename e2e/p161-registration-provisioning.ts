@@ -241,13 +241,107 @@ async function main() {
   const productRows = await drizzle(pool).select().from(product.registrationProvisioningJobs);
   assert(productRows.some((row) => row.userId === normal.row.id && row.state === 'ready'));
   checks.push('product_drizzle_schema_reads_migrated_jobs');
+
+  stage = 'product_http_setup';
+  process.env.APP_URL = baseURL;
+  process.env.KEY_VAULTS_SECRET = randomBytes(32).toString('base64');
+  const { RegistrationProvisioningService, registrationProvisioningPlugin, forwardRegistrationRequest } =
+    await import('../src/server/services/registrationProvisioning');
+  const productService = new RegistrationProvisioningService(drizzle(pool) as never);
+  const productAuth = betterAuth({
+    baseURL, basePath: '/api/auth', secret: opaque() + opaque(),
+    database: drizzleAdapter(db, { provider: 'pg', schema }),
+    session: { storeSessionInDatabase: true, cookieCache: { enabled: true, maxAge: 300 } },
+    logger: { disabled: true }, telemetry: { enabled: false },
+    rateLimit: { enabled: true, customRules: {
+      '/askcore-registration/prepare': { max: 10, window: 60 },
+      '/askcore-registration/recover': { max: 10, window: 60 },
+      '/askcore-registration/status': { max: 120, window: 60 },
+    } },
+    emailAndPassword: { enabled: true, autoSignIn: true },
+    user: { additionalFields: { registrationIntentId: { type: 'string', required: false, input: false, returned: false } } },
+    plugins: [registrationProvisioningPlugin(productService), magicLink({
+      sendMagicLink: async ({ url, token }, ctx) => { await productService.bindMagicToken(token, ctx); deliveryURL = url; },
+    })],
+    databaseHooks: { user: { create: { before: async (data, ctx) => ({ data: {
+      ...data, registrationIntentId: await productService.intentForNewUser(ctx),
+    } }) } } },
+  });
+  let ipCounter = 1;
+  const request = (path: string, data?: unknown, cookie?: string, extra?: Record<string, string>) => new Request(baseURL + path, {
+    method: data === undefined ? 'GET' : 'POST',
+    headers: { 'content-type': 'application/json', origin: baseURL, 'x-forwarded-for': `192.0.2.${ipCounter++}`,
+      ...(cookie ? { cookie } : {}), ...extra },
+    ...(data === undefined ? {} : { body: JSON.stringify(data) }),
+  });
+  const call = (path: string, data?: unknown, cookie?: string, extra?: Record<string, string>) => {
+    const req = request(path, data, cookie, extra);
+    return path.startsWith('/api/askcore/registration/')
+      ? forwardRegistrationRequest(req, new URL(req.url).pathname.split('/').at(-1)!, productAuth.handler)
+      : productAuth.handler(req);
+  };
+  const cookies = (response: Response) => response.headers.getSetCookie().map((entry) => entry.split(';')[0]).join('; ');
+  for (const prefix of ['/api/auth/askcore-registration/', '/api/askcore/registration/']) {
+    stage = 'product_http_guards';
+    assert((await call(prefix + 'prepare', { kind: 'ordinary', returnPath: '/school' }, undefined, { origin: 'https://foreign.invalid' })).status === 403);
+    assert((await call(prefix + 'prepare', { kind: 'ordinary', returnPath: '/school', userId: opaque() })).status === 400);
+    assert((await call(prefix + 'prepare', { kind: 'ordinary', returnPath: '//foreign.invalid' })).status === 400);
+    assert((await call(prefix + 'prepare', { kind: 'invitation', invitationToken: 'x'.repeat(17000), returnPath: '/school' })).status === 413);
+    assert((await call(prefix + 'status')).status === 401);
+    assert((await call(prefix + 'status?userId=' + opaque())).status === 400);
+    stage = 'product_http_signup';
+    const prepared = await call(prefix + 'prepare', { kind: 'ordinary', returnPath: '/school' });
+    assert(prepared.status === 200 && prepared.headers.get('cache-control') === 'private, no-store');
+    const { handle } = await prepared.json();
+    assert(/^[a-f0-9]{64}$/.test(handle));
+    const signupResponse = await call('/api/auth/sign-up/email', { email: opaque() + '@fixture.invalid', name: 'Synthetic', password: opaque() },
+      undefined, { 'x-askcore-registration-intent': handle });
+    assert(signupResponse.ok);
+    const body = await signupResponse.json();
+    assert(!('registrationIntentId' in body.user));
+    const cookie = cookies(signupResponse);
+    assert(cookie);
+    const status = await call(prefix + 'status', undefined, cookie);
+    const statusBody = await status.json();
+    assert(status.status === 200 && statusBody.state === 'ready' && statusBody.returnPath === '/school');
+    assert(Object.keys(statusBody).sort().join(',') === 'action,retryAt,returnPath,state');
+    const stored = (await pool.query('SELECT intent_id FROM registration_provisioning_jobs WHERE user_id=$1', [body.user.id])).rows[0];
+    assert(stored.intent_id === hash(handle));
+    await pool.query('UPDATE auth_sessions SET impersonated_by=$1 WHERE user_id=$2', [opaque(), body.user.id]);
+    assert((await call(prefix + 'status', undefined, cookie)).status === 403);
+    await pool.query('DELETE FROM auth_sessions WHERE user_id=$1', [body.user.id]);
+    assert((await call(prefix + 'status', undefined, cookie)).status === 401);
+    checks.push(prefix.includes('/api/auth/') ? 'product_auth_alias_http_guards_signup_private_status_no_cookie_cache' : 'product_public_forwarder_http_guards_signup_private_status_no_cookie_cache');
+  }
+  stage = 'product_http_recover';
+  const unbound = await call('/api/auth/sign-up/email', { email: opaque() + '@fixture.invalid', name: 'Synthetic', password: opaque() });
+  assert(unbound.ok);
+  const unboundBody = await unbound.json();
+  const unboundCookie = cookies(unbound);
+  const recoveryIntent = await (await call('/api/askcore/registration/prepare', { kind: 'ordinary', returnPath: '/school' })).json();
+  assert((await call('/api/askcore/registration/recover', { intentHandle: recoveryIntent.handle }, unboundCookie)).status === 200);
+  await pool.query("UPDATE registration_provisioning_jobs SET state='leased',lease_token=$1,lease_until=now()+interval '1 minute' WHERE user_id=$2", [opaque(), unboundBody.user.id]);
+  assert((await call('/api/askcore/registration/recover', {}, unboundCookie)).status === 409);
+  checks.push('product_http_unbound_recovery_and_live_lease_refusal');
+  stage = 'product_http_shared_rate_limit';
+  for (let index = 0; index < 10; index++) {
+    const prefix = index % 2 ? '/api/askcore/registration/' : '/api/auth/askcore-registration/';
+    assert((await call(prefix + 'prepare', { kind: 'ordinary', returnPath: '/' }, undefined, { 'x-forwarded-for': '192.0.2.250' })).status === 200);
+  }
+  assert((await call('/api/askcore/registration/prepare', { kind: 'ordinary', returnPath: '/' }, undefined, { 'x-forwarded-for': '192.0.2.250' })).status === 429);
+  checks.push('product_both_aliases_share_better_auth_rate_limit');
+  stage = 'product_http_storage_outage';
+  await pool.end(); pool = undefined;
+  assert((await call('/api/askcore/registration/status', undefined, unboundCookie)).status === 503);
+  checks.push('product_real_storage_outage_is_503_not_logout');
+
 }
 
 void (async () => {
   try {
     await main();
     process.stdout.write(JSON.stringify({ contract, status: 'partial', checks,
-      deferred: ['product_prepare_transport', 'production_secondary_storage', 'email_verification_and_reset', 'native_sources', 'worker_recovery', 'public_journey'],
+      deferred: ['next_runtime_and_browser', 'production_secondary_storage', 'email_verification_and_reset', 'native_sources', 'worker_recovery', 'public_journey'],
       sourceCalls: 0, emailsSent: 0, rawIdentityFieldsEmitted: 0 }) + '\n');
     process.exitCode = 3;
   } catch {
