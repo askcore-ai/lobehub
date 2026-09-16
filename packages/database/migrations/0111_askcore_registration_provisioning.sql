@@ -1,6 +1,6 @@
 -- Additive registration protocol only. Never backfill historical users.
 -- Rollback pauses the consumer; retain these tables and triggers for recovery.
-CREATE TABLE "registration_intents" (
+CREATE TABLE IF NOT EXISTS "registration_intents" (
   "id" text PRIMARY KEY,
   "kind" text NOT NULL CHECK ("kind" IN ('ordinary', 'invitation')),
   "invitation_ciphertext" text,
@@ -10,15 +10,15 @@ CREATE TABLE "registration_intents" (
   "created_at" timestamptz NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE "registration_magic_contexts" (
+CREATE TABLE IF NOT EXISTS "registration_magic_contexts" (
   "token_hash" text PRIMARY KEY,
   "intent_id" text NOT NULL REFERENCES "registration_intents"("id"),
   "expires_at" timestamptz NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "users" ADD COLUMN "registration_intent_id" text REFERENCES "registration_intents"("id");
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "registration_intent_id" text REFERENCES "registration_intents"("id");
 --> statement-breakpoint
-CREATE TABLE "registration_provisioning_jobs" (
+CREATE TABLE IF NOT EXISTS "registration_provisioning_jobs" (
   "user_id" text PRIMARY KEY REFERENCES "users"("id") ON DELETE CASCADE,
   "intent_id" text REFERENCES "registration_intents"("id"),
   "auth_ready_at" timestamptz,
@@ -37,9 +37,9 @@ CREATE TABLE "registration_provisioning_jobs" (
   "updated_at" timestamptz NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE INDEX "registration_jobs_due_idx" ON "registration_provisioning_jobs" ("state", "next_attempt_at");
+CREATE INDEX IF NOT EXISTS "registration_jobs_due_idx" ON "registration_provisioning_jobs" ("state", "next_attempt_at");
 --> statement-breakpoint
-CREATE FUNCTION "askcore_registration_user_created"() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION "askcore_registration_user_created"() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW.registration_intent_id IS NOT NULL THEN
     UPDATE registration_intents SET claimed_user = NEW.id
@@ -55,10 +55,10 @@ BEGIN
   RETURN NEW;
 END $$;
 --> statement-breakpoint
-CREATE TRIGGER "askcore_registration_user_created" AFTER INSERT ON "users"
+CREATE OR REPLACE TRIGGER "askcore_registration_user_created" AFTER INSERT ON "users"
 FOR EACH ROW EXECUTE FUNCTION "askcore_registration_user_created"();
 --> statement-breakpoint
-CREATE FUNCTION "askcore_registration_authenticated"() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION "askcore_registration_authenticated"() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW.impersonated_by IS NULL AND NEW.expires_at > clock_timestamp() THEN
     UPDATE registration_provisioning_jobs
@@ -70,5 +70,5 @@ BEGIN
   RETURN NEW;
 END $$;
 --> statement-breakpoint
-CREATE TRIGGER "askcore_registration_authenticated" AFTER INSERT ON "auth_sessions"
+CREATE OR REPLACE TRIGGER "askcore_registration_authenticated" AFTER INSERT ON "auth_sessions"
 FOR EACH ROW EXECUTE FUNCTION "askcore_registration_authenticated"();

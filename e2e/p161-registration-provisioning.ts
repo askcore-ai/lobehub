@@ -455,7 +455,7 @@ async function main() {
   assert(recoveredInvitation.state === 'ready' && recoveredInvitation.kind === 'invitation' && recoveredInvitation.id === hash(invitationPrepared.handle));
   checks.push('product_missing_context_recovers_with_explicit_invitation_ciphertext_pending_backend_validation');
 
-  stage = 'product_migration_populated_replay';
+  stage = 'product_migration_populated_snapshot';
   // Exercise preservation of consumer-owned progress, not only fresh auth jobs.
   for (const state of ['leased', 'retry', 'identity_conflict', 'completed']) {
     const id = opaque();
@@ -477,6 +477,7 @@ async function main() {
     'jobs',(SELECT jsonb_agg(to_jsonb(t) ORDER BY user_id) FROM registration_provisioning_jobs t)
   ) AS state`;
   const beforeReplay = (await pool.query(snapshotSQL)).rows[0].state;
+  stage = 'product_migration_populated_replay';
   await pool.query(migration);
   assert(JSON.stringify((await pool.query(snapshotSQL)).rows[0].state) === JSON.stringify(beforeReplay));
   checks.push('migration_replay_preserves_all_auth_and_protocol_rows');
