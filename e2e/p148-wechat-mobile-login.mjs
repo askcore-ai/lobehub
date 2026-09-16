@@ -94,7 +94,9 @@ const verifySourceBoundary = async () => {
 
   assert.match(bridge, /wxApi\.login/);
   assert.match(bridgeApp, /onShow\(options\)/);
-  assert.match(bridgePage, /controller\.authorize\(wx, launch\)/);
+  assert.match(bridgePage, /const currentLaunch = launch/);
+  assert.match(bridgePage, /controller\.authorize\(wx, currentLaunch\)/);
+  assert.match(bridgePage, /if \(launch !== currentLaunch\) return/);
   assert.match(bridgePage, /pending\.version <= handledLaunchVersion/);
   assert.match(bridge, /\[429, 502, 503\]/);
   assert.doesNotMatch(bridge, /AppSecret|session_key|access_token|refresh_token/i);
