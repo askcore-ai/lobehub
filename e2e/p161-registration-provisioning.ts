@@ -137,7 +137,7 @@ async function main() {
   let deliveryURL = '';
   const auth = betterAuth({
     baseURL, basePath: '/api/auth', secret: opaque() + opaque(),
-    database: drizzleAdapter(db, { provider: 'pg', schema }),
+    database: drizzleAdapter(db, { provider: 'pg', schema, transaction: true }),
     session: { storeSessionInDatabase: true },
     logger: { disabled: true }, telemetry: { enabled: false }, rateLimit: { enabled: false },
     emailAndPassword: { enabled: true, autoSignIn: true },
@@ -306,7 +306,7 @@ async function main() {
   const productService = new RegistrationProvisioningService(drizzle(pool) as never);
   const productAuth = betterAuth({
     baseURL, basePath: '/api/auth', secret: opaque() + opaque(),
-    database: drizzleAdapter(db, { provider: 'pg', schema }),
+    database: drizzleAdapter(db, { provider: 'pg', schema, transaction: true }),
     session: { storeSessionInDatabase: true, cookieCache: { enabled: true, maxAge: 300 },
       additionalFields: { impersonatedBy: { type: 'string', required: false, input: false } } },
     logger: { disabled: true }, telemetry: { enabled: false },
