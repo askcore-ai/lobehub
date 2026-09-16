@@ -87,7 +87,7 @@ async function experiment() {
   if (actual.rows[0].name !== 'p161_t148_synthetic') throw new Error('database_binding');
   // Fresh experimental database only. No application migrations or DROP statements.
   if (!killWorker) await writer.query([
-    'CREATE TABLE fixture_intent (intent_hash text PRIMARY KEY, expires_at timestamptz NOT NULL, claimed_user text UNIQUE);',
+    'CREATE TABLE fixture_intent (intent_hash text PRIMARY KEY, expires_at timestamptz NOT NULL, claimed_user text);',
     'CREATE TABLE fixture_magic_context (token_hash text PRIMARY KEY, intent_hash text NOT NULL REFERENCES fixture_intent(intent_hash));',
     'CREATE TABLE "user" (id text PRIMARY KEY, name text NOT NULL, email text UNIQUE NOT NULL,',
     '"emailVerified" boolean NOT NULL, image text, "registrationIntentId" text REFERENCES fixture_intent(intent_hash), "createdAt" timestamptz NOT NULL, "updatedAt" timestamptz NOT NULL);',
@@ -309,10 +309,10 @@ async function experiment() {
 
   async function atomicIntentControls() {
     stage = 'atomic_intent_controls';
-    const insert = async (intentHash: string | null) => {
+    const insert = async (intentHash: string | null, client: Pool | import('pg').PoolClient = writer!) => {
       const id = randomBytes(16).toString('hex');
       try {
-        await writer!.query('INSERT INTO "user" (id,name,email,"emailVerified","createdAt","updatedAt","registrationIntentId") VALUES ($1,$2,$3,true,now(),now(),$4)',
+        await client.query('INSERT INTO "user" (id,name,email,"emailVerified","createdAt","updatedAt","registrationIntentId") VALUES ($1,$2,$3,true,now(),now(),$4)',
           [id, 'Synthetic Fixture', randomBytes(12).toString('hex') + '@fixture.invalid', intentHash]);
         return true;
       } catch (error) {
@@ -322,8 +322,40 @@ async function experiment() {
     };
     const intentHash = hash(randomBytes(32).toString('hex'));
     await writer!.query("INSERT INTO fixture_intent VALUES ($1,now()+interval '5 minutes',null)", [intentHash]);
-    const concurrent = await Promise.all([insert(intentHash), insert(intentHash)]);
-    if (concurrent.filter(Boolean).length !== 1 || await insert(intentHash)) throw new Error('intent_one_time_claim');
+    const first = await writer!.connect();
+    const second = await writer!.connect();
+    let blockedClaimObserved = false;
+    let secondInsert: Promise<boolean> | undefined;
+    try {
+      for (const client of [first, second]) {
+        await client.query('BEGIN');
+        await client.query("SET LOCAL statement_timeout='5s'");
+        // Hold the same locks acquired by both foreign-key checks before either claim.
+        await client.query('SELECT intent_hash FROM fixture_intent WHERE intent_hash=$1 FOR KEY SHARE', [intentHash]);
+      }
+      const firstPid = (await first.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      const secondPid = (await second.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      if (!await insert(intentHash, first)) throw new Error('first_intent_claim');
+      secondInsert = insert(intentHash, second);
+      // Attach rejection handling immediately while observing the blocked query.
+      void secondInsert.catch(() => {});
+      const deadline = Date.now() + 3000;
+      while (Date.now() < deadline) {
+        const state = await observer!.query('SELECT $1::int=ANY(pg_blocking_pids($2::int)) AS blocked', [firstPid, secondPid]);
+        if (state.rows[0].blocked) { blockedClaimObserved = true; break; }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      if (!blockedClaimObserved) throw new Error('concurrent_claim_not_observed');
+      await first.query('COMMIT');
+      if (await secondInsert) throw new Error('duplicate_intent_claim');
+    } finally {
+      await first.query('ROLLBACK');
+      // Release the blocker before draining any outstanding second query.
+      await secondInsert?.catch(() => {});
+      await second.query('ROLLBACK');
+      first.release(); second.release();
+    }
+    if (await insert(intentHash)) throw new Error('intent_replayed');
     const expiredHash = hash(randomBytes(32).toString('hex'));
     await writer!.query("INSERT INTO fixture_intent VALUES ($1,now()-interval '1 second',null)", [expiredHash]);
     if (await insert(expiredHash)) throw new Error('expired_intent_claimed');
@@ -332,7 +364,7 @@ async function experiment() {
     if (!await insert(null)) throw new Error('missing_intent_pending_event');
     const pending = await writer!.query('SELECT count(*)::int AS count FROM fixture_marker WHERE intent_attached=false');
     if (pending.rows[0].count !== 1) throw new Error('missing_intent_not_pending');
-    intentObservations.push({ missingIntentRetainedUnattached: true, concurrentClaims: 2, committedClaims: 1, replayRejected: true,
+    intentObservations.push({ missingIntentRetainedUnattached: true, concurrentClaims: 2, blockedClaimObserved, committedClaims: 1, replayRejected: true,
       expiredRejected: true, atomicUserAndEvent: true,
       scope: 'experimental_sql_trigger_not_product_invitation_or_worker' });
   }
