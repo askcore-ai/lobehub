@@ -87,12 +87,18 @@ async function main() {
     predecessor.when === 1785297838002);
   assert(registrationEntry.idx === 112 && registrationEntry.tag === '0112_askcore_registration_provisioning' &&
     registrationEntry.when > predecessor.when);
-  assert(new Set(journal.map(({ idx }) => idx)).size === journal.length &&
+  // Published history already repeats idx 105/106. Preserve it; only the two
+  // integrating migrations must own their new indexes uniquely.
+  assert(journal.filter(({ idx }) => idx === 111).length === 1 &&
+    journal.filter(({ idx }) => idx === 112).length === 1 &&
     new Set(journal.map(({ tag }) => tag)).size === journal.length);
+  stage = 'published_migration_file_selection';
   const migrations = readMigrationFiles({ migrationsFolder: migrationFolder });
   const publishedMigration = migrations.find(({ folderMillis }) => folderMillis === predecessor.when)!;
   assert(publishedMigration && migrations.filter(({ folderMillis }) => folderMillis > predecessor.when).length === 1);
+  stage = 'published_migration_schema';
   await pool.query(readFileSync(`${migrationFolder}/${predecessor.tag}.sql`, 'utf8'));
+  stage = 'published_migration_rows';
   const legacyAccount = opaque();
   const legacyTransaction = opaque();
   await pool.query(`INSERT INTO accounts(id,account_id,provider_id,user_id,created_at,updated_at)
