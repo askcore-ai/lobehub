@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { wechatMobileLogin } from '.';
 
 const bridge = require('../../../../../apps/wechat-login-bridge/controllers/login-controller');
+
 const origin = 'https://askcore.example';
 const providerIdentity = {
   openid: 'synthetic-mini-openid',
@@ -14,7 +15,10 @@ const providerIdentity = {
 };
 
 const cookieHeader = (response: Response) =>
-  response.headers.getSetCookie().map((cookie) => cookie.split(';')[0]).join('; ');
+  response.headers
+    .getSetCookie()
+    .map((cookie) => cookie.split(';')[0])
+    .join('; ');
 
 function fixture() {
   const database: Record<string, Record<string, unknown>[]> = {
@@ -59,11 +63,13 @@ function fixture() {
     if (body !== undefined) headers.set('content-type', 'application/json');
     if (cookie) headers.set('cookie', cookie);
     if (tab) headers.set('x-askcore-wechat-tab-binding', tab);
-    return auth.handler(new Request(`${origin}/api/auth${path}`, {
-      body: body === undefined ? undefined : JSON.stringify(body),
-      headers,
-      method: body === undefined ? 'GET' : 'POST',
-    }));
+    return auth.handler(
+      new Request(`${origin}/api/auth${path}`, {
+        body: body === undefined ? undefined : JSON.stringify(body),
+        headers,
+        method: body === undefined ? 'GET' : 'POST',
+      }),
+    );
   };
 
   const start = async (path = '/wechat-mobile/start', cookie?: string) => {
@@ -87,15 +93,17 @@ function fixture() {
       return Response.json(providerIdentity);
     });
     // wx.request sends no browser cookies or Origin header.
-    return auth.handler(new Request(`${origin}${bridge.endpointForPurpose(prepared.launch.purpose)}`, {
-      body: JSON.stringify({
-        code: 'synthetic-one-time-code',
-        completionCapability: prepared.launch.completionCapability,
-        transactionId: prepared.transactionId,
+    return auth.handler(
+      new Request(`${origin}${bridge.endpointForPurpose(prepared.launch.purpose)}`, {
+        body: JSON.stringify({
+          code: 'synthetic-one-time-code',
+          completionCapability: prepared.launch.completionCapability,
+          transactionId: prepared.transactionId,
+        }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
       }),
-      headers: { 'content-type': 'application/json' },
-      method: 'POST',
-    }));
+    );
   };
 
   const signIn = async () => {
