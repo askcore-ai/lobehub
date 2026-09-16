@@ -5,6 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSignIn } from './useSignIn';
 
 // ── hoisted mocks ──────────────────────────────────────────────
+const mockPrepareRegistration = vi.hoisted(() => vi.fn());
+const registrationConfig = vi.hoisted(() => ({ magic: false }));
+vi.mock('@/business/client/AskCoreWorkbench/api', () => ({ prepareRegistrationForSignup: mockPrepareRegistration }));
+
 const mockPush = vi.hoisted(() => vi.fn());
 const mockSearchParamsGet = vi.hoisted(() => vi.fn().mockReturnValue(null));
 const mockMessageError = vi.hoisted(() => vi.fn());
@@ -67,7 +71,7 @@ vi.mock('../_layout/AuthServerConfigProvider', () => ({
     selector({
       serverConfig: {
         disableEmailPassword: false,
-        enableMagicLink: false,
+        enableMagicLink: registrationConfig.magic,
         oAuthSSOProviders: ['google', 'github'],
       },
       serverConfigInit: true,
@@ -105,6 +109,8 @@ vi.stubGlobal('localStorage', mockLocalStorage);
 describe('useSignIn', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    registrationConfig.magic = false;
+    mockPrepareRegistration.mockResolvedValue({ handle: 'b'.repeat(64), expiresAt: '2099-01-01T00:00:00.000Z' });
     mockLocalStorage.clear();
     mockSearchParamsGet.mockReturnValue(null);
   });
@@ -113,6 +119,26 @@ describe('useSignIn', () => {
     vi.restoreAllMocks();
   });
 
+  it('carries the prepared OAuth handle in state and keeps callback URLs secret-free', async () => {
+    mockSignInSocial.mockResolvedValue({ error: null });
+    const { result } = renderHook(() => useSignIn());
+    await act(async () => { await result.current.handleSocialSignIn('google'); });
+    expect(mockSignInSocial).toHaveBeenCalledWith(expect.objectContaining({
+      additionalData: { registrationIntent: 'b'.repeat(64) },
+      callbackURL: '/', newUserCallbackURL: '/askcore/workbench?protocol=registration',
+    }));
+  });
+  it('sends the magic-link handle in a header while preserving existing-user continuation', async () => {
+    registrationConfig.magic = true;
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ exists: true, hasPassword: false }) });
+    mockSignInMagicLink.mockResolvedValue({ error: null });
+    const { result } = renderHook(() => useSignIn());
+    await act(async () => { await result.current.handleCheckUser({ email: 'synthetic@example.com' }); });
+    expect(mockSignInMagicLink).toHaveBeenCalledWith(expect.objectContaining({
+      callbackURL: '/', newUserCallbackURL: '/askcore/workbench?protocol=registration',
+      fetchOptions: { headers: { 'x-askcore-registration-intent': 'b'.repeat(64) } },
+    }));
+  });
   describe('initial state', () => {
     it('should return initial values', () => {
       const { result } = renderHook(() => useSignIn());

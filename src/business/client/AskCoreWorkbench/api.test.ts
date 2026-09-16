@@ -8,6 +8,9 @@ import {
   askCoreWorkbenchOrganizationUrl,
   askCoreWorkbenchResourceUrl,
   fetchAskCoreWorkbenchJson,
+  fetchRegistrationStatus,
+  prepareRegistrationForSignup,
+  recoverRegistration,
   isAskCoreWorkbenchDeleteNotFound,
 } from './api';
 
@@ -332,5 +335,47 @@ describe('AskCoreWorkbench API', () => {
 
     expect(progress[0]).toEqual({ loaded: 0, percent: 0, phase: 'downloading' });
     expect(progress.at(-1)).toEqual({ loaded: 3, percent: 100, phase: 'completed' });
+  });
+});
+
+
+describe('registration client transport', () => {
+  afterEach(() => { vi.unstubAllGlobals(); window.sessionStorage.clear(); });
+  it('sends invitation proof only in the prepare body and keeps the return URL clean', async () => {
+    window.sessionStorage.setItem('askcore.lti.identity-link.invitation', 'synthetic-invitation');
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ handle: 'a'.repeat(64), expiresAt: '2099-01-01T00:00:00.000Z' })));
+    vi.stubGlobal('fetch', fetchMock);
+    await prepareRegistrationForSignup('/askcore/workbench?protocol=identity-link');
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/askcore/registration/prepare');
+    expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({
+      kind: 'invitation', invitationToken: 'synthetic-invitation', returnPath: '/school',
+    });
+  });
+  it('does not silently turn a proofless invitation continuation into an ordinary signup', () => {
+    window.sessionStorage.clear();
+    expect(() => prepareRegistrationForSignup('/askcore/workbench?protocol=identity-link')).toThrow();
+  });
+  it('binds recover to the expected session and never sends an account selector', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ state: 'ready' })));
+    vi.stubGlobal('fetch', fetchMock);
+    await recoverRegistration('c'.repeat(64), { acknowledgeCurrentIdentity: true });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/askcore/registration/recover');
+    expect(new Headers(init!.headers).get('x-askcore-registration-session')).toBe('c'.repeat(64));
+    expect(JSON.parse(init!.body as string)).toEqual({ acknowledgeCurrentIdentity: true });
+    expect(init!.cache).toBe('no-store');
+  });
+  it('propagates account-switch cancellation to an in-flight status request', async () => {
+    let observed: AbortSignal | undefined;
+    vi.stubGlobal('fetch', vi.fn((_url, init) => new Promise((_resolve, reject) => {
+      observed = init.signal;
+      observed!.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+    })));
+    const controller = new AbortController();
+    const pending = fetchRegistrationStatus(controller.signal);
+    const assertion = expect(pending).rejects.toThrow('Aborted');
+    controller.abort();
+    await assertion;
+    expect(observed?.aborted).toBe(true);
   });
 });

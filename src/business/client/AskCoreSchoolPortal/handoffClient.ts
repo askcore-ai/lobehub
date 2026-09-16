@@ -42,6 +42,9 @@ let activeSessionAlignment:
       source: SchoolSourceAudience;
     }
   | undefined;
+// Read after async barriers rather than retaining the caller's initial narrowing.
+const currentPreparation = () => activePreparation;
+
 let sessionEpoch = 0;
 let sessionGenerationHash: string | null = null;
 let lastStableGenerationHash: string | null = null;
@@ -259,10 +262,11 @@ export const enterSchoolSource = (
         throw new DOMException('Aborted', 'AbortError');
       }
       generationHash = sessionGenerationHash;
-      if (activePreparation) activePreparation.generationHash = generationHash;
+      const preparation = currentPreparation();
+      if (preparation?.controller === controller) preparation.generationHash = generationHash;
       const requestEpoch = sessionEpoch;
       const requestController = new AbortController();
-      if (activePreparation) activePreparation.requestController = requestController;
+      if (preparation?.controller === controller) preparation.requestController = requestController;
       const onAbort = () => requestController.abort(controller.signal.reason);
       controller.signal.addEventListener('abort', onAbort, { once: true });
       try {
@@ -281,8 +285,8 @@ export const enterSchoolSource = (
         if (!requestController.signal.aborted) throw error;
       } finally {
         controller.signal.removeEventListener('abort', onAbort);
-        if (activePreparation?.requestController === requestController) {
-          activePreparation.requestController = undefined;
+        if (preparation?.requestController === requestController) {
+          preparation.requestController = undefined;
         }
       }
     }

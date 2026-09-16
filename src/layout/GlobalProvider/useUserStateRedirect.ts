@@ -3,6 +3,7 @@
 import { useCallback } from 'react';
 
 import {
+  ASKCORE_WORKBENCH_PATH,
   hasPendingAskCoreIdentityLink,
   isAskCoreIdentityLinkCallback,
 } from '@/business/client/AskCoreWorkbench/config';
@@ -27,6 +28,8 @@ export const useWebUserStateRedirect = () =>
     const { pathname, search } = window.location;
 
     if (!onboardingSelectors.needsOnboarding(state)) return;
+
+    if (pathname === ASKCORE_WORKBENCH_PATH && new URLSearchParams(search).get('protocol') === 'registration') return;
 
     // The one-time school identity must be accepted before a new account leaves
     // its registration callback. Normal routes still enter onboarding first.

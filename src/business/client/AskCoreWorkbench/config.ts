@@ -1,5 +1,7 @@
 'use client';
 
+import { sha256 } from 'js-sha256';
+
 import {
   type AskCoreEducationProfile,
   type AskCoreWorkbenchTab,
@@ -10,10 +12,30 @@ export const ASKCORE_WORKBENCH_PATH = '/askcore/workbench';
 export const ASKCORE_WORKBENCH_PLUGIN_ID = 'aitutor-suite';
 export const ASKCORE_IDENTITY_LINK_TOKEN_STORAGE_KEY = 'askcore.lti.identity-link.invitation';
 
-export type AskCoreProtocolMode = 'identity-link' | 'processing';
+export const ASKCORE_REGISTRATION_PATH = '/askcore/workbench?protocol=registration';
+
+export const registrationSessionBinding = (userId: string, sessionId: string) =>
+  sha256(`askcore.registration-session.v1\0${userId}\0${sessionId}`);
+
+export const registrationInvitationFromSession = () => {
+  try { return window.sessionStorage.getItem(ASKCORE_IDENTITY_LINK_TOKEN_STORAGE_KEY)?.trim() || ''; }
+  catch { return ''; }
+};
+
+export const registrationReturnPath = (value: string) => {
+  const target = new URL(value, window.location.origin);
+  if (target.origin !== window.location.origin || target.hash || /[\\\u0000-\u0020\u007f]/.test(value)) {
+    throw new Error('Invalid registration destination');
+  }
+  if (target.pathname === ASKCORE_WORKBENCH_PATH && ['identity-link', 'registration'].includes(target.searchParams.get('protocol') || '')) return '/school';
+  if ([...target.searchParams.keys()].some((key) => /^(token|invitationToken|intent|intentHandle|registrationIntent)$/i.test(key))) throw new Error('Invalid registration destination');
+  return target.pathname + target.search;
+};
+
+export type AskCoreProtocolMode = 'identity-link' | 'processing' | 'registration';
 
 export const askCoreProtocolMode = (value?: string | null): AskCoreProtocolMode | null =>
-  value === 'identity-link' || value === 'processing' ? value : null;
+  value === 'identity-link' || value === 'processing' || value === 'registration' ? value : null;
 
 export const hasPendingAskCoreIdentityLink = () => {
   try {

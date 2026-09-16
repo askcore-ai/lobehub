@@ -113,6 +113,7 @@ vi.mock('@/server/services/registrationProvisioning', () => ({
   RegistrationProvisioningService: vi.fn(function () {
     return { intentForNewUser: vi.fn(), bindMagicToken: vi.fn() };
   }),
+  registrationHttpHandler: vi.fn((handler) => handler),
   registrationProvisioningPlugin: vi.fn(() => ({ id: 'askcore-registration' })),
 }));
 

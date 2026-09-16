@@ -1,6 +1,6 @@
 import { type LobeChatDatabase, serverDB } from '@lobechat/database';
 import { registrationIntents, registrationMagicContexts, registrationProvisioningJobs } from '@lobechat/database/schemas';
-import { APIError, createAuthEndpoint, getOAuthState, getSession } from 'better-auth/api';
+import { APIError, createAuthEndpoint, getOAuthState, getSession, type getSessionFromCtx } from 'better-auth/api';
 import { type BetterAuthPlugin } from 'better-auth/types';
 import { and, eq, gt, isNull, or, sql } from 'drizzle-orm';
 import { createHash, randomBytes } from 'node:crypto';
@@ -210,15 +210,15 @@ const guardRegistrationRequest: NonNullable<BetterAuthPlugin['onRequest']> = asy
 export const registrationProvisioningPlugin = (service = new RegistrationProvisioningService()): BetterAuthPlugin => {
   const sessionEndpoint = getSession();
   // Unlike getSessionFromCtx(), this public endpoint preserves storage outages.
-  const account = async (ctx: Parameters<typeof sessionEndpoint>[0]): Promise<Account> => {
+  const account = async (ctx: Parameters<typeof getSessionFromCtx>[0]): Promise<Account & { sessionId: string }> => {
     let session;
     try {
-      session = await sessionEndpoint({ ...ctx, query: { disableCookieCache: true, disableRefresh: true },
+      session = await sessionEndpoint({ ...ctx, body: undefined, method: 'GET', headers: ctx.headers ?? ctx.request?.headers ?? new Headers(), query: { disableCookieCache: true, disableRefresh: true },
         asResponse: false, returnHeaders: false, returnStatus: false });
     } catch { throw unavailable(); }
     if (!session?.user?.id || !session.session?.id) throw new APIError('UNAUTHORIZED', { message: 'Authentication required' });
     if ((session.session as Record<string, unknown>).impersonatedBy) throw new APIError('FORBIDDEN', { message: 'Impersonation is not allowed' });
-    return { userId: session.user.id, email: session.user.email };
+    return { userId: session.user.id, email: session.user.email, sessionId: session.session.id };
   };
   const safe = async <T>(call: () => Promise<T>) => {
     try { return await call(); }
@@ -227,14 +227,6 @@ export const registrationProvisioningPlugin = (service = new RegistrationProvisi
   return {
     id: 'askcore-registration',
     onRequest: guardRegistrationRequest,
-    onResponse: async (response) => {
-      // The pinned router produces a mutable Response before endpoint dispatch
-      // for rate limits. Mutate it without short-circuiting later plugin hooks.
-      if (response.status === 429) {
-        response.headers.set('Cache-Control', 'private, no-store');
-        response.headers.set('X-Content-Type-Options', 'nosniff');
-      }
-    },
     endpoints: {
       askcoreRegistrationPrepare: createAuthEndpoint('/askcore-registration/prepare', {
         method: 'POST', requireHeaders: true, body: registrationPrepareSchema,
@@ -252,7 +244,14 @@ export const registrationProvisioningPlugin = (service = new RegistrationProvisi
         method: 'POST', requireHeaders: true, body: registrationRecoverSchema,
       }, async (ctx) => {
         for (const [key, value] of Object.entries(HEADERS)) ctx.setHeader(key, value);
-        return ctx.json(await safe(async () => service.recover(await account(ctx), ctx.body)));
+        return ctx.json(await safe(async () => {
+          const current = await account(ctx);
+          const expected = ctx.headers.get('x-askcore-registration-session');
+          if (!expected || !HANDLE.test(expected) || expected !== hash(
+            `askcore.registration-session.v1\0${current.userId}\0${current.sessionId}`,
+          )) throw conflict();
+          return service.recover(current, ctx.body);
+        }));
       }),
     },
   };
@@ -276,4 +275,17 @@ export const forwardRegistrationRequest = async (
   } catch {
     return failureResponse(503, 'REGISTRATION_UNAVAILABLE').response;
   }
+};
+
+/** Decorate only registration HTTP responses, after all authentication hooks. */
+export const registrationHttpHandler = (handler: (request: Request) => Promise<Response>) => async (request: Request) => {
+  let path = new URL(request.url).pathname;
+  try { path = decodeURIComponent(path).replace(/\/{2,}/g, '/'); } catch { /* The router rejects invalid encoding. */ }
+  if (!path.startsWith(AUTH_PREFIX)) return handler(request);
+  let response: Response;
+  try { response = await handler(request); }
+  catch { return failureResponse(503, 'REGISTRATION_UNAVAILABLE').response; }
+  const headers = new Headers(response.headers);
+  for (const [key, value] of Object.entries(HEADERS)) headers.set(key, value);
+  return new Response(response.body, { headers, status: response.status, statusText: response.statusText });
 };

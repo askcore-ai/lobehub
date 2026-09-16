@@ -1,5 +1,7 @@
 'use client';
 
+import { registrationInvitationFromSession, registrationReturnPath } from './config';
+
 import {
   type ActivityDetailResponse,
   type AnyResourceKey,
@@ -715,3 +717,62 @@ export class AskCoreWorkbenchApiClient {
 }
 
 export const askCoreWorkbenchClient = new AskCoreWorkbenchApiClient();
+
+export type RegistrationStatus = {
+  action: 'continue' | 'choose_intent' | 'authenticate' | 'wait' | 'retry' | 'review_identity' | 'replace_invitation' | 'contact_school';
+  retryAt: string | null;
+  returnPath: string;
+  state: 'awaiting_intent' | 'awaiting_auth' | 'ready' | 'leased' | 'retry' | 'identity_conflict' | 'completed' | 'not_applicable';
+};
+
+export type RegistrationIntent =
+  | { kind: 'ordinary'; returnPath: string }
+  | { kind: 'invitation'; invitationToken: string; returnPath: string };
+
+const registrationRequest = async <T>(action: string, init: RequestInit = {}, signal?: AbortSignal): Promise<T> => {
+  const controller = new AbortController();
+  const abort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) abort();
+  else signal?.addEventListener('abort', abort, { once: true });
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    return await fetchAskCoreWorkbenchJson<T>(`/api/askcore/registration/${action}`, {
+      ...init, cache: 'no-store', signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
+  }
+};
+
+export const prepareRegistrationIntent = async (intent: RegistrationIntent, signal?: AbortSignal) => {
+  const value = await registrationRequest<{ expiresAt: string; handle: string }>('prepare', protocolMutation('POST', intent), signal);
+  if (!/^[a-f0-9]{64}$/.test(value.handle) || !Number.isFinite(Date.parse(value.expiresAt))) {
+    throw new AskCoreWorkbenchApiError('Registration response unavailable', 503);
+  }
+  return value;
+};
+
+export const fetchRegistrationStatus = (signal?: AbortSignal) =>
+  registrationRequest<RegistrationStatus>('status', {}, signal);
+
+export const recoverRegistration = (
+  sessionBinding: string,
+  input: { acknowledgeCurrentIdentity?: true; intentHandle?: string },
+  signal?: AbortSignal,
+) => registrationRequest<RegistrationStatus>('recover', {
+  ...protocolMutation('POST', input),
+  headers: { 'Content-Type': 'application/json', 'X-AskCore-Registration-Session': sessionBinding },
+}, signal);
+
+
+export const prepareRegistrationForSignup = (destination: string) => {
+  const returnPath = registrationReturnPath(destination);
+  const target = new URL(destination, window.location.origin);
+  const invitationCallback = target.pathname === '/askcore/workbench' && target.searchParams.get('protocol') === 'identity-link';
+  const invitationToken = (invitationCallback ? target.searchParams.get('token') : null) || registrationInvitationFromSession();
+  if (invitationCallback && !invitationToken) throw new AskCoreWorkbenchApiError('Invitation required', 409);
+  return prepareRegistrationIntent(invitationToken
+    ? { kind: 'invitation', invitationToken, returnPath }
+    : { kind: 'ordinary', returnPath });
+};

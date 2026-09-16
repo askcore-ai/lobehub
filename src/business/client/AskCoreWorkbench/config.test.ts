@@ -5,10 +5,20 @@ import {
   askCoreProtocolMode,
   askCoreWorkbenchTabsForProfile,
   isAskCoreIdentityLinkCallback,
+  registrationSessionBinding,
+  registrationReturnPath,
 } from './config';
 
 describe('AskCoreWorkbench config', () => {
+  it('separates account and session generations without using credentials', () => {
+    expect(registrationSessionBinding('user-a', 'session-a')).toMatch(/^[a-f0-9]{64}$/);
+    expect(registrationSessionBinding('user-a', 'session-a')).not.toBe(registrationSessionBinding('user-a', 'session-b'));
+    expect(registrationSessionBinding('user-a', 'session-a')).not.toBe(registrationSessionBinding('user-b', 'session-a'));
+    expect(registrationReturnPath('/askcore/workbench?protocol=registration')).toBe('/school');
+    expect(() => registrationReturnPath('//foreign.invalid')).toThrow();
+  });
   it('accepts only the processing and directed identity-link protocol modes', () => {
+    expect(askCoreProtocolMode('registration')).toBe('registration');
     expect(askCoreProtocolMode('processing')).toBe('processing');
     expect(askCoreProtocolMode('identity-link')).toBe('identity-link');
     expect(askCoreProtocolMode('deep_linking')).toBeNull();

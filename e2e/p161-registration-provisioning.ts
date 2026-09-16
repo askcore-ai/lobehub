@@ -245,8 +245,9 @@ async function main() {
   stage = 'product_http_setup';
   process.env.APP_URL = baseURL;
   process.env.KEY_VAULTS_SECRET = randomBytes(32).toString('base64');
-  const { RegistrationProvisioningService, registrationProvisioningPlugin, forwardRegistrationRequest } =
+  const { RegistrationProvisioningService, registrationProvisioningPlugin, forwardRegistrationRequest, registrationHttpHandler } =
     await import('../src/server/services/registrationProvisioning');
+  const { registrationSessionBinding } = await import('../src/business/client/AskCoreWorkbench/config');
   const productService = new RegistrationProvisioningService(drizzle(pool) as never);
   const productAuth = betterAuth({
     baseURL, basePath: '/api/auth', secret: opaque() + opaque(),
@@ -268,6 +269,7 @@ async function main() {
       ...data, registrationIntentId: await productService.intentForNewUser(ctx),
     } }) } } },
   });
+  productAuth.handler = registrationHttpHandler(productAuth.handler);
   let ipCounter = 1;
   const request = (path: string, data?: unknown, cookie?: string, extra?: Record<string, string>) => new Request(baseURL + path, {
     method: data === undefined ? 'GET' : 'POST',
@@ -285,7 +287,8 @@ async function main() {
   for (const prefix of ['/api/auth/askcore-registration/', '/api/askcore/registration/']) {
     stage = 'product_http_guards';
     assert((await call(prefix + 'prepare', { kind: 'ordinary', returnPath: '/school' }, undefined, { origin: 'https://foreign.invalid' })).status === 403);
-    assert((await call(prefix + 'prepare', { kind: 'ordinary', returnPath: '/school', userId: opaque() })).status === 400);
+    const invalidShape = await call(prefix + 'prepare', { kind: 'ordinary', returnPath: '/school', userId: opaque() });
+    assert(invalidShape.status === 400 && invalidShape.headers.get('cache-control') === 'private, no-store');
     assert((await call(prefix + 'prepare', { kind: 'ordinary', returnPath: '//foreign.invalid' })).status === 400);
     assert((await call(prefix + 'prepare', { kind: 'invitation', invitationToken: 'x'.repeat(17000), returnPath: '/school' })).status === 413);
     const anonymous = await call(prefix + 'status');
@@ -325,16 +328,77 @@ async function main() {
     assert((await call(prefix + 'status', undefined, cookie)).status === 401);
     checks.push(prefix.includes('/api/auth/') ? 'product_auth_alias_http_guards_signup_private_status_no_cookie_cache' : 'product_public_forwarder_http_guards_signup_private_status_no_cookie_cache');
   }
+  stage = 'product_http_magic_transport';
+  const magicIntent = await (await call('/api/askcore/registration/prepare', { kind: 'ordinary', returnPath: '/school' })).json();
+  const magicEmail = opaque() + '@fixture.invalid';
+  assert((await call('/api/auth/sign-in/magic-link', { email: magicEmail, callbackURL: '/' }, undefined,
+    { 'x-askcore-registration-intent': magicIntent.handle })).ok);
+  const magicURL = new URL(deliveryURL);
+  magicURL.searchParams.set('callbackURL', '/changed-destination');
+  assert((await productAuth.handler(new Request(magicURL))).status === 302);
+  const magicJob = (await pool.query('SELECT j.intent_id,j.state FROM users u JOIN registration_provisioning_jobs j ON j.user_id=u.id WHERE u.email=$1', [magicEmail])).rows[0];
+  assert(magicJob.intent_id === hash(magicIntent.handle) && magicJob.state === 'ready');
+  checks.push('product_magic_actual_token_binds_intent_without_cookie_despite_callback_change');
+
+  stage = 'product_invitation_encryption';
+  const invitationToken = opaque();
+  const invitationResponse = await call('/api/askcore/registration/prepare', { kind: 'invitation', invitationToken, returnPath: '/school' });
+  assert(invitationResponse.ok);
+  const invitationPrepared = await invitationResponse.json();
+  const invitationRow = (await pool.query('SELECT kind,invitation_ciphertext FROM registration_intents WHERE id=$1', [hash(invitationPrepared.handle)])).rows[0];
+  assert(invitationRow.kind === 'invitation' && !invitationRow.invitation_ciphertext.includes(invitationToken));
+  const { KeyVaultsGateKeeper } = await import('../src/server/modules/KeyVaultsEncrypt');
+  const decrypted = await (await KeyVaultsGateKeeper.initWithEnvKey()).decrypt(invitationRow.invitation_ciphertext);
+  assert(decrypted.wasAuthentic && decrypted.plaintext === invitationToken);
+  checks.push('product_prepare_encrypts_invitation_with_actual_keyvault');
+
   stage = 'product_http_recover';
   const unbound = await call('/api/auth/sign-up/email', { email: opaque() + '@fixture.invalid', name: 'Synthetic', password: opaque() });
   assert(unbound.ok);
   const unboundBody = await unbound.json();
   const unboundCookie = cookies(unbound);
+  const binding = async (userId: string) => {
+    const session = (await pool!.query('SELECT id FROM auth_sessions WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1', [userId])).rows[0];
+    return registrationSessionBinding(userId, session.id);
+  };
+  const unboundBinding = await binding(unboundBody.user.id);
   const recoveryIntent = await (await call('/api/askcore/registration/prepare', { kind: 'ordinary', returnPath: '/school' })).json();
-  assert((await call('/api/askcore/registration/recover', { intentHandle: recoveryIntent.handle }, unboundCookie)).status === 200);
+  const before = (await pool.query('SELECT row_to_json(j) AS value FROM registration_provisioning_jobs j WHERE user_id=$1', [unboundBody.user.id])).rows[0].value;
+  for (const prefix of ['/api/auth/askcore-registration/', '/api/askcore/registration/']) {
+    assert((await call(prefix + 'recover', { intentHandle: recoveryIntent.handle }, unboundCookie)).status === 409);
+    assert((await call(prefix + 'recover', { intentHandle: recoveryIntent.handle }, unboundCookie,
+      { 'x-askcore-registration-session': '0'.repeat(64) })).status === 409);
+  }
+  assert(JSON.stringify((await pool.query('SELECT row_to_json(j) AS value FROM registration_provisioning_jobs j WHERE user_id=$1', [unboundBody.user.id])).rows[0].value) === JSON.stringify(before));
+  assert((await pool.query('SELECT claimed_user FROM registration_intents WHERE id=$1', [hash(recoveryIntent.handle)])).rows[0].claimed_user === null);
+  checks.push('product_missing_or_mismatched_expected_session_refuses_without_writes');
+  assert((await call('/api/askcore/registration/recover', { intentHandle: recoveryIntent.handle }, unboundCookie,
+    { 'x-askcore-registration-session': unboundBinding })).status === 200);
   await pool.query("UPDATE registration_provisioning_jobs SET state='leased',lease_token=$1,lease_until=now()+interval '1 minute' WHERE user_id=$2", [opaque(), unboundBody.user.id]);
-  assert((await call('/api/askcore/registration/recover', {}, unboundCookie)).status === 409);
+  assert((await call('/api/askcore/registration/recover', {}, unboundCookie,
+    { 'x-askcore-registration-session': unboundBinding })).status === 409);
   checks.push('product_http_unbound_recovery_and_live_lease_refusal');
+
+  stage = 'product_http_account_switch';
+  const accountBEmail = opaque() + '@fixture.invalid';
+  const accountBPassword = opaque();
+  const accountBResponse = await call('/api/auth/sign-up/email', { email: accountBEmail, name: 'Synthetic', password: accountBPassword });
+  assert(accountBResponse.ok);
+  const accountB = await accountBResponse.json();
+  const accountBCookie = cookies(accountBResponse);
+  const oldBBinding = await binding(accountB.user.id);
+  assert((await call('/api/askcore/registration/recover', { intentHandle: recoveryIntent.handle }, accountBCookie,
+    { 'x-askcore-registration-session': unboundBinding })).status === 409);
+  assert((await call('/api/auth/sign-out', {}, accountBCookie)).ok);
+  const relogin = await call('/api/auth/sign-in/email', { email: accountBEmail, password: accountBPassword });
+  assert(relogin.ok);
+  const reloginCookie = cookies(relogin);
+  assert(await binding(accountB.user.id) !== oldBBinding);
+  assert((await call('/api/auth/askcore-registration/recover', { intentHandle: recoveryIntent.handle }, reloginCookie,
+    { 'x-askcore-registration-session': oldBBinding })).status === 409);
+  const accountBJob = (await pool.query('SELECT state,intent_id FROM registration_provisioning_jobs WHERE user_id=$1', [accountB.user.id])).rows[0];
+  assert(accountBJob.state === 'awaiting_intent' && accountBJob.intent_id === null);
+  checks.push('product_account_switch_and_logout_relogin_reject_old_session_submissions');
   stage = 'product_http_shared_rate_limit';
   for (let index = 0; index < 10; index++) {
     const prefix = index % 2 ? '/api/askcore/registration/' : '/api/auth/askcore-registration/';
@@ -355,7 +419,7 @@ void (async () => {
   try {
     await main();
     process.stdout.write(JSON.stringify({ contract, status: 'partial', checks,
-      deferred: ['next_runtime_and_browser', 'production_secondary_storage', 'email_verification_and_reset', 'native_sources', 'worker_recovery', 'public_journey'],
+      deferred: ['next_runtime_and_browser', 'production_secondary_storage', 'oauth_verified_state', 'email_verification_and_reset', 'native_sources', 'worker_recovery', 'public_journey'],
       sourceCalls: 0, emailsSent: 0, rawIdentityFieldsEmitted: 0 }) + '\n');
     process.exitCode = 3;
   } catch {

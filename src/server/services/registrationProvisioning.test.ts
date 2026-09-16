@@ -7,6 +7,7 @@ vi.mock('@/server/services/schoolIdentity', () => ({ resolveSchoolIdentity: vi.f
 
 import {
   forwardRegistrationRequest,
+  registrationHttpHandler,
   registrationPrepareSchema,
   registrationProvisioningPlugin,
   registrationRecoverSchema,
@@ -69,12 +70,25 @@ describe('registration HTTP boundary', () => {
     expect(result && 'request' in result && await result.request.text()).toBe('{"kind":"ordinary","returnPath":"/"}');
     expect(await guard(new Request('https://school.example/api/auth/get-session'))).toBeUndefined();
   });
-  it('preserves other plugins response processing', async () => {
-    const response = Response.redirect('https://school.example/');
-    expect(await plugin.onResponse!(response, {} as never)).toBeUndefined();
-    const limited = new Response('{}', { status: 429 });
-    expect(await plugin.onResponse!(limited, {} as never)).toBeUndefined();
-    expect(limited.headers.get('cache-control')).toBe('private, no-store');
+  it('decorates only registration responses without consuming streams or losing cookies', async () => {
+    const headers = new Headers({ Location: '/school' });
+    headers.append('Set-Cookie', 'one=synthetic; Path=/; HttpOnly');
+    headers.append('Set-Cookie', 'two=synthetic; Path=/; HttpOnly');
+    const source = new Response(new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('stream')); controller.close(); } }), {
+      headers, status: 409, statusText: 'Conflict',
+    });
+    const decorated = await registrationHttpHandler(async () => source)(post('{}'));
+    expect(source.bodyUsed).toBe(false);
+    expect(decorated.body).toBe(source.body);
+    expect(decorated.status).toBe(409);
+    expect(decorated.statusText).toBe('Conflict');
+    expect(decorated.headers.get('location')).toBe('/school');
+    expect(decorated.headers.getSetCookie()).toEqual(headers.getSetCookie());
+    expect(decorated.headers.get('cache-control')).toBe('private, no-store');
+    expect(await decorated.text()).toBe('stream');
+    const redirect = Response.redirect('https://school.example/');
+    expect(await registrationHttpHandler(async () => redirect)(new Request('https://school.example/api/auth/callback/example'))).toBe(redirect);
+    expect(plugin.onResponse).toBeUndefined();
   });
   it('forwards the original body, cookies, and query to the guarded alias', async () => {
     const handler = vi.fn(async (request: Request) => {

@@ -37,7 +37,7 @@ import { createSecondaryStorage, getTrustedOrigins } from '@/libs/better-auth/ut
 import { parseSSOProviders } from '@/libs/better-auth/utils/server';
 import { EmailService } from '@/server/services/email';
 import { UserService } from '@/server/services/user';
-import { RegistrationProvisioningService, registrationProvisioningPlugin } from '@/server/services/registrationProvisioning';
+import { RegistrationProvisioningService, registrationHttpHandler, registrationProvisioningPlugin } from '@/server/services/registrationProvisioning';
 
 // Configure HTTP proxy for OAuth provider requests in development (e.g., Google token exchange)
 // Node.js native fetch doesn't respect system proxy settings
@@ -429,5 +429,7 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
     ],
   } satisfies BetterAuthOptions;
 
-  return betterAuth(options);
+  const auth = betterAuth(options);
+  auth.handler = registrationHttpHandler(auth.handler);
+  return auth;
 }
