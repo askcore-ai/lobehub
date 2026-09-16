@@ -27,7 +27,7 @@ const UserMessageContent = memo<UIChatMessage>(
       editorData && typeof editorData === 'object' && Object.keys(editorData).length > 0;
 
     const textBody = hasEditorData ? (
-      <RichTextMessage editorState={editorData} />
+      <RichTextMessage editorState={editorData} markdownProps={markdownProps} />
     ) : (
       displayContent && <MarkdownMessage {...markdownProps}>{displayContent}</MarkdownMessage>
     );

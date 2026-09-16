@@ -25,6 +25,59 @@ Object.assign(process.env, loadEnv(mode, process.cwd(), ''));
 const isDev = process.env.NODE_ENV !== 'production';
 const platform = isMobile ? 'mobile' : 'web';
 const enableViteDevTools = process.env.LOBE_VITE_DEVTOOLS === 'true';
+const tikzJaxVersion = '1.5.0';
+const tikzJaxDist = path.resolve(process.cwd(), 'node_modules/@rod2ik/tikzjax/dist');
+
+const tikzJaxContentType = (filePath: string) => {
+  if (filePath.endsWith('.css')) return 'text/css; charset=utf-8';
+  if (filePath.endsWith('.js')) return 'text/javascript; charset=utf-8';
+  if (filePath.endsWith('.svg')) return 'image/svg+xml';
+  if (filePath.endsWith('.wasm')) return 'application/wasm';
+  if (filePath.endsWith('.woff2')) return 'font/woff2';
+  if (filePath.endsWith('.gz')) return 'application/gzip';
+  return 'application/octet-stream';
+};
+
+const tikzJaxAssets = (): PluginOption => ({
+  name: 'askcore-tikzjax-assets',
+  configureServer(server) {
+    server.middlewares.use(`/vendor/tikzjax/${tikzJaxVersion}`, (request, response, next) => {
+      let relativePath: string;
+      try {
+        relativePath = decodeURIComponent((request.url || '/').split('?')[0]).replace(/^\/+/, '');
+      } catch {
+        next();
+        return;
+      }
+
+      const filePath = path.resolve(tikzJaxDist, relativePath);
+      if (!filePath.startsWith(`${tikzJaxDist}${path.sep}`) || !fs.existsSync(filePath)) {
+        next();
+        return;
+      }
+
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) {
+        next();
+        return;
+      }
+
+      response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      response.setHeader('Content-Length', stat.size);
+      response.setHeader('Content-Type', tikzJaxContentType(filePath));
+      fs.createReadStream(filePath).pipe(response);
+    });
+  },
+  writeBundle(options) {
+    if (!options.dir || !fs.existsSync(tikzJaxDist)) {
+      throw new Error('Pinned TikZJax distribution is unavailable');
+    }
+
+    const target = path.resolve(options.dir, `vendor/tikzjax/${tikzJaxVersion}`);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.cpSync(tikzJaxDist, target, { recursive: true });
+  },
+});
 
 const resolveCommandExecutable = (cmd: string) => {
   const pathValue = process.env.PATH;
@@ -121,13 +174,15 @@ export default defineConfig({
   },
   optimizeDeps: sharedOptimizeDeps,
   plugins: [
+    tikzJaxAssets(),
     vercelSkewProtection(),
     viteEnvRestartKeys(['APP_URL']),
-    enableViteDevTools && DevTools({
-      build: {
-        withApp: true,
-      },
-    }),
+    enableViteDevTools &&
+      DevTools({
+        build: {
+          withApp: true,
+        },
+      }),
     ...sharedRendererPlugins({ platform }),
 
     isDev && {

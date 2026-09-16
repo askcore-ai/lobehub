@@ -54,21 +54,6 @@ export const ASKCORE_WORKBENCH_TABS: AskCoreWorkbenchTabConfig[] = [
   },
   {
     columns: [
-      { dataIndex: 'content', title: '题目', width: 280 },
-      { dataIndex: 'question_type', isStatus: true, title: '题型', width: 120 },
-      { dataIndex: 'subject_id', displayIndex: 'subject_name', title: '学科', width: 140 },
-      { dataIndex: 'grade_id', displayIndex: 'grade_name', title: '年级', width: 140 },
-      { dataIndex: 'difficulty', title: '难度', width: 120 },
-      { dataIndex: 'created_at', title: '创建时间', width: 180 },
-    ],
-    key: 'questions',
-    label: '题目',
-    newLabel: '手动新建',
-    resource: 'questions',
-    searchPlaceholder: '搜索题干、知识点',
-  },
-  {
-    columns: [
       { dataIndex: 'activity_title', title: '活动', width: 220 },
       { dataIndex: 'source_kind', isStatus: true, title: '来源', width: 140 },
       { dataIndex: 'status', isStatus: true, title: '状态', width: 120 },
@@ -121,6 +106,5 @@ export const ASKCORE_WORKBENCH_COUNT_LABELS: Record<string, string> = {
   activities: '活动',
   assignments: '作业',
   attempts: '提交记录',
-  questions: '题目',
   submissions: '提交',
 };

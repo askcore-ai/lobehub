@@ -10,6 +10,7 @@ import { useFetchAvailableAgents } from '@/hooks/useFetchAvailableAgents';
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 
 import AssistantTurnSettledWatcher from './AssistantTurnSettledWatcher';
+import { ScientificContentRenderContext } from './Markdown/plugins/TikZ/context';
 import { createStore, Provider } from './store';
 import StoreUpdater from './StoreUpdater';
 import {
@@ -43,6 +44,8 @@ export interface ConversationProviderProps {
    * Conversation context (data coordinates)
    */
   context: ConversationContext;
+  /** Whether this presentation surface may compile scientific diagram blocks. */
+  enableScientificContent?: boolean;
   /**
    * Whether external messages have been initialized
    * When false, ChatList will show skeleton loading state
@@ -88,6 +91,7 @@ export const ConversationProvider = memo<ConversationProviderProps>(
     actionsBar,
     children,
     context,
+    enableScientificContent,
     hooks = {},
     hasInitMessages,
     messages,
@@ -96,6 +100,7 @@ export const ConversationProvider = memo<ConversationProviderProps>(
     skipFetch,
   }) => {
     const contextKey = useMemo(() => messageMapKey(context), [context]);
+    const scientificContentEnabled = enableScientificContent ?? !context.topicShareId;
 
     log(
       '[Provider] render | contextKey=%s | messagesCount=%d | hasInitMessages=%s | skipFetch=%s',
@@ -106,21 +111,23 @@ export const ConversationProvider = memo<ConversationProviderProps>(
     );
 
     return (
-      <Provider createStore={() => createStore({ context, hooks, skipFetch })} key={contextKey}>
-        <StoreUpdater
-          actionsBar={actionsBar}
-          context={context}
-          hasInitMessages={hasInitMessages}
-          hooks={hooks}
-          messages={messages}
-          operationState={operationState}
-          skipFetch={skipFetch}
-          onMessagesChange={onMessagesChange}
-        />
-        <AssistantTurnSettledWatcher />
-        <ConversationContextPrefetcher context={context} />
-        {children}
-      </Provider>
+      <ScientificContentRenderContext value={scientificContentEnabled}>
+        <Provider createStore={() => createStore({ context, hooks, skipFetch })} key={contextKey}>
+          <StoreUpdater
+            actionsBar={actionsBar}
+            context={context}
+            hasInitMessages={hasInitMessages}
+            hooks={hooks}
+            messages={messages}
+            operationState={operationState}
+            skipFetch={skipFetch}
+            onMessagesChange={onMessagesChange}
+          />
+          <AssistantTurnSettledWatcher />
+          <ConversationContextPrefetcher context={context} />
+          {children}
+        </Provider>
+      </ScientificContentRenderContext>
     );
   },
   isEqual,

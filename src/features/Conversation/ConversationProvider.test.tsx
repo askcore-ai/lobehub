@@ -2,12 +2,13 @@
  * @vitest-environment happy-dom
  */
 import type { ConversationContext, UIChatMessage } from '@lobechat/types';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 
 import { ConversationProvider } from './ConversationProvider';
+import { useScientificContentRenderEnabled } from './Markdown/plugins/TikZ/context';
 import { dataSelectors, useConversationStore } from './store';
 
 const oldContext = {
@@ -57,6 +58,10 @@ const Probe = ({
   return null;
 };
 
+const ScientificContentProbe = () => (
+  <span>{useScientificContentRenderEnabled() ? 'enabled' : 'disabled'}</span>
+);
+
 describe('ConversationProvider', () => {
   it('does not expose the previous local conversation store after context changes', () => {
     const snapshots: Snapshot[] = [];
@@ -80,5 +85,25 @@ describe('ConversationProvider', () => {
     );
 
     expect(mismatchedNextContextSnapshots).toEqual([]);
+  });
+
+  it('disables scientific rendering for public topic shares', () => {
+    render(
+      <ConversationProvider context={{ ...oldContext, topicShareId: 'public-share' }}>
+        <ScientificContentProbe />
+      </ConversationProvider>,
+    );
+
+    expect(screen.getByText('disabled')).toBeInTheDocument();
+  });
+
+  it('accepts an explicit exclusion for share-image rendering', () => {
+    render(
+      <ConversationProvider context={oldContext} enableScientificContent={false}>
+        <ScientificContentProbe />
+      </ConversationProvider>,
+    );
+
+    expect(screen.getByText('disabled')).toBeInTheDocument();
   });
 });
