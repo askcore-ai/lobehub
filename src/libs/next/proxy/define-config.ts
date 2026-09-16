@@ -230,11 +230,19 @@ export function defineConfig() {
       req.method === 'GET' &&
       req.nextUrl.pathname === '/api/askcore/school/source-auth';
 
+    // Intent preparation precedes signup. Its handler still enforces origin, input and rate limits.
+    // Do not expose status/recovery or the rest of the registration prefix.
+    const isRegistrationPrepare =
+      req.method === 'POST' &&
+      req.nextUrl.pathname === '/api/askcore/registration/prepare' &&
+      req.nextUrl.search === '';
+
     // when enable auth protection, only public route is not protected, others are all protected
     const isProtected =
       !isPublicRoute(req) &&
       !isActorObservationReadiness &&
-      !isSourceCompositeAuthorization;
+      !isSourceCompositeAuthorization &&
+      !isRegistrationPrepare;
 
     logBetterAuth('Route protection status: %s, %s', req.url, isProtected ? 'protected' : 'public');
 
