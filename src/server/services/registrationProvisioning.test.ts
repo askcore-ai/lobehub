@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@lobechat/database', () => ({ serverDB: {} }));
@@ -67,6 +68,13 @@ describe('registration HTTP boundary', () => {
     const result = await guard(post('{"kind":"ordinary","returnPath":"/"}'));
     expect(result && 'request' in result && await result.request.text()).toBe('{"kind":"ordinary","returnPath":"/"}');
     expect(await guard(new Request('https://school.example/api/auth/get-session'))).toBeUndefined();
+  });
+  it('preserves other plugins response processing', async () => {
+    const response = Response.redirect('https://school.example/');
+    expect(await plugin.onResponse!(response, {} as never)).toBeUndefined();
+    const limited = new Response('{}', { status: 429 });
+    expect(await plugin.onResponse!(limited, {} as never)).toBeUndefined();
+    expect(limited.headers.get('cache-control')).toBe('private, no-store');
   });
   it('forwards the original body, cookies, and query to the guarded alias', async () => {
     const handler = vi.fn(async (request: Request) => {

@@ -228,21 +228,32 @@ export const registrationProvisioningPlugin = (service = new RegistrationProvisi
     id: 'askcore-registration',
     onRequest: guardRegistrationRequest,
     onResponse: async (response) => {
-      const headers = new Headers(response.headers);
-      headers.set('Cache-Control', 'private, no-store');
-      headers.set('X-Content-Type-Options', 'nosniff');
-      return { response: new Response(response.body, { headers, status: response.status, statusText: response.statusText }) };
+      // The pinned router produces a mutable Response before endpoint dispatch
+      // for rate limits. Mutate it without short-circuiting later plugin hooks.
+      if (response.status === 429) {
+        response.headers.set('Cache-Control', 'private, no-store');
+        response.headers.set('X-Content-Type-Options', 'nosniff');
+      }
     },
     endpoints: {
       askcoreRegistrationPrepare: createAuthEndpoint('/askcore-registration/prepare', {
         method: 'POST', requireHeaders: true, body: registrationPrepareSchema,
-      }, async (ctx) => ctx.json(await safe(() => service.prepare(ctx.body)))),
+      }, async (ctx) => {
+        for (const [key, value] of Object.entries(HEADERS)) ctx.setHeader(key, value);
+        return ctx.json(await safe(() => service.prepare(ctx.body)));
+      }),
       askcoreRegistrationStatus: createAuthEndpoint('/askcore-registration/status', {
         method: 'GET', requireHeaders: true,
-      }, async (ctx) => ctx.json(await safe(async () => service.status(await account(ctx))))),
+      }, async (ctx) => {
+        for (const [key, value] of Object.entries(HEADERS)) ctx.setHeader(key, value);
+        return ctx.json(await safe(async () => service.status(await account(ctx))));
+      }),
       askcoreRegistrationRecover: createAuthEndpoint('/askcore-registration/recover', {
         method: 'POST', requireHeaders: true, body: registrationRecoverSchema,
-      }, async (ctx) => ctx.json(await safe(async () => service.recover(await account(ctx), ctx.body)))),
+      }, async (ctx) => {
+        for (const [key, value] of Object.entries(HEADERS)) ctx.setHeader(key, value);
+        return ctx.json(await safe(async () => service.recover(await account(ctx), ctx.body)));
+      }),
     },
   };
 };

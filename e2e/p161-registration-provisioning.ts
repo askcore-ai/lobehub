@@ -251,7 +251,8 @@ async function main() {
   const productAuth = betterAuth({
     baseURL, basePath: '/api/auth', secret: opaque() + opaque(),
     database: drizzleAdapter(db, { provider: 'pg', schema }),
-    session: { storeSessionInDatabase: true, cookieCache: { enabled: true, maxAge: 300 } },
+    session: { storeSessionInDatabase: true, cookieCache: { enabled: true, maxAge: 300 },
+      additionalFields: { impersonatedBy: { type: 'string', required: false, input: false } } },
     logger: { disabled: true }, telemetry: { enabled: false },
     rateLimit: { enabled: true, customRules: {
       '/askcore-registration/prepare': { max: 10, window: 60 },
@@ -287,29 +288,40 @@ async function main() {
     assert((await call(prefix + 'prepare', { kind: 'ordinary', returnPath: '/school', userId: opaque() })).status === 400);
     assert((await call(prefix + 'prepare', { kind: 'ordinary', returnPath: '//foreign.invalid' })).status === 400);
     assert((await call(prefix + 'prepare', { kind: 'invitation', invitationToken: 'x'.repeat(17000), returnPath: '/school' })).status === 413);
-    assert((await call(prefix + 'status')).status === 401);
+    const anonymous = await call(prefix + 'status');
+    assert(anonymous.status === 401 && anonymous.headers.get('cache-control') === 'private, no-store');
     assert((await call(prefix + 'status?userId=' + opaque())).status === 400);
     stage = 'product_http_signup';
     const prepared = await call(prefix + 'prepare', { kind: 'ordinary', returnPath: '/school' });
+    stage = 'product_http_prepare_response_' + prepared.status;
     assert(prepared.status === 200 && prepared.headers.get('cache-control') === 'private, no-store');
     const { handle } = await prepared.json();
+    stage = 'product_http_prepared_handle';
     assert(/^[a-f0-9]{64}$/.test(handle));
     const signupResponse = await call('/api/auth/sign-up/email', { email: opaque() + '@fixture.invalid', name: 'Synthetic', password: opaque() },
       undefined, { 'x-askcore-registration-intent': handle });
+    stage = 'product_http_signup_response_' + signupResponse.status;
     assert(signupResponse.ok);
     const body = await signupResponse.json();
+    stage = 'product_http_provenance_redaction';
     assert(!('registrationIntentId' in body.user));
     const cookie = cookies(signupResponse);
+    stage = 'product_http_session_cookie';
     assert(cookie);
     const status = await call(prefix + 'status', undefined, cookie);
     const statusBody = await status.json();
+    stage = 'product_http_status_response_' + status.status;
     assert(status.status === 200 && statusBody.state === 'ready' && statusBody.returnPath === '/school');
+    stage = 'product_http_status_shape';
     assert(Object.keys(statusBody).sort().join(',') === 'action,retryAt,returnPath,state');
     const stored = (await pool.query('SELECT intent_id FROM registration_provisioning_jobs WHERE user_id=$1', [body.user.id])).rows[0];
+    stage = 'product_http_intent_claim';
     assert(stored.intent_id === hash(handle));
     await pool.query('UPDATE auth_sessions SET impersonated_by=$1 WHERE user_id=$2', [opaque(), body.user.id]);
+    stage = 'product_http_impersonation_refusal';
     assert((await call(prefix + 'status', undefined, cookie)).status === 403);
     await pool.query('DELETE FROM auth_sessions WHERE user_id=$1', [body.user.id]);
+    stage = 'product_http_revoked_cookie_refusal';
     assert((await call(prefix + 'status', undefined, cookie)).status === 401);
     checks.push(prefix.includes('/api/auth/') ? 'product_auth_alias_http_guards_signup_private_status_no_cookie_cache' : 'product_public_forwarder_http_guards_signup_private_status_no_cookie_cache');
   }
@@ -332,7 +344,9 @@ async function main() {
   checks.push('product_both_aliases_share_better_auth_rate_limit');
   stage = 'product_http_storage_outage';
   await pool.end(); pool = undefined;
-  assert((await call('/api/askcore/registration/status', undefined, unboundCookie)).status === 503);
+  const outage = await call('/api/askcore/registration/status', undefined, unboundCookie);
+  assert(outage.status === 503 && !outage.headers.has('set-cookie'));
+  assert(outage.headers.get('cache-control') === 'private, no-store');
   checks.push('product_real_storage_outage_is_503_not_logout');
 
 }
