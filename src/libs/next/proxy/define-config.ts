@@ -227,8 +227,7 @@ export function defineConfig() {
     // Edge auth reaches this exact route without a browser-facing response. The route itself
     // requires the internal marker and validates Better Auth before contacting the fixed source.
     const isSourceCompositeAuthorization =
-      req.method === 'GET' &&
-      req.nextUrl.pathname === '/api/askcore/school/source-auth';
+      req.method === 'GET' && req.nextUrl.pathname === '/api/askcore/school/source-auth';
 
     // Intent preparation precedes signup. Its handler still enforces origin, input and rate limits.
     // Do not expose status/recovery or the rest of the registration prefix.

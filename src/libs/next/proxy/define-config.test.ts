@@ -59,9 +59,12 @@ describe('Better Auth proxy behavior', () => {
     expect(getSession).not.toHaveBeenCalled();
 
     const protectedResponse = await middleware(
-      new NextRequest('https://askcore.cn/api/askcore/school/actor-observation?readiness=1&extra=1', {
-        method: 'POST',
-      }),
+      new NextRequest(
+        'https://askcore.cn/api/askcore/school/actor-observation?readiness=1&extra=1',
+        {
+          method: 'POST',
+        },
+      ),
     );
     expect(protectedResponse.status).toBe(401);
     expect(getSession).toHaveBeenCalledTimes(1);
@@ -70,9 +73,7 @@ describe('Better Auth proxy behavior', () => {
   it('admits anonymous registration prepare before an account or session exists', async () => {
     getSession.mockResolvedValue(null);
     const url = 'https://askcore.cn/api/askcore/registration/prepare';
-    expect(
-      unstable_doesMiddlewareMatch({ config: proxyConfig, nextConfig: {}, url }),
-    ).toBe(true);
+    expect(unstable_doesMiddlewareMatch({ config: proxyConfig, nextConfig: {}, url })).toBe(true);
 
     const response = await defineConfig().middleware(new NextRequest(url, { method: 'POST' }));
 
@@ -176,9 +177,7 @@ describe('Better Auth proxy behavior', () => {
     getSession.mockResolvedValue(null);
     const { middleware } = defineConfig();
 
-    const response = await middleware(
-      new NextRequest('https://askcore.cn/wechat-rebind?hl=zh-CN'),
-    );
+    const response = await middleware(new NextRequest('https://askcore.cn/wechat-rebind?hl=zh-CN'));
 
     expect(response.status).toBe(302);
     const location = new URL(response.headers.get('location')!);
