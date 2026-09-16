@@ -20,6 +20,8 @@ import { useUserStore } from '@/store/user';
 import { userGeneralSettingsSelectors } from '@/store/user/selectors';
 import { isDev } from '@/utils/env';
 
+import { appendScientificDiagramGuidance } from './scientificDiagramGuidance';
+
 const log = debug('mecha:agentConfigResolver');
 
 /**
@@ -325,7 +327,10 @@ export const resolveAgentConfig = (ctx: AgentConfigResolverContext): ResolvedAge
 
     // Not in page scope - return standard config
     return {
-      agentConfig: finalAgentConfig,
+      agentConfig: {
+        ...finalAgentConfig,
+        systemRole: appendScientificDiagramGuidance(finalAgentConfig.systemRole, ctx.scope),
+      },
       chatConfig: finalChatConfig,
       isBuiltinAgent: false,
       plugins: applyPluginFilters(finalPlugins),
@@ -452,7 +457,7 @@ export const resolveAgentConfig = (ctx: AgentConfigResolverContext): ResolvedAge
   // Merge runtime systemRole into agent config
   const resolvedAgentConfig: LobeAgentConfig = {
     ...agentConfig,
-    systemRole: resolvedSystemRole,
+    systemRole: appendScientificDiagramGuidance(resolvedSystemRole, ctx.scope),
   };
 
   // Apply params adjustments based on chatConfig

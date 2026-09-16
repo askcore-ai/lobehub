@@ -87,9 +87,32 @@ describe('ConversationProvider', () => {
     expect(mismatchedNextContextSnapshots).toEqual([]);
   });
 
-  it('disables scientific rendering for public topic shares', () => {
+  it('defaults scientific rendering to disabled for unapproved surfaces', () => {
     render(
-      <ConversationProvider context={{ ...oldContext, topicShareId: 'public-share' }}>
+      <ConversationProvider context={{ ...oldContext, scope: 'page' }}>
+        <ScientificContentProbe />
+      </ConversationProvider>,
+    );
+
+    expect(screen.getByText('disabled')).toBeInTheDocument();
+  });
+
+  it('enables scientific rendering only with an explicit surface opt-in', () => {
+    render(
+      <ConversationProvider enableScientificContent context={oldContext}>
+        <ScientificContentProbe />
+      </ConversationProvider>,
+    );
+
+    expect(screen.getByText('enabled')).toBeInTheDocument();
+  });
+
+  it('disables scientific rendering for public topic shares even with an opt-in', () => {
+    render(
+      <ConversationProvider
+        enableScientificContent
+        context={{ ...oldContext, topicShareId: 'public-share' }}
+      >
         <ScientificContentProbe />
       </ConversationProvider>,
     );

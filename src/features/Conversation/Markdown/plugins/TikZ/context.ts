@@ -2,6 +2,6 @@
 
 import { createContext, useContext } from 'react';
 
-export const ScientificContentRenderContext = createContext(true);
+export const ScientificContentRenderContext = createContext(false);
 
 export const useScientificContentRenderEnabled = () => useContext(ScientificContentRenderContext);

@@ -22,12 +22,17 @@ vi.mock('@lobechat/conversation-flow', () => ({
 }));
 
 // Mock messageService
-vi.mock('@/services/message', () => ({
-  messageService: {
-    getMessages: vi.fn(),
-    updateMessageMetadata: vi.fn().mockResolvedValue({ success: true, messages: [] }),
-  },
-}));
+vi.mock('@/services/message', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/message')>();
+
+  return {
+    ...actual,
+    messageService: {
+      getMessages: vi.fn(),
+      updateMessageMetadata: vi.fn().mockResolvedValue({ success: true, messages: [] }),
+    },
+  };
+});
 
 // Mock SWR
 vi.mock('@/libs/swr', () => ({
@@ -897,6 +902,46 @@ describe('DataSlice', () => {
           type: 'AgentRuntimeError',
         });
         expect(store.getState().dbMessages[0].updatedAt).toBe(3000);
+      });
+    });
+
+    it('should replace a cached placeholder when its updatedAt was serialized to ISO text', async () => {
+      const updatedAt = new Date('2026-08-06T09:30:23.876Z');
+      vi.mocked(messageService.getMessages).mockResolvedValue([
+        {
+          id: 'msg-1',
+          content: '```tikz\n\\begin{tikzpicture}\n\\draw (0,0) -- (1,0);\n\\end{tikzpicture}\n```',
+          role: 'assistant',
+          createdAt: 1000,
+          updatedAt,
+        },
+      ]);
+
+      const store = createStore({
+        context: { agentId: 'test-session', topicId: 'test-topic', threadId: null },
+      });
+
+      store.setState({
+        dbMessages: [
+          {
+            id: 'msg-1',
+            content: '...',
+            role: 'assistant',
+            createdAt: 1000,
+            updatedAt: updatedAt.toISOString(),
+          },
+        ],
+      } as any);
+
+      store.getState().useFetchMessages({
+        agentId: 'test-session',
+        topicId: 'test-topic',
+        threadId: null,
+      });
+
+      await waitFor(() => {
+        expect(store.getState().dbMessages[0].content).toContain('\\begin{tikzpicture}');
+        expect(store.getState().dbMessages[0].updatedAt).toBe(updatedAt.getTime());
       });
     });
   });

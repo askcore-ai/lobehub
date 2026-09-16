@@ -15,6 +15,38 @@ vi.mock('@/libs/trpc/client', () => ({
 }));
 
 describe('MessageService', () => {
+  describe('getMessages', () => {
+    const service = new MessageService();
+
+    afterEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('normalizes transport dates to the numeric UI message contract', async () => {
+      vi.mocked(lambdaClient.message.getMessages.query).mockResolvedValue([
+        {
+          content: 'complete response',
+          createdAt: new Date('2026-08-06T09:29:00.000Z'),
+          id: 'msg-1',
+          role: 'assistant',
+          updatedAt: new Date('2026-08-06T09:30:23.876Z'),
+        },
+      ] as never);
+
+      const messages = await service.getMessages({ topicId: 'topic-1' });
+
+      expect(messages).toEqual([
+        {
+          content: 'complete response',
+          createdAt: 1_786_008_540_000,
+          id: 'msg-1',
+          role: 'assistant',
+          updatedAt: 1_786_008_623_876,
+        },
+      ]);
+    });
+  });
+
   describe('createMessage', () => {
     const service = new MessageService();
 

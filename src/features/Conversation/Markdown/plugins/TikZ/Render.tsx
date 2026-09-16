@@ -7,22 +7,25 @@ import { useTranslation } from 'react-i18next';
 import { type MarkdownElementProps } from '../type';
 import { useScientificContentRenderEnabled } from './context';
 import { compileTikz, type TikzCompileResult } from './runtime';
-import { stableScientificCanvas } from './tokens';
 
 interface TikzProperties {
   source: string;
 }
 
-const styles = createStaticStyles(({ css }) => ({
+const styles = createStaticStyles(({ css, cssVar }) => ({
   canvas: css`
     overflow-x: auto;
 
     max-width: 100%;
     padding: 12px;
 
-    color: ${stableScientificCanvas.foregroundColor};
+    color: ${cssVar.colorTextBase};
 
-    background-color: ${stableScientificCanvas.backgroundColor};
+    background-color: ${cssVar.colorWhite};
+
+    html[data-theme='dark'] & {
+      color: ${cssVar.colorBgBase};
+    }
   `,
   source: css`
     overflow-x: auto;

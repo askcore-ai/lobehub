@@ -233,6 +233,7 @@ const ThreadChat = memo(() => {
 
   return (
     <ConversationProvider
+      enableScientificContent
       actionsBar={actionsBarConfig}
       context={context}
       hasInitMessages={!!messages}

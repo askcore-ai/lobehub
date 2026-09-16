@@ -1,3 +1,4 @@
+import { systemPrompt as activatorSystemPrompt } from '@lobechat/builtin-tool-activator';
 import { type UIChatMessage } from '@lobechat/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -9,6 +10,7 @@ import { useAgentStore } from '@/store/agent';
 import * as helpers from '../helper';
 import { contextEngineering } from './contextEngineering';
 import * as memoryManager from './memoryManager';
+import { SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE } from './scientificDiagramGuidance';
 
 vi.hoisted(() => {
   const storage = new Map<string, string>();
@@ -929,6 +931,49 @@ describe('contextEngineering', () => {
         },
         { content: 'User message', role: 'user' },
       ]);
+    });
+
+    it('should preserve one scientific guidance block in the final system message', async () => {
+      vi.spyOn(isCanUseFCModule, 'isCanUseFC').mockReturnValue(true);
+      const messages: UIChatMessage[] = [
+        {
+          role: 'user',
+          content: 'Draw a circuit',
+          createdAt: Date.now(),
+          id: 'test-scientific-guidance',
+          updatedAt: Date.now(),
+        },
+      ];
+      const marker = '<scientific_diagram_output_guidance>';
+      const systemRole = `Existing agent role\n\n${SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE}`;
+
+      const result = await contextEngineering({
+        manifests: [
+          {
+            api: [{ description: 'Activate tools', name: 'activateTools', parameters: {} }],
+            identifier: 'lobe-activator',
+            meta: { title: 'Tools Activator' },
+            systemRole: activatorSystemPrompt,
+            type: 'default',
+          },
+        ],
+        messages,
+        model: 'gpt-4',
+        provider: 'openai',
+        systemRole,
+        tools: ['lobe-activator'],
+      });
+      const finalSystemContent = result[0].content as string;
+
+      expect(finalSystemContent.startsWith('Existing agent role\n\n')).toBe(true);
+      expect(finalSystemContent.split(marker)).toHaveLength(2);
+      expect(finalSystemContent.indexOf(activatorSystemPrompt)).toBeLessThan(
+        finalSystemContent.indexOf(marker),
+      );
+      expect(
+        finalSystemContent.trimEnd().endsWith('</scientific_diagram_output_guidance>'),
+      ).toBe(true);
+      expect(result).toContainEqual({ content: 'Draw a circuit', role: 'user' });
     });
 
     it('should combine system role and input template correctly', async () => {

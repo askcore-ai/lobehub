@@ -31,6 +31,32 @@ export interface MessageQueryContext {
   topicShareId?: string;
 }
 
+export type MessageTransportTimestamp = number | string | Date;
+
+export type TransportUIChatMessage = Omit<UIChatMessage, 'createdAt' | 'updatedAt'> & {
+  createdAt: MessageTransportTimestamp;
+  updatedAt: MessageTransportTimestamp;
+};
+
+const normalizeTransportTimestamp = (value: MessageTransportTimestamp): number => {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number') return value;
+
+  return Date.parse(value);
+};
+
+export const normalizeMessageTimestamps = (message: TransportUIChatMessage): UIChatMessage => {
+  if (typeof message.createdAt === 'number' && typeof message.updatedAt === 'number') {
+    return message as UIChatMessage;
+  }
+
+  return {
+    ...message,
+    createdAt: normalizeTransportTimestamp(message.createdAt),
+    updatedAt: normalizeTransportTimestamp(message.updatedAt),
+  };
+};
+
 export class MessageService {
   createMessage = async (params: CreateMessageParams): Promise<CreateMessageResult> => {
     return lambdaClient.message.createMessage.mutate(params as any);
@@ -39,7 +65,7 @@ export class MessageService {
   getMessages = async (params: MessageQueryContext): Promise<UIChatMessage[]> => {
     const data = await lambdaClient.message.getMessages.query(params);
 
-    return data as unknown as UIChatMessage[];
+    return (data as unknown as TransportUIChatMessage[]).map(normalizeMessageTimestamps);
   };
 
   countMessages = async (params?: {

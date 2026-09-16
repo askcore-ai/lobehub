@@ -157,7 +157,7 @@ describe('Home InputArea useSend', () => {
 
     expect(sendMessageMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        context: { agentId: 'agt_inbox', isolatedTopic: true },
+        context: { agentId: 'agt_inbox', isolatedTopic: true, scope: 'main' },
         message: 'hello',
         onTopicCreated: expect.any(Function),
       }),

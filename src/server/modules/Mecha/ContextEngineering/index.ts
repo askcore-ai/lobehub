@@ -2,6 +2,11 @@ import { PageAgentIdentifier } from '@lobechat/builtin-tool-page-agent';
 import { MessagesEngine } from '@lobechat/context-engine';
 import { type OpenAIChatMessage } from '@lobechat/types';
 
+import {
+  appendScientificDiagramGuidanceToFinalSystemMessage,
+  extractScientificDiagramGuidance,
+} from '@/services/chat/mecha/scientificDiagramGuidance';
+
 import { type ServerMessagesEngineParams } from './types';
 
 /**
@@ -79,6 +84,7 @@ export const serverMessagesEngine = async ({
   additionalVariables,
   userTimezone,
 }: ServerMessagesEngineParams): Promise<OpenAIChatMessage[]> => {
+  const scientificDiagramGuidance = extractScientificDiagramGuidance(systemRole);
   const engine = new MessagesEngine({
     // Capability injection
     capabilities: {
@@ -121,7 +127,7 @@ export const serverMessagesEngine = async ({
     model,
 
     provider,
-    systemRole,
+    systemRole: scientificDiagramGuidance.systemRole,
 
     // Timezone for system date provider
     timezone: userTimezone,
@@ -170,7 +176,10 @@ export const serverMessagesEngine = async ({
   });
 
   const result = await engine.process();
-  return result.messages;
+  return appendScientificDiagramGuidanceToFinalSystemMessage(
+    result.messages,
+    scientificDiagramGuidance.guidance,
+  );
 };
 
 // Re-export types
