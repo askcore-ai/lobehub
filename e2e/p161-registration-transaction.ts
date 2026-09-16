@@ -5,6 +5,7 @@
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 
 type Pool = import('pg').Pool;
 type Counts = { users: number; accounts: number; markers: number };
@@ -23,8 +24,12 @@ async function experiment() {
   if (process.argv.slice(2).join(' ') !== '--auth-transaction' ||
       process.env.ASKCORE_TEST_WORKTREE_ID !== 'p161-t146-identity-session') throw new Error('preflight');
   const resolve = createRequire(process.cwd() + '/package.json');
-  const version = JSON.parse(readFileSync(resolve.resolve('better-auth/package.json'), 'utf8')).version;
+  stage = 'library_version';
+  // package.json is not an exported Better Auth subpath; resolve its public entry first.
+  const packagePath = join(dirname(resolve.resolve('better-auth')), '..', 'package.json');
+  const version = JSON.parse(readFileSync(packagePath, 'utf8')).version;
   if (version !== '1.4.6') throw new Error('library_version');
+  stage = 'library_import';
   const { betterAuth } = await import('better-auth/minimal');
   const { drizzleAdapter } = await import('better-auth/adapters/drizzle');
   const { magicLink } = await import('better-auth/plugins');
@@ -54,6 +59,7 @@ async function experiment() {
     id: text('id').primaryKey(), identifier: text('identifier').notNull(), value: text('value').notNull(),
     expiresAt: at('expiresAt'), createdAt: at('createdAt'), updatedAt: at('updatedAt'),
   });
+  stage = 'fixture_binding';
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
   const input = JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -196,7 +202,7 @@ async function execute() {
     process.exitCode = 3;
   } catch {
     process.stdout.write(JSON.stringify({
-      contract: CONTRACT, status: ['preflight', 'schema'].includes(stage) ? 'setup_failed' : 'failed', stage, observations,
+      contract: CONTRACT, status: ['preflight', 'library_version', 'library_import', 'fixture_binding', 'schema'].includes(stage) ? 'setup_failed' : 'failed', stage, observations,
       sourceCalls: 0, emailsSent: 0, rawIdentityFieldsEmitted: 0,
     }) + '\n');
     process.exitCode = 2;
