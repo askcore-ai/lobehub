@@ -5,21 +5,23 @@
 import { fork } from 'node:child_process';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
 type Pool = import('pg').Pool;
 type Counts = { users: number; accounts: number; markers: number };
-type Hook = { stage: 'before' | 'after'; visible: Counts; syntheticIntentCookiePresent: boolean; verifiedOAuthIntentPresent: boolean };
+type Hook = { stage: 'before' | 'after'; visible: Counts; syntheticIntentCookiePresent: boolean; verifiedOAuthIntentPresent: boolean; serverIntentAttached?: boolean };
 type Observation = {
   label: string; channel: 'email' | 'magic_link' | 'oauth'; adapterTransaction: boolean;
-  httpStatus: number; hooks: Hook[]; committed: Counts; requestCompleted: boolean;
+  httpStatus: number; hooks: Hook[]; committed: Counts; requestCompleted: boolean; intentClaimed?: boolean;
 };
 const CONTRACT = 'askcore.p161-registration-transaction.v1';
 const observations: Observation[] = [];
 const terminationObservations: object[] = [];
+const intentObservations: object[] = [];
+const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const killWorker = process.argv[2] === '--kill-worker';
 let stage = 'preflight';
 let writer: Pool | undefined;
@@ -46,6 +48,7 @@ async function experiment() {
   const user = pgTable('user', {
     id: text('id').primaryKey(), name: text('name').notNull(),
     email: text('email').notNull().unique(), emailVerified: boolean('emailVerified').notNull(),
+    registrationIntentId: text('registrationIntentId'),
     image: text('image'), createdAt: at('createdAt'), updatedAt: at('updatedAt'),
   });
   const session = pgTable('session', {
@@ -84,8 +87,10 @@ async function experiment() {
   if (actual.rows[0].name !== 'p161_t148_synthetic') throw new Error('database_binding');
   // Fresh experimental database only. No application migrations or DROP statements.
   if (!killWorker) await writer.query([
+    'CREATE TABLE fixture_intent (intent_hash text PRIMARY KEY, expires_at timestamptz NOT NULL, claimed_user text UNIQUE);',
+    'CREATE TABLE fixture_magic_context (token_hash text PRIMARY KEY, intent_hash text NOT NULL REFERENCES fixture_intent(intent_hash));',
     'CREATE TABLE "user" (id text PRIMARY KEY, name text NOT NULL, email text UNIQUE NOT NULL,',
-    '"emailVerified" boolean NOT NULL, image text, "createdAt" timestamptz NOT NULL, "updatedAt" timestamptz NOT NULL);',
+    '"emailVerified" boolean NOT NULL, image text, "registrationIntentId" text REFERENCES fixture_intent(intent_hash), "createdAt" timestamptz NOT NULL, "updatedAt" timestamptz NOT NULL);',
     'CREATE TABLE session (id text PRIMARY KEY, "expiresAt" timestamptz NOT NULL, token text UNIQUE NOT NULL,',
     '"createdAt" timestamptz NOT NULL, "updatedAt" timestamptz NOT NULL, "ipAddress" text, "userAgent" text,',
     '"userId" text NOT NULL REFERENCES "user"(id));',
@@ -95,9 +100,13 @@ async function experiment() {
     '"createdAt" timestamptz NOT NULL, "updatedAt" timestamptz NOT NULL);',
     'CREATE TABLE verification (id text PRIMARY KEY, identifier text NOT NULL, value text NOT NULL,',
     '"expiresAt" timestamptz NOT NULL, "createdAt" timestamptz NOT NULL, "updatedAt" timestamptz NOT NULL);',
-    'CREATE TABLE fixture_marker (user_id text PRIMARY KEY REFERENCES "user"(id));',
+    'CREATE TABLE fixture_marker (user_id text PRIMARY KEY REFERENCES "user"(id), intent_attached boolean NOT NULL);',
     'CREATE FUNCTION fixture_mark_insert() RETURNS trigger LANGUAGE plpgsql AS $$',
-    'BEGIN INSERT INTO fixture_marker(user_id) VALUES (NEW.id); RETURN NEW; END $$;',
+    'BEGIN IF NEW."registrationIntentId" IS NOT NULL THEN',
+    'UPDATE fixture_intent SET claimed_user=NEW.id WHERE intent_hash=NEW."registrationIntentId"',
+    'AND claimed_user IS NULL AND expires_at>clock_timestamp();',
+    "IF NOT FOUND THEN RAISE EXCEPTION 'fixture_intent_not_claimable'; END IF; END IF;",
+    'INSERT INTO fixture_marker(user_id,intent_attached) VALUES (NEW.id,NEW."registrationIntentId" IS NOT NULL); RETURN NEW; END $$;',
     'CREATE TRIGGER fixture_marker_insert AFTER INSERT ON "user" FOR EACH ROW EXECUTE FUNCTION fixture_mark_insert();',
   ].join(' '));
   const schema = { user, session, account, verification };
@@ -127,6 +136,8 @@ async function experiment() {
     await terminateDuringHook(transaction);
   }
 
+  await atomicIntentControls();
+
   async function scenario(
     channel: 'email' | 'magic_link' | 'oauth', transaction: boolean,
     failure: 'none' | 'before' | 'after' | 'kill', callbackCookie: boolean, fixedEmail?: string,
@@ -141,11 +152,15 @@ async function experiment() {
     const baseURL = 'http://127.0.0.1:19348';
     const hooks: Hook[] = [];
     const intent = randomBytes(32).toString('hex');
+    const intentHash = hash(intent);
+    await writer!.query("INSERT INTO fixture_intent(intent_hash,expires_at) VALUES ($1,now()+interval '5 minutes')", [intentHash]);
     const authorizationCode = randomBytes(24).toString('hex');
     const accessToken = randomBytes(32).toString('hex');
+    const providerSubject = randomBytes(24).toString('hex');
     let provider: ReturnType<typeof createServer> | undefined;
     let providerOrigin = '';
     let exchanged = false;
+    try {
     if (channel === 'oauth') {
       provider = createServer(async (request, response) => {
         response.setHeader('Content-Type', 'application/json');
@@ -159,7 +174,7 @@ async function experiment() {
           exchanged = true;
           response.end(JSON.stringify({ access_token: accessToken, token_type: 'Bearer', expires_in: 300 }));
         } else if (request.url === '/userinfo' && request.headers.authorization === `Bearer ${accessToken}`) {
-          response.end(JSON.stringify({ sub: 'synthetic-provider-user', id: 'synthetic-provider-user', email, email_verified: true, name: 'Synthetic Fixture' }));
+          response.end(JSON.stringify({ sub: providerSubject, id: providerSubject, email, email_verified: true, name: 'Synthetic Fixture' }));
         } else response.writeHead(404).end('{}');
       });
       await new Promise<void>((resolve) => provider!.listen(0, '127.0.0.1', resolve));
@@ -173,7 +188,12 @@ async function experiment() {
       database: drizzleAdapter(db, { provider: 'pg', schema, transaction }),
       logger: { disabled: true }, telemetry: { enabled: false }, rateLimit: { enabled: false },
       emailAndPassword: { enabled: true, autoSignIn: false },
-      plugins: [magicLink({ sendMagicLink: async ({ url }) => { deliveryURL = url; } }),
+      user: { additionalFields: { registrationIntentId: { type: 'string', required: false, input: false } } },
+      plugins: [magicLink({ sendMagicLink: async ({ url, token }) => {
+        deliveryURL = url;
+        // Model the proposed server-owned association, never a caller-provided kind flag.
+        await writer!.query('INSERT INTO fixture_magic_context(token_hash,intent_hash) VALUES ($1,$2)', [hash(token), intentHash]);
+      } }),
         ...(channel === 'oauth' ? [genericOAuth({ config: [{ providerId: 't148',
           clientId: 'synthetic-client', clientSecret: randomBytes(32).toString('hex'),
           authorizationUrl: providerOrigin + '/authorize', tokenUrl: providerOrigin + '/token',
@@ -189,7 +209,25 @@ async function experiment() {
               syntheticIntentCookiePresent: (headers?.get('cookie') || '').split(';').some((value) => value.trim() === cookie),
             });
             if (failure === 'before') throw new Error('synthetic_before_failure');
-            return { data };
+            let attachedHash: string | undefined;
+            if (channel === 'oauth') {
+              const state = await getOAuthState();
+              if (typeof state?.registrationIntent === 'string') attachedHash = hash(state.registrationIntent);
+            } else if (channel === 'magic_link') {
+              const token = context?.query?.token;
+              if (typeof token === 'string') {
+                const mapping = await writer!.query('SELECT intent_hash FROM fixture_magic_context WHERE token_hash=$1', [hash(token)]);
+                attachedHash = mapping.rows[0]?.intent_hash;
+              }
+            } else {
+              const callback = context?.body?.callbackURL;
+              const handle = typeof callback === 'string' ? new URL(callback, baseURL).searchParams.get('intent') : null;
+              if (handle) attachedHash = hash(handle);
+            }
+            const prepared = attachedHash ? await writer!.query('SELECT intent_hash FROM fixture_intent WHERE intent_hash=$1 AND expires_at>now() AND claimed_user IS NULL', [attachedHash]) : null;
+            if (attachedHash !== intentHash || prepared?.rowCount !== 1) throw new Error('server_intent_unavailable');
+            hooks[hooks.length - 1].serverIntentAttached = true;
+            return { data: { ...data, registrationIntentId: attachedHash } };
           },
           after: async (_data, context) => {
             const headers = context?.headers ?? context?.request?.headers;
@@ -212,16 +250,18 @@ async function experiment() {
       body: JSON.stringify(body),
     }));
     let response: Response;
-    try {
       if (channel === 'email') {
         response = await post('/sign-up/email', {
           email, name: 'Synthetic Fixture', password: randomBytes(24).toString('hex'),
+          callbackURL: '/fixture-complete?intent=' + intent,
         });
       } else if (channel === 'magic_link') {
-        const request = await post('/sign-in/magic-link', { email, name: 'Synthetic Fixture', callbackURL: '/' });
+        const request = await post('/sign-in/magic-link', { email, name: 'Synthetic Fixture', callbackURL: '/fixture-complete?intent=' + intent });
         if (!request.ok || !deliveryURL || new URL(deliveryURL).origin !== baseURL) throw new Error('magic_setup');
         // The real plugin verifies its persisted token; the send callback only captures it in memory.
-        response = await auth.handler(new Request(deliveryURL, {
+        const callback = new URL(deliveryURL);
+        if (!callbackCookie) callback.searchParams.set('callbackURL', '/fixture-complete?intent=untrusted-replacement');
+        response = await auth.handler(new Request(callback, {
           headers: callbackCookie ? { cookie } : {},
         }));
       } else {
@@ -244,23 +284,57 @@ async function experiment() {
       const location = response.headers.get('location');
       const requestCompleted = response.status < 400 &&
         !(location && new URL(location, baseURL).searchParams.has('error'));
+      const claimed = await writer!.query('SELECT claimed_user IS NOT NULL AS claimed FROM fixture_intent WHERE intent_hash=$1', [intentHash]);
+      const intentClaimed = claimed.rows[0].claimed;
       observations.push({
         label, channel, adapterTransaction: transaction, httpStatus: response.status,
-        hooks, committed, requestCompleted: Boolean(requestCompleted),
+        hooks, committed, requestCompleted: Boolean(requestCompleted), intentClaimed,
       });
       // A missing callback or failed normal signup is an experiment failure, not an auth finding.
       const rejectedOAuth = channel === 'oauth' && !callbackCookie;
-      if (rejectedOAuth && (hooks.length !== 0 || committed.users !== 0 || requestCompleted)) throw new Error('oauth_cookie_guard');
+      if (rejectedOAuth && (response.status !== 302 || !location ||
+          new URL(location, baseURL).searchParams.get('error') !== 'state_mismatch' ||
+          exchanged || hooks.length !== 0 || committed.users !== 0 || requestCompleted)) throw new Error('oauth_cookie_guard');
       if (!rejectedOAuth && (hooks.length !== (failure === 'before' ? 1 : 2) ||
           (failure === 'none' && (!requestCompleted || committed.users !== 1 ||
             (channel !== 'magic_link' && committed.accounts !== 1))))) {
         throw new Error('control_failed');
       }
-      if (committed.users !== committed.markers) throw new Error('marker_atomicity_failed');
+      if (committed.users !== committed.markers || intentClaimed !== (committed.users === 1)) throw new Error('marker_intent_atomicity_failed');
       if (channel === 'oauth' && callbackCookie && !hooks.every((hook) => hook.verifiedOAuthIntentPresent)) throw new Error('oauth_intent_context');
     } finally {
-      if (provider) await new Promise<void>((resolve, reject) => provider!.close((error) => error ? reject(error) : resolve()));
+      if (provider?.listening) await new Promise<void>((resolve, reject) => provider!.close((error) => error ? reject(error) : resolve()));
     }
+  }
+
+  async function atomicIntentControls() {
+    stage = 'atomic_intent_controls';
+    const insert = async (intentHash: string | null) => {
+      const id = randomBytes(16).toString('hex');
+      try {
+        await writer!.query('INSERT INTO "user" (id,name,email,"emailVerified","createdAt","updatedAt","registrationIntentId") VALUES ($1,$2,$3,true,now(),now(),$4)',
+          [id, 'Synthetic Fixture', randomBytes(12).toString('hex') + '@fixture.invalid', intentHash]);
+        return true;
+      } catch (error) {
+        if ((error as { code?: string }).code !== 'P0001') throw error;
+        return false;
+      }
+    };
+    const intentHash = hash(randomBytes(32).toString('hex'));
+    await writer!.query("INSERT INTO fixture_intent VALUES ($1,now()+interval '5 minutes',null)", [intentHash]);
+    const concurrent = await Promise.all([insert(intentHash), insert(intentHash)]);
+    if (concurrent.filter(Boolean).length !== 1 || await insert(intentHash)) throw new Error('intent_one_time_claim');
+    const expiredHash = hash(randomBytes(32).toString('hex'));
+    await writer!.query("INSERT INTO fixture_intent VALUES ($1,now()-interval '1 second',null)", [expiredHash]);
+    if (await insert(expiredHash)) throw new Error('expired_intent_claimed');
+    const linked = await writer!.query('SELECT count(*)::int AS count FROM "user" u JOIN fixture_marker m ON m.user_id=u.id WHERE u."registrationIntentId"=$1', [intentHash]);
+    if (linked.rows[0].count !== 1) throw new Error('intent_event_atomicity');
+    if (!await insert(null)) throw new Error('missing_intent_pending_event');
+    const pending = await writer!.query('SELECT count(*)::int AS count FROM fixture_marker WHERE intent_attached=false');
+    if (pending.rows[0].count !== 1) throw new Error('missing_intent_not_pending');
+    intentObservations.push({ missingIntentRetainedUnattached: true, concurrentClaims: 2, committedClaims: 1, replayRejected: true,
+      expiredRejected: true, atomicUserAndEvent: true,
+      scope: 'experimental_sql_trigger_not_product_invitation_or_worker' });
   }
 
   async function terminateDuringHook(transaction: boolean) {
@@ -270,7 +344,10 @@ async function experiment() {
       execArgv: ['--import', 'tsx'], stdio: ['pipe', 'pipe', 'pipe', 'ipc'], env: process.env,
     });
     child.stdout?.resume(); child.stderr?.resume();
-    const exited = new Promise<string | null>((resolve) => child.once('exit', (_code, signal) => resolve(signal)));
+    const exited = new Promise<string | null>((resolve) => {
+      child.once('exit', (_code, signal) => resolve(signal));
+      child.once('error', () => resolve(null));
+    });
     try {
       const ready = new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('kill_hook_timeout')), 20000);
@@ -279,6 +356,7 @@ async function experiment() {
           if (message?.hookReady === true) resolve(); else reject(new Error('kill_hook_signal'));
         });
         child.once('exit', () => { clearTimeout(timeout); reject(new Error('kill_child_exited')); });
+        child.once('error', () => { clearTimeout(timeout); reject(new Error('kill_child_spawn_failed')); });
       });
       child.stdin!.end(JSON.stringify({ ...input, kill: { transaction, email } }));
       await ready;
@@ -291,7 +369,8 @@ async function experiment() {
       terminationObservations.push({ adapterTransaction: transaction, visibleAtHook, committedAfterTermination,
         signal, pendingEventRecoverable: committedAfterTermination.markers === 1 });
     } finally {
-      if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await exited; }
+      child.stdin?.destroy();
+      if (child.pid && child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await exited; }
     }
   }
 }
@@ -300,10 +379,10 @@ async function execute() {
   try {
     await experiment();
     process.stdout.write(JSON.stringify({
-      contract: CONTRACT, status: 'partial', libraryVersion: '1.4.6', observations, terminationObservations,
-      deferred: ['real_invitation_binding', 'one_time_trusted_intent_consumption', 'process_kill_delivery_recovery'],
+      contract: CONTRACT, status: 'partial', libraryVersion: '1.4.6', observations, terminationObservations, intentObservations,
+      deferred: ['real_invitation_binding', 'product_intent_prepare_validation', 'process_kill_delivery_recovery'],
       sourceCalls: 0, emailsSent: 0, rawIdentityFieldsEmitted: 0,
-      note: 'Real OAuth state and process termination are exercised; server-owned intent validation/consumption and invitation binding remain unproven.',
+      note: 'Experimental server-owned opaque mappings and atomic claims are exercised; product invitation validation and delivery recovery remain unproven.',
     }) + '\n');
     process.exitCode = 3;
   } catch {
