@@ -1,5 +1,5 @@
 {
-  "appid": "touristappid",
+  "appid": "wxed7149f982c59938",
   "compileType": "miniprogram",
   "condition": {},
   "description": "AskCore private WeChat login bridge",
@@ -12,6 +12,31 @@
     "es6": true,
     "minified": true,
     "postcss": true,
-    "urlCheck": true
-  }
+    "urlCheck": true,
+    "compileWorklet": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "enhance": false,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "useCompilerPlugins": false,
+    "condition": false,
+    "swc": false,
+    "disableSWC": true,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
+  },
+  "simulatorPluginLibVersion": {},
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "editorSetting": {}
 }

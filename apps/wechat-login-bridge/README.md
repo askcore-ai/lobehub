@@ -10,9 +10,11 @@ server-issued transaction and completion capability.
 
 Before upload, use a **non-personal-entity** mini-program and bind it to the
 same WeChat Open Platform account as AskCore's website application. In WeChat
-Developer Tools, import this directory, select the real mini-program AppID, and
-keep that local selection in `project.private.config.json`; do not commit a
-credential. AppID is not secret, but the AppSecret must exist only in the
+Developer Tools, import this directory and select the real mini-program AppID.
+The tool writes the non-secret AppID and shared compiler settings to
+`project.config.json`; per-machine preferences in `project.private.config.json`
+are ignored by Git. Preserve the uploaded project's AppID. Never put AppSecret
+in either project file: it must exist only in the
 server's ignored `.env/lobehub.secret` as
 `AUTH_WECHAT_MINI_PROGRAM_SECRET`.
 
