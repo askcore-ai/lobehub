@@ -322,11 +322,13 @@ async function experiment() {
     };
     const intentHash = hash(randomBytes(32).toString('hex'));
     await writer!.query("INSERT INTO fixture_intent VALUES ($1,now()+interval '5 minutes',null)", [intentHash]);
-    const first = await writer!.connect();
-    const second = await writer!.connect();
+    let first: import('pg').PoolClient | undefined;
+    let second: import('pg').PoolClient | undefined;
     let blockedClaimObserved = false;
     let secondInsert: Promise<boolean> | undefined;
     try {
+      first = await writer!.connect();
+      second = await writer!.connect();
       for (const client of [first, second]) {
         await client.query('BEGIN');
         await client.query("SET LOCAL statement_timeout='5s'");
@@ -349,11 +351,18 @@ async function experiment() {
       await first.query('COMMIT');
       if (await secondInsert) throw new Error('duplicate_intent_claim');
     } finally {
-      await first.query('ROLLBACK');
-      // Release the blocker before draining any outstanding second query.
-      await secondInsert?.catch(() => {});
-      await second.query('ROLLBACK');
-      first.release(); second.release();
+      const release = async (client?: import('pg').PoolClient) => {
+        if (!client) return;
+        let failed = false;
+        try { await client.query('ROLLBACK'); } catch { failed = true; }
+        finally { client.release(failed); }
+      };
+      try { await release(first); }
+      finally {
+        // Release/destroy the blocker before draining any outstanding second query.
+        try { await secondInsert?.catch(() => {}); }
+        finally { await release(second); }
+      }
     }
     if (await insert(intentHash)) throw new Error('intent_replayed');
     const expiredHash = hash(randomBytes(32).toString('hex'));
