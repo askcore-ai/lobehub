@@ -8,21 +8,32 @@ const pagePath = require.resolve('../pages/login/index.js');
 interface LoginPage {
   data: {
     busy: boolean;
+    actionText: string;
     detail: string;
     invalid: boolean;
     status: string;
     title: string;
   };
   onAuthorize: () => Promise<void>;
+  onCopyWebsite: () => void;
   onLoad: (options: Record<string, string>) => void;
+  onShow: () => void;
   setData: (data: Partial<LoginPage['data']>) => void;
 }
 
 const loadPage = () => {
   let definition: LoginPage | undefined;
-  const wxApi = { login: vi.fn(), request: vi.fn() };
+  const wxApi = {
+    login: vi.fn(),
+    request: vi.fn(),
+    setClipboardData: vi.fn(),
+    showToast: vi.fn(),
+  };
+  const app: {
+    globalData: { wechatLaunch: null | { options: Record<string, string>; version: number } };
+  } = { globalData: { wechatLaunch: null } };
   vi.stubGlobal('wx', wxApi);
-  vi.stubGlobal('getApp', () => ({ globalData: { wechatLaunch: null } }));
+  vi.stubGlobal('getApp', () => app);
   vi.stubGlobal('Page', (page: LoginPage) => {
     definition = page;
   });
@@ -30,8 +41,10 @@ const loadPage = () => {
   require(pagePath);
   const page = definition!;
   page.setData = (data) => Object.assign(page.data, data);
-  return { page, wxApi };
+  return { app, page, wxApi };
 };
+
+const launch = { c: 'a'.repeat(43), p: 'signin', t: `wxm_${'b'.repeat(24)}` };
 
 afterEach(() => {
   delete require.cache[pagePath];
@@ -62,5 +75,77 @@ describe('WeChat login bridge direct entry', () => {
     await page.onAuthorize();
     expect(wxApi.login).not.toHaveBeenCalled();
     expect(wxApi.request).not.toHaveBeenCalled();
+  });
+
+  it('copies only the public website address on an explicit action', () => {
+    const { page, wxApi } = loadPage();
+    page.onLoad({});
+    expect(wxApi.setClipboardData).not.toHaveBeenCalled();
+
+    page.onCopyWebsite();
+
+    expect(wxApi.setClipboardData).toHaveBeenCalledWith(
+      expect.objectContaining({ data: 'https://askcore.cn' }),
+    );
+    expect(wxApi.login).not.toHaveBeenCalled();
+  });
+
+  it('only confirms a valid request after a tap and distinguishes identity proof', async () => {
+    const { page, wxApi } = loadPage();
+    wxApi.login.mockImplementation(({ success }) => success({ code: 'synthetic-code' }));
+    wxApi.request.mockImplementation(({ success }) =>
+      success({ data: { state: 'authorized' }, statusCode: 200 }),
+    );
+
+    page.onLoad({ ...launch, p: 'rebind' });
+    expect(page.data.actionText).toBe('确认验证');
+    expect(wxApi.login).not.toHaveBeenCalled();
+    await page.onAuthorize();
+
+    expect(page.data.status).toBe('authorized');
+    expect(page.data.title).toBe('身份验证已提交');
+    expect(page.data.detail).toContain('返回原浏览器继续确认');
+    await page.onAuthorize();
+    expect(wxApi.login).toHaveBeenCalledOnce();
+  });
+
+  it('allows temporary failure retry but makes a rejected transaction terminal', async () => {
+    const { page, wxApi } = loadPage();
+    wxApi.login.mockImplementation(({ success }) => success({ code: 'synthetic-code' }));
+    wxApi.request.mockImplementationOnce(({ success }) => success({ statusCode: 503 }));
+    wxApi.request.mockImplementationOnce(({ success }) => success({ statusCode: 409 }));
+
+    page.onLoad(launch);
+    await page.onAuthorize();
+    expect(page.data.status).toBe('ready');
+    expect(page.data.invalid).toBe(false);
+    await page.onAuthorize();
+    expect(page.data.status).toBe('failed');
+    expect(page.data.invalid).toBe(true);
+    await page.onAuthorize();
+    expect(wxApi.login).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not let a previous pending response replace a newer launch', async () => {
+    const { app, page, wxApi } = loadPage();
+    wxApi.login.mockImplementation(({ success }) => success({ code: 'synthetic-code' }));
+    let completeRequest: ((result: { data: { state: string }; statusCode: number }) => void) | undefined;
+    wxApi.request.mockImplementation(({ success }) => {
+      completeRequest = success;
+    });
+    page.onLoad(launch);
+    const completion = page.onAuthorize();
+    await vi.waitFor(() => expect(completeRequest).toBeDefined());
+    app.globalData.wechatLaunch = {
+      options: { ...launch, p: 'rebind', t: `wxm_${'c'.repeat(24)}` },
+      version: 1,
+    };
+    page.onShow();
+    completeRequest!({ data: { state: 'authorized' }, statusCode: 200 });
+    await completion;
+
+    expect(page.data.status).toBe('ready');
+    expect(page.data.title).toBe('验证 AskCore 微信身份');
+    expect(page.data.busy).toBe(false);
   });
 });

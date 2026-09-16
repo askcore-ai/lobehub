@@ -42,3 +42,21 @@
   font-size: 32rpx;
   font-weight: 600;
 }
+
+.steps {
+  color: #3f4652;
+  font-size: 28rpx;
+  line-height: 1.8;
+  margin-bottom: 36rpx;
+}
+
+.steps view + view {
+  margin-top: 12rpx;
+}
+
+.privacy {
+  color: #646a73;
+  font-size: 24rpx;
+  line-height: 1.7;
+  margin-top: 36rpx;
+}

@@ -67,6 +67,21 @@ describe('WeChat login bridge controller', () => {
     ).rejects.toThrow('askcore_unavailable');
   });
 
+  it.each([undefined, {}, { state: 'pending' }, { state: 'verified' }, 'unexpected HTML'])(
+    'does not display successful authorization for an unrelated HTTP 200 body: %j',
+    async (data) => {
+      const wxApi = {
+        login: ({ success }: { success: (value: { code: string }) => void }) =>
+          success({ code: 'one-time-code' }),
+        request: ({ success }: { success: (value: unknown) => void }) =>
+          success({ data, statusCode: 200 }),
+      };
+      await expect(
+        controller.authorize(wxApi, controller.parseLaunchOptions(launch)),
+      ).rejects.toThrow('authorization_failed');
+    },
+  );
+
   it('captures a new Scheme transaction when an existing mini-program is shown again', () => {
     let app:
       | {

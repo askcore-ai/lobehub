@@ -61,7 +61,11 @@ async function authorize(wxApi, launch) {
     completionCapability: launch.completionCapability,
     transactionId: launch.transactionId,
   };
-  return wxRequest(wxApi, endpointForPurpose(launch.purpose), body);
+  const result = await wxRequest(wxApi, endpointForPurpose(launch.purpose), body);
+  if (!result || result.state !== 'authorized') {
+    throw new Error('authorization_failed');
+  }
+  return result;
 }
 
 module.exports = {
