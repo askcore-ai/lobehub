@@ -22,8 +22,8 @@ vi.mock('@lobechat/conversation-flow', () => ({
 }));
 
 // Mock messageService
-vi.mock('@/services/message', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/services/message')>();
+vi.mock(import('@/services/message'), async (importOriginal) => {
+  const actual = await importOriginal();
 
   return {
     ...actual,
