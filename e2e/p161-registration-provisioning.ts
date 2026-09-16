@@ -1,6 +1,6 @@
 /** T150 real-library/PG acceptance slice. No production identities or source calls. */
 import { createHash, randomBytes } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
@@ -14,7 +14,10 @@ const assert = (condition: unknown) => { if (!condition) throw new Error('contro
 
 async function main() {
   assert(process.argv.slice(2).join(' ') === '--auth-readiness');
-  assert(process.env.ASKCORE_TEST_WORKTREE_ID === 'p161-t146-identity-session');
+  const worktree = process.env.ASKCORE_TEST_WORKTREE_ID;
+  assert(worktree === 'p161-t146-identity-session' || worktree === 'p161-candidate-acceptance');
+  const expectedRoot = `/home/aitutor001/Projects-test/${worktree}/lobehub`;
+  assert(process.cwd() === expectedRoot && realpathSync(process.cwd()) === expectedRoot);
   const resolve = createRequire(process.cwd() + '/package.json');
   assert(JSON.parse(readFileSync(join(dirname(resolve.resolve('better-auth')), '..', 'package.json'), 'utf8')).version === '1.4.6');
   // Better Auth snapshots NODE_ENV at import; test mode collapses every IP to
@@ -451,6 +454,40 @@ async function main() {
   const recoveredInvitation = (await pool.query('SELECT j.state,i.kind,i.id FROM registration_provisioning_jobs j JOIN registration_intents i ON i.id=j.intent_id WHERE j.user_id=$1', [missingJob.id])).rows[0];
   assert(recoveredInvitation.state === 'ready' && recoveredInvitation.kind === 'invitation' && recoveredInvitation.id === hash(invitationPrepared.handle));
   checks.push('product_missing_context_recovers_with_explicit_invitation_ciphertext_pending_backend_validation');
+
+  stage = 'product_migration_populated_replay';
+  // Exercise preservation of consumer-owned progress, not only fresh auth jobs.
+  for (const state of ['leased', 'retry', 'identity_conflict', 'completed']) {
+    const id = opaque();
+    await pool.query(`INSERT INTO users(id,name,email,email_verified,created_at,updated_at)
+      VALUES($1,'Synthetic',$2,true,now(),now())`, [id, opaque() + '@fixture.invalid']);
+    await pool.query(`UPDATE registration_provisioning_jobs SET state=$2,attempt=3,
+      next_attempt_at=now()+interval '1 hour',lease_token=$3,lease_until=now()+interval '2 minutes',
+      subject_digest=$4,identity_link_version=$5,moodle_done_version=$5,
+      gibbon_done_version=$5,failure_code='synthetic_replay_control',updated_at=now()
+      WHERE user_id=$1`, [id, state, opaque(), hash(opaque()), opaque()]);
+  }
+  const snapshotSQL = `SELECT jsonb_build_object(
+    'users',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM users t),
+    'sessions',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM auth_sessions t),
+    'accounts',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM accounts t),
+    'verification',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM verification t),
+    'intents',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM registration_intents t),
+    'contexts',(SELECT jsonb_agg(to_jsonb(t) ORDER BY token_hash) FROM registration_magic_contexts t),
+    'jobs',(SELECT jsonb_agg(to_jsonb(t) ORDER BY user_id) FROM registration_provisioning_jobs t)
+  ) AS state`;
+  const beforeReplay = (await pool.query(snapshotSQL)).rows[0].state;
+  await pool.query(migration);
+  assert(JSON.stringify((await pool.query(snapshotSQL)).rows[0].state) === JSON.stringify(beforeReplay));
+  checks.push('migration_replay_preserves_all_auth_and_protocol_rows');
+  intentId = await prepare();
+  const afterReplay = await signup();
+  assert(afterReplay.response.ok && afterReplay.row.state === 'ready' && afterReplay.row.auth_ready_at);
+  assert((await pool.query('SELECT count(*)::int AS n FROM registration_provisioning_jobs WHERE user_id=$1',
+    [afterReplay.row.id])).rows[0].n === 1);
+  assert((await pool.query('SELECT count(*)::int AS n FROM registration_provisioning_jobs WHERE user_id=$1',
+    [legacyId])).rows[0].n === 0);
+  checks.push('migration_replay_retains_single_job_trigger_and_historical_exclusion');
 
   stage = 'product_http_storage_outage';
   await pool.end(); pool = undefined;
