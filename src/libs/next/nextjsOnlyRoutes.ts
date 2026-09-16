@@ -2,6 +2,7 @@
 // Shared between middleware (define-config.ts) and the client Link adapter.
 export const nextjsOnlyRoutes = [
   '/signin',
+  '/wechat-rebind',
   '/signup',
   '/auth-error',
   '/reset-password',

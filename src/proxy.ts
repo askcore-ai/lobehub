@@ -44,6 +44,7 @@ export const config = {
 
     '/signup(.*)',
     '/signin(.*)',
+    '/wechat-rebind',
     '/verify-email(.*)',
     '/verify-im(.*)',
     '/reset-password(.*)',

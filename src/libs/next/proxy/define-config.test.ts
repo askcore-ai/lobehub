@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { unstable_doesProxyMatch } from 'next/experimental/testing/server';
+import { unstable_doesMiddlewareMatch } from 'next/experimental/testing/server';
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -103,7 +103,7 @@ describe('Better Auth proxy behavior', () => {
     'dispatches the public rebind entry through the real Next matcher: %s',
     (pathname) => {
       expect(
-        unstable_doesProxyMatch({
+        unstable_doesMiddlewareMatch({
           config: proxyConfig,
           nextConfig: {},
           url: `https://askcore.cn${pathname}`,
