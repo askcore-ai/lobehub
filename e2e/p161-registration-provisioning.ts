@@ -174,20 +174,39 @@ async function main() {
   assert(normal.response.ok && normal.row.state === 'ready' && normal.row.auth_ready_at);
   checks.push('real_email_session_releases_job');
 
-  stage = 'half_registration';
+  stage = 'transactional_after_hook_failure';
   intentId = await prepare(); failAfter = true;
-  const half = await signup();
-  assert(!half.response.ok && half.row.state === 'awaiting_auth' && !half.row.auth_ready_at);
-  assert((await pool.query('SELECT count(*)::int AS n FROM accounts WHERE user_id=$1', [half.row.id])).rows[0].n === 0);
-  checks.push('after_failure_half_user_withheld');
+  const authSnapshotSQL = `SELECT jsonb_build_object(
+    'users',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM users t),
+    'sessions',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM auth_sessions t),
+    'accounts',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM accounts t),
+    'jobs',(SELECT jsonb_agg(to_jsonb(t) ORDER BY user_id) FROM registration_provisioning_jobs t)
+  ) AS state`;
+  const beforeFailure = (await pool.query(authSnapshotSQL)).rows[0].state;
+  const failed = await signup();
+  assert(!failed.response.ok && !failed.row);
+  assert(JSON.stringify((await pool.query(authSnapshotSQL)).rows[0].state) === JSON.stringify(beforeFailure));
+  assert((await pool.query('SELECT claimed_user FROM registration_intents WHERE id=$1', [intentId])).rows[0].claimed_user === null);
+  checks.push('transactional_after_hook_failure_rolls_back_user_job_and_intent_claim');
   failAfter = false;
-  stage = 'half_registration_authenticated_recovery';
-  assert((await post('/sign-in/magic-link', { email: half.email, callbackURL: '/' })).ok);
+  stage = 'persisted_unauthenticated_state';
+  // Inject a valid pending protocol state independently of current email signup,
+  // whose transaction now prevents the earlier fixture's persisted half-user.
+  const pendingId = opaque();
+  const pendingEmail = opaque() + '@fixture.invalid';
+  await pool.query(`INSERT INTO users(id,name,email,email_verified,created_at,updated_at,registration_intent_id)
+    VALUES($1,'Synthetic',$2,false,now(),now(),$3)`, [pendingId, pendingEmail, intentId]);
+  const pending = (await pool.query('SELECT state,auth_ready_at FROM registration_provisioning_jobs WHERE user_id=$1', [pendingId])).rows[0];
+  assert(pending.state === 'awaiting_auth' && !pending.auth_ready_at);
+  assert((await pool.query('SELECT count(*)::int AS n FROM accounts WHERE user_id=$1', [pendingId])).rows[0].n === 0);
+  checks.push('persisted_unauthenticated_state_withheld');
+  stage = 'persisted_unauthenticated_state_recovery';
+  assert((await post('/sign-in/magic-link', { email: pendingEmail, callbackURL: '/' })).ok);
   assert(deliveryURL && new URL(deliveryURL).origin === baseURL);
   const recovered = await auth.handler(new Request(deliveryURL));
   assert(recovered.status === 302);
-  assert((await pool.query('SELECT state FROM registration_provisioning_jobs WHERE user_id=$1', [half.row.id])).rows[0].state === 'ready');
-  assert((await pool.query('SELECT count(*)::int AS n FROM accounts WHERE user_id=$1', [half.row.id])).rows[0].n === 0);
+  assert((await pool.query('SELECT state FROM registration_provisioning_jobs WHERE user_id=$1', [pendingId])).rows[0].state === 'ready');
+  assert((await pool.query('SELECT count(*)::int AS n FROM accounts WHERE user_id=$1', [pendingId])).rows[0].n === 0);
   checks.push('passwordless_real_session_recovers_same_pending_job');
 
   stage = 'missing_intent';
