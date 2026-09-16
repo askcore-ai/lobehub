@@ -40,7 +40,11 @@ interface Where {
 }
 
 export interface WechatMobileDatabaseAdapter {
-  create: <T>(input: { data: Record<string, unknown>; model: string }) => Promise<T>;
+  create: <T>(input: {
+    data: Record<string, unknown>;
+    forceAllowId?: boolean;
+    model: string;
+  }) => Promise<T>;
   deleteMany?: (input: { model: string; where: Where[] }) => Promise<number>;
   findMany?: <T>(input: {
     limit: number;
@@ -134,6 +138,8 @@ export class WechatMobileTransactionStore {
         tabBindingHash: hashCapability('tab', tabBinding),
         updatedAt: now,
       },
+      // Better Auth otherwise replaces the ID, violating the bridge's wxm_ contract.
+      forceAllowId: true,
       model: MODEL,
     });
     return {

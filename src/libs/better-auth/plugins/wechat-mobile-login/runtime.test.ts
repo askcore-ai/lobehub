@@ -17,7 +17,7 @@ const cookieHeader = (response: Response) =>
   response.headers.getSetCookie().map((cookie) => cookie.split(';')[0]).join('; ');
 
 function fixture() {
-  const database: Record<string, any[]> = {
+  const database: Record<string, Record<string, unknown>[]> = {
     account: [],
     session: [],
     user: [],

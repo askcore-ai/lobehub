@@ -98,6 +98,7 @@ export async function createWechatRebindClaim(input: {
       userId: input.userId,
       verifiedUnionid: input.unionid,
     },
+    forceAllowId: true,
     model: CLAIM_MODEL,
   });
 }
