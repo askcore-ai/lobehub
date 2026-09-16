@@ -3,6 +3,7 @@ import { act, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { useClientDataSWRWithSync } from '@/libs/swr';
+import type * as MessageServiceModule from '@/services/message';
 import { messageService } from '@/services/message';
 
 import { createStore } from '../../index';
@@ -22,8 +23,8 @@ vi.mock('@lobechat/conversation-flow', () => ({
 }));
 
 // Mock messageService
-vi.mock(import('@/services/message'), async (importOriginal) => {
-  const actual = await importOriginal();
+vi.mock('@/services/message', async (importOriginal) => {
+  const actual = await importOriginal<typeof MessageServiceModule>();
 
   return {
     ...actual,
