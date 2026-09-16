@@ -1,4 +1,4 @@
-import { type LobeChatDatabase, serverDB } from '@lobechat/database';
+import type { LobeChatDatabase } from '@lobechat/database';
 import { registrationIntents, registrationMagicContexts, registrationProvisioningJobs } from '@lobechat/database/schemas';
 import { APIError, createAuthEndpoint, getOAuthState, getSession, type getSessionFromCtx } from 'better-auth/api';
 import { type BetterAuthPlugin } from 'better-auth/types';
@@ -50,7 +50,7 @@ export const registrationReturnPath = (value: string) => {
 };
 
 export class RegistrationProvisioningService {
-  constructor(private readonly db: LobeChatDatabase = serverDB) {}
+  constructor(private readonly db: LobeChatDatabase) {}
 
   async prepare(input: Prepare) {
     const returnPath = registrationReturnPath(input.returnPath);
@@ -207,7 +207,7 @@ const guardRegistrationRequest: NonNullable<BetterAuthPlugin['onRequest']> = asy
   }
 };
 
-export const registrationProvisioningPlugin = (service = new RegistrationProvisioningService()): BetterAuthPlugin => {
+export const registrationProvisioningPlugin = (service: RegistrationProvisioningService): BetterAuthPlugin => {
   const sessionEndpoint = getSession();
   // Unlike getSessionFromCtx(), this public endpoint preserves storage outages.
   const account = async (ctx: Parameters<typeof getSessionFromCtx>[0]): Promise<Account & { sessionId: string }> => {

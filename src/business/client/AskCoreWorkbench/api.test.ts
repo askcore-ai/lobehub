@@ -10,6 +10,7 @@ import {
   fetchAskCoreWorkbenchJson,
   fetchRegistrationStatus,
   prepareRegistrationForSignup,
+  prepareRegistrationForSignin,
   recoverRegistration,
   isAskCoreWorkbenchDeleteNotFound,
 } from './api';
@@ -354,6 +355,20 @@ describe('registration client transport', () => {
   it('does not silently turn a proofless invitation continuation into an ordinary signup', () => {
     window.sessionStorage.clear();
     expect(() => prepareRegistrationForSignup('/askcore/workbench?protocol=identity-link')).toThrow();
+  });
+  it.each([429, 503])('lets sign-in proceed without intent on temporary prepare status %s', async (status) => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ message: 'unavailable' }), { status })));
+    await expect(prepareRegistrationForSignin('/')).resolves.toBeUndefined();
+    await expect(prepareRegistrationForSignup('/')).rejects.toMatchObject({ status });
+  });
+  it.each([400, 401, 403, 409])('preserves explicit prepare refusal %s', async (status) => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ message: 'refused' }), { status })));
+    await expect(prepareRegistrationForSignin('/')).rejects.toMatchObject({ status });
+  });
+  it('distinguishes a network failure from invalid local destination syntax', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('network'); }));
+    await expect(prepareRegistrationForSignin('/')).resolves.toBeUndefined();
+    await expect(prepareRegistrationForSignin('http://')).rejects.toBeInstanceOf(TypeError);
   });
   it('binds recover to the expected session and never sends an account selector', async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ state: 'ready' })));

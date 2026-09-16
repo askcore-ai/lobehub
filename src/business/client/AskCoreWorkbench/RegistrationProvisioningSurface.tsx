@@ -70,6 +70,8 @@ export const RegistrationProvisioningSurface = memo(() => {
   const [result, setResult] = useState<{ binding: string; status: RegistrationStatus }>();
   const [error, setError] = useState<number>();
   const [busy, setBusy] = useState(false);
+  const [sessionRefresh, setSessionRefresh] = useState(0);
+  const refetchAttempt = useRef(0);
   const [crossTabInvalidated, setCrossTabInvalidated] = useState(false);
   const controller = useRef<AbortController | undefined>(undefined);
   const epoch = useRef(0);
@@ -90,6 +92,23 @@ export const RegistrationProvisioningSurface = memo(() => {
     invalidate();
   }, [binding, generation, invalidate]);
 
+  const reloadSession = useCallback(() => {
+    invalidate();
+    currentBinding.current = undefined;
+    setCrossTabInvalidated(true);
+    const attempt = ++refetchAttempt.current;
+    void Promise.resolve(refetchSession.current()).then(() => {
+      if (attempt !== refetchAttempt.current) return;
+      setCrossTabInvalidated(false);
+      // React may batch true/false into one render; explicitly restart the read.
+      setSessionRefresh((value) => value + 1);
+    }).catch(() => {
+      if (attempt === refetchAttempt.current) setError(503);
+    });
+  }, [invalidate]);
+
+  useEffect(() => () => { refetchAttempt.current += 1; }, []);
+
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return;
     const channel = new BroadcastChannel(SCHOOL_SESSION_CHANNEL);
@@ -97,13 +116,10 @@ export const RegistrationProvisioningSurface = memo(() => {
       const value = event.data as { generationHash?: unknown; sessionState?: unknown; type?: unknown } | null;
       if (!value || value.type !== 'generation-changed') return;
       if (value.sessionState === 'stable' && currentGeneration.current && value.generationHash === sha256(currentGeneration.current)) return;
-      invalidate();
-      currentBinding.current = undefined;
-      setCrossTabInvalidated(true);
-      void Promise.resolve(refetchSession.current()).then(() => setCrossTabInvalidated(false)).catch(() => setError(503));
+      reloadSession();
     };
     return () => channel.close();
-  }, [invalidate]);
+  }, [reloadSession]);
 
   const run = useCallback(async (operation?: 'ordinary' | 'invitation' | 'acknowledge' | 'retry') => {
     if (!binding || crossTabInvalidated || currentBinding.current !== binding) return;
@@ -147,33 +163,31 @@ export const RegistrationProvisioningSurface = memo(() => {
       const code = reason instanceof AskCoreWorkbenchApiError ? reason.status : 503;
       setError(code);
       if (code === 409) {
-        invalidate();
+        reloadSession();
         setError(409);
-        currentBinding.current = undefined;
-        setCrossTabInvalidated(true);
-        void Promise.resolve(refetchSession.current()).then(() => setCrossTabInvalidated(false)).catch(() => setError(503));
       }
     } finally {
       if (active()) setBusy(false);
     }
-  }, [binding, crossTabInvalidated, invalidate, navigate, refreshUserState]);
+  }, [binding, crossTabInvalidated, navigate, refreshUserState, reloadSession]);
 
   useEffect(() => {
     if (!crossTabInvalidated) currentBinding.current = binding;
     void run();
     return () => { epoch.current += 1; controller.current?.abort(); };
-  }, [binding, crossTabInvalidated, run]);
+  }, [binding, crossTabInvalidated, run, sessionRefresh]);
 
-  const status = result?.binding === binding && !crossTabInvalidated ? result.status : undefined;
+  const status = result && result.binding === binding && !crossTabInvalidated ? result.status : undefined;
   useEffect(() => {
     if (busy || error || !status || !['wait', 'retry'].includes(status.action)) return;
     const timer = setTimeout(() => void run(), 5000);
     return () => clearTimeout(timer);
   }, [busy, error, run, status]);
 
-  const authenticationRequired = error === 401 || (!session.isPending && !session.isRefetching && !session.data);
+  const authenticationRequired = status?.action === 'authenticate' || error === 401 || (!session.isPending && !session.isRefetching && !session.data);
   const messageKey = authenticationRequired ? 'registration.state.authenticate'
-    : error === 409 ? 'registration.state.sessionChanged'
+    : error === 403 ? 'registration.state.forbidden'
+      : error === 409 ? 'registration.state.sessionChanged'
       : error ? 'registration.state.unavailable'
         : status ? stateKeys[status.action] : 'registration.state.loading';
   const hasInvitation = Boolean(registrationInvitationFromSession());
@@ -182,6 +196,7 @@ export const RegistrationProvisioningSurface = memo(() => {
     <main className={styles.page}>
       <section aria-labelledby="registration-title" className={styles.panel}>
         <h1 id="registration-title">{t('registration.title')}</h1>
+        {binding && session.data?.user.email && <p>{t('registration.account.label', { email: session.data.user.email })}</p>}
         <p aria-live="polite" role="status">{t(messageKey)}</p>
         {authenticationRequired ? (
           <a href={`/signin?callbackUrl=${encodeURIComponent(ASKCORE_REGISTRATION_PATH)}`}>{t('registration.action.signIn')}</a>
@@ -191,7 +206,7 @@ export const RegistrationProvisioningSurface = memo(() => {
             {hasInvitation && (status?.action === 'choose_intent' || status?.action === 'replace_invitation') && <Button disabled={busy} onClick={() => void run('invitation')}>{t('registration.action.useInvitation')}</Button>}
             {status?.action === 'review_identity' && <Button disabled={busy} onClick={() => void run('acknowledge')}>{t('registration.action.acknowledgeIdentity')}</Button>}
             {status?.action === 'retry' && <Button disabled={busy} onClick={() => void run('retry')}>{t('registration.action.retryProvisioning')}</Button>}
-            <Button disabled={busy || !binding || crossTabInvalidated} onClick={() => void run()}>{t('registration.action.refresh')}</Button>
+            <Button disabled={busy || session.isPending} onClick={() => crossTabInvalidated ? reloadSession() : void run()}>{t('registration.action.refresh')}</Button>
           </>
         )}
         <a href="/">{t('registration.action.home')}</a>

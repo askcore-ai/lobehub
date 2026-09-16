@@ -120,6 +120,34 @@ describe('registration recovery surface', () => {
     expect(await screen.findByText('registration.state.unavailable')).toBeInTheDocument();
     expect(screen.queryByText('registration.action.signIn')).not.toBeInTheDocument();
   });
+  it('distinguishes a forbidden session from a temporary outage', async () => {
+    mocks.status.mockRejectedValue(new AskCoreWorkbenchApiError('forbidden', 403));
+    render(<Harness />);
+    expect(await screen.findByText('registration.state.forbidden')).toBeInTheDocument();
+    expect(screen.queryByText('registration.state.unavailable')).not.toBeInTheDocument();
+  });
+  it('offers reauthentication for a job awaiting a real session', async () => {
+    mocks.status.mockResolvedValue({ ...choose, state: 'awaiting_auth', action: 'authenticate' });
+    render(<Harness />);
+    expect(await screen.findByText('registration.action.signIn')).toBeInTheDocument();
+    expect(mocks.recover).not.toHaveBeenCalled();
+  });
+  it('can retry a failed cross-tab session refresh while keeping writes blocked', async () => {
+    mocks.refetch.mockRejectedValueOnce(new Error('unavailable')).mockResolvedValue(undefined);
+    render(<Harness />);
+    await screen.findByText('registration.action.createIdentity');
+    act(() => {
+      for (const channel of Channel.instances) channel.onmessage?.({ data: {
+        type: 'generation-changed', sessionState: 'unstable', generationHash: null,
+      } } as MessageEvent);
+    });
+    expect(await screen.findByText('registration.state.unavailable')).toBeInTheDocument();
+    expect(screen.queryByText('registration.action.createIdentity')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('registration.action.refresh'));
+    await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('registration.action.createIdentity')).toBeInTheDocument();
+    expect(mocks.recover).not.toHaveBeenCalled();
+  });
   it('shows sign-in and ignores a late completion after logout', async () => {
     const response = deferred<typeof complete>();
     mocks.status.mockReturnValueOnce(response.promise);

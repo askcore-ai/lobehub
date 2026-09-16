@@ -7,7 +7,7 @@ import { useSignIn } from './useSignIn';
 // ── hoisted mocks ──────────────────────────────────────────────
 const mockPrepareRegistration = vi.hoisted(() => vi.fn());
 const registrationConfig = vi.hoisted(() => ({ magic: false }));
-vi.mock('@/business/client/AskCoreWorkbench/api', () => ({ prepareRegistrationForSignup: mockPrepareRegistration }));
+vi.mock('@/business/client/AskCoreWorkbench/api', () => ({ prepareRegistrationForSignin: mockPrepareRegistration }));
 
 const mockPush = vi.hoisted(() => vi.fn());
 const mockSearchParamsGet = vi.hoisted(() => vi.fn().mockReturnValue(null));
@@ -127,6 +127,22 @@ describe('useSignIn', () => {
       additionalData: { registrationIntent: 'b'.repeat(64) },
       callbackURL: '/', newUserCallbackURL: '/askcore/workbench?protocol=registration',
     }));
+  });
+  it('continues OAuth without context when preparation reports a temporary failure', async () => {
+    mockPrepareRegistration.mockResolvedValueOnce(undefined);
+    mockSignInSocial.mockResolvedValue({ error: null });
+    const { result } = renderHook(() => useSignIn());
+    await act(async () => { await result.current.handleSocialSignIn('google'); });
+    const input = mockSignInSocial.mock.calls[0][0];
+    expect(input.additionalData.registrationIntent).toBeUndefined();
+    expect(input.newUserCallbackURL).toBe('/askcore/workbench?protocol=registration');
+    expect(input.callbackURL).toBe('/');
+  });
+  it('does not continue OAuth after an explicit preparation security refusal', async () => {
+    mockPrepareRegistration.mockRejectedValueOnce(new Error('forbidden'));
+    const { result } = renderHook(() => useSignIn());
+    await act(async () => { await result.current.handleSocialSignIn('google'); });
+    expect(mockSignInSocial).not.toHaveBeenCalled();
   });
   it('sends the magic-link handle in a header while preserving existing-user continuation', async () => {
     registrationConfig.magic = true;

@@ -766,13 +766,29 @@ export const recoverRegistration = (
 }, signal);
 
 
-export const prepareRegistrationForSignup = (destination: string) => {
+const signupRegistrationIntent = (destination: string): RegistrationIntent => {
   const returnPath = registrationReturnPath(destination);
   const target = new URL(destination, window.location.origin);
   const invitationCallback = target.pathname === '/askcore/workbench' && target.searchParams.get('protocol') === 'identity-link';
   const invitationToken = (invitationCallback ? target.searchParams.get('token') : null) || registrationInvitationFromSession();
   if (invitationCallback && !invitationToken) throw new AskCoreWorkbenchApiError('Invitation required', 409);
-  return prepareRegistrationIntent(invitationToken
+  return invitationToken
     ? { kind: 'invitation', invitationToken, returnPath }
-    : { kind: 'ordinary', returnPath });
+    : { kind: 'ordinary', returnPath };
+};
+
+
+export const prepareRegistrationForSignup = (destination: string) =>
+  prepareRegistrationIntent(signupRegistrationIntent(destination));
+
+/** Authentication may succeed without context; new users then require explicit recovery. */
+export const prepareRegistrationForSignin = async (destination: string) => {
+  const intent = signupRegistrationIntent(destination);
+  try {
+    return await prepareRegistrationIntent(intent);
+  } catch (reason) {
+    if (reason instanceof AskCoreWorkbenchApiError && [429, 503].includes(reason.status)) return;
+    if (reason instanceof TypeError || (reason instanceof DOMException && ['AbortError', 'TimeoutError'].includes(reason.name))) return;
+    throw reason;
+  }
 };

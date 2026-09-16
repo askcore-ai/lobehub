@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import type { CheckUserResponseData } from '@/app/(backend)/api/auth/check-user/route';
 import type { ResolveUsernameResponseData } from '@/app/(backend)/api/auth/resolve-username/route';
-import { prepareRegistrationForSignup } from '@/business/client/AskCoreWorkbench/api';
+import { prepareRegistrationForSignin } from '@/business/client/AskCoreWorkbench/api';
 import { ASKCORE_REGISTRATION_PATH } from '@/business/client/AskCoreWorkbench/config';
 import { useBusinessSignin } from '@/business/client/hooks/useBusinessSignin';
 import { message } from '@/components/AntdStaticMethods';
@@ -74,10 +74,10 @@ export const useSignIn = () => {
       if (!emailValue) return;
 
       const callbackUrl = searchParams.get('callbackUrl') || '/';
-      const { handle } = await prepareRegistrationForSignup(callbackUrl);
+      const handle = (await prepareRegistrationForSignin(callbackUrl))?.handle;
       const { error } = await signIn.magicLink({
         callbackURL: callbackUrl, email: emailValue, newUserCallbackURL: ASKCORE_REGISTRATION_PATH,
-        fetchOptions: { headers: { 'x-askcore-registration-intent': handle } },
+        fetchOptions: handle ? { headers: { 'x-askcore-registration-intent': handle } } : undefined,
       });
       if (error) {
         message.error(error.message || t('betterAuth.signin.magicLinkError'));
@@ -228,7 +228,7 @@ export const useSignIn = () => {
       }
 
       const callbackUrl = searchParams.get('callbackUrl') || '/';
-      const { handle } = await prepareRegistrationForSignup(callbackUrl);
+      const handle = (await prepareRegistrationForSignin(callbackUrl))?.handle;
       const additionalData = { ...(await getAdditionalData()), registrationIntent: handle };
       const signInWithAdditionalData = async () =>
         isBuiltinProvider(normalizedProvider)

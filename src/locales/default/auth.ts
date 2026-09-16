@@ -298,4 +298,6 @@ export default {
   "registration.action.refresh": "Check status again",
   "registration.action.signIn": "Sign in",
   "registration.action.home": "Back to home",
+  'registration.state.forbidden': 'Use your own account with a normal sign-in to manage registration.',
+  'registration.account.label': 'Current account: {{email}}',
 };

@@ -69,7 +69,7 @@ export const useSignUp = () => {
       const { handle } = await prepareRegistrationForSignup(destination);
       const callbackUrl = ASKCORE_REGISTRATION_PATH;
       const username = values.email.split('@')[0];
-      const businessOptions = await getFetchOptions();
+      const businessOptions: AuthFetchOptions | undefined = await getFetchOptions();
       const headers = new Headers(businessOptions?.headers);
       headers.set('x-askcore-registration-intent', handle);
       const fetchOptions = { ...businessOptions, headers };

@@ -90,11 +90,10 @@ describe('AskCoreWorkbench config', () => {
   it('uses protocol activity and attempt resources as default teaching tabs', () => {
     const tabResources = ASKCORE_WORKBENCH_TABS.map((tab) => tab.resource).filter(Boolean);
 
-    expect(tabResources).toEqual(['activities', 'questions', 'attempts']);
+    expect(tabResources).toEqual(['activities', 'attempts']);
     expect(ASKCORE_WORKBENCH_TABS.map((tab) => tab.key)).toEqual([
       'overview',
       'activities',
-      'questions',
       'attempts',
     ]);
   });

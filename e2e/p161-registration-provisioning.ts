@@ -17,6 +17,9 @@ async function main() {
   assert(process.env.ASKCORE_TEST_WORKTREE_ID === 'p161-t146-identity-session');
   const resolve = createRequire(process.cwd() + '/package.json');
   assert(JSON.parse(readFileSync(join(dirname(resolve.resolve('better-auth')), '..', 'package.json'), 'utf8')).version === '1.4.6');
+  // Better Auth snapshots NODE_ENV at import; test mode collapses every IP to
+  // localhost and cannot validate the production rate-limiter boundary.
+  process.env.NODE_ENV = 'production';
   const { betterAuth } = await import('better-auth/minimal');
   const { drizzleAdapter } = await import('better-auth/adapters/drizzle');
   const { magicLink } = await import('better-auth/plugins');
@@ -383,17 +386,24 @@ async function main() {
   const accountBEmail = opaque() + '@fixture.invalid';
   const accountBPassword = opaque();
   const accountBResponse = await call('/api/auth/sign-up/email', { email: accountBEmail, name: 'Synthetic', password: accountBPassword });
+  stage = 'product_http_account_b_signup_' + accountBResponse.status;
   assert(accountBResponse.ok);
   const accountB = await accountBResponse.json();
   const accountBCookie = cookies(accountBResponse);
   const oldBBinding = await binding(accountB.user.id);
   assert((await call('/api/askcore/registration/recover', { intentHandle: recoveryIntent.handle }, accountBCookie,
     { 'x-askcore-registration-session': unboundBinding })).status === 409);
-  assert((await call('/api/auth/sign-out', {}, accountBCookie)).ok);
+  stage = 'product_http_account_a_binding_with_b_cookie';
+  const signedOut = await call('/api/auth/sign-out', {}, accountBCookie);
+  stage = 'product_http_account_b_signout_' + signedOut.status;
+  assert(signedOut.ok);
   const relogin = await call('/api/auth/sign-in/email', { email: accountBEmail, password: accountBPassword });
+  stage = 'product_http_account_b_relogin_' + relogin.status;
   assert(relogin.ok);
   const reloginCookie = cookies(relogin);
+  stage = 'product_http_account_b_new_session';
   assert(await binding(accountB.user.id) !== oldBBinding);
+  stage = 'product_http_old_session_refusal';
   assert((await call('/api/auth/askcore-registration/recover', { intentHandle: recoveryIntent.handle }, reloginCookie,
     { 'x-askcore-registration-session': oldBBinding })).status === 409);
   const accountBJob = (await pool.query('SELECT state,intent_id FROM registration_provisioning_jobs WHERE user_id=$1', [accountB.user.id])).rows[0];
@@ -406,6 +416,42 @@ async function main() {
   }
   assert((await call('/api/askcore/registration/prepare', { kind: 'ordinary', returnPath: '/' }, undefined, { 'x-forwarded-for': '192.0.2.250' })).status === 429);
   checks.push('product_both_aliases_share_better_auth_rate_limit');
+  stage = 'product_nat_existing_magic_login';
+  assert((await pool.query('SELECT count(*)::int AS n FROM registration_provisioning_jobs WHERE user_id=$1', [legacyId])).rows[0].n === 0);
+  const existingMagic = await call('/api/auth/sign-in/magic-link', { email: legacyEmail, callbackURL: '/', newUserCallbackURL: '/askcore/workbench?protocol=registration' },
+    undefined, { 'x-forwarded-for': '192.0.2.250' });
+  stage = 'product_nat_existing_magic_send_' + existingMagic.status;
+  assert(existingMagic.ok);
+  const existingMagicLogin = await productAuth.handler(new Request(deliveryURL, { headers: { 'x-forwarded-for': '192.0.2.250' } }));
+  assert(existingMagicLogin.status === 302);
+  assert(new URL(existingMagicLogin.headers.get('location')!, baseURL).pathname === '/');
+  assert((await pool.query('SELECT count(*)::int AS n FROM registration_provisioning_jobs WHERE user_id=$1', [legacyId])).rows[0].n === 0);
+  checks.push('product_nat_prepare_limit_does_not_block_historical_magic_login_or_create_job');
+
+  stage = 'product_nat_new_magic_without_intent';
+  const missingEmail = opaque() + '@fixture.invalid';
+  const missingMagic = await call('/api/auth/sign-in/magic-link', { email: missingEmail, callbackURL: '/', newUserCallbackURL: '/askcore/workbench?protocol=registration' },
+    undefined, { 'x-forwarded-for': '192.0.2.250' });
+  stage = 'product_nat_new_magic_send_' + missingMagic.status;
+  assert(missingMagic.ok);
+  const missingMagicLogin = await productAuth.handler(new Request(deliveryURL, { headers: { 'x-forwarded-for': '192.0.2.250' } }));
+  assert(missingMagicLogin.status === 302);
+  const missingLocation = new URL(missingMagicLogin.headers.get('location')!, baseURL);
+  assert(missingLocation.pathname === '/askcore/workbench' && missingLocation.search === '?protocol=registration');
+  const missingJob = (await pool.query('SELECT u.id,j.state,j.intent_id,j.moodle_done_version,j.gibbon_done_version FROM users u JOIN registration_provisioning_jobs j ON j.user_id=u.id WHERE u.email=$1', [missingEmail])).rows[0];
+  assert(missingJob.state === 'awaiting_intent' && missingJob.intent_id === null && missingJob.moodle_done_version === null && missingJob.gibbon_done_version === null);
+  checks.push('product_nat_new_magic_user_waits_for_explicit_intent_with_fixed_callback');
+
+  stage = 'product_missing_intent_invitation_transport_recovery';
+  const missingCookie = cookies(missingMagicLogin);
+  const missingBinding = await binding(missingJob.id);
+  const invitationRecovery = await call('/api/askcore/registration/recover', { intentHandle: invitationPrepared.handle }, missingCookie,
+    { 'x-askcore-registration-session': missingBinding });
+  assert(invitationRecovery.status === 200);
+  const recoveredInvitation = (await pool.query('SELECT j.state,i.kind,i.id FROM registration_provisioning_jobs j JOIN registration_intents i ON i.id=j.intent_id WHERE j.user_id=$1', [missingJob.id])).rows[0];
+  assert(recoveredInvitation.state === 'ready' && recoveredInvitation.kind === 'invitation' && recoveredInvitation.id === hash(invitationPrepared.handle));
+  checks.push('product_missing_context_recovers_with_explicit_invitation_ciphertext_pending_backend_validation');
+
   stage = 'product_http_storage_outage';
   await pool.end(); pool = undefined;
   const outage = await call('/api/askcore/registration/status', undefined, unboundCookie);
