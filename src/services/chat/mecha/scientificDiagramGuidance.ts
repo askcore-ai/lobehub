@@ -18,7 +18,7 @@ export const SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE =
   '- FINAL MANDATORY VALIDATION: The user\'s response-language preference applies only outside the `tikz` fence and is overridden inside it. Before sending, inspect every fence character; if any character is outside U+0000-U+007F, remove all comments and rewrite every label in ASCII. Never send the response until this check passes.\n' +
   '</scientific_diagram_output_guidance>';
 
-const SCIENTIFIC_DIAGRAM_GUIDANCE_SCOPES = new Set<MessageMapScope>([
+const SCIENTIFIC_DIAGRAM_GUIDANCE_SCOPES: ReadonlySet<string> = new Set<MessageMapScope>([
   'group',
   'group_agent',
   'main',
@@ -26,16 +26,20 @@ const SCIENTIFIC_DIAGRAM_GUIDANCE_SCOPES = new Set<MessageMapScope>([
 ]);
 
 export function appendScientificDiagramGuidance(
+  existingSystemRole: string,
+  scope: string | null | undefined,
+): string;
+export function appendScientificDiagramGuidance(
   existingSystemRole: string | undefined,
-  scope: MessageMapScope | undefined,
+  scope: string | null | undefined,
 ): string | undefined;
 export function appendScientificDiagramGuidance(
   existingSystemRole: string | null | undefined,
-  scope: MessageMapScope | undefined,
+  scope: string | null | undefined,
 ): string | null | undefined;
 export function appendScientificDiagramGuidance(
   existingSystemRole: string | null | undefined,
-  scope: MessageMapScope | undefined,
+  scope: string | null | undefined,
 ): string | null | undefined {
   if (!scope || !SCIENTIFIC_DIAGRAM_GUIDANCE_SCOPES.has(scope)) return existingSystemRole;
   if (existingSystemRole?.includes(SCIENTIFIC_DIAGRAM_OUTPUT_GUIDANCE)) return existingSystemRole;
