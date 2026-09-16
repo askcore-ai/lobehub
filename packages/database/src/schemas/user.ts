@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm';
 import { boolean, index, jsonb, pgTable, text, varchar } from 'drizzle-orm/pg-core';
 
 import { timestamps, timestamptz } from './_helpers';
+import { registrationIntents } from './registrationProvisioning';
 
 export const users = pgTable(
   'users',
@@ -12,6 +13,7 @@ export const users = pgTable(
     username: text('username').unique(),
     email: text('email').unique(),
     normalizedEmail: text('normalized_email').unique(),
+    registrationIntentId: text('registration_intent_id').references(() => registrationIntents.id),
 
     avatar: text('avatar'),
     phone: text('phone').unique(),

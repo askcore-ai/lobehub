@@ -1,0 +1,207 @@
+/** T150 real-library/PG acceptance slice. No production identities or source calls. */
+import { createHash, randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+
+const contract = 'askcore.p161-registration-readiness.v1';
+const checks: string[] = [];
+let stage = 'preflight';
+let pool: import('pg').Pool | undefined;
+const hash = (value: string) => createHash('sha256').update(value).digest('hex');
+const opaque = () => randomBytes(24).toString('hex');
+const assert = (condition: unknown) => { if (!condition) throw new Error('control_failed'); };
+
+async function main() {
+  assert(process.argv.slice(2).join(' ') === '--auth-readiness');
+  assert(process.env.ASKCORE_TEST_WORKTREE_ID === 'p161-t146-identity-session');
+  const resolve = createRequire(process.cwd() + '/package.json');
+  assert(JSON.parse(readFileSync(join(dirname(resolve.resolve('better-auth')), '..', 'package.json'), 'utf8')).version === '1.4.6');
+  const { betterAuth } = await import('better-auth/minimal');
+  const { drizzleAdapter } = await import('better-auth/adapters/drizzle');
+  const { magicLink } = await import('better-auth/plugins');
+  const { drizzle } = await import('drizzle-orm/node-postgres');
+  const { boolean, pgTable, text, timestamp } = await import('drizzle-orm/pg-core');
+  const { Pool } = await import('pg');
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+  const input = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  assert(input.host === '127.0.0.1' && input.database === 'p161_t148_synthetic' &&
+    input.user === 'p161_t148_synthetic' && Number.isInteger(input.port) && input.port > 1024 &&
+    input.port < 65536 && typeof input.password === 'string' && input.password.length >= 32);
+  pool = new Pool({ host: input.host, port: input.port, database: input.database,
+    user: input.user, password: input.password, max: 4, connectionTimeoutMillis: 5000 });
+  const at = (name: string) => timestamp(name, { withTimezone: true }).notNull();
+  const user = pgTable('users', {
+    id: text('id').primaryKey(), name: text('name').notNull(), email: text('email').notNull().unique(),
+    emailVerified: boolean('email_verified').notNull(), image: text('image'),
+    registrationIntentId: text('registration_intent_id'), createdAt: at('created_at'), updatedAt: at('updated_at'),
+  });
+  const session = pgTable('auth_sessions', {
+    id: text('id').primaryKey(), expiresAt: at('expires_at'), token: text('token').notNull().unique(),
+    userId: text('user_id').notNull().references(() => user.id), createdAt: at('created_at'), updatedAt: at('updated_at'),
+    ipAddress: text('ip_address'), userAgent: text('user_agent'), impersonatedBy: text('impersonated_by'),
+  });
+  const account = pgTable('accounts', {
+    id: text('id').primaryKey(), accountId: text('account_id').notNull(), providerId: text('provider_id').notNull(),
+    userId: text('user_id').notNull().references(() => user.id), password: text('password'),
+    accessToken: text('access_token'), refreshToken: text('refresh_token'), idToken: text('id_token'),
+    accessTokenExpiresAt: timestamp('access_token_expires_at'), refreshTokenExpiresAt: timestamp('refresh_token_expires_at'),
+    scope: text('scope'), createdAt: at('created_at'), updatedAt: at('updated_at'),
+  });
+  const verification = pgTable('verification', {
+    id: text('id').primaryKey(), identifier: text('identifier').notNull(), value: text('value').notNull(),
+    expiresAt: at('expires_at'), createdAt: at('created_at'), updatedAt: at('updated_at'),
+  });
+  stage = 'legacy_schema';
+  await pool.query(`
+    CREATE TABLE users(id text PRIMARY KEY,name text NOT NULL,email text NOT NULL UNIQUE,email_verified boolean NOT NULL,
+      image text,created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL);
+    CREATE TABLE auth_sessions(id text PRIMARY KEY,expires_at timestamptz NOT NULL,token text NOT NULL UNIQUE,
+      user_id text NOT NULL REFERENCES users(id),created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL,
+      ip_address text,user_agent text,impersonated_by text);
+    CREATE TABLE accounts(id text PRIMARY KEY,account_id text NOT NULL,provider_id text NOT NULL,user_id text NOT NULL REFERENCES users(id),
+      password text,access_token text,refresh_token text,id_token text,access_token_expires_at timestamptz,
+      refresh_token_expires_at timestamptz,scope text,created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL);
+    CREATE TABLE verification(id text PRIMARY KEY,identifier text NOT NULL,value text NOT NULL,
+      expires_at timestamptz NOT NULL,created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL);
+  `);
+  const legacyId = opaque();
+  const legacyEmail = opaque() + '@fixture.invalid';
+  await pool.query('INSERT INTO users VALUES ($1,$2,$3,true,null,now(),now())', [legacyId, 'Synthetic', legacyEmail]);
+  stage = 'product_migration';
+  const migration = readFileSync('packages/database/migrations/0111_askcore_registration_provisioning.sql', 'utf8');
+  await pool.query(migration);
+  assert((await pool.query('SELECT count(*)::int AS n FROM registration_provisioning_jobs')).rows[0].n === 0);
+  checks.push('actual_migration_no_historical_backfill');
+  const schema = { user, session, account, verification };
+  const db = drizzle(pool, { schema });
+  const baseURL = 'http://127.0.0.1:19348';
+  let intentId: string | undefined;
+  let failAfter = false;
+  let deliveryURL = '';
+  const auth = betterAuth({
+    baseURL, basePath: '/api/auth', secret: opaque() + opaque(),
+    database: drizzleAdapter(db, { provider: 'pg', schema }),
+    session: { storeSessionInDatabase: true },
+    logger: { disabled: true }, telemetry: { enabled: false }, rateLimit: { enabled: false },
+    emailAndPassword: { enabled: true, autoSignIn: true },
+    user: { additionalFields: { registrationIntentId: { type: 'string', required: false, input: false } } },
+    plugins: [magicLink({ sendMagicLink: async ({ url }) => { deliveryURL = url; } })],
+    databaseHooks: { user: { create: {
+      before: async (data) => ({ data: { ...data, ...(intentId ? { registrationIntentId: intentId } : {}) } }),
+      after: async () => { if (failAfter) throw new Error('synthetic_after_failure'); },
+    } } },
+  });
+  const post = (path: string, data: object) => auth.handler(new Request(baseURL + '/api/auth' + path, {
+    method: 'POST', headers: { 'content-type': 'application/json', origin: baseURL }, body: JSON.stringify(data),
+  }));
+  const prepare = async (expired = false) => {
+    const id = hash(opaque());
+    await pool!.query("INSERT INTO registration_intents(id,kind,return_path,expires_at) VALUES($1,'ordinary','/',now()+$2::interval)", [id, expired ? '-1 second' : '10 minutes']);
+    return id;
+  };
+  const signup = async () => {
+    const email = opaque() + '@fixture.invalid';
+    const response = await post('/sign-up/email', { email, name: 'Synthetic', password: opaque() });
+    const rows = await pool!.query('SELECT u.id,j.state,j.auth_ready_at FROM users u LEFT JOIN registration_provisioning_jobs j ON j.user_id=u.id WHERE u.email=$1', [email]);
+    return { email, response, row: rows.rows[0] };
+  };
+  stage = 'normal_email';
+  intentId = await prepare();
+  const normal = await signup();
+  assert(normal.response.ok && normal.row.state === 'ready' && normal.row.auth_ready_at);
+  checks.push('real_email_session_releases_job');
+
+  stage = 'half_registration';
+  intentId = await prepare(); failAfter = true;
+  const half = await signup();
+  assert(!half.response.ok && half.row.state === 'awaiting_auth' && !half.row.auth_ready_at);
+  assert((await pool.query('SELECT count(*)::int AS n FROM accounts WHERE user_id=$1', [half.row.id])).rows[0].n === 0);
+  checks.push('after_failure_half_user_withheld');
+  failAfter = false;
+  stage = 'half_registration_authenticated_recovery';
+  assert((await post('/sign-in/magic-link', { email: half.email, callbackURL: '/' })).ok);
+  assert(deliveryURL && new URL(deliveryURL).origin === baseURL);
+  const recovered = await auth.handler(new Request(deliveryURL));
+  assert(recovered.status === 302);
+  assert((await pool.query('SELECT state FROM registration_provisioning_jobs WHERE user_id=$1', [half.row.id])).rows[0].state === 'ready');
+  assert((await pool.query('SELECT count(*)::int AS n FROM accounts WHERE user_id=$1', [half.row.id])).rows[0].n === 0);
+  checks.push('passwordless_real_session_recovers_same_pending_job');
+
+  stage = 'missing_intent';
+  intentId = undefined;
+  const missing = await signup();
+  assert(missing.response.ok && missing.row.state === 'awaiting_intent' && missing.row.auth_ready_at);
+  checks.push('authenticated_missing_intent_not_defaulted');
+
+  stage = 'expired_and_replayed_intents';
+  intentId = await prepare(true);
+  const expired = await signup(); assert(!expired.response.ok && !expired.row);
+  intentId = normal.row ? (await pool.query('SELECT intent_id FROM registration_provisioning_jobs WHERE user_id=$1', [normal.row.id])).rows[0].intent_id : undefined;
+  const replayed = await signup(); assert(!replayed.response.ok && !replayed.row);
+  checks.push('expired_and_replayed_intent_leave_no_user');
+
+  // Direct SQL controls isolate the actual migration's transaction behavior.
+  const insertUser = async (id: string) => pool!.query('INSERT INTO users(id,name,email,email_verified,created_at,updated_at) VALUES($1,$2,$3,true,now(),now())', [id, 'Synthetic', opaque() + '@fixture.invalid']);
+  const sessionSQL = 'INSERT INTO auth_sessions(id,expires_at,token,user_id,created_at,updated_at,impersonated_by) VALUES($1,now()+$2::interval,$3,$4,now(),now(),$5)';
+  const sessionValues = (id: string, impersonator: string | null = null, expiry = '1 hour') => [opaque(), expiry, opaque(), id, impersonator];
+  stage = 'session_rollback';
+  const rollbackId = opaque(); await insertUser(rollbackId);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN'); await client.query(sessionSQL, sessionValues(rollbackId));
+    assert((await client.query('SELECT auth_ready_at IS NOT NULL AS ready FROM registration_provisioning_jobs WHERE user_id=$1', [rollbackId])).rows[0].ready);
+    await client.query('ROLLBACK');
+  } finally { client.release(); }
+  assert(!(await pool.query('SELECT auth_ready_at FROM registration_provisioning_jobs WHERE user_id=$1', [rollbackId])).rows[0].auth_ready_at);
+  checks.push('session_rollback_rolls_back_readiness');
+
+  stage = 'expired_impersonated_and_historical_sessions';
+  await pool.query(sessionSQL, sessionValues(rollbackId, opaque()));
+  await pool.query(sessionSQL, sessionValues(rollbackId, null, '-1 second'));
+  assert(!(await pool.query('SELECT auth_ready_at FROM registration_provisioning_jobs WHERE user_id=$1', [rollbackId])).rows[0].auth_ready_at);
+  await pool.query(sessionSQL, sessionValues(legacyId));
+  assert((await post('/sign-in/magic-link', { email: legacyEmail, callbackURL: '/' })).ok);
+  assert((await auth.handler(new Request(deliveryURL))).status === 302);
+  assert((await pool.query('SELECT count(*)::int AS n FROM registration_provisioning_jobs WHERE user_id=$1', [legacyId])).rows[0].n === 0);
+  checks.push('expired_impersonated_and_historical_sessions_do_not_release_or_backfill');
+
+  stage = 'parallel_sessions';
+  await Promise.all([pool.query(sessionSQL, sessionValues(rollbackId)), pool.query(sessionSQL, sessionValues(rollbackId))]);
+  const ready = await pool.query('SELECT count(*)::int AS n FROM registration_provisioning_jobs WHERE user_id=$1 AND auth_ready_at IS NOT NULL', [rollbackId]);
+  assert(ready.rows[0].n === 1);
+  checks.push('parallel_session_attempts_converge_on_one_job');
+
+  stage = 'user_transaction_rollback';
+  const userRollback = await pool.connect();
+  const abortedId = opaque();
+  try {
+    await userRollback.query('BEGIN');
+    await userRollback.query('INSERT INTO users(id,name,email,email_verified,created_at,updated_at) VALUES($1,$2,$3,true,now(),now())', [abortedId, 'Synthetic', opaque() + '@fixture.invalid']);
+    assert((await userRollback.query('SELECT count(*)::int AS n FROM registration_provisioning_jobs WHERE user_id=$1', [abortedId])).rows[0].n === 1);
+    await userRollback.query('ROLLBACK');
+  } finally { userRollback.release(); }
+  assert((await pool.query('SELECT count(*)::int AS n FROM registration_provisioning_jobs WHERE user_id=$1', [abortedId])).rows[0].n === 0);
+  checks.push('user_rollback_leaves_no_event');
+
+  stage = 'product_drizzle_schema';
+  const product = await import('../packages/database/src/schemas/registrationProvisioning');
+  const productRows = await drizzle(pool).select().from(product.registrationProvisioningJobs);
+  assert(productRows.some((row) => row.userId === normal.row.id && row.state === 'ready'));
+  checks.push('product_drizzle_schema_reads_migrated_jobs');
+}
+
+void (async () => {
+  try {
+    await main();
+    process.stdout.write(JSON.stringify({ contract, status: 'partial', checks,
+      deferred: ['product_prepare_transport', 'production_secondary_storage', 'email_verification_and_reset', 'native_sources', 'worker_recovery', 'public_journey'],
+      sourceCalls: 0, emailsSent: 0, rawIdentityFieldsEmitted: 0 }) + '\n');
+    process.exitCode = 3;
+  } catch {
+    process.stdout.write(JSON.stringify({ contract, status: 'failed', stage, checks,
+      sourceCalls: 0, emailsSent: 0, rawIdentityFieldsEmitted: 0 }) + '\n');
+    process.exitCode = 2;
+  } finally { await pool?.end(); }
+})();
