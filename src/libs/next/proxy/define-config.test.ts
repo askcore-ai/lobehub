@@ -1,6 +1,9 @@
 // @vitest-environment node
+import { unstable_doesProxyMatch } from 'next/experimental/testing/server';
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { config as proxyConfig } from '@/proxy';
 
 import { defineConfig, isApiLikeRoute } from './define-config';
 
@@ -94,5 +97,60 @@ describe('Better Auth proxy behavior', () => {
     expect(response.status).toBeGreaterThanOrEqual(300);
     expect(response.status).toBeLessThan(400);
     expect(response.headers.get('location')).toContain('/signin?callbackUrl=');
+  });
+
+  it.each(['/wechat-rebind', '/wechat-rebind?hl=zh-CN'])(
+    'dispatches the public rebind entry through the real Next matcher: %s',
+    (pathname) => {
+      expect(
+        unstable_doesProxyMatch({
+          config: proxyConfig,
+          nextConfig: {},
+          url: `https://askcore.cn${pathname}`,
+        }),
+      ).toBe(true);
+    },
+  );
+
+  it.each([
+    { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', variant: 'zh-CN__0' },
+    {
+      userAgent:
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',
+      variant: 'zh-CN__1',
+    },
+  ])('rewrites authenticated rebind to SSR for $variant', async ({ userAgent, variant }) => {
+    getSession.mockResolvedValue({ user: { id: 'synthetic-rebind-user' } });
+    const { middleware } = defineConfig();
+
+    const response = await middleware(
+      new NextRequest('https://askcore.cn/wechat-rebind?hl=zh-CN', {
+        headers: { 'user-agent': userAgent },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const rewrite = new URL(response.headers.get('x-middleware-rewrite')!);
+    expect(rewrite.pathname).toBe(`/${variant}/wechat-rebind`);
+    expect(rewrite.searchParams.get('hl')).toBe('zh-CN');
+    expect(getSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps rebind session-protected and preserves its sign-in callback', async () => {
+    getSession.mockResolvedValue(null);
+    const { middleware } = defineConfig();
+
+    const response = await middleware(
+      new NextRequest('https://askcore.cn/wechat-rebind?hl=zh-CN'),
+    );
+
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get('location')!);
+    expect(location.pathname).toBe('/signin');
+    expect(location.searchParams.get('callbackUrl')).toBe(
+      'https://askcore.cn/wechat-rebind?hl=zh-CN',
+    );
+    expect(location.searchParams.get('hl')).toBe('zh-CN');
+    expect(getSession).toHaveBeenCalledTimes(1);
   });
 });
