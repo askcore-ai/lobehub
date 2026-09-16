@@ -176,14 +176,65 @@ async function main() {
   stage = 'user_transaction_rollback';
   const userRollback = await pool.connect();
   const abortedId = opaque();
+  const abortedIntent = await prepare();
   try {
     await userRollback.query('BEGIN');
-    await userRollback.query('INSERT INTO users(id,name,email,email_verified,created_at,updated_at) VALUES($1,$2,$3,true,now(),now())', [abortedId, 'Synthetic', opaque() + '@fixture.invalid']);
+    await userRollback.query('INSERT INTO users(id,name,email,email_verified,created_at,updated_at,registration_intent_id) VALUES($1,$2,$3,true,now(),now(),$4)', [abortedId, 'Synthetic', opaque() + '@fixture.invalid', abortedIntent]);
     assert((await userRollback.query('SELECT count(*)::int AS n FROM registration_provisioning_jobs WHERE user_id=$1', [abortedId])).rows[0].n === 1);
+    assert((await userRollback.query('SELECT claimed_user FROM registration_intents WHERE id=$1', [abortedIntent])).rows[0].claimed_user === abortedId);
     await userRollback.query('ROLLBACK');
   } finally { userRollback.release(); }
   assert((await pool.query('SELECT count(*)::int AS n FROM registration_provisioning_jobs WHERE user_id=$1', [abortedId])).rows[0].n === 0);
-  checks.push('user_rollback_leaves_no_event');
+  assert((await pool.query('SELECT claimed_user FROM registration_intents WHERE id=$1', [abortedIntent])).rows[0].claimed_user === null);
+  assert((await pool.query('SELECT count(*)::int AS n FROM users WHERE id=$1', [abortedId])).rows[0].n === 0);
+  checks.push('user_rollback_releases_intent_and_leaves_no_user_or_event');
+
+  stage = 'overlapping_product_intent_claims';
+  const contestedIntent = await prepare();
+  const winnerId = opaque(); const loserId = opaque();
+  let first: import('pg').PoolClient | undefined;
+  let second: import('pg').PoolClient | undefined;
+  let losingInsert: Promise<string | undefined> | undefined;
+  try {
+    first = await pool.connect(); second = await pool.connect();
+    for (const client of [first, second]) {
+      await client.query('BEGIN');
+      await client.query("SET LOCAL statement_timeout='5s'");
+      await client.query('SELECT id FROM registration_intents WHERE id=$1 FOR KEY SHARE', [contestedIntent]);
+    }
+    const firstPid = (await first.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+    const secondPid = (await second.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+    const insertSQL = 'INSERT INTO users(id,name,email,email_verified,created_at,updated_at,registration_intent_id) VALUES($1,$2,$3,true,now(),now(),$4)';
+    await first.query(insertSQL, [winnerId, 'Synthetic', opaque() + '@fixture.invalid', contestedIntent]);
+    losingInsert = second.query(insertSQL, [loserId, 'Synthetic', opaque() + '@fixture.invalid', contestedIntent])
+      .then(() => undefined, (error: { code?: string }) => error.code || 'unknown');
+    let blocked = false;
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline) {
+      blocked = (await pool.query('SELECT $1::int=ANY(pg_blocking_pids($2::int)) AS blocked', [firstPid, secondPid])).rows[0].blocked;
+      if (blocked) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert(blocked);
+    await first.query('COMMIT');
+    assert(await losingInsert === 'P0001');
+  } finally {
+    const release = async (client?: import('pg').PoolClient) => {
+      if (!client) return;
+      let failed = false;
+      try { await client.query('ROLLBACK'); } catch { failed = true; }
+      finally { client.release(failed); }
+    };
+    try { await release(first); }
+    finally {
+      try { await losingInsert; }
+      finally { await release(second); }
+    }
+  }
+  assert((await pool.query('SELECT claimed_user FROM registration_intents WHERE id=$1', [contestedIntent])).rows[0].claimed_user === winnerId);
+  assert((await pool.query('SELECT count(*)::int AS n FROM registration_provisioning_jobs WHERE intent_id=$1', [contestedIntent])).rows[0].n === 1);
+  assert((await pool.query('SELECT count(*)::int AS n FROM users WHERE id=$1', [loserId])).rows[0].n === 0);
+  checks.push('actual_migration_blocked_parallel_claim_commits_one_user_and_event');
 
   stage = 'product_drizzle_schema';
   const product = await import('../packages/database/src/schemas/registrationProvisioning');
