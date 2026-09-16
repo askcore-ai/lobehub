@@ -8,6 +8,7 @@ import {
 import { createAuthClient } from 'better-auth/react';
 
 import { type auth } from '@/auth';
+import { wechatMobileLoginClient } from '@/libs/better-auth/plugins/wechat-mobile-login/client';
 
 export const {
   changeEmail,
@@ -29,6 +30,7 @@ export const {
     inferAdditionalFields<typeof auth>(),
     genericOAuthClient(),
     organizationClient(),
+    wechatMobileLoginClient(),
     // Always include magicLinkClient - server will reject if not enabled
     magicLinkClient(),
   ],

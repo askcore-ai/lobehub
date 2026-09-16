@@ -18,6 +18,7 @@ vi.mock('@/envs/auth', () => ({
     AUTH_EMAIL_VERIFICATION: true,
     AUTH_ENABLE_MAGIC_LINK: true,
     AUTH_SSO_PROVIDERS: 'feishu,wechat',
+    AUTH_WECHAT_MOBILE_LOGIN_ENABLED: false,
   },
 }));
 
@@ -38,6 +39,7 @@ describe('getServerAuthConfig', () => {
       enableEmailVerification: true,
       enableMagicLink: true,
       enableMarketTrustedClient: true,
+      enableWechatMobileLogin: false,
       oAuthSSOProviders: ['feishu', 'wechat'],
     });
   });

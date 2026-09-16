@@ -1,0 +1,29 @@
+<view class="page">
+  <view class="card">
+    <view class="brand">AskCore</view>
+    <view class="title">{{title}}</view>
+    <view class="detail">{{detail}}</view>
+    <button
+      wx:if="{{(status === 'ready' || status === 'authorizing') && !invalid}}"
+      class="primary"
+      disabled="{{busy}}"
+      loading="{{busy}}"
+      bindtap="onAuthorize"
+    >
+      {{actionText}}
+    </button>
+    <view wx:if="{{status === 'welcome'}}" class="steps">
+      <view>1. 在浏览器打开 AskCore，发起登录或身份验证。</view>
+      <view>2. 按网站提示打开微信，核对用途并确认。</view>
+      <view>3. 通过系统导航返回原浏览器，继续完成操作。</view>
+      <view>直接打开本小程序不会自动登录，也不会关联账号。</view>
+    </view>
+    <button
+      wx:if="{{status === 'welcome' || status === 'failed'}}"
+      class="primary"
+      bindtap="onCopyWebsite"
+    >复制 AskCore 网址</button>
+    <view wx:if="{{status === 'authorized'}}" class="success">✓ 可以返回浏览器</view>
+    <view class="privacy">仅在您点击确认后获取一次性微信登录凭据，用于本次登录或身份验证；不索取头像、昵称、手机号、位置或通讯录。</view>
+  </view>
+</view>

@@ -25,6 +25,10 @@ Desktop.ini
 *.code-workspace
 .vscode/sessions.json
 prd
+
+# WeChat Developer Tools per-machine project settings
+apps/wechat-login-bridge/project.private.config.json
+
 # Recordings
 .records/
 

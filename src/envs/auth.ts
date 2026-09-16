@@ -77,7 +77,15 @@ declare global {
       AUTH_TRUSTED_ORIGINS?: string;
 
       AUTH_WECHAT_ID?: string;
+      AUTH_WECHAT_IDENTITY_MODE?: string;
+      AUTH_WECHAT_MINI_PROGRAM_APP_ID?: string;
+      AUTH_WECHAT_MINI_PROGRAM_SECRET?: string;
+      AUTH_WECHAT_MOBILE_LOGIN_ENABLED?: string;
+      AUTH_WECHAT_REBIND_ENABLED?: string;
+      AUTH_WECHAT_SCHEME_PATH?: string;
       AUTH_WECHAT_SECRET?: string;
+      AUTH_WECHAT_SESSION_RECOVERY_SECONDS?: string;
+      AUTH_WECHAT_TRANSACTION_TTL_SECONDS?: string;
 
       AUTH_ZITADEL_ID?: string;
       AUTH_ZITADEL_ISSUER?: string;
@@ -179,6 +187,31 @@ export const getAuthConfig = () => {
       AUTH_OKTA_ISSUER: z.string().optional(),
 
       AUTH_WECHAT_ID: z.string().optional(),
+      AUTH_WECHAT_IDENTITY_MODE: z
+        .enum(['canonical', 'legacy', 'maintenance'])
+        .optional()
+        .default('legacy'),
+      AUTH_WECHAT_MINI_PROGRAM_APP_ID: z.string().optional().default(''),
+      AUTH_WECHAT_MINI_PROGRAM_SECRET: z.string().optional().default(''),
+      AUTH_WECHAT_MOBILE_LOGIN_ENABLED: z.boolean().optional().default(false),
+      AUTH_WECHAT_REBIND_ENABLED: z.boolean().optional().default(false),
+      AUTH_WECHAT_SCHEME_PATH: z
+        .literal('pages/login/index')
+        .optional()
+        .default('pages/login/index'),
+      AUTH_WECHAT_SESSION_RECOVERY_SECONDS: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(300)
+        .optional()
+        .default(60),
+      AUTH_WECHAT_TRANSACTION_TTL_SECONDS: z.coerce
+        .number()
+        .int()
+        .refine((value) => value === 300)
+        .optional()
+        .default(300),
       AUTH_WECHAT_SECRET: z.string().optional(),
 
       AUTH_ZITADEL_ID: z.string().optional(),
@@ -272,6 +305,14 @@ export const getAuthConfig = () => {
       AUTH_OKTA_ISSUER: process.env.AUTH_OKTA_ISSUER,
 
       AUTH_WECHAT_ID: process.env.AUTH_WECHAT_ID,
+      AUTH_WECHAT_IDENTITY_MODE: process.env.AUTH_WECHAT_IDENTITY_MODE,
+      AUTH_WECHAT_MINI_PROGRAM_APP_ID: process.env.AUTH_WECHAT_MINI_PROGRAM_APP_ID,
+      AUTH_WECHAT_MINI_PROGRAM_SECRET: process.env.AUTH_WECHAT_MINI_PROGRAM_SECRET,
+      AUTH_WECHAT_MOBILE_LOGIN_ENABLED: process.env.AUTH_WECHAT_MOBILE_LOGIN_ENABLED === '1',
+      AUTH_WECHAT_REBIND_ENABLED: process.env.AUTH_WECHAT_REBIND_ENABLED === '1',
+      AUTH_WECHAT_SCHEME_PATH: process.env.AUTH_WECHAT_SCHEME_PATH,
+      AUTH_WECHAT_SESSION_RECOVERY_SECONDS: process.env.AUTH_WECHAT_SESSION_RECOVERY_SECONDS,
+      AUTH_WECHAT_TRANSACTION_TTL_SECONDS: process.env.AUTH_WECHAT_TRANSACTION_TTL_SECONDS,
       AUTH_WECHAT_SECRET: process.env.AUTH_WECHAT_SECRET,
 
       AUTH_ZITADEL_ID: process.env.AUTH_ZITADEL_ID,

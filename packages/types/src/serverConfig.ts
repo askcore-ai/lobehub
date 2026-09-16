@@ -82,6 +82,7 @@ export interface GlobalServerConfig {
   enableMarketTrustedClient?: boolean;
   enableUploadFileToServer?: boolean;
   enableVisualUnderstanding?: boolean;
+  enableWechatMobileLogin?: boolean;
   image?: PartialDeep<UserImageConfig>;
   memory?: GlobalMemoryConfig;
   oAuthSSOProviders?: string[];

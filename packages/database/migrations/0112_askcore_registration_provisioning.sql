@@ -1,4 +1,5 @@
 -- Additive registration protocol only. Never backfill historical users.
+-- Follows the already-published 0111_wechat_mobile_login migration unchanged.
 -- Rollback pauses the consumer; retain these tables and triggers for recovery.
 CREATE TABLE IF NOT EXISTS "registration_intents" (
   "id" text PRIMARY KEY,

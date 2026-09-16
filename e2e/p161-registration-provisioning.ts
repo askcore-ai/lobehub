@@ -27,6 +27,8 @@ async function main() {
   const { drizzleAdapter } = await import('better-auth/adapters/drizzle');
   const { magicLink } = await import('better-auth/plugins');
   const { drizzle } = await import('drizzle-orm/node-postgres');
+  const { migrate } = await import('drizzle-orm/node-postgres/migrator');
+  const { readMigrationFiles } = await import('drizzle-orm/migrator');
   const { boolean, pgTable, text, timestamp } = await import('drizzle-orm/pg-core');
   const { Pool } = await import('pg');
   const chunks: Buffer[] = [];
@@ -75,9 +77,56 @@ async function main() {
   const legacyId = opaque();
   const legacyEmail = opaque() + '@fixture.invalid';
   await pool.query('INSERT INTO users VALUES ($1,$2,$3,true,null,now(),now())', [legacyId, 'Synthetic', legacyEmail]);
+  stage = 'published_migration_predecessor';
+  const migrationFolder = 'packages/database/migrations';
+  const journal = JSON.parse(readFileSync(`${migrationFolder}/meta/_journal.json`, 'utf8')).entries as
+    { idx: number; tag: string; when: number }[];
+  const predecessor = journal.at(-2)!;
+  const registrationEntry = journal.at(-1)!;
+  assert(predecessor.idx === 111 && predecessor.tag === '0111_wechat_mobile_login' &&
+    predecessor.when === 1785297838002);
+  assert(registrationEntry.idx === 112 && registrationEntry.tag === '0112_askcore_registration_provisioning' &&
+    registrationEntry.when > predecessor.when);
+  assert(new Set(journal.map(({ idx }) => idx)).size === journal.length &&
+    new Set(journal.map(({ tag }) => tag)).size === journal.length);
+  const migrations = readMigrationFiles({ migrationsFolder: migrationFolder });
+  const publishedMigration = migrations.find(({ folderMillis }) => folderMillis === predecessor.when)!;
+  assert(publishedMigration && migrations.filter(({ folderMillis }) => folderMillis > predecessor.when).length === 1);
+  await pool.query(readFileSync(`${migrationFolder}/${predecessor.tag}.sql`, 'utf8'));
+  const legacyAccount = opaque();
+  const legacyTransaction = opaque();
+  await pool.query(`INSERT INTO accounts(id,account_id,provider_id,user_id,created_at,updated_at)
+    VALUES($1,$2,'wechat',$3,now(),now())`, [legacyAccount, opaque(), legacyId]);
+  await pool.query(`INSERT INTO wechat_mobile_login_transactions(id,browser_cookie_binding_hash,
+    callback_url,completion_capability_hash,expires_at,oauth_state_hash,purpose,tab_binding_hash,
+    initiating_user_id,authorized_user_id,rebind_account_row_id)
+    VALUES($1,$2,'/',$3,now()+interval '5 minutes',$4,'rebind',$5,$6,$6,$7)`,
+  [legacyTransaction, hash(opaque()), hash(opaque()), hash(opaque()), hash(opaque()), legacyId, legacyAccount]);
+  await pool.query(`INSERT INTO wechat_rebind_claims(id,confirmation_expires_at,legacy_account_row_id,
+    source_transaction_id,user_id,verified_unionid)
+    VALUES($1,now()+interval '5 minutes',$2,$3,$4,$5)`,
+  [opaque(), legacyAccount, legacyTransaction, legacyId, opaque()]);
+  const publishedSnapshotSQL = `SELECT jsonb_build_object(
+    'accounts',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM accounts t),
+    'transactions',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM wechat_mobile_login_transactions t),
+    'claims',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM wechat_rebind_claims t)
+  ) AS state`;
+  const publishedSnapshot = (await pool.query(publishedSnapshotSQL)).rows[0].state;
+  // Synthetic prior history at the exact published timestamp lets the real
+  // migrator select only 0112. It is not a replay of the full production schema.
+  await pool.query(`CREATE SCHEMA drizzle;
+    CREATE TABLE drizzle.__drizzle_migrations(id serial PRIMARY KEY,hash text NOT NULL,created_at bigint);`);
+  await pool.query('INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES($1,$2)',
+    [publishedMigration.hash, predecessor.when]);
   stage = 'product_migration';
-  const migration = readFileSync('packages/database/migrations/0111_askcore_registration_provisioning.sql', 'utf8');
-  await pool.query(migration);
+  const migration = readFileSync('packages/database/migrations/0112_askcore_registration_provisioning.sql', 'utf8');
+  await migrate(drizzle(pool), { migrationsFolder: migrationFolder });
+  assert(JSON.stringify((await pool.query(publishedSnapshotSQL)).rows[0].state) === JSON.stringify(publishedSnapshot));
+  const migrationHistorySQL = 'SELECT hash,created_at FROM drizzle.__drizzle_migrations ORDER BY created_at';
+  const migrationHistory = (await pool.query(migrationHistorySQL)).rows;
+  assert(migrationHistory.length === 2 && Number(migrationHistory[1].created_at) === registrationEntry.when &&
+    migrationHistory[1].hash === migrations.at(-1)!.hash);
+  checks.push('real_migrator_upgrades_published_predecessor_preserving_wechat_rows');
   assert((await pool.query('SELECT count(*)::int AS n FROM registration_provisioning_jobs')).rows[0].n === 0);
   checks.push('actual_migration_no_historical_backfill');
   const schema = { user, session, account, verification };
@@ -474,10 +523,16 @@ async function main() {
     'verification',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM verification t),
     'intents',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM registration_intents t),
     'contexts',(SELECT jsonb_agg(to_jsonb(t) ORDER BY token_hash) FROM registration_magic_contexts t),
+    'wechat_transactions',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM wechat_mobile_login_transactions t),
+    'wechat_claims',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM wechat_rebind_claims t),
     'jobs',(SELECT jsonb_agg(to_jsonb(t) ORDER BY user_id) FROM registration_provisioning_jobs t)
   ) AS state`;
   const beforeReplay = (await pool.query(snapshotSQL)).rows[0].state;
   stage = 'product_migration_populated_replay';
+  await migrate(drizzle(pool), { migrationsFolder: migrationFolder });
+  assert(JSON.stringify((await pool.query(migrationHistorySQL)).rows) === JSON.stringify(migrationHistory));
+  assert(JSON.stringify((await pool.query(snapshotSQL)).rows[0].state) === JSON.stringify(beforeReplay));
+  checks.push('real_migrator_replay_preserves_history_and_populated_rows');
   await pool.query(migration);
   assert(JSON.stringify((await pool.query(snapshotSQL)).rows[0].state) === JSON.stringify(beforeReplay));
   checks.push('migration_replay_preserves_all_auth_and_protocol_rows');
