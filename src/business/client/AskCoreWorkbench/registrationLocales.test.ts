@@ -1,7 +1,8 @@
 // @vitest-environment node
-import { createInstance } from 'i18next';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import path from 'node:path';
+
+import { createInstance } from 'i18next';
 import { describe, expect, it } from 'vitest';
 
 import defaultAuth from '@/locales/default/auth';
@@ -12,12 +13,12 @@ const registrationEntries = Object.entries(defaultAuth).filter(([key]) =>
 );
 const registrationKeys = registrationEntries.map(([key]) => key).sort();
 const placeholders = (value: string) =>
-  [...value.matchAll(/{{[^{}]+}}/g)].map(([token]) => token).sort();
+  [...value.matchAll(/\{\{[^{}]+\}\}/g)].map(([token]) => token).sort();
 
 describe('registration translations in actual supported locale resources', () => {
   it.each(locales)('%s has complete messages and renders the current account', async (locale) => {
     const auth: Record<string, string> = JSON.parse(
-      readFileSync(join(process.cwd(), 'locales', locale, 'auth.json'), 'utf8'),
+      readFileSync(path.join(process.cwd(), 'locales', locale, 'auth.json'), 'utf8'),
     );
     expect(registrationKeys).toHaveLength(21);
     expect(
