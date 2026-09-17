@@ -8,10 +8,9 @@ import { describe, expect, it } from 'vitest';
 import defaultAuth from '@/locales/default/auth';
 import { locales } from '@/locales/resources';
 
-const registrationEntries = Object.entries(defaultAuth).filter(([key]) =>
-  key.startsWith('registration.'),
-);
-const registrationKeys = registrationEntries.map(([key]) => key).sort();
+const registrationKeys = (Object.keys(defaultAuth) as (keyof typeof defaultAuth)[])
+  .filter((key) => key.startsWith('registration.'))
+  .sort();
 const placeholders = (value: string) =>
   [...value.matchAll(/\{\{[^{}]+\}\}/g)].map(([token]) => token).sort();
 
@@ -38,16 +37,17 @@ describe('registration translations in actual supported locale resources', () =>
       resources: { [locale]: { auth } },
     });
 
+    const translate = i18n.getFixedT(locale, 'auth');
     const email = 'locale-check@example.invalid';
-    for (const [key, source] of registrationEntries) {
+    for (const key of registrationKeys) {
       const value = auth[key];
       expect(typeof value, `${locale}:${key}`).toBe('string');
       expect(value.trim(), `${locale}:${key}`).not.toBe('');
-      expect(placeholders(value), `${locale}:${key}`).toEqual(placeholders(source));
-      const rendered = i18n.t(key, { email });
+      expect(placeholders(value), `${locale}:${key}`).toEqual(placeholders(defaultAuth[key]));
+      const rendered = translate(key, { email });
       expect(rendered, `${locale}:${key}`).not.toBe(key);
       expect(rendered, `${locale}:${key}`).toBe(value.replaceAll('{{email}}', email));
     }
-    expect(i18n.t('registration.account.label', { email })).toContain(email);
+    expect(translate('registration.account.label', { email })).toContain(email);
   });
 });
