@@ -777,7 +777,15 @@ describe('ProtocolProcessingSurface', () => {
         </ConfigProvider>,
       );
 
-      fireEvent.click(await screen.findByRole('button', { name: '开始扫描' }));
+      const startButton = await screen.findByRole('button', { name: '开始扫描' });
+      await waitFor(() => expect(startButton).toBeEnabled());
+      await userEvent.click(startButton);
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          scopedProtocolUrl('/api/askcore/lti/processing/capture/jobs'),
+          expect.objectContaining({ method: 'POST' }),
+        );
+      });
       const localized = (zhCN as Record<string, string>)[messageKey];
       expect(await screen.findByText(localized)).toBeInTheDocument();
       expect(screen.queryByText(backendDetail)).not.toBeInTheDocument();
@@ -915,7 +923,15 @@ describe('ProtocolProcessingSurface', () => {
         </ConfigProvider>,
       );
 
-      fireEvent.click(await screen.findByRole('button', { name: '开始扫描' }));
+      const startButton = await screen.findByRole('button', { name: '开始扫描' });
+      await waitFor(() => expect(startButton).toBeEnabled());
+      await userEvent.click(startButton);
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          scopedProtocolUrl('/api/askcore/lti/processing/capture/jobs'),
+          expect.objectContaining({ method: 'POST' }),
+        );
+      });
       const localized = (zhCN as Record<string, string>)[messageKey];
       expect(await screen.findByText(localized)).toBeInTheDocument();
       expect(screen.queryByText(deviceMessage)).not.toBeInTheDocument();
