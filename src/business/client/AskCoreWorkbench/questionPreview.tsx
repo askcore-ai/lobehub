@@ -85,8 +85,7 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
   `,
 }));
 
-// The source contract is Markdown with TeX, already validated using remark-math.
-// Parse that grammar directly; the UI's enableLatex string preprocessing guesses
+// Parse Markdown/TeX directly; the UI's enableLatex string preprocessing guesses
 // that numeric-leading formulas are currency and corrupts their boundaries.
 const mathRemarkPlugins = [remarkMath];
 const mathRehypePlugins = [rehypeKatex];
