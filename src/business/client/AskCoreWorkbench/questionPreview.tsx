@@ -59,6 +59,16 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
   `,
 }));
 
+// The pinned Markdown renderer escapes numeric-leading dollar spans as currency.
+// Bracket delimiters protect complete math spans before its own normalization;
+// this changes only the preview string, never the editable or persisted source.
+const protectNumericInlineMath = (content: string) =>
+  content.replaceAll(
+    /((`+)[\s\S]*?\2|(~{3,})[\s\S]*?\3|\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([^\n]*?\\\)|\\\$)|(?<![\\$])\$(\d(?:[^\n$]*?[^\s$])?)\$(?![\d$])/g,
+    (match, protectedText, _backticks, _tildes, expression) =>
+      protectedText === undefined ? `\\(${expression}\\)` : match,
+  );
+
 export const MarkdownPreview = memo<{
   className?: string;
   content: string;
@@ -80,7 +90,7 @@ export const MarkdownPreview = memo<{
       lineHeight={1.55}
       variant="chat"
     >
-      {normalized}
+      {protectNumericInlineMath(normalized)}
     </Markdown>
   );
 });
