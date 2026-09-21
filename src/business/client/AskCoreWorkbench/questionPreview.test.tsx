@@ -5,9 +5,7 @@ import { buildQuestionPreviewDataFromPayload } from './questionModel';
 import { QuestionCompactPreview, QuestionSummaryPreview } from './questionPreview';
 
 vi.mock('@lobehub/ui', () => ({
-  Markdown: ({ children, enableLatex }: { children: string; enableLatex?: boolean }) => (
-    <div data-enable-latex={String(Boolean(enableLatex))}>{children}</div>
-  ),
+  Markdown: ({ children }: { children: string }) => <div>{children}</div>,
 }));
 
 describe('AskCoreWorkbench questionPreview', () => {
@@ -26,7 +24,6 @@ describe('AskCoreWorkbench questionPreview', () => {
     expect(screen.getByText('计算 $x^2+1$。')).toBeInTheDocument();
     expect(container.textContent).not.toContain('[object Object]');
     expect(container.textContent).not.toContain('"nodes"');
-    expect(container.querySelector('[data-enable-latex="true"]')).not.toBeNull();
   });
 
   it('renders list summaries as Markdown instead of JSON strings', () => {

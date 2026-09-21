@@ -3,6 +3,8 @@
 import { Markdown } from '@lobehub/ui';
 import { createStaticStyles, cx } from 'antd-style';
 import { memo } from 'react';
+import rehypeKatex from 'rehype-katex';
+import remarkMath from 'remark-math';
 
 import type { QuestionPreviewData } from './questionModel';
 
@@ -37,6 +39,30 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
       overflow: auto hidden;
       margin-block: 6px !important;
     }
+
+    .katex {
+      direction: ltr;
+    }
+
+    .katex-error {
+      color: ${cssVar.colorTextDescription} !important;
+    }
+
+    .katex-html {
+      overflow: auto hidden;
+      padding: 3px;
+
+      .base {
+        margin-block: 0;
+        margin-inline: auto;
+      }
+
+      .tag {
+        position: relative !important;
+        display: inline-block;
+        padding-inline-start: 0.5rem;
+      }
+    }
   `,
   option: css`
     display: grid;
@@ -59,6 +85,11 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
   `,
 }));
 
+// Parse Markdown/TeX directly; the UI's enableLatex string preprocessing guesses
+// that numeric-leading formulas are currency and corrupts their boundaries.
+const mathRemarkPlugins = [remarkMath];
+const mathRehypePlugins = [rehypeKatex];
+
 export const MarkdownPreview = memo<{
   className?: string;
   content: string;
@@ -71,13 +102,15 @@ export const MarkdownPreview = memo<{
 
   return (
     <Markdown
-      enableLatex
       className={cx(styles.markdown, className)}
       enableImageGallery={false}
+      enableLatex={false}
       enableMermaid={false}
       enableStream={false}
       fontSize={13}
       lineHeight={1.55}
+      rehypePlugins={mathRehypePlugins}
+      remarkPlugins={mathRemarkPlugins}
       variant="chat"
     >
       {normalized}

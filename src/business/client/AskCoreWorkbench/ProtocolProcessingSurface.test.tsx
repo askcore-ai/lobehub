@@ -348,6 +348,57 @@ describe('ProtocolProcessingSurface', () => {
     expect(body).not.toMatch(/student_answer|is_correct|feedback|teacher_summary/);
   });
 
+  it('saves exact mathematical source and renders it again after reopening the reference editor', async () => {
+    const initialSource = 'Solve $2x + 3 = 11$.';
+    const revisedSource = 'Steps: $2x + 3 = 11$; $2x = 8$; $x = 4$.';
+    const stored = referenceSurfacePayload();
+    stored.result.content.question_refs[0].question_content = initialSource;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = protocolPath(input);
+      if (url === '/api/askcore/lti/processing/context' && init?.method === 'POST') {
+        return Response.json(referenceContextPayload);
+      }
+      if (url === '/api/askcore/lti/processing/current' && !init?.method) {
+        return Response.json(stored);
+      }
+      if (url === '/api/askcore/lti/processing/current/result' && init?.method === 'PATCH') {
+        const body = JSON.parse(String(init.body));
+        expect(body.questions[0].question_content).toBe(initialSource);
+        expect(body.questions[0].reference_answer).toBe(revisedSource);
+        Object.assign(stored.result.content.question_refs[0], body.questions[0]);
+        stored.result.artifact_id = 'reference-2';
+        return Response.json(stored.result);
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = render(<ProtocolProcessingSurface launchScope={launchScope} />);
+    await screen.findByRole('button', { name: '编辑第 1 题' });
+    await waitFor(() => expect(first.container.querySelectorAll('.katex')).toHaveLength(1));
+    fireEvent.click(screen.getByRole('button', { name: '编辑第 1 题' }));
+    expect(screen.getByLabelText('第 1 题题干')).toHaveValue(initialSource);
+    fireEvent.change(screen.getByLabelText('第 1 题参考答案'), {
+      target: { value: revisedSource },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存参考材料修订' }));
+    await waitFor(() => expect(stored.result.artifact_id).toBe('reference-2'));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '保存参考材料修订' })).not.toBeDisabled(),
+    );
+    first.unmount();
+
+    const reopened = render(<ProtocolProcessingSurface launchScope={launchScope} />);
+    await waitFor(() => expect(reopened.container.querySelectorAll('.katex')).toHaveLength(4));
+    expect(
+      [...reopened.container.querySelectorAll('annotation')].map((node) => node.textContent),
+    ).toEqual(['2x + 3 = 11', '2x + 3 = 11', '2x = 8', 'x = 4']);
+    fireEvent.click(screen.getByRole('button', { name: '编辑第 1 题' }));
+    expect(screen.getByLabelText('第 1 题题干')).toHaveValue(initialSource);
+    expect(screen.getByLabelText('第 1 题参考答案')).toHaveValue(revisedSource);
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'PATCH')).toHaveLength(1);
+  });
+
   it('keeps every reference page selectable and renders mathematical question content', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = protocolPath(input);
