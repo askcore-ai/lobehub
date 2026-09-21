@@ -506,6 +506,9 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
           requireTruthy(transaction, 'UNAUTHORIZED', 'INVALID_BROWSER_BINDING');
           if (transaction.state !== 'consumed' && transaction.expiresAt <= new Date())
             endpointError('GONE', 'WECHAT_TRANSACTION_EXPIRED');
+          if (transaction.purpose !== 'signin') {
+            endpointError('CONFLICT', 'WECHAT_TRANSACTION_PURPOSE_MISMATCH');
+          }
           requireTruthy(
             transaction.authorizedUserId,
             'CONFLICT',

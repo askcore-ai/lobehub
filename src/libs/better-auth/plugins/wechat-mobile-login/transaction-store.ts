@@ -361,6 +361,7 @@ export class WechatMobileTransactionStore {
       callback: (adapter: WechatMobileDatabaseAdapter) => Promise<R>,
     ) => Promise<R>;
   }): Promise<TSession | null> {
+    if (input.transaction.purpose !== 'signin') return null;
     const now = input.now ?? new Date();
     const transactionRunner =
       input.transactionRunner ??
@@ -380,6 +381,7 @@ export class WechatMobileTransactionStore {
         },
         where: [
           { field: 'id', value: input.transaction.id },
+          { field: 'purpose', value: 'signin' },
           { field: 'state', value: 'authorized' },
         ],
       });
