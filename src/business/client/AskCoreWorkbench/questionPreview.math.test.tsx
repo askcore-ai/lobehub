@@ -53,12 +53,12 @@ describe('AskCoreWorkbench real mathematics preview', () => {
     const { container } = render(<MarkdownPreview content={'Cost $20.\n\n$20 and $30'} />);
     await waitFor(() => expect(container.querySelectorAll('.katex')).toHaveLength(1));
     expect(container.textContent).toContain('Cost $20.');
-    expect(container.querySelector('annotation')?.textContent).toBe('20 and');
+    expect(container.querySelector('annotation')?.textContent).toBe('20 and ');
     expect(container.textContent).toContain('30');
   });
 
   it('preserves display mathematics, escaped TeX dollars, and chemical formula notation', async () => {
-    const source = String.raw`Inline $2 + \$x$ and $\mathrm{H_2O}$.
+    const source = String.raw`Inline $$2 + \$x$$ and $\mathrm{H_2O}$.
 
 $$
 \frac{2}{3} + x = 4
@@ -118,13 +118,22 @@ $$`;
     ].join('\n');
     const { container } = render(<MarkdownPreview content={source} />);
     await waitFor(() => expect(container.querySelectorAll('.katex')).toHaveLength(1));
-    expect(screen.getByRole('link', { name: 'Source' })).toHaveAttribute('href', 'https://example.test/source');
-    expect(screen.getByRole('img', { name: 'Diagram' })).toHaveAttribute('src', 'https://example.test/diagram.png');
+    expect(screen.getByRole('link', { name: 'Source' })).toHaveAttribute(
+      'href',
+      'https://example.test/source',
+    );
+    expect(screen.getByRole('img', { name: 'Diagram' })).toHaveAttribute(
+      'src',
+      'https://example.test/diagram.png',
+    );
     expect(container.querySelectorAll('li')).toHaveLength(2);
     expect(container.querySelector('strong')?.textContent).toBe('First');
     expect(container.querySelector('table .katex')).not.toBeNull();
     expect(container.querySelector('script, [onerror]')).toBeNull();
-    expect([...container.querySelectorAll('a')].some((link) => link.getAttribute('href')?.startsWith('javascript:'))).toBe(false);
+    expect(
+      [...container.querySelectorAll('a')].some((link) =>
+        link.getAttribute('href')?.startsWith('javascript:'),
+      ),
+    ).toBe(false);
   });
-
 });

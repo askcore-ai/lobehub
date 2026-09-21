@@ -5,9 +5,7 @@ import { buildQuestionPreviewDataFromPayload } from './questionModel';
 import { QuestionCompactPreview, QuestionSummaryPreview } from './questionPreview';
 
 vi.mock('@lobehub/ui', () => ({
-  Markdown: ({ children }: { children: string }) => (
-    <div>{children}</div>
-  ),
+  Markdown: ({ children }: { children: string }) => <div>{children}</div>,
 }));
 
 describe('AskCoreWorkbench questionPreview', () => {

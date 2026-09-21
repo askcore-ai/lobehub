@@ -378,17 +378,21 @@ describe('ProtocolProcessingSurface', () => {
     await waitFor(() => expect(first.container.querySelectorAll('.katex')).toHaveLength(1));
     fireEvent.click(screen.getByRole('button', { name: '编辑第 1 题' }));
     expect(screen.getByLabelText('第 1 题题干')).toHaveValue(initialSource);
-    fireEvent.change(screen.getByLabelText('第 1 题参考答案'), { target: { value: revisedSource } });
+    fireEvent.change(screen.getByLabelText('第 1 题参考答案'), {
+      target: { value: revisedSource },
+    });
     fireEvent.click(screen.getByRole('button', { name: '保存参考材料修订' }));
     await waitFor(() => expect(stored.result.artifact_id).toBe('reference-2'));
-    await waitFor(() => expect(screen.getByRole('button', { name: '保存参考材料修订' })).not.toBeDisabled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '保存参考材料修订' })).not.toBeDisabled(),
+    );
     first.unmount();
 
     const reopened = render(<ProtocolProcessingSurface launchScope={launchScope} />);
     await waitFor(() => expect(reopened.container.querySelectorAll('.katex')).toHaveLength(4));
-    expect([...reopened.container.querySelectorAll('annotation')].map((node) => node.textContent)).toEqual([
-      '2x + 3 = 11', '2x + 3 = 11', '2x = 8', 'x = 4',
-    ]);
+    expect(
+      [...reopened.container.querySelectorAll('annotation')].map((node) => node.textContent),
+    ).toEqual(['2x + 3 = 11', '2x + 3 = 11', '2x = 8', 'x = 4']);
     fireEvent.click(screen.getByRole('button', { name: '编辑第 1 题' }));
     expect(screen.getByLabelText('第 1 题题干')).toHaveValue(initialSource);
     expect(screen.getByLabelText('第 1 题参考答案')).toHaveValue(revisedSource);
