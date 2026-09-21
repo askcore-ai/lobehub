@@ -178,4 +178,20 @@ describe('WeChat bridge through the real Better Auth handler and adapter factory
     expect(database.account).toEqual(before);
     expect(database.wechatRebindClaim[0].state).toBe('verified');
   });
+
+  it('never consumes a rebind proof as a sign-in session', async () => {
+    const { database, prove, request, signIn, start } = fixture();
+    const signedIn = await signIn();
+    const prepared = await start('/wechat-rebind/start', signedIn.cookie);
+    expect((await prove(prepared)).status).toBe(200);
+    const before = structuredClone({ accounts: database.account, sessions: database.session });
+    const consumed = await request('/wechat-mobile/consume', {
+      body: { confirmAccountSwitch: false, transactionId: prepared.transactionId },
+      cookie: `${signedIn.cookie}; ${prepared.cookie}`,
+      tab: prepared.tabBinding,
+    });
+    expect(consumed.status).toBe(409);
+    expect(cookieHeader(consumed)).not.toContain('session_token=');
+    expect({ accounts: database.account, sessions: database.session }).toEqual(before);
+  });
 });
