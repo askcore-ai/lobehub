@@ -274,7 +274,7 @@ describe('WeChat bridge through the real Better Auth handler and adapter factory
     const prepared = await f.startManual();
     const provider = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
       if (failure === 'timeout') throw new DOMException('synthetic provider timeout', 'AbortError');
-      return failure === 'malformed' ? new Response('not-json') : new Response('private-provider-body', { status: failure });
+      return failure === 'malformed' ? new Response('not-json') : new Response('private-provider-body', { status: typeof failure === 'number' ? failure : 503 });
     });
     const row = f.database.wechatMobileLoginTransaction.find((item) => item.id === prepared.transactionId)!;
     const deadline = row.expiresAt;
@@ -298,6 +298,16 @@ describe('WeChat bridge through the real Better Auth handler and adapter factory
     expect(response.status).toBe(409);
     expect(await (await f.request('/wechat-prepublication/status', prepared.browser)).json()).toEqual({ state: 'failed' });
     expect((await f.request('/wechat-prepublication/finish', prepared.browser)).status).toBe(409);
+    expect(f.database.wechatRebindClaim).toHaveLength(0);
+  });
+
+  it.each([{ unionid: 123 }, { unionid: ' ' }, { session_key: ['synthetic'] }, { openid: {} }])('rejects malformed provider identity fields: %j', async (invalid) => {
+    const f = fixture();
+    const prepared = await f.startManual();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ ...providerIdentity, ...invalid }));
+    expect((await f.proveManual(prepared.manualCode)).status).toBe(502);
+    expect((await f.request('/wechat-prepublication/finish', prepared.browser)).status).toBe(409);
+    expect(f.database.session).toHaveLength(1);
     expect(f.database.wechatRebindClaim).toHaveLength(0);
   });
 

@@ -15,7 +15,7 @@ import type { WechatMobileLoginOptions } from './index';
 import { prepublicationDocument } from './prepublication-page';
 import { WechatPrepublicationStore } from './prepublication-store';
 import { hashCapability, type WechatMobileDatabaseAdapter, WechatMobileTransactionStore } from './transaction-store';
-import { exchangeWechatMiniProgramCode } from './wechat-client';
+import { exchangeWechatMiniProgramCode, WechatProviderError } from './wechat-client';
 
 type Context = Parameters<typeof getSessionFromCtx>[0];
 const base = '/wechat-prepublication';
@@ -111,7 +111,10 @@ export function prepublicationEndpoints(options: WechatMobileLoginOptions) {
       const started = await proof.begin(ctx.body.manualCode);
       requireTruthy(started, 'NOT_FOUND', 'WECHAT_TRANSACTION_NOT_FOUND');
       try {
-        await exchangeWechatMiniProgramCode({ appId: options.miniProgramAppId, appSecret: options.appSecret, code: ctx.body.code });
+        const identity = await exchangeWechatMiniProgramCode({ appId: options.miniProgramAppId, appSecret: options.appSecret, code: ctx.body.code });
+        if (![identity.openid, identity.sessionKey, identity.unionid].every((value) => typeof value === 'string' && value.trim().length > 0)) {
+          throw new WechatProviderError('malformed');
+        }
         const ready = await proof.completeProvider(started.id);
         requireTruthy(ready, 'NOT_FOUND', 'WECHAT_TRANSACTION_NOT_FOUND');
         return ctx.json({ state: 'proof_ready' }, { headers: noStore });
