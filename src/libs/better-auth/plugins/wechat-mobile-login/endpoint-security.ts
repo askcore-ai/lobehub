@@ -2,7 +2,7 @@ import { APIError, getSessionFromCtx } from 'better-auth/api';
 
 import { WechatIdentityConflictError } from './identity-resolver';
 import type { WechatMobileLoginOptions } from './index';
-import { WechatMobileTransactionStore } from './transaction-store';
+import type { WechatMobileTransactionStore } from './transaction-store';
 import { WechatProviderError } from './wechat-client';
 
 export const signedCookieName = (id: string) => `__Host-askcore-wxm-${id}`;

@@ -47,7 +47,11 @@ export class WechatPrepublicationStore {
           reservedId,
         });
       } catch (error) {
-        if (!isUniqueConflict(error)) throw new Error('wechat_proof_persistence_unavailable');
+        if (!isUniqueConflict(error)) {
+          // Adapter causes include SQL parameters. They must not reach API logging.
+          // eslint-disable-next-line preserve-caught-error
+          throw new Error('wechat_proof_persistence_unavailable');
+        }
       }
     }
     return null;

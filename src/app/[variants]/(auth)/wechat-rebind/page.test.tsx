@@ -63,6 +63,13 @@ vi.mock('react-i18next', () => ({
 }));
 
 describe('WechatRebindPage', () => {
+  it('uses a native document link for the isolated prepublication entry', async () => {
+    render(<WechatRebindPage />);
+    const link = await screen.findByRole('link', { name: 'betterAuth.wechatProof.title' });
+    expect(link.getAttribute('href')).toBe('/api/auth/wechat-prepublication');
+    expect(link.getAttribute('target')).toBeNull();
+  });
+
   beforeEach(() => {
     mocks.listAccounts.mockResolvedValue({
       data: [{ id: 'legacy-account-1', providerId: 'wechat' }],

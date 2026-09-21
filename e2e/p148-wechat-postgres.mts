@@ -224,6 +224,74 @@ try {
     (await pool.query('SELECT state FROM wechat_rebind_claims')).rows[0].state,
     'verified',
   );
+  const authoritySnapshot = async () => ({
+    accounts: (await pool.query('SELECT * FROM accounts ORDER BY id')).rows,
+    claims: (await pool.query('SELECT * FROM wechat_rebind_claims ORDER BY id')).rows,
+    sessions: (await pool.query('SELECT * FROM auth_sessions ORDER BY id')).rows,
+    users: (await pool.query('SELECT * FROM users ORDER BY id')).rows,
+  });
+  const authorityBefore = await authoritySnapshot();
+  const startManual = async () => {
+    const response = await request('/wechat-prepublication/start', {}, cookie);
+    assert.equal(response.status, 200);
+    return { ...await response.json(), cookie: `${cookie}; ${cookieHeader(response)}` };
+  };
+  const manual = await startManual();
+  const action = (prepared: typeof manual, name: string) => request(
+    `/wechat-prepublication/${name}`, { transactionId: prepared.transactionId }, prepared.cookie, prepared.tabBinding,
+  );
+  const manualProof = (manualCode: string) => auth.handler(new Request(`${origin}/api/auth/wechat-prepublication/prove`, {
+    body: JSON.stringify({ code: 'synthetic-manual-wx-code', manualCode }),
+    headers: { 'content-type': 'application/json' }, method: 'POST',
+  }));
+  await restart();
+  assert.deepEqual(await (await action(manual, 'status')).json(), { state: 'pending' });
+  const concurrentProofs = await Promise.all([manualProof(manual.manualCode), manualProof(manual.manualCode)]);
+  assert.deepEqual(concurrentProofs.map((response) => response.status).sort(), [200, 404]);
+  await restart();
+  assert.deepEqual(await (await action(manual, 'status')).json(), { state: 'proof_ready' });
+  const finishes = await Promise.all([action(manual, 'finish'), action(manual, 'finish')]);
+  for (const response of finishes) {
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { state: 'completed' });
+    assert.ok(!cookieHeader(response).includes('session_token='));
+  }
+  assert.equal((await manualProof(manual.manualCode)).status, 404);
+  const row = (await pool.query('SELECT * FROM wechat_mobile_login_transactions WHERE id=$1', [manual.transactionId])).rows[0];
+  for (const field of ['authorized_user_id', 'issued_session_id', 'rebind_account_row_id', 'recovery_until']) assert.equal(row[field], null);
+  assert.ok(!JSON.stringify(row).includes(manual.manualCode));
+  assert.ok(!JSON.stringify(row).includes('synthetic-manual-wx-code'));
+  assert.ok(!JSON.stringify(row).includes('synthetic-unionid'));
+
+  const cancelled = await startManual();
+  const successfulProvider = globalThis.fetch;
+  let providerStarted: () => void = () => {};
+  const providerReady = new Promise<void>((resolve) => { providerStarted = resolve; });
+  let finishProvider: (response: Response) => void = () => {};
+  globalThis.fetch = async () => {
+    providerStarted();
+    return new Promise<Response>((resolve) => { finishProvider = resolve; });
+  };
+  const delayed = manualProof(cancelled.manualCode);
+  await providerReady;
+  assert.equal((await action(cancelled, 'cancel')).status, 200);
+  finishProvider(Response.json({ openid: 'synthetic-openid', session_key: 'synthetic-key', unionid: 'synthetic-unionid' }));
+  assert.equal((await delayed).status, 404);
+  globalThis.fetch = successfulProvider;
+  assert.deepEqual(await (await action(cancelled, 'status')).json(), { state: 'cancelled' });
+
+  // Use the real Drizzle adapter and primary key under concurrent issuance.
+  // Window boundaries may admit another fixed bucket, but never >5 per bucket.
+  const starts = await Promise.all(Array.from({ length: 12 }, () => request('/wechat-prepublication/start', {}, cookie)));
+  assert.ok(starts.every((response) => [200, 429].includes(response.status)));
+  const buckets = (await pool.query(`SELECT floor(extract(epoch from created_at)/300) AS bucket, count(*)::int AS count
+    FROM wechat_mobile_login_transactions WHERE purpose='prepublication' GROUP BY bucket`)).rows;
+  assert.ok(buckets.length > 0 && buckets.every((bucket) => bucket.count <= 5));
+  assert.ok(starts.some((response) => response.status === 429));
+  await pool.query('UPDATE wechat_mobile_login_transactions SET expires_at=now()-interval \'1 second\' WHERE id=$1', [manual.transactionId]);
+  assert.equal((await action(manual, 'finish')).status, 410);
+  assert.equal((await manualProof(manual.manualCode)).status, 404);
+  assert.deepEqual(await authoritySnapshot(), authorityBefore);
   process.stdout.write('P148_WECHAT_POSTGRES_OK\n');
 } finally {
   globalThis.fetch = originalFetch;

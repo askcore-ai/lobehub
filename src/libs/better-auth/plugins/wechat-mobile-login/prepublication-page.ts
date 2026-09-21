@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto';
 
-import zh from '../../../../../locales/zh-CN/auth.json';
-
 import en from '@/locales/default/auth';
+
+import zh from '../../../../../locales/zh-CN/auth.json';
 
 type Copy = Record<string, string>;
 

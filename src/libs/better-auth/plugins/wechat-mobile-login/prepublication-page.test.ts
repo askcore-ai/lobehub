@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { initializeProofPage, prepublicationDocument } from './prepublication-page';
@@ -33,6 +33,18 @@ afterEach(() => {
 });
 
 describe('isolated prepublication full document', () => {
+  it('executes the actual serialized inline program without module-only captures', async () => {
+    await setup();
+    // Dispose the directly initialized instance before exercising the served script.
+    window.dispatchEvent(new Event('pagehide'));
+    const html = await prepublicationDocument('en').text();
+    document.documentElement.innerHTML = html;
+    const script = document.querySelector('script')!.textContent!;
+    window.eval(script);
+    button('start').click(); await flush();
+    expect(document.getElementById('code')!.textContent).toBe('ABCDE F0123 ABCDE F0123');
+  });
+
   it('has no external script/asset, a fresh nonce and matching enforced CSP', async () => {
     const first = prepublicationDocument('zh-CN');
     const second = prepublicationDocument('en');
