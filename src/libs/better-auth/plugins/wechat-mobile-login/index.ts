@@ -1,10 +1,28 @@
 import { getCurrentAdapter, runWithTransaction } from '@better-auth/core/context';
-import { APIError, createAuthEndpoint, getSessionFromCtx } from 'better-auth/api';
+import { createAuthEndpoint } from 'better-auth/api';
 import { setSessionCookie } from 'better-auth/cookies';
 import type { BetterAuthPlugin } from 'better-auth/types';
 import { z } from 'zod';
 
-import { resolveCanonicalWechatUser, WechatIdentityConflictError } from './identity-resolver';
+import {
+  classifyAuthorizationFailure,
+  currentSession,
+  endpointError,
+  expireBrowserBindingCookie,
+  noStore,
+  readBrowserCookieProof,
+  readBrowserProofs,
+  rejectAuthorizationFailure,
+  requireMiniProgramRebind,
+  requireMobileEnabled,
+  requireOrigin,
+  requireRebindEnabled,
+  requireTruthy,
+  requireWebsiteRebind,
+  signedCookieName,
+} from './endpoint-security';
+import { resolveCanonicalWechatUser } from './identity-resolver';
+import { prepublicationEndpoints, prepublicationRateLimits } from './prepublication';
 import {
   cleanupWechatRebindClaims,
   completeWechatRebindProof,
@@ -15,14 +33,12 @@ import {
   hashCapability,
   WECHAT_MOBILE_POLL_AFTER_MS,
   type WechatMobileDatabaseAdapter,
-  type WechatMobilePurpose,
   type WechatMobileTransaction,
   WechatMobileTransactionStore,
 } from './transaction-store';
 import {
   exchangeWechatMiniProgramCode,
   exchangeWechatWebsiteCode,
-  WechatProviderError,
 } from './wechat-client';
 
 export type WechatIdentityMode = 'canonical' | 'legacy' | 'maintenance';
@@ -43,105 +59,6 @@ export interface WechatMobileLoginOptions {
 
 const transactionId = z.string().min(8).max(128);
 const capability = z.string().length(43);
-const signedCookieName = (id: string) => `__Host-askcore-wxm-${id}`;
-const noStore = { 'Cache-Control': 'private, no-store' };
-type EndpointStatus = ConstructorParameters<typeof APIError>[0];
-
-interface SignedCookieContext {
-  context: { secret: string };
-  setSignedCookie: (
-    name: string,
-    value: string,
-    secret: string,
-    attributes: {
-      httpOnly: boolean;
-      maxAge: number;
-      path: string;
-      sameSite: 'lax';
-      secure: boolean;
-    },
-  ) => Promise<unknown>;
-}
-
-interface AuthorizationFailure {
-  code: string;
-  failureCode: string;
-  retryable: boolean;
-  status: EndpointStatus;
-}
-
-const endpointError = (status: ConstructorParameters<typeof APIError>[0], code: string): never => {
-  throw new APIError(status, { code, message: code });
-};
-
-const classifyAuthorizationFailure = (error: unknown): AuthorizationFailure => {
-  if (error instanceof WechatProviderError) {
-    if (error.kind === 'retryable') {
-      return {
-        code: 'WECHAT_PROVIDER_UNAVAILABLE',
-        failureCode: 'provider_unavailable',
-        retryable: true,
-        status: 'SERVICE_UNAVAILABLE',
-      };
-    }
-    if (error.kind === 'malformed') {
-      return {
-        code: 'WECHAT_PROVIDER_MALFORMED',
-        failureCode: 'provider_malformed',
-        retryable: true,
-        status: 'BAD_GATEWAY',
-      };
-    }
-    if (error.kind === 'invalid_code') {
-      return {
-        code: 'INVALID_WECHAT_CODE',
-        failureCode: 'invalid_code',
-        retryable: false,
-        status: 'BAD_REQUEST',
-      };
-    }
-    return {
-      code: 'WECHAT_UNIONID_REQUIRED',
-      failureCode: 'missing_unionid',
-      retryable: false,
-      status: 'CONFLICT',
-    };
-  }
-  if (error instanceof WechatIdentityConflictError) {
-    return {
-      code: 'WECHAT_IDENTITY_CONFLICT',
-      failureCode: 'identity_conflict',
-      retryable: false,
-      status: 'CONFLICT',
-    };
-  }
-  return {
-    code: 'WECHAT_PERSISTENCE_UNAVAILABLE',
-    failureCode: 'persistence_unavailable',
-    retryable: true,
-    status: 'SERVICE_UNAVAILABLE',
-  };
-};
-
-const rejectAuthorizationFailure = async (
-  store: WechatMobileTransactionStore,
-  transactionIdValue: string,
-  error: unknown,
-): Promise<never> => {
-  if (error instanceof APIError) throw error;
-  const failure = classifyAuthorizationFailure(error);
-  if (failure.retryable) await store.restorePending(transactionIdValue);
-  else await store.fail(transactionIdValue, failure.failureCode);
-  return endpointError(failure.status, failure.code);
-};
-
-function requireTruthy<T>(
-  value: T,
-  status: ConstructorParameters<typeof APIError>[0],
-  code: string,
-): asserts value is Exclude<T, '' | 0 | false | null | undefined> {
-  if (!value) endpointError(status, code);
-}
 
 const normalizeCallback = (callbackURL: string, appURL: string): string => {
   const base = new URL(appURL);
@@ -152,52 +69,10 @@ const normalizeCallback = (callbackURL: string, appURL: string): string => {
   return `${candidate.pathname}${candidate.search}${candidate.hash}`;
 };
 
-const requireOrigin = (request: Request | undefined, appURL: string): void => {
-  const origin = request?.headers.get('origin');
-  if (!origin || origin !== new URL(appURL).origin) {
-    endpointError('FORBIDDEN', 'UNTRUSTED_ORIGIN');
-  }
-};
-
-const requireNotMaintenance = (options: WechatMobileLoginOptions): void => {
-  if (options.identityMode === 'maintenance') {
-    endpointError('LOCKED', 'WECHAT_IDENTITY_MAINTENANCE');
-  }
-};
-
-const requireMobileEnabled = (options: WechatMobileLoginOptions): void => {
-  requireNotMaintenance(options);
-  if (!options.mobileLoginEnabled) endpointError('NOT_FOUND', 'WECHAT_MOBILE_LOGIN_DISABLED');
-  if (options.identityMode !== 'canonical') {
-    endpointError('SERVICE_UNAVAILABLE', 'WECHAT_CANONICAL_IDENTITY_REQUIRED');
-  }
-  if (!options.miniProgramAppId || !options.appSecret) {
-    endpointError('SERVICE_UNAVAILABLE', 'WECHAT_MOBILE_LOGIN_MISCONFIGURED');
-  }
-};
-
-const requireRebindEnabled = (options: WechatMobileLoginOptions): void => {
-  requireNotMaintenance(options);
-  if (!options.rebindEnabled) endpointError('NOT_FOUND', 'WECHAT_REBIND_DISABLED');
-};
-
-const requireMiniProgramRebind = (options: WechatMobileLoginOptions): void => {
-  requireRebindEnabled(options);
-  if (!options.miniProgramAppId || !options.appSecret) {
-    endpointError('SERVICE_UNAVAILABLE', 'WECHAT_REBIND_MISCONFIGURED');
-  }
-};
-
-const requireWebsiteRebind = (options: WechatMobileLoginOptions): void => {
-  requireRebindEnabled(options);
-  if (!options.appId || !options.websiteAppSecret) {
-    endpointError('SERVICE_UNAVAILABLE', 'WECHAT_REBIND_MISCONFIGURED');
-  }
-};
 
 const openTarget = (
   options: WechatMobileLoginOptions,
-  purpose: WechatMobilePurpose,
+  purpose: 'rebind' | 'signin',
   transactionIdValue: string,
   completionCapability: string,
 ): string => {
@@ -233,50 +108,6 @@ const websiteRebindTarget = (options: WechatMobileLoginOptions, oauthState: stri
 
 const parseWebsiteRebindState = (state: string) => capability.parse(state);
 
-const readBrowserCookieProof = async (
-  ctx: {
-    context: { secret: string };
-    getSignedCookie: (name: string, secret: string) => Promise<false | null | string>;
-  },
-  id: string,
-) => {
-  const browserCookie = await ctx.getSignedCookie(signedCookieName(id), ctx.context.secret);
-  requireTruthy(browserCookie, 'UNAUTHORIZED', 'INVALID_BROWSER_BINDING');
-  return browserCookie;
-};
-
-const expireBrowserBindingCookie = async (ctx: SignedCookieContext, id: string) => {
-  await ctx.setSignedCookie(signedCookieName(id), '', ctx.context.secret, {
-    httpOnly: true,
-    maxAge: 0,
-    path: '/',
-    sameSite: 'lax',
-    secure: true,
-  });
-};
-
-const readBrowserProofs = async (
-  ctx: {
-    context: { secret: string };
-    getSignedCookie: (name: string, secret: string) => Promise<false | null | string>;
-    request?: Request;
-  },
-  id: string,
-) => {
-  const browserCookie = await ctx.getSignedCookie(signedCookieName(id), ctx.context.secret);
-  const tabBinding = ctx.request?.headers.get('x-askcore-wechat-tab-binding');
-  requireTruthy(browserCookie, 'UNAUTHORIZED', 'INVALID_BROWSER_BINDING');
-  requireTruthy(tabBinding, 'UNAUTHORIZED', 'INVALID_BROWSER_BINDING');
-  return { browserCookie, tabBinding };
-};
-
-const currentSession = async (ctx: Parameters<typeof getSessionFromCtx>[0]) => {
-  try {
-    return await getSessionFromCtx(ctx);
-  } catch {
-    return null;
-  }
-};
 
 const isLegacyWechatIdentityRequest = async (request: Request): Promise<boolean> => {
   const path = new URL(request.url).pathname;
@@ -333,6 +164,7 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
       }
     },
     rateLimit: [
+      ...prepublicationRateLimits,
       {
         max: 10,
         pathMatcher: (path) => path === '/wechat-mobile/start',
@@ -428,6 +260,7 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
       },
     },
     endpoints: {
+      ...prepublicationEndpoints(options),
       cancelWechatMobileLogin: createAuthEndpoint(
         '/wechat-mobile/cancel',
         {
@@ -442,6 +275,7 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
             transactionId: ctx.body.transactionId,
           });
           requireTruthy(transaction, 'UNAUTHORIZED', 'INVALID_BROWSER_BINDING');
+          requireTruthy(transaction.purpose !== 'prepublication', 'UNAUTHORIZED', 'INVALID_BROWSER_BINDING');
           const cancelled = await store.cancel(transaction.id);
           if (!cancelled && transaction.state !== 'cancelled') {
             endpointError('CONFLICT', 'WECHAT_TRANSACTION_NOT_CANCELLABLE');
@@ -591,6 +425,7 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
             transactionId: ctx.query.transactionId,
           });
           requireTruthy(transaction, 'UNAUTHORIZED', 'INVALID_BROWSER_BINDING');
+          requireTruthy(transaction.purpose !== 'prepublication', 'UNAUTHORIZED', 'INVALID_BROWSER_BINDING');
           const now = new Date();
           if (
             transaction.expiresAt <= now &&

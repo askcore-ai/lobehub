@@ -5,6 +5,7 @@ const controller = require('../../controllers/login-controller');
 
 let launch = null;
 let handledLaunchVersion = 0;
+let manualGeneration = 0;
 
 Page({
   data: {
@@ -12,11 +13,15 @@ Page({
     busy: false,
     detail: '请先在 Safari 或 Chrome 打开 askcore.cn，按网站提示发起微信登录或身份验证，再在这里确认。',
     invalid: false,
+    manualCode: '',
+    manualValid: false,
     status: 'welcome',
     title: 'AskCore 微信登录助手',
   },
 
   applyLaunchOptions(options) {
+    manualGeneration += 1;
+    this.setData({ manualCode: '', manualValid: false });
     const hasTransaction = options && ['p', 't', 'c'].some((key) =>
       Object.prototype.hasOwnProperty.call(options, key),
     );
@@ -85,6 +90,54 @@ Page({
       fail: () => wx.showToast({ icon: 'none', title: '请在浏览器输入 askcore.cn' }),
       success: () => wx.showToast({ icon: 'none', title: '已复制，请在浏览器中打开' }),
     });
+  },
+
+  onManualInput(event) {
+    if (this.data.busy || this.data.status !== 'welcome') return;
+    const manualCode = String(event.detail.value || '').slice(0, 40);
+    this.setData({ manualCode, manualValid: Boolean(controller.normalizeManualCode(manualCode)) });
+  },
+
+  clearManualInput() {
+    manualGeneration += 1;
+    this.setData({ manualCode: '', manualValid: false });
+    if (this.data.status === 'proof_authorizing') {
+      this.setData({ busy: false, status: 'welcome', detail: '已离开验证页。请返回原浏览器检查结果；重试时需重新输入未过期口令。' });
+    }
+  },
+
+  onHide() { this.clearManualInput(); },
+  onUnload() { this.clearManualInput(); },
+
+  async onManualProof() {
+    if (this.data.busy || this.data.status !== 'welcome' || !this.data.manualValid) return;
+    let input = this.data.manualCode;
+    const current = ++manualGeneration;
+    this.setData({ busy: true, manualCode: '', manualValid: false, status: 'proof_authorizing' });
+    try {
+      const completion = controller.provePrepublication(wx, input, () => current === manualGeneration);
+      input = '';
+      await completion;
+      if (current !== manualGeneration) return;
+      this.setData({
+        busy: false,
+        detail: '请通过系统导航返回原浏览器确认结果。未创建登录会话、账号关联或迁移凭据，也未证明历史身份匹配。',
+        status: 'proof_ready',
+        title: '授权验证已提交',
+      });
+    } catch (error) {
+      input = '';
+      if (current !== manualGeneration) return;
+      const retryable = ['askcore_unavailable', 'wx_login_failed'].includes(error.message);
+      this.setData({
+        busy: false,
+        detail: retryable
+          ? '暂时无法连接，请先返回原浏览器检查状态；如仍待验证，可重新输入未过期口令重试。'
+          : '本次验证未完成，请返回原浏览器检查状态或重新开始。',
+        status: 'welcome',
+        title: '授权验证未完成',
+      });
+    }
   },
 
   async onAuthorize() {

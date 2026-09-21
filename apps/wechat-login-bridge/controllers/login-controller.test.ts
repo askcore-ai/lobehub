@@ -14,6 +14,42 @@ afterEach(() => {
 });
 
 describe('WeChat login bridge controller', () => {
+  it('normalizes only the bounded manual alphabet and sends only to the proof endpoint', async () => {
+    expect(controller.normalizeManualCode('abcde f0123-abcde\tf0123')).toBe('ABCDEF0123ABCDEF0123');
+    expect(controller.normalizeManualCode('Ａ'.repeat(20))).toBe('');
+    expect(controller.normalizeManualCode('a'.repeat(41))).toBe('');
+    const wxApi = {
+      login: vi.fn(({ success }) => success({ code: 'synthetic' })),
+      request: vi.fn(({ success }) => success({ statusCode: 200, data: { state: 'proof_ready' } })),
+    };
+    await expect(controller.provePrepublication(wxApi, 'short')).rejects.toThrow('invalid_manual_code');
+    expect(wxApi.login).not.toHaveBeenCalled();
+    await controller.provePrepublication(wxApi, 'a'.repeat(20));
+    expect(wxApi.request.mock.calls[0][0]).toMatchObject({
+      data: { code: 'synthetic', manualCode: 'A'.repeat(20) },
+      url: 'https://askcore.cn/api/auth/wechat-prepublication/prove',
+    });
+  });
+
+  it('does not dispatch a manual proof when wx.login resolves after leaving the page', async () => {
+    let complete: (value: { code: string }) => void = () => {};
+    let active = true;
+    const wxApi = { login: ({ success }: { success: typeof complete }) => { complete = success; }, request: vi.fn() };
+    const promise = controller.provePrepublication(wxApi, 'a'.repeat(20), () => active);
+    active = false;
+    complete({ code: 'synthetic' });
+    await expect(promise).rejects.toThrow('abandoned_proof');
+    expect(wxApi.request).not.toHaveBeenCalled();
+  });
+
+  it.each(['authorized', 'verified', 'completed', 'pending'])('rejects unrelated manual success %s', async (state) => {
+    const wxApi = {
+      login: ({ success }: { success: (value: { code: string }) => void }) => success({ code: 'synthetic' }),
+      request: ({ success }: { success: (value: unknown) => void }) => success({ statusCode: 200, data: { state } }),
+    };
+    await expect(controller.provePrepublication(wxApi, 'a'.repeat(20))).rejects.toThrow('authorization_failed');
+  });
+
   it('routes only server-issued purpose values', () => {
     expect(controller.endpointForPurpose('signin')).toBe('/api/auth/wechat-mobile/confirm');
     expect(controller.endpointForPurpose('rebind')).toBe('/api/auth/wechat-rebind/prove');

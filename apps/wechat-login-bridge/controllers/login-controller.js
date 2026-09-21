@@ -68,8 +68,27 @@ async function authorize(wxApi, launch) {
   return result;
 }
 
+function normalizeManualCode(value) {
+  if (typeof value !== 'string' || value.length > 40) return '';
+  const normalized = value.replace(/[ \t\r\n-]/g, '').toUpperCase();
+  return /^[A-F0-9]{20}$/.test(normalized) ? normalized : '';
+}
+
+async function provePrepublication(wxApi, input, stillActive = () => true) {
+  const manualCode = normalizeManualCode(input);
+  if (!manualCode || !stillActive()) throw new Error('invalid_manual_code');
+  const code = await wxLogin(wxApi);
+  // Leaving the page or opening another transaction invalidates the pending action.
+  if (!stillActive()) throw new Error('abandoned_proof');
+  const result = await wxRequest(wxApi, '/api/auth/wechat-prepublication/prove', { code, manualCode });
+  if (!result || result.state !== 'proof_ready') throw new Error('authorization_failed');
+  return result;
+}
+
 module.exports = {
   authorize,
   endpointForPurpose,
+  normalizeManualCode,
   parseLaunchOptions,
+  provePrepublication,
 };

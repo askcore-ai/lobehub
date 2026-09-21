@@ -356,6 +356,12 @@ const WechatRebindPage = () => {
       {accounts.length === 0 && state.phase === 'idle' && (
         <Text type={'secondary'}>{t('betterAuth.wechatRebind.noAccount')}</Text>
       )}
+      {accounts.length > 0 && (
+        // A full document navigation intentionally unloads the SPA's analytics.
+        <a href="/api/auth/wechat-prepublication">
+          {t('betterAuth.wechatProof.title')}
+        </a>
+      )}
       {state.phase === 'idle' && accounts.length > 0 && (
         <Button block disabled={!hasSelectableAccount} size="large" type="primary" onClick={start}>
           {t('betterAuth.wechatRebind.start')}

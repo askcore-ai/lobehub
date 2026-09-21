@@ -18,12 +18,26 @@
       <view>3. 通过系统导航返回原浏览器，继续完成操作。</view>
       <view>直接打开本小程序不会自动登录，也不会关联账号。</view>
     </view>
+    <view wx:if="{{status === 'welcome' || status === 'proof_authorizing'}}" class="manual">
+      <view class="manual-title">预发布授权验证（不登录）</view>
+      <view>只输入您本人在 askcore.cn 的“预发布微信授权验证”页面生成的五分钟口令。不要输入别人发来的口令，不要复制、截图或录屏。</view>
+      <view>本次只验证授权链路，不关联账号，也不生成历史身份迁移凭据。</view>
+      <input
+        aria-label="五分钟验证口令"
+        placeholder="输入 20 位口令，可含分组空格"
+        value="{{manualCode}}"
+        maxlength="40"
+        disabled="{{busy}}"
+        bindinput="onManualInput"
+      />
+      <button class="primary" disabled="{{busy || !manualValid}}" loading="{{busy}}" bindtap="onManualProof">确认授权验证（不登录）</button>
+    </view>
     <button
       wx:if="{{status === 'welcome' || status === 'failed'}}"
       class="primary"
       bindtap="onCopyWebsite"
     >复制 AskCore 网址</button>
-    <view wx:if="{{status === 'authorized'}}" class="success">✓ 可以返回浏览器</view>
+    <view wx:if="{{status === 'authorized' || status === 'proof_ready'}}" class="success">✓ 可以返回浏览器</view>
     <view class="privacy">仅在您点击确认后获取一次性微信登录凭据，用于本次登录或身份验证；不索取头像、昵称、手机号、位置或通讯录。</view>
   </view>
 </view>

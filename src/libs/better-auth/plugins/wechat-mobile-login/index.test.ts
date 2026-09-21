@@ -32,6 +32,12 @@ describe('wechatMobileLogin Better Auth plugin', () => {
         'proveWechatRebind',
         'startWechatMobileLogin',
         'startWechatRebind',
+        'getWechatPrepublicationDocument',
+        'startWechatPrepublication',
+        'proveWechatPrepublication',
+        'getWechatPrepublicationStatus',
+        'finishWechatPrepublication',
+        'cancelWechatPrepublication',
       ].sort(),
     );
     expect(plugin.schema).toHaveProperty('wechatMobileLoginTransaction');

@@ -4,6 +4,7 @@ import { memoryAdapter } from 'better-auth/adapters/memory';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { wechatMobileLogin } from '.';
+import type { WechatMobileLoginOptions } from '.';
 
 const bridge = require('../../../../../apps/wechat-login-bridge/controllers/login-controller');
 
@@ -30,25 +31,19 @@ function fixture() {
     wechatRebindClaim: [],
   };
   let nextId = 0;
+  const options: WechatMobileLoginOptions = {
+    appId: 'synthetic-website', appSecret: 'synthetic-mini-secret', appURL: origin,
+    identityMode: 'canonical', miniProgramAppId: 'synthetic-mini', mobileLoginEnabled: true,
+    rebindEnabled: true, recoverySeconds: 60, schemePath: 'pages/login/index',
+    transactionTtlSeconds: 300, websiteAppSecret: 'synthetic-website-secret',
+  };
   const auth = betterAuth({
     advanced: { database: { generateId: () => `framework_${++nextId}` } },
     baseURL: origin,
     database: memoryAdapter(database),
     logger: { disabled: true },
     plugins: [
-      wechatMobileLogin({
-        appId: 'synthetic-website',
-        appSecret: 'synthetic-mini-secret',
-        appURL: origin,
-        identityMode: 'canonical',
-        miniProgramAppId: 'synthetic-mini',
-        mobileLoginEnabled: true,
-        rebindEnabled: true,
-        recoverySeconds: 60,
-        schemePath: 'pages/login/index',
-        transactionTtlSeconds: 300,
-        websiteAppSecret: 'synthetic-website-secret',
-      }),
+      wechatMobileLogin(options),
     ],
     rateLimit: { enabled: false },
     secret: 'synthetic-framework-test-secret-at-least-32-characters',
@@ -121,12 +116,191 @@ function fixture() {
     return { cookie: cookieHeader(consumed), prepared };
   };
 
-  return { auth, database, prove, request, signIn, start };
+  const startManual = async () => {
+    const signedIn = await signIn();
+    const response = await request('/wechat-prepublication/start', { body: {}, cookie: signedIn.cookie });
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    return {
+      ...data,
+      browser: { body: { transactionId: data.transactionId }, cookie: `${signedIn.cookie}; ${cookieHeader(response)}`, tab: data.tabBinding },
+      sessionCookie: signedIn.cookie,
+    };
+  };
+  const proveManual = (manualCode: string) => auth.handler(new Request(`${origin}/api/auth/wechat-prepublication/prove`, {
+    body: JSON.stringify({ code: 'synthetic-code', manualCode }),
+    headers: { 'content-type': 'application/json' }, method: 'POST',
+  }));
+  return { auth, database, options, prove, proveManual, request, signIn, start, startManual };
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 describe('WeChat bridge through the real Better Auth handler and adapter factory', () => {
+  it('finishes a real-handler manual exchange in Release A without identity or session writes', async () => {
+    const f = fixture();
+    const prepared = await f.startManual();
+    f.options.mobileLoginEnabled = false;
+    f.options.identityMode = 'legacy';
+    const before = structuredClone({ accounts: f.database.account, sessions: f.database.session, users: f.database.user, claims: f.database.wechatRebindClaim });
+    expect(prepared.manualCode).toMatch(/^[A-F0-9]{20}$/);
+    expect(JSON.stringify(f.database)).not.toContain(prepared.manualCode);
+    const request = vi.fn(({ url, data, success }) => {
+      expect(url).toBe('https://askcore.cn/api/auth/wechat-prepublication/prove');
+      void f.auth.handler(new Request(`${origin}/api/auth/wechat-prepublication/prove`, {
+        body: JSON.stringify(data), headers: { 'content-type': 'application/json' }, method: 'POST',
+      })).then(async (response) => success({ data: await response.json(), statusCode: response.status }));
+    });
+    await bridge.provePrepublication({
+      login: ({ success }: { success: (value: unknown) => void }) => success({ code: 'synthetic-native-code' }), request,
+    }, prepared.manualCode.toLowerCase().match(/.{5}/g).join(' '));
+    expect(request).toHaveBeenCalledOnce();
+    expect((await f.proveManual(prepared.manualCode)).status).toBe(404);
+    expect(await (await f.request('/wechat-prepublication/status', prepared.browser)).json()).toEqual({ state: 'proof_ready' });
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await f.request('/wechat-prepublication/finish', prepared.browser);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ state: 'completed' });
+      expect(cookieHeader(response)).not.toContain('session_token=');
+      expect(response.headers.get('cache-control')).toContain('no-store');
+    }
+    expect({ accounts: f.database.account, sessions: f.database.session, users: f.database.user, claims: f.database.wechatRebindClaim }).toEqual(before);
+    const row = f.database.wechatMobileLoginTransaction.find((item) => item.id === prepared.transactionId)!;
+    expect(row).toMatchObject({
+      authorizedUserId: null, issuedSessionId: null, purpose: 'prepublication',
+      rebindAccountRowId: null, recoveryUntil: null, state: 'completed',
+    });
+    expect(JSON.stringify(row)).not.toMatch(/synthetic-native-code|synthetic-mini-openid|synthetic-canonical-unionid|synthetic-provider-session-key/);
+  });
+
+  it('keeps manual credentials out of every ordinary login/rebind route', async () => {
+    const f = fixture();
+    const prepared = await f.startManual();
+    expect((await f.proveManual(prepared.manualCode)).status).toBe(200);
+    const before = structuredClone({ accounts: f.database.account, sessions: f.database.session, claims: f.database.wechatRebindClaim });
+    for (const path of ['/wechat-mobile/consume', '/wechat-rebind/confirm', '/wechat-mobile/cancel']) {
+      const response = await f.request(path, { ...prepared.browser, body: { transactionId: prepared.transactionId, ...(path.endsWith('/consume') ? { confirmAccountSwitch: false } : {}) } });
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(cookieHeader(response)).not.toContain('session_token=');
+    }
+    expect((await f.request(`/wechat-mobile/status?transactionId=${prepared.transactionId}`, { cookie: prepared.browser.cookie, tab: prepared.tabBinding })).status).toBeGreaterThanOrEqual(400);
+    for (const path of ['/wechat-mobile/confirm', '/wechat-rebind/prove']) {
+      const response = await f.request(path, { body: { transactionId: prepared.transactionId, completionCapability: prepared.manualCode, code: 'synthetic-code' } });
+      expect(response.status).toBeGreaterThanOrEqual(400);
+    }
+    expect({ accounts: f.database.account, sessions: f.database.session, claims: f.database.wechatRebindClaim }).toEqual(before);
+  });
+
+  it('requires live original session, exact Origin, cookie and tab for browser operations', async () => {
+    const f = fixture();
+    expect((await f.request('/wechat-prepublication/start', { body: {} })).status).toBe(401);
+    const prepared = await f.startManual();
+    const second = await f.signIn();
+    const wrongOrigin = await f.auth.handler(new Request(`${origin}/api/auth/wechat-prepublication/start`, {
+      body: '{}', headers: { 'content-type': 'application/json', cookie: prepared.sessionCookie, origin: 'https://other.example' }, method: 'POST',
+    }));
+    expect(wrongOrigin.status).toBe(403);
+    for (const action of ['status', 'finish', 'cancel']) {
+      const path = `/wechat-prepublication/${action}`;
+      expect((await f.request(path, { body: prepared.browser.body, tab: prepared.tabBinding })).status).toBe(401);
+      expect((await f.request(path, { ...prepared.browser, tab: 'wrong-tab' })).status).toBe(401);
+      const differentSession = `${second.cookie}; ${prepared.browser.cookie.split('; ').filter((part: string) => part.startsWith('__Host-')).join('; ')}`;
+      expect((await f.request(path, { ...prepared.browser, cookie: differentSession })).status).toBe(401);
+    }
+    f.database.session.splice(0);
+    expect((await f.request('/wechat-prepublication/status', prepared.browser)).status).toBe(401);
+  });
+
+  it('fails closed without an existing WeChat association or when privacy/feature gates are closed', async () => {
+    const f = fixture();
+    const prepared = await f.startManual();
+    vi.stubEnv('ENABLE_TELEMETRY', '1');
+    expect((await f.proveManual(prepared.manualCode)).status).toBe(503);
+    expect((await f.request('/wechat-prepublication', { cookie: prepared.sessionCookie })).status).toBe(503);
+    vi.stubEnv('ENABLE_TELEMETRY', '');
+    f.options.identityMode = 'maintenance';
+    expect((await f.proveManual(prepared.manualCode)).status).toBe(423);
+    f.options.identityMode = 'legacy';
+    f.options.rebindEnabled = false;
+    expect((await f.proveManual(prepared.manualCode)).status).toBeGreaterThanOrEqual(400);
+    f.options.rebindEnabled = true;
+    f.database.account.splice(0);
+    expect((await f.request('/wechat-prepublication/start', { body: {}, cookie: prepared.sessionCookie })).status).toBe(409);
+  });
+
+  it('serves a private full document instead of the analytics-bearing root layout', async () => {
+    const f = fixture();
+    const { sessionCookie } = await f.startManual();
+    const response = await f.request('/wechat-prepublication', { cookie: sessionCookie });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/html');
+    expect(response.headers.get('content-security-policy')).toContain("default-src 'none'");
+    expect(response.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
+    expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+    const html = await response.text();
+    expect(html).not.toMatch(/<script[^>]+src=|clarity|posthog|session_token|synthetic-/i);
+    expect(cookieHeader(response)).not.toContain('session_token=');
+  });
+
+  it('cancellation wins over a delayed provider response and manual replay', async () => {
+    const f = fixture();
+    const prepared = await f.startManual();
+    let resolveProvider: (response: Response) => void = () => {};
+    const provider = vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise((resolve) => { resolveProvider = resolve; }));
+    const pending = f.proveManual(prepared.manualCode);
+    await vi.waitFor(() => expect(provider).toHaveBeenCalled());
+    expect((await f.request('/wechat-prepublication/cancel', prepared.browser)).status).toBe(200);
+    resolveProvider(Response.json(providerIdentity));
+    expect((await pending).status).toBe(404);
+    expect((await f.proveManual(prepared.manualCode)).status).toBe(404);
+    expect(await (await f.request('/wechat-prepublication/status', prepared.browser)).json()).toEqual({ state: 'cancelled' });
+    expect((await f.request('/wechat-prepublication/finish', prepared.browser)).status).toBe(409);
+  });
+
+  it('rejects expired or unknown credentials alike and never extends the deadline', async () => {
+    const f = fixture();
+    const prepared = await f.startManual();
+    const row = f.database.wechatMobileLoginTransaction.find((item) => item.id === prepared.transactionId)!;
+    row.expiresAt = new Date(Date.now() - 1000);
+    const unknown = await f.proveManual('F'.repeat(20));
+    const expired = await f.proveManual(prepared.manualCode);
+    expect(expired.status).toBe(404);
+    expect(await expired.json()).toEqual(await unknown.json());
+    expect((await f.request('/wechat-prepublication/status', prepared.browser)).status).toBe(410);
+  });
+
+  it.each([429, 503, 'timeout', 'malformed'])('bounds retryable provider failure: %s', async (failure) => {
+    const f = fixture();
+    const prepared = await f.startManual();
+    const provider = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      if (failure === 'timeout') throw new DOMException('synthetic provider timeout', 'AbortError');
+      return failure === 'malformed' ? new Response('not-json') : new Response('private-provider-body', { status: failure });
+    });
+    const row = f.database.wechatMobileLoginTransaction.find((item) => item.id === prepared.transactionId)!;
+    const deadline = row.expiresAt;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const response = await f.proveManual(prepared.manualCode);
+      expect([502, 503]).toContain(response.status);
+      expect(await response.text()).not.toContain('private-provider-body');
+    }
+    expect((await f.proveManual(prepared.manualCode)).status).toBe(404);
+    expect(provider).toHaveBeenCalledTimes(3);
+    expect(row.expiresAt).toEqual(deadline);
+    expect(f.database.session).toHaveLength(1);
+    expect(f.database.wechatRebindClaim).toHaveLength(0);
+  });
+
+  it('does not turn missing UnionID into successful proof', async () => {
+    const f = fixture();
+    const prepared = await f.startManual();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ openid: 'synthetic', session_key: 'synthetic' }));
+    const response = await f.proveManual(prepared.manualCode);
+    expect(response.status).toBe(409);
+    expect(await (await f.request('/wechat-prepublication/status', prepared.browser)).json()).toEqual({ state: 'failed' });
+    expect((await f.request('/wechat-prepublication/finish', prepared.browser)).status).toBe(409);
+    expect(f.database.wechatRebindClaim).toHaveLength(0);
+  });
+
   it('preserves bridge IDs and requires both cookie and tab proofs', async () => {
     const { request, start } = fixture();
     const first = await start();

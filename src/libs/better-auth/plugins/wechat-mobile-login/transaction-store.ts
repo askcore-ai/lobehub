@@ -4,9 +4,9 @@ export const WECHAT_MOBILE_TRANSACTION_TTL_SECONDS = 300;
 export const WECHAT_MOBILE_POLL_AFTER_MS = 1200;
 export const WECHAT_MOBILE_MAX_CONFIRM_ATTEMPTS = 3;
 
-export type WechatMobilePurpose = 'rebind' | 'signin';
+export type WechatMobilePurpose = 'prepublication' | 'rebind' | 'signin';
 export type WechatMobileTransactionState =
-  'authorized' | 'authorizing' | 'cancelled' | 'consumed' | 'expired' | 'failed' | 'pending';
+  'authorized' | 'authorizing' | 'cancelled' | 'completed' | 'consumed' | 'expired' | 'failed' | 'pending' | 'proof_ready';
 
 export interface WechatMobileTransaction {
   accountSwitchConfirmedAt: Date | null;
@@ -35,7 +35,7 @@ export interface WechatMobileTransaction {
 
 interface Where {
   field: string;
-  operator?: 'eq' | 'in' | 'lt';
+  operator?: 'eq' | 'gt' | 'in' | 'lt';
   value: unknown;
 }
 
@@ -76,7 +76,7 @@ const MODEL = 'wechatMobileLoginTransaction';
 const capability = (): string => randomBytes(32).toString('base64url');
 
 export const hashCapability = (
-  purpose: 'browser-cookie' | 'completion' | 'oauth-state' | 'session-id' | 'tab',
+  purpose: 'browser-cookie' | 'completion' | 'manual-proof' | 'oauth-state' | 'session-id' | 'tab',
   value: string,
 ): string =>
   createHash('sha256')
@@ -102,14 +102,17 @@ export class WechatMobileTransactionStore {
     initiatingSessionId?: string;
     initiatingUserId?: string;
     now?: Date;
-    purpose: WechatMobilePurpose;
     rebindAccountRowId?: string;
-  }): Promise<{ capabilities: TransactionCapabilities; transaction: WechatMobileTransaction }> {
+  } & ({ purpose: 'rebind' | 'signin' } | { purpose: 'prepublication'; reservedId: string })): Promise<{ capabilities: TransactionCapabilities; transaction: WechatMobileTransaction }> {
     const now = input.now ?? new Date();
-    const transactionId = `wxm_${randomBytes(18).toString('base64url')}`;
+    const transactionId = input.purpose === 'prepublication'
+      ? input.reservedId
+      : `wxm_${randomBytes(18).toString('base64url')}`;
     const browserCookie = capability();
     const tabBinding = capability();
-    const completionCapability = capability();
+    const completionCapability = input.purpose === 'prepublication'
+      ? randomBytes(10).toString('hex').toUpperCase()
+      : capability();
     const oauthState = capability();
     const transaction = await this.adapter.create<WechatMobileTransaction>({
       data: {
@@ -119,7 +122,10 @@ export class WechatMobileTransactionStore {
         authorizedUserId: null,
         browserCookieBindingHash: hashCapability('browser-cookie', browserCookie),
         callbackUrl: input.callbackUrl,
-        completionCapabilityHash: hashCapability('completion', completionCapability),
+        completionCapabilityHash: hashCapability(
+          input.purpose === 'prepublication' ? 'manual-proof' : 'completion',
+          completionCapability,
+        ),
         consumedAt: null,
         createdAt: now,
         expiresAt: new Date(now.getTime() + WECHAT_MOBILE_TRANSACTION_TTL_SECONDS * 1000),
@@ -209,7 +215,7 @@ export class WechatMobileTransactionStore {
   async beginAuthorization(input: {
     completionCapability: string;
     now?: Date;
-    purpose: WechatMobilePurpose;
+    purpose: 'rebind' | 'signin';
     transactionId: string;
   }): Promise<WechatMobileTransaction | null> {
     const current = await this.find(input.transactionId);
@@ -255,7 +261,7 @@ export class WechatMobileTransactionStore {
   async beginWebsiteAuthorization(input: {
     now?: Date;
     oauthState: string;
-    purpose: WechatMobilePurpose;
+    purpose: 'rebind' | 'signin';
     transactionId: string;
   }): Promise<WechatMobileTransaction | null> {
     const current = await this.find(input.transactionId);
@@ -314,6 +320,7 @@ export class WechatMobileTransactionStore {
       where: [
         { field: 'id', value: transactionId },
         { field: 'state', value: 'authorizing' },
+        { field: 'purpose', operator: 'in', value: ['signin', 'rebind'] },
       ],
     });
   }
