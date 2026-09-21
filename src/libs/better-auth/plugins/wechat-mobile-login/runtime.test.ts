@@ -3,8 +3,7 @@ import { betterAuth } from 'better-auth';
 import { memoryAdapter } from 'better-auth/adapters/memory';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { wechatMobileLogin } from '.';
-import type { WechatMobileLoginOptions } from '.';
+import { wechatMobileLogin, type WechatMobileLoginOptions } from '.';
 
 const bridge = require('../../../../../apps/wechat-login-bridge/controllers/login-controller');
 

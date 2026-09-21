@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
+import { WechatPrepublicationStore } from './prepublication-store';
 import {
   capabilityMatches,
   type WechatMobileDatabaseAdapter,
   WechatMobileTransactionStore,
 } from './transaction-store';
-import { WechatPrepublicationStore } from './prepublication-store';
 
 type Clause = { field: string; operator?: 'eq' | 'gt' | 'in' | 'lt'; value: unknown };
 const matches = (row: Record<string, unknown>, clause: Clause) => {

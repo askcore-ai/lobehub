@@ -126,7 +126,6 @@ Page({
         title: '授权验证已提交',
       });
     } catch (error) {
-      input = '';
       if (current !== manualGeneration) return;
       const retryable = ['askcore_unavailable', 'wx_login_failed'].includes(error.message);
       this.setData({

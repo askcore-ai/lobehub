@@ -9,6 +9,14 @@ import {
 } from './rebind';
 import type { WechatMobileDatabaseAdapter } from './transaction-store';
 
+type Clause = { field: string; operator?: 'eq' | 'gt' | 'in' | 'lt'; value: unknown };
+const matches = (row: Record<string, unknown>, item: Clause) => {
+  if (item.operator === 'in') return (item.value as unknown[]).includes(row[item.field]);
+  if (item.operator === 'gt') return (row[item.field] as Date) > (item.value as Date);
+  if (item.operator === 'lt') return (row[item.field] as Date) < (item.value as Date);
+  return row[item.field] === item.value;
+};
+
 class RebindAdapter implements WechatMobileDatabaseAdapter {
   accountOwner: null | string = null;
   claim: null | Record<string, unknown> = null;
@@ -25,7 +33,7 @@ class RebindAdapter implements WechatMobileDatabaseAdapter {
     where,
   }: {
     model: string;
-    where: { field: string; value: unknown }[];
+    where: Clause[];
   }) {
     if (model === 'account') {
       return (
@@ -35,14 +43,14 @@ class RebindAdapter implements WechatMobileDatabaseAdapter {
     if (model === 'wechatMobileLoginTransaction') {
       return (
         this.transactionRecord &&
-        where.every((item) => this.transactionRecord?.[item.field] === item.value)
+        where.every((item) => matches(this.transactionRecord!, item))
           ? this.transactionRecord
           : null
       ) as T | null;
     }
     if (!this.claim) return null;
     return (
-      where.every((item) => this.claim?.[item.field] === item.value) ? this.claim : null
+      where.every((item) => matches(this.claim!, item)) ? this.claim : null
     ) as T | null;
   }
 
@@ -59,16 +67,16 @@ class RebindAdapter implements WechatMobileDatabaseAdapter {
   }: {
     model: string;
     update: Record<string, unknown>;
-    where: { field: string; value: unknown }[];
+    where: Clause[];
   }) {
     if (
       this.transactionRecord &&
-      where.every((item) => this.transactionRecord?.[item.field] === item.value)
+      where.every((item) => matches(this.transactionRecord!, item))
     ) {
       this.transactionRecord = { ...this.transactionRecord, ...update };
       return this.transactionRecord as T;
     }
-    if (!this.claim || !where.every((item) => this.claim?.[item.field] === item.value)) {
+    if (!this.claim || !where.every((item) => matches(this.claim!, item))) {
       return null;
     }
     this.claim = { ...this.claim, ...update };
@@ -81,6 +89,7 @@ describe('authenticated WeChat rebind', () => {
     const adapter = new RebindAdapter();
     adapter.transactionRecord = {
       id: 'transaction-1',
+      purpose: 'rebind',
       state: 'authorizing',
     };
     const { claim } = await completeWechatRebindProof({

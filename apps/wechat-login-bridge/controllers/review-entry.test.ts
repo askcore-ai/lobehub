@@ -17,13 +17,13 @@ interface LoginPage {
     title: string;
   };
   onAuthorize: () => Promise<void>;
+  onCopyWebsite: () => void;
+  onHide: () => void;
+  onLoad: (options: Record<string, string>) => void;
   onManualInput: (event: { detail: { value: string } }) => void;
   onManualProof: () => Promise<void>;
-  onHide: () => void;
-  onUnload: () => void;
-  onCopyWebsite: () => void;
-  onLoad: (options: Record<string, string>) => void;
   onShow: () => void;
+  onUnload: () => void;
   setData: (data: Partial<LoginPage['data']>) => void;
 }
 
