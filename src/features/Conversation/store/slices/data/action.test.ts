@@ -914,7 +914,8 @@ describe('DataSlice', () => {
           content: '```tikz\n\\begin{tikzpicture}\n\\draw (0,0) -- (1,0);\n\\end{tikzpicture}\n```',
           role: 'assistant',
           createdAt: 1000,
-          updatedAt: updatedAt.getTime(),
+          // Deliberately exercise a hydrated Date despite the numeric DTO type.
+          updatedAt: updatedAt as unknown as number,
         },
       ]);
 

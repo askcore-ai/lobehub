@@ -77,13 +77,20 @@ const styles = createStaticStyles(({ css }) => ({
     color: ${cssVar.colorTextDescription};
   `,
   page: css`
+    overflow-y: auto;
     display: flex;
+    flex: 1;
     flex-direction: column;
     gap: 16px;
 
     min-width: 0;
+    min-height: 0;
     padding-block: 16px 28px;
     padding-inline: clamp(12px, 2vw, 28px);
+
+    > * {
+      flex-shrink: 0;
+    }
   `,
   score: css`
     font-size: 15px;

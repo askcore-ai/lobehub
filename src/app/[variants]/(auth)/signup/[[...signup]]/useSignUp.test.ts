@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSignUp } from './useSignUp';
 
 // ── hoisted mocks ──────────────────────────────────────────────
+const mockPrepareRegistration = vi.hoisted(() => vi.fn());
+vi.mock('@/business/client/AskCoreWorkbench/api', () => ({ prepareRegistrationForSignup: mockPrepareRegistration }));
+
 const mockPush = vi.hoisted(() => vi.fn());
 const mockSearchParamsGet = vi.hoisted(() => vi.fn().mockReturnValue(null));
 const mockMessageError = vi.hoisted(() => vi.fn());
@@ -55,6 +58,7 @@ vi.mock('../../_layout/AuthServerConfigProvider', () => ({
 describe('useSignUp', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPrepareRegistration.mockResolvedValue({ handle: 'a'.repeat(64), expiresAt: '2099-01-01T00:00:00.000Z' });
     mockSearchParamsGet.mockReturnValue(null);
     mockGetCaptchaTokenOnError.mockResolvedValue(undefined);
     mockEnableEmailVerification = false;
@@ -82,6 +86,14 @@ describe('useSignUp', () => {
       password: 'Password123!',
     };
 
+    it('does not create a user when intent preparation fails', async () => {
+      mockPrepareRegistration.mockRejectedValueOnce(new Error('unavailable'));
+      const { result } = renderHook(() => useSignUp());
+      await act(async () => { await result.current.onSubmit(validValues); });
+      expect(mockSignUpEmail).not.toHaveBeenCalled();
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+
     it('should call signUp.email with correct params', async () => {
       mockSignUpEmail.mockResolvedValue({ error: null });
 
@@ -91,6 +103,7 @@ describe('useSignUp', () => {
         await result.current.onSubmit(validValues);
       });
 
+      expect(new Headers(mockSignUpEmail.mock.calls[0][0].fetchOptions.headers).get('x-askcore-registration-intent')).toBe('a'.repeat(64));
       expect(mockSignUpEmail).toHaveBeenCalledWith(
         expect.objectContaining({
           email: 'new@example.com',
@@ -109,7 +122,7 @@ describe('useSignUp', () => {
         await result.current.onSubmit(validValues);
       });
 
-      expect(mockPush).toHaveBeenCalledWith('/');
+      expect(mockPush).toHaveBeenCalledWith('/askcore/workbench?protocol=registration');
     });
 
     it('binds referral code from signup URL after successful sign up', async () => {
@@ -131,7 +144,7 @@ describe('useSignUp', () => {
           method: 'POST',
         }),
       );
-      expect(mockPush).toHaveBeenCalledWith('/');
+      expect(mockPush).toHaveBeenCalledWith('/askcore/workbench?protocol=registration');
     });
 
     it('should use callbackUrl from search params', async () => {
@@ -147,9 +160,10 @@ describe('useSignUp', () => {
       });
 
       expect(mockSignUpEmail).toHaveBeenCalledWith(
-        expect.objectContaining({ callbackURL: '/dashboard' }),
+        expect.objectContaining({ callbackURL: '/askcore/workbench?protocol=registration' }),
       );
-      expect(mockPush).toHaveBeenCalledWith('/dashboard');
+      expect(mockPrepareRegistration).toHaveBeenCalledWith('/dashboard');
+      expect(mockPush).toHaveBeenCalledWith('/askcore/workbench?protocol=registration');
     });
 
     it('should redirect to verify-email when email verification is enabled', async () => {
@@ -244,11 +258,11 @@ describe('useSignUp', () => {
       expect(mockSignUpEmail).toHaveBeenCalledTimes(2);
       expect(mockSignUpEmail).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          fetchOptions: { headers: { 'x-captcha-response': 'captcha-token' } },
+          fetchOptions: { headers: { 'x-captcha-response': 'captcha-token', 'x-askcore-registration-intent': 'a'.repeat(64) } },
         }),
       );
       expect(mockMessageError).not.toHaveBeenCalled();
-      expect(mockPush).toHaveBeenCalledWith('/');
+      expect(mockPush).toHaveBeenCalledWith('/askcore/workbench?protocol=registration');
     });
 
     it('should stop sign up when captcha modal is cancelled', async () => {

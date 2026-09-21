@@ -76,6 +76,124 @@ describe('invisible school source handoff client', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it.each(['initializing', 'refetch'] as const)(
+    'waits through %s instability and enters the current generation without a refresh',
+    async (initialState) => {
+      vi.useFakeTimers();
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ action: moodleAction, grant }));
+      vi.stubGlobal('fetch', fetchMock);
+      const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {});
+      const { enterSchoolSource, setSchoolHandoffSessionState } = await import('./handoffClient');
+      if (initialState === 'refetch') {
+        setSchoolHandoffSessionState('stable', 'generation-a');
+        setSchoolHandoffSessionState('unstable', null);
+      }
+      const handoff = enterSchoolSource('moodle');
+      const outcome = handoff.catch((error: unknown) => error);
+      setSchoolHandoffSessionState('unstable', null);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      setSchoolHandoffSessionState('stable', 'generation-a');
+      expect(await outcome).toBe('navigating');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(submit).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('cancels the in-flight grant and prepares a fresh grant after same-generation refetch', async () => {
+    const stale = deferredResponse();
+    const fresh = deferredResponse();
+    const fetchMock = vi
+      .fn((_input: RequestInfo | URL, _init?: RequestInit) => stale.promise)
+      .mockReturnValueOnce(stale.promise)
+      .mockReturnValueOnce(fresh.promise);
+    vi.stubGlobal('fetch', fetchMock);
+    const submitted: string[] = [];
+    vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (this: HTMLFormElement) {
+      submitted.push(String(new FormData(this).get('grant')));
+    });
+    const { enterSchoolSource, setSchoolHandoffSessionState } = await import('./handoffClient');
+    setSchoolHandoffSessionState('stable', 'generation-a');
+    const handoff = enterSchoolSource('moodle');
+    const outcome = handoff.catch((error: unknown) => error);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const firstSignal = fetchMock.mock.calls[0]?.[1]?.signal;
+
+    setSchoolHandoffSessionState('unstable', null);
+    expect(firstSignal?.aborted).toBe(true);
+    setSchoolHandoffSessionState('stable', 'generation-a');
+    // A transport may still complete after cancellation; its grant must never be submitted.
+    stale.resolve(jsonResponse({ action: moodleAction, grant: 'old.payload.signature' }));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    fresh.resolve(jsonResponse({ action: moodleAction, grant: 'fresh.payload.signature' }));
+
+    expect(await outcome).toBe('navigating');
+    expect(submitted).toEqual(['fresh.payload.signature']);
+  });
+
+  it('keeps one eight-second budget across waiting, refetch, and grant preparation', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn((_input, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {});
+    const { enterSchoolSource, setSchoolHandoffSessionState } = await import('./handoffClient');
+    setSchoolHandoffSessionState('stable', 'generation-a');
+    setSchoolHandoffSessionState('unstable', null);
+    const handoff = enterSchoolSource('moodle');
+    const outcome = handoff.catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(3_000);
+    setSchoolHandoffSessionState('stable', 'generation-a');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    setSchoolHandoffSessionState('unstable', null);
+    await vi.advanceTimersByTimeAsync(3_000);
+    setSchoolHandoffSessionState('stable', 'generation-a');
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await outcome).toMatchObject({ status: 503 });
+    expect(fetchMock.mock.calls[1]?.[1]?.signal?.aborted).toBe(true);
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('does not transfer an entry intent created during refetch to a different account', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ action: moodleAction, grant }));
+    vi.stubGlobal('fetch', fetchMock);
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {});
+    const { enterSchoolSource, setSchoolHandoffSessionState } = await import('./handoffClient');
+    setSchoolHandoffSessionState('stable', 'generation-a');
+    setSchoolHandoffSessionState('unstable', null);
+    const handoff = enterSchoolSource('moodle');
+    const outcome = handoff.catch((error: unknown) => error);
+    setSchoolHandoffSessionState('stable', 'generation-b');
+
+    expect(await outcome).toMatchObject({ name: 'AbortError' });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('hard-cancels a waiting intent when another tab changes accounts, even while already unstable', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ action: moodleAction, grant }));
+    vi.stubGlobal('fetch', fetchMock);
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {});
+    const { enterSchoolSource, setSchoolHandoffSessionState } = await import('./handoffClient');
+    setSchoolHandoffSessionState('stable', 'generation-a');
+    setSchoolHandoffSessionState('unstable', null);
+    const handoff = enterSchoolSource('moodle');
+    const outcome = handoff.catch((error: unknown) => error);
+    TestBroadcastChannel.instances[0]?.emit({
+      generationHash: 'generation-b', sessionState: 'stable', type: 'generation-changed',
+    });
+    setSchoolHandoffSessionState('stable', 'generation-a');
+
+    expect(await outcome).toMatchObject({ name: 'AbortError' });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
   it('prepares once, submits one transient fixed source form, and stores no grant', async () => {
     const fetchMock = vi
       .fn()
@@ -108,6 +226,44 @@ describe('invisible school source handoff client', () => {
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
     expect(location.href).not.toContain(grant);
+  });
+
+  it.each([
+    ['moodle', true, moodleAction, '1'],
+    ['moodle', false, moodleAction, null],
+    ['gibbon', true, gibbonAction, null],
+  ] as const)('submits the continuation marker only for resumed Moodle entry (%s, %s)', async (source, resume, action, marker) => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ action, grant }));
+    vi.stubGlobal('fetch', fetchMock);
+    let submitted: FormData | undefined;
+    vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (this: HTMLFormElement) {
+      submitted = new FormData(this);
+    });
+    const { enterSchoolSource, setSchoolHandoffSessionState } = await import('./handoffClient');
+    setSchoolHandoffSessionState('stable', 'generation-a');
+
+    await expect(enterSchoolSource(source, resume)).resolves.toBe('navigating');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('/api/askcore/school/handoff', expect.objectContaining({
+      body: new URLSearchParams({ source }),
+    }));
+    expect(submitted?.get('grant')).toBe(grant);
+    expect(submitted?.get('resume')).toBe(marker);
+    expect(document.querySelector('form')).toBeNull();
+  });
+
+  it.each([false, true])('does not retry a genuine forbidden preparation (resume=%s)', async (resume) => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: 'forbidden' }, 403));
+    vi.stubGlobal('fetch', fetchMock);
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {});
+    const { enterSchoolSource, setSchoolHandoffSessionState } = await import('./handoffClient');
+    setSchoolHandoffSessionState('stable', 'generation-a');
+
+    await expect(enterSchoolSource('moodle', resume)).rejects.toMatchObject({ status: 403 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(submit).not.toHaveBeenCalled();
   });
 
   it('serializes repeated activation into one preparation and one source POST', async () => {
@@ -208,6 +364,7 @@ describe('invisible school source handoff client', () => {
     await vi.waitFor(() => expect(requestSignal).toBeDefined());
 
     setSchoolHandoffSessionState('unstable', null);
+    setSchoolHandoffSessionState('stable', 'generation-b');
 
     await expect(handoff).rejects.toMatchObject({ name: 'AbortError' });
     expect(requestSignal?.aborted).toBe(true);

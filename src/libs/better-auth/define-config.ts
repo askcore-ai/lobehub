@@ -38,6 +38,7 @@ import { createSecondaryStorage, getTrustedOrigins } from '@/libs/better-auth/ut
 import { parseSSOProviders } from '@/libs/better-auth/utils/server';
 import { EmailService } from '@/server/services/email';
 import { UserService } from '@/server/services/user';
+import { RegistrationProvisioningService, registrationHttpHandler, registrationProvisioningPlugin } from '@/server/services/registrationProvisioning';
 
 // Configure HTTP proxy for OAuth provider requests in development (e.g., Google token exchange)
 // Node.js native fetch doesn't respect system proxy settings
@@ -153,6 +154,7 @@ interface CustomBetterAuthOptions {
 }
 
 export function defineConfig(customOptions: CustomBetterAuthOptions) {
+  const registration = new RegistrationProvisioningService(serverDB);
   const options = {
     account: {
       accountLinking: {
@@ -266,6 +268,9 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
     databaseHooks: {
       user: {
         create: {
+          before: async (user, context) => ({
+            data: { ...user, registrationIntentId: await registration.intentForNewUser(context) },
+          }),
           after: async (user) => {
             const userService = new UserService(serverDB);
             await userService.initUser({
@@ -284,6 +289,12 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
         enabled: true,
       },
       additionalFields: {
+        registrationIntentId: {
+          input: false,
+          returned: false,
+          required: false,
+          type: 'string',
+        },
         username: {
           required: false,
           type: 'string',
@@ -323,6 +334,9 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
     },
     rateLimit: {
       customRules: {
+        '/askcore-registration/prepare': { max: 10, window: 60 },
+        '/askcore-registration/recover': { max: 10, window: 60 },
+        '/askcore-registration/status': { max: 120, window: 60 },
         // Better Auth keys this endpoint by IP and path. Keep shared school NATs from
         // exhausting the default 100-request rolling budget during session discovery.
         '/get-session': { max: 1000, window: 1 },
@@ -331,6 +345,8 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
       },
     },
     plugins: [
+      // Bound registration writes must run before origin-rewriting plugins.
+      registrationProvisioningPlugin(registration),
       ...customOptions.plugins,
       wechatMobileLogin({
         appId: authEnv.AUTH_WECHAT_ID || '',
@@ -410,7 +426,8 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
         ? [
             magicLink({
               expiresIn: MAGIC_LINK_EXPIRES_IN,
-              sendMagicLink: async ({ email, url }) => {
+              sendMagicLink: async ({ email, url, token }, context) => {
+                await registration.bindMagicToken(token, context);
                 const template = getMagicLinkEmailTemplate({
                   expiresInSeconds: MAGIC_LINK_EXPIRES_IN,
                   url,
@@ -428,5 +445,7 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
     ],
   } satisfies BetterAuthOptions;
 
-  return betterAuth(options);
+  const auth = betterAuth(options);
+  auth.handler = registrationHttpHandler(auth.handler);
+  return auth;
 }

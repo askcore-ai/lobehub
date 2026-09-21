@@ -2,19 +2,13 @@ import { buildAskCoreAssertion } from '@/server/services/askcoreAssertion';
 
 const SCHOOL_SUBJECT_PATTERN = /^[\w.-]{8,40}$/;
 const IDENTITY_LINK_VERSION_PATTERN = /^[a-f\d]{64}$/;
-const CACHE_TTL_MS = 25_000;
 
 export type SchoolIdentity = {
   identityLinkVersion: string;
   schoolSubject: string;
 };
 
-type CacheEntry = {
-  expiresAt: number;
-  value: Promise<SchoolIdentity>;
-};
-
-const identityCache = new Map<string, CacheEntry>();
+const identityCache = new Map<string, Promise<SchoolIdentity>>();
 
 const resolveUncached = async ({
   email,
@@ -59,18 +53,16 @@ const resolveUncached = async ({
 
 export const resolveSchoolIdentity = async (
   account: { email?: null | string; userId: string },
-  nowMs = Date.now(),
 ) => {
   const existing = identityCache.get(account.userId);
-  if (existing && existing.expiresAt > nowMs) return existing.value;
+  if (existing) return existing;
 
   const value = resolveUncached(account);
-  identityCache.set(account.userId, { expiresAt: nowMs + CACHE_TTL_MS, value });
+  identityCache.set(account.userId, value);
   try {
     return await value;
-  } catch (error) {
-    if (identityCache.get(account.userId)?.value === value) identityCache.delete(account.userId);
-    throw error;
+  } finally {
+    if (identityCache.get(account.userId) === value) identityCache.delete(account.userId);
   }
 };
 

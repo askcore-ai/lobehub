@@ -3,6 +3,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { prepareRegistrationForSignup } from '@/business/client/AskCoreWorkbench/api';
+import { ASKCORE_REGISTRATION_PATH } from '@/business/client/AskCoreWorkbench/config';
+
 import type { BusinessSignupFomData } from '@/business/client/hooks/useBusinessSignup';
 import { useBusinessSignup } from '@/business/client/hooks/useBusinessSignup';
 import { message } from '@/components/AntdStaticMethods';
@@ -62,9 +65,14 @@ export const useSignUp = () => {
         return;
       }
 
-      const callbackUrl = searchParams.get('callbackUrl') || '/';
+      const destination = searchParams.get('callbackUrl') || '/';
+      const { handle } = await prepareRegistrationForSignup(destination);
+      const callbackUrl = ASKCORE_REGISTRATION_PATH;
       const username = values.email.split('@')[0];
-      const fetchOptions = await getFetchOptions();
+      const businessOptions: AuthFetchOptions | undefined = await getFetchOptions();
+      const headers = new Headers(businessOptions?.headers);
+      headers.set('x-askcore-registration-intent', handle);
+      const fetchOptions = { ...businessOptions, headers };
 
       const submit = async (nextFetchOptions?: AuthFetchOptions) =>
         signUp.email({

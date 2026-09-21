@@ -59,11 +59,48 @@ describe('Better Auth proxy behavior', () => {
     expect(getSession).not.toHaveBeenCalled();
 
     const protectedResponse = await middleware(
-      new NextRequest('https://askcore.cn/api/askcore/school/actor-observation?readiness=1&extra=1', {
-        method: 'POST',
-      }),
+      new NextRequest(
+        'https://askcore.cn/api/askcore/school/actor-observation?readiness=1&extra=1',
+        {
+          method: 'POST',
+        },
+      ),
     );
     expect(protectedResponse.status).toBe(401);
+    expect(getSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('admits anonymous registration prepare before an account or session exists', async () => {
+    getSession.mockResolvedValue(null);
+    const url = 'https://askcore.cn/api/askcore/registration/prepare';
+    expect(unstable_doesMiddlewareMatch({ config: proxyConfig, nextConfig: {}, url })).toBe(true);
+
+    const response = await defineConfig().middleware(new NextRequest(url, { method: 'POST' }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+    expect(getSession).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['GET', 'prepare'],
+    ['HEAD', 'prepare'],
+    ['PUT', 'prepare'],
+    ['OPTIONS', 'prepare'],
+    ['POST', 'prepare?extra=1'],
+    ['POST', 'prepare/'],
+    ['POST', 'prepare/child'],
+    ['POST', 'prepare-child'],
+    ['GET', 'status'],
+    ['POST', 'recover'],
+  ])('keeps anonymous %s registration/%s protected', async (method, action) => {
+    getSession.mockResolvedValue(null);
+    const response = await defineConfig().middleware(
+      new NextRequest(`https://askcore.cn/api/askcore/registration/${action}`, { method }),
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ detail: 'Authentication required' });
     expect(getSession).toHaveBeenCalledTimes(1);
   });
 
@@ -140,9 +177,7 @@ describe('Better Auth proxy behavior', () => {
     getSession.mockResolvedValue(null);
     const { middleware } = defineConfig();
 
-    const response = await middleware(
-      new NextRequest('https://askcore.cn/wechat-rebind?hl=zh-CN'),
-    );
+    const response = await middleware(new NextRequest('https://askcore.cn/wechat-rebind?hl=zh-CN'));
 
     expect(response.status).toBe(302);
     const location = new URL(response.headers.get('location')!);

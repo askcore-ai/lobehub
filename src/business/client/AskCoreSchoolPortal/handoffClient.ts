@@ -30,7 +30,9 @@ export class SchoolHandoffError extends Error {
 let activePreparation:
   | {
       controller: AbortController;
+      generationHash: string | null;
       promise: Promise<'navigating'>;
+      requestController?: AbortController;
     }
   | undefined;
 let activeSessionAlignment:
@@ -40,8 +42,12 @@ let activeSessionAlignment:
       source: SchoolSourceAudience;
     }
   | undefined;
+// Read after async barriers rather than retaining the caller's initial narrowing.
+const currentPreparation = () => activePreparation;
+
 let sessionEpoch = 0;
 let sessionGenerationHash: string | null = null;
+let lastStableGenerationHash: string | null = null;
 let sessionState: SchoolHandoffSessionState | 'initializing' = 'initializing';
 let sessionChannel: BroadcastChannel | undefined;
 const sessionWaiters = new Set<() => void>();
@@ -51,6 +57,7 @@ const abortActivePreparation = () => {
   const previous = activePreparation;
   activePreparation = undefined;
   previous?.controller.abort();
+  previous?.requestController?.abort();
   const previousAlignment = activeSessionAlignment;
   activeSessionAlignment = undefined;
   previousAlignment?.controller.abort();
@@ -76,7 +83,21 @@ export const setSchoolHandoffSessionState = (
   const wasInitializing = sessionState === 'initializing';
   sessionState = nextState;
   sessionGenerationHash = nextGenerationHash;
-  if (!wasInitializing) abortActivePreparation();
+  if (nextGenerationHash) lastStableGenerationHash = nextGenerationHash;
+  if (nextState === 'signed-out') lastStableGenerationHash = null;
+  sessionEpoch += 1;
+  if (activePreparation) {
+    if (
+      nextState === 'signed-out' ||
+      (nextGenerationHash &&
+        activePreparation.generationHash &&
+        nextGenerationHash !== activePreparation.generationHash)
+    ) {
+      activePreparation.controller.abort();
+    }
+    activePreparation.requestController?.abort();
+  }
+  if (!wasInitializing) activeSessionAlignment?.controller.abort();
   resolveSessionWaiters();
 };
 
@@ -93,6 +114,8 @@ const ensureSessionChannel = () => {
     ) {
       return;
     }
+    // Cross-tab changes invalidate the intent even if local state is already unstable.
+    abortActivePreparation();
     setSchoolHandoffSessionState(
       message.sessionState === 'signed-out' ? 'signed-out' : 'unstable',
       null,
@@ -100,28 +123,36 @@ const ensureSessionChannel = () => {
   });
 };
 
-const waitForInitializedSession = async (signal: AbortSignal) => {
-  if (sessionState !== 'initializing') return;
-  await new Promise<void>((resolve, reject) => {
-    const timeout = window.setTimeout(() => {
-      sessionWaiters.delete(onReady);
-      signal.removeEventListener('abort', onAbort);
-      reject(new SchoolHandoffError(503));
-    }, SESSION_INITIALIZATION_TIMEOUT_MS);
-    const onAbort = () => {
-      window.clearTimeout(timeout);
-      sessionWaiters.delete(onReady);
-      reject(new DOMException('Aborted', 'AbortError'));
-    };
-    const onReady = () => {
-      window.clearTimeout(timeout);
-      signal.removeEventListener('abort', onAbort);
-      resolve();
-    };
-    sessionWaiters.add(onReady);
-    signal.addEventListener('abort', onAbort, { once: true });
-  });
+const waitForStableSession = async (signal: AbortSignal) => {
+  while (sessionState === 'initializing' || sessionState === 'unstable') {
+    if (signal.aborted) throw signal.reason;
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        sessionWaiters.delete(onReady);
+        reject(signal.reason);
+      };
+      const onReady = () => {
+        signal.removeEventListener('abort', onAbort);
+        resolve();
+      };
+      sessionWaiters.add(onReady);
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+  }
+  if (signal.aborted) throw signal.reason;
 };
+
+// Fetch/body completion can race cancellation; never wait for a cancelled transport.
+const withAbort = <T>(promise: Promise<T>, signal: AbortSignal): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+    if (signal.aborted) {
+      signal.removeEventListener('abort', onAbort);
+      reject(signal.reason);
+    }
+  });
 
 const isPreparedSourceHandoff = (
   value: unknown,
@@ -169,6 +200,7 @@ export const requestSourceHandoff = async (
 export const submitSourceHandoff = (
   source: SchoolSourceAudience,
   handoff: PreparedSourceHandoff,
+  resume = false,
 ) => {
   if (handoff.action !== SOURCE_ACTIONS[source] || !document.body) {
     throw new SchoolHandoffError(502);
@@ -183,6 +215,13 @@ export const submitSourceHandoff = (
   grant.type = 'hidden';
   grant.value = handoff.grant;
   form.append(grant);
+  if (source === 'moodle' && resume) {
+    const continuation = document.createElement('input');
+    continuation.name = 'resume';
+    continuation.type = 'hidden';
+    continuation.value = '1';
+    form.append(continuation);
+  }
   document.body.append(form);
   try {
     form.submit();
@@ -196,33 +235,79 @@ export const cancelSchoolSourceHandoff = () => {
   abortActivePreparation();
 };
 
-export const enterSchoolSource = (source: SchoolSourceAudience): Promise<'navigating'> => {
+export const enterSchoolSource = (
+  source: SchoolSourceAudience,
+  resume = false,
+): Promise<'navigating'> => {
   ensureSessionChannel();
   if (activePreparation) return activePreparation.promise;
   if (activeSessionAlignment) abortActivePreparation();
 
   const controller = new AbortController();
+  const timer = window.setTimeout(
+    () => controller.abort(new DOMException('School handoff timed out', 'TimeoutError')),
+    SESSION_INITIALIZATION_TIMEOUT_MS,
+  );
+  let generationHash = lastStableGenerationHash;
   const promise = (async () => {
-    await waitForInitializedSession(controller.signal);
-    if (sessionState !== 'stable' || !sessionGenerationHash) {
-      throw new SchoolHandoffError(401);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      // A refetch can begin in the microtask after the barrier resolved.
+      do {
+        await waitForStableSession(controller.signal);
+      } while (sessionState === 'initializing' || sessionState === 'unstable');
+      if (sessionState !== 'stable' || !sessionGenerationHash) {
+        throw new SchoolHandoffError(401);
+      }
+      if (generationHash && generationHash !== sessionGenerationHash) {
+        throw new DOMException('Aborted', 'AbortError');
+      }
+      generationHash = sessionGenerationHash;
+      const preparation = currentPreparation();
+      if (preparation?.controller === controller) preparation.generationHash = generationHash;
+      const requestEpoch = sessionEpoch;
+      const requestController = new AbortController();
+      if (preparation?.controller === controller) preparation.requestController = requestController;
+      const onAbort = () => requestController.abort(controller.signal.reason);
+      controller.signal.addEventListener('abort', onAbort, { once: true });
+      try {
+        const handoff = await withAbort(
+          requestSourceHandoff(source, requestController.signal),
+          requestController.signal,
+        );
+        if (controller.signal.aborted) throw controller.signal.reason;
+        if (requestController.signal.aborted || requestEpoch !== sessionEpoch) {
+          continue;
+        }
+        submitSourceHandoff(source, handoff, resume);
+        return 'navigating' as const;
+      } catch (error) {
+        if (controller.signal.aborted) throw controller.signal.reason;
+        if (!requestController.signal.aborted) throw error;
+      } finally {
+        controller.signal.removeEventListener('abort', onAbort);
+        if (preparation?.requestController === requestController) {
+          preparation.requestController = undefined;
+        }
+      }
     }
-    const requestEpoch = sessionEpoch;
-    const handoff = await requestSourceHandoff(source, controller.signal);
-    if (
-      controller.signal.aborted ||
-      requestEpoch !== sessionEpoch ||
-      sessionState !== 'stable'
-    ) {
-      throw new DOMException('Aborted', 'AbortError');
-    }
-    submitSourceHandoff(source, handoff);
-    return 'navigating' as const;
-  })().finally(() => {
-    if (activePreparation?.promise === promise) activePreparation = undefined;
-  });
+    throw new SchoolHandoffError(503);
+  })()
+    .catch((error: unknown) => {
+      if (
+        controller.signal.aborted &&
+        controller.signal.reason instanceof DOMException &&
+        controller.signal.reason.name === 'TimeoutError'
+      ) {
+        throw new SchoolHandoffError(503);
+      }
+      throw error;
+    })
+    .finally(() => {
+      window.clearTimeout(timer);
+      if (activePreparation?.promise === promise) activePreparation = undefined;
+    });
 
-  activePreparation = { controller, promise };
+  activePreparation = { controller, generationHash, promise };
   return promise;
 };
 
@@ -241,7 +326,7 @@ export const alignSchoolSourceSession = (source: SchoolSourceAudience): Promise<
     SESSION_INITIALIZATION_TIMEOUT_MS,
   );
   const promise = (async () => {
-    await waitForInitializedSession(controller.signal);
+    await waitForStableSession(controller.signal);
     if (sessionState !== 'stable' || !sessionGenerationHash) {
       throw new SchoolHandoffError(401);
     }

@@ -5,6 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { classifyWechatClient, useSignIn } from './useSignIn';
 
 // ── hoisted mocks ──────────────────────────────────────────────
+const mockPrepareRegistration = vi.hoisted(() => vi.fn());
+const registrationConfig = vi.hoisted(() => ({ magic: false }));
+vi.mock('@/business/client/AskCoreWorkbench/api', () => ({ prepareRegistrationForSignin: mockPrepareRegistration }));
+
 const mockPush = vi.hoisted(() => vi.fn());
 const mockSearchParamsGet = vi.hoisted(() => vi.fn().mockReturnValue(null));
 const mockWechatMobileEnabled = vi.hoisted(() => ({ value: true }));
@@ -74,7 +78,7 @@ vi.mock('../_layout/AuthServerConfigProvider', () => ({
     selector({
       serverConfig: {
         disableEmailPassword: false,
-        enableMagicLink: false,
+        enableMagicLink: registrationConfig.magic,
         enableWechatMobileLogin: mockWechatMobileEnabled.value,
         oAuthSSOProviders: ['google', 'github'],
       },
@@ -130,6 +134,8 @@ describe('classifyWechatClient', () => {
 describe('useSignIn', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    registrationConfig.magic = false;
+    mockPrepareRegistration.mockResolvedValue({ handle: 'b'.repeat(64), expiresAt: '2099-01-01T00:00:00.000Z' });
     mockLocalStorage.clear();
     sessionStorage.clear();
     mockWechatMobileEnabled.value = true;
@@ -140,6 +146,42 @@ describe('useSignIn', () => {
     vi.restoreAllMocks();
   });
 
+  it('carries the prepared OAuth handle in state and keeps callback URLs secret-free', async () => {
+    mockSignInSocial.mockResolvedValue({ error: null });
+    const { result } = renderHook(() => useSignIn());
+    await act(async () => { await result.current.handleSocialSignIn('google'); });
+    expect(mockSignInSocial).toHaveBeenCalledWith(expect.objectContaining({
+      additionalData: { registrationIntent: 'b'.repeat(64) },
+      callbackURL: '/', newUserCallbackURL: '/askcore/workbench?protocol=registration',
+    }));
+  });
+  it('continues OAuth without context when preparation reports a temporary failure', async () => {
+    mockPrepareRegistration.mockResolvedValueOnce(undefined);
+    mockSignInSocial.mockResolvedValue({ error: null });
+    const { result } = renderHook(() => useSignIn());
+    await act(async () => { await result.current.handleSocialSignIn('google'); });
+    const input = mockSignInSocial.mock.calls[0][0];
+    expect(input.additionalData.registrationIntent).toBeUndefined();
+    expect(input.newUserCallbackURL).toBe('/askcore/workbench?protocol=registration');
+    expect(input.callbackURL).toBe('/');
+  });
+  it('does not continue OAuth after an explicit preparation security refusal', async () => {
+    mockPrepareRegistration.mockRejectedValueOnce(new Error('forbidden'));
+    const { result } = renderHook(() => useSignIn());
+    await act(async () => { await result.current.handleSocialSignIn('google'); });
+    expect(mockSignInSocial).not.toHaveBeenCalled();
+  });
+  it('sends the magic-link handle in a header while preserving existing-user continuation', async () => {
+    registrationConfig.magic = true;
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ exists: true, hasPassword: false }) });
+    mockSignInMagicLink.mockResolvedValue({ error: null });
+    const { result } = renderHook(() => useSignIn());
+    await act(async () => { await result.current.handleCheckUser({ email: 'synthetic@example.com' }); });
+    expect(mockSignInMagicLink).toHaveBeenCalledWith(expect.objectContaining({
+      callbackURL: '/', newUserCallbackURL: '/askcore/workbench?protocol=registration',
+      fetchOptions: { headers: { 'x-askcore-registration-intent': 'b'.repeat(64) } },
+    }));
+  });
   describe('initial state', () => {
     it('should return initial values', () => {
       const { result } = renderHook(() => useSignIn());
@@ -359,9 +401,11 @@ describe('useSignIn', () => {
       });
       expect(mockSignInSocial).not.toHaveBeenCalled();
       expect(mockSignInOauth2).not.toHaveBeenCalled();
+      expect(mockPrepareRegistration).not.toHaveBeenCalled();
     });
 
     it('keeps legacy WeChat QR login on mobile while the feature gate is disabled', async () => {
+      useMobileNavigator();
       mockWechatMobileEnabled.value = false;
       mockSignInOauth2.mockResolvedValue({
         url: 'https://open.weixin.qq.com/connect/qrconnect',
@@ -378,8 +422,13 @@ describe('useSignIn', () => {
         expect.anything(),
       );
       expect(mockSignInOauth2).toHaveBeenCalledWith(
-        expect.objectContaining({ providerId: 'wechat' }),
+        expect.objectContaining({
+          additionalData: { registrationIntent: 'b'.repeat(64) },
+          newUserCallbackURL: '/askcore/workbench?protocol=registration',
+          providerId: 'wechat',
+        }),
       );
+      expect(mockPrepareRegistration).toHaveBeenCalledWith('/');
     });
 
     it('keeps a malformed provider response retryable', async () => {

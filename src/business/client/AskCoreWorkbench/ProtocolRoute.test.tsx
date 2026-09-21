@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { AskCoreProtocolRoute, askCoreProtocolRouteMode } from './ProtocolRoute';
 
+vi.mock('./RegistrationProvisioningSurface', () => ({ RegistrationProvisioningSurface: () => <div>registration-surface</div> }));
+
 vi.mock('./ProtocolProcessingSurface', () => ({
   ProtocolProcessingSurface: ({ launchScope }: { launchScope: string }) => (
     <div>processing-surface:{launchScope}</div>
@@ -27,6 +29,10 @@ const renderRoute = (entry: string) =>
   );
 
 describe('AskCoreProtocolRoute', () => {
+  it('opens the registration callback without a bearer in its URL', () => {
+    renderRoute('/askcore/workbench?protocol=registration');
+    expect(screen.getByText('registration-surface')).toBeInTheDocument();
+  });
   it('binds the opaque per-tab launch scope to the processing surface', () => {
     const launchScope = '0123456789abcdef0123456789abcdef';
     renderRoute(`/askcore/workbench?protocol=processing&launch=${launchScope}`);

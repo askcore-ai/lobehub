@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next';
 
 import type { CheckUserResponseData } from '@/app/(backend)/api/auth/check-user/route';
 import type { ResolveUsernameResponseData } from '@/app/(backend)/api/auth/resolve-username/route';
+import { prepareRegistrationForSignin } from '@/business/client/AskCoreWorkbench/api';
+import { ASKCORE_REGISTRATION_PATH } from '@/business/client/AskCoreWorkbench/config';
 import { useBusinessSignin } from '@/business/client/hooks/useBusinessSignin';
 import { message } from '@/components/AntdStaticMethods';
 import { trackLoginOrSignupClicked } from '@/features/User/UserLoginOrSignup/trackLoginOrSignupClicked';
@@ -413,7 +415,11 @@ export const useSignIn = () => {
       if (!emailValue) return;
 
       const callbackUrl = searchParams.get('callbackUrl') || '/';
-      const { error } = await signIn.magicLink({ callbackURL: callbackUrl, email: emailValue });
+      const handle = (await prepareRegistrationForSignin(callbackUrl))?.handle;
+      const { error } = await signIn.magicLink({
+        callbackURL: callbackUrl, email: emailValue, newUserCallbackURL: ASKCORE_REGISTRATION_PATH,
+        fetchOptions: handle ? { headers: { 'x-askcore-registration-intent': handle } } : undefined,
+      });
       if (error) {
         message.error(error.message || t('betterAuth.signin.magicLinkError'));
         return;
@@ -579,17 +585,20 @@ export const useSignIn = () => {
         await prepareWechatMobileLogin();
         return;
       }
-      const additionalData = await getAdditionalData();
+      const handle = (await prepareRegistrationForSignin(callbackUrl))?.handle;
+      const additionalData = { ...(await getAdditionalData()), registrationIntent: handle };
       const signInWithAdditionalData = async () =>
         isBuiltinProvider(normalizedProvider)
           ? await signIn.social({
               additionalData,
               callbackURL: callbackUrl,
+              newUserCallbackURL: ASKCORE_REGISTRATION_PATH,
               provider: normalizedProvider,
             })
           : await signIn.oauth2({
               additionalData,
               callbackURL: callbackUrl,
+              newUserCallbackURL: ASKCORE_REGISTRATION_PATH,
               providerId: normalizedProvider,
             });
 
