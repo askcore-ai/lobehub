@@ -114,6 +114,7 @@ const prove = async (prepared: Awaited<ReturnType<typeof start>>) => {
   assert.deepEqual(await response.json(), { state: 'authorized' });
 };
 const originalFetch = globalThis.fetch;
+let providerUnionId = 'synthetic-unionid';
 
 try {
   // Minimal existing Better Auth tables; the P148 tables use the actual migration.
@@ -137,12 +138,42 @@ try {
   );
   await pool.query(migration);
   await pool.query(migration);
+  const identityMigration = await readFile(
+    new URL('../packages/database/migrations/0113_wechat_identity_unique.sql', import.meta.url),
+    'utf8',
+  );
+  await pool.query(`
+    INSERT INTO users (id, full_name, email, email_verified, created_at, updated_at)
+      VALUES ('fixture-a', 'Fixture A', 'a@example.invalid', false, now(), now()),
+             ('fixture-b', 'Fixture B', 'b@example.invalid', false, now(), now());
+    INSERT INTO accounts (id, account_id, provider_id, user_id, updated_at)
+      VALUES ('legacy-a', 'unreconciled-duplicate', 'wechat', 'fixture-a', now()),
+             ('legacy-b', 'unreconciled-duplicate', 'wechat', 'fixture-b', now());
+  `);
+  const beforeRepair = (await pool.query('SELECT * FROM accounts ORDER BY id')).rows;
+  await assert.rejects(pool.query(identityMigration), { code: '23505' });
+  assert.deepEqual((await pool.query('SELECT * FROM accounts ORDER BY id')).rows, beforeRepair);
+  // Explicit synthetic repair only; production repair belongs to the reviewed operator plan.
+  await pool.query("UPDATE accounts SET account_id='verified-distinct-b' WHERE id='legacy-b'");
+  await pool.query(identityMigration);
+  await pool.query(identityMigration);
+  const index = (await pool.query(`SELECT indisunique, indisvalid, pg_get_expr(indpred, indrelid) AS predicate
+    FROM pg_index WHERE indexrelid='accounts_wechat_identity_unique'::regclass`)).rows;
+  assert.deepEqual(index, [{ indisunique: true, indisvalid: true, predicate: "(provider_id = 'wechat'::text)" }]);
+  for (const owner of ['fixture-a', 'fixture-b']) {
+    await assert.rejects(pool.query(`INSERT INTO accounts (id, account_id, provider_id, user_id, updated_at)
+      VALUES ('rejected-duplicate', 'unreconciled-duplicate', 'wechat', $1, now())`, [owner]), { code: '23505' });
+  }
+  await pool.query(`INSERT INTO accounts (id, account_id, provider_id, user_id, updated_at)
+    VALUES ('other-a', 'unreconciled-duplicate', 'github', 'fixture-a', now()),
+           ('other-b', 'unreconciled-duplicate', 'github', 'fixture-b', now())`);
+  assert.equal((await pool.query('SELECT count(*)::int AS count FROM accounts')).rows[0].count, 4);
   globalThis.fetch = async (input) => {
     assert.equal(new URL(String(input)).origin, 'https://api.weixin.qq.com');
     return Response.json({
       openid: 'synthetic-openid',
       session_key: 'synthetic-key',
-      unionid: 'synthetic-unionid',
+      unionid: providerUnionId,
     });
   };
 
@@ -292,6 +323,50 @@ try {
   assert.equal((await action(manual, 'finish')).status, 410);
   assert.equal((await manualProof(manual.manualCode)).status, 404);
   assert.deepEqual(await authoritySnapshot(), authorityBefore);
+
+  // Force both independent login transactions past the missing-account lookup
+  // and into user insertion. PostgreSQL locks make this an observed race, not
+  // merely two requests that might happen to execute sequentially.
+  providerUnionId = 'synthetic-concurrent-new-union';
+  const beforeRace = (await pool.query('SELECT count(*)::int AS count FROM users')).rows[0].count;
+  await pool.query(`CREATE FUNCTION hold_fixture_user_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN PERFORM pg_advisory_xact_lock(148113); RETURN NEW; END $$;
+    CREATE TRIGGER hold_fixture_user_insert BEFORE INSERT ON users
+      FOR EACH ROW EXECUTE FUNCTION hold_fixture_user_insert();`);
+  const blocker = await pool.connect();
+  await blocker.query('SELECT pg_advisory_lock(148113)');
+  const raceStarts = await Promise.all([start(), start()]);
+  const confirmations = Promise.allSettled(raceStarts.map(prove));
+  let waiters = 0;
+  try {
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      waiters = (await pool.query(`SELECT count(*)::int AS count FROM pg_locks
+        WHERE locktype='advisory' AND objid=148113 AND NOT granted`)).rows[0].count;
+      if (waiters === 2) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  } finally {
+    await blocker.query('SELECT pg_advisory_unlock(148113)');
+    blocker.release();
+  }
+  const outcomes = await confirmations;
+  assert.equal(waiters, 2, 'both first-login transactions must overlap at insertion');
+  assert.ok(outcomes.every((outcome) => outcome.status === 'fulfilled'), JSON.stringify(outcomes));
+  await pool.query('DROP TRIGGER hold_fixture_user_insert ON users; DROP FUNCTION hold_fixture_user_insert();');
+  const owner = (await pool.query("SELECT user_id FROM accounts WHERE provider_id='wechat' AND account_id=$1", [providerUnionId])).rows;
+  assert.equal(owner.length, 1);
+  assert.equal((await pool.query('SELECT count(*)::int AS count FROM users')).rows[0].count, beforeRace + 1);
+  assert.equal((await pool.query(`SELECT count(*)::int AS count FROM users u
+    WHERE NOT EXISTS (SELECT 1 FROM accounts a WHERE a.user_id=u.id)`)).rows[0].count, 0);
+  for (const preparedRace of raceStarts) {
+    const consumed = await request('/wechat-mobile/consume', {
+      confirmAccountSwitch: false, transactionId: preparedRace.transactionId,
+    }, preparedRace.cookie, preparedRace.tabBinding);
+    assert.equal(consumed.status, 200);
+    const observedSession = await request('/get-session', undefined, cookieHeader(consumed));
+    assert.equal((await observedSession.json()).user.id, owner[0].user_id);
+  }
   process.stdout.write('P148_WECHAT_POSTGRES_OK\n');
 } finally {
   globalThis.fetch = originalFetch;
