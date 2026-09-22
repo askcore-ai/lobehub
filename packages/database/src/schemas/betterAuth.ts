@@ -1,4 +1,4 @@
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import {
   boolean,
   index,
@@ -83,7 +83,12 @@ export const account = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
   },
-  (table) => [index('account_userId_idx').on(table.userId)],
+  (table) => [
+    index('account_userId_idx').on(table.userId),
+    uniqueIndex('accounts_wechat_identity_unique')
+      .on(table.providerId, table.accountId)
+      .where(sql`${table.providerId} = 'wechat'`),
+  ],
 );
 
 export const wechatMobileLoginTransaction = pgTable(
