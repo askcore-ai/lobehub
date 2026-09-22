@@ -1,6 +1,6 @@
 import { Form } from 'antd';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import type { CheckUserResponseData } from '@/app/(backend)/api/auth/check-user/route';
@@ -144,6 +144,14 @@ export const useSignIn = () => {
   });
   const [wechatOpenTarget, setWechatOpenTarget] = useState<null | string>(null);
   const [wechatPollAfterMs, setWechatPollAfterMs] = useState(1200);
+  const wechatAttempt = useRef(0);
+  const wechatPollInFlight = useRef<number | null>(null);
+  const currentWechatTransactionId =
+    'transactionId' in wechatMobileLogin
+      ? wechatMobileLogin.transactionId
+      : wechatMobileLogin.phase === 'failed'
+        ? wechatMobileLogin.retry?.transactionId
+        : undefined;
   const [lastAuthProvider] = useState(() => {
     try {
       return localStorage.getItem(LAST_AUTH_PROVIDER_KEY);
@@ -159,6 +167,8 @@ export const useSignIn = () => {
     const emailParam = searchParams.get('email');
     if (emailParam) form.setFieldValue('email', emailParam);
   }, [searchParams, form]);
+
+  useEffect(() => () => { wechatAttempt.current += 1; }, []);
 
   const clearWechatTransaction = (transactionId?: string) => {
     if (transactionId) {
@@ -224,12 +234,19 @@ export const useSignIn = () => {
     return { data: payload as T, error: null };
   };
 
-  const consumeWechatTransaction = async (transactionId: string, confirmAccountSwitch: boolean) => {
+  const consumeWechatTransaction = async (
+    transactionId: string,
+    confirmAccountSwitch: boolean,
+    attempt = wechatAttempt.current,
+  ) => {
+    if (attempt !== wechatAttempt.current) return;
     const result = await wechatRequest<{ redirectTo: string }>('/api/auth/wechat-mobile/consume', {
       body: { confirmAccountSwitch, transactionId },
       transactionId,
     });
+    if (attempt !== wechatAttempt.current) return;
     if (result.data) {
+      wechatAttempt.current += 1;
       clearWechatTransaction(transactionId);
       setWechatMobileLogin({ phase: 'idle' });
       router.push(result.data.redirectTo);
@@ -256,41 +273,52 @@ export const useSignIn = () => {
     });
   };
 
-  const pollWechatTransaction = async (transactionId: string, expiresAt: string) => {
-    const result = await wechatRequest<{ state: string }>(
-      `/api/auth/wechat-mobile/status?transactionId=${encodeURIComponent(transactionId)}`,
-      { method: 'GET', transactionId },
-    );
-    if (result.data?.state === 'authorized' || result.data?.state === 'consumed') {
-      await consumeWechatTransaction(transactionId, false);
-      return;
-    }
-    if (result.data?.state === 'failed' || result.data?.state === 'expired') {
-      clearWechatTransaction(transactionId);
-      setWechatMobileLogin({
-        message: `WECHAT_TRANSACTION_${result.data.state.toUpperCase()}`,
-        phase: 'failed',
-        retryable: result.data.state === 'expired',
-      });
-      return;
-    }
-    if (result.error?.status === 410 || result.error?.status === 401) {
-      clearWechatTransaction(transactionId);
-      setWechatMobileLogin({
-        message: result.error.code,
-        phase: 'failed',
-        retryable: result.error.status === 410,
-      });
-      return;
-    }
-    if (result.error || !result.data || result.data.state !== 'pending') {
-      const retryable = isRetryableWechatStatus(result.error?.status);
-      setWechatMobileLogin({
-        message: result.error?.code || 'WECHAT_MALFORMED_RESPONSE',
-        phase: 'failed',
-        ...(retryable ? { retry: { expiresAt, kind: 'poll' as const, transactionId } } : {}),
-        retryable,
-      });
+  const pollWechatTransaction = async (
+    transactionId: string,
+    expiresAt: string,
+    attempt: number,
+  ) => {
+    if (attempt !== wechatAttempt.current || wechatPollInFlight.current === attempt) return;
+    wechatPollInFlight.current = attempt;
+    try {
+      const result = await wechatRequest<{ state: string }>(
+        `/api/auth/wechat-mobile/status?transactionId=${encodeURIComponent(transactionId)}`,
+        { method: 'GET', transactionId },
+      );
+      if (attempt !== wechatAttempt.current) return;
+      if (result.data?.state === 'authorized' || result.data?.state === 'consumed') {
+        await consumeWechatTransaction(transactionId, false, attempt);
+        return;
+      }
+      if (result.data?.state === 'failed' || result.data?.state === 'expired') {
+        clearWechatTransaction(transactionId);
+        setWechatMobileLogin({
+          message: `WECHAT_TRANSACTION_${result.data.state.toUpperCase()}`,
+          phase: 'failed',
+          retryable: result.data.state === 'expired',
+        });
+        return;
+      }
+      if (result.error?.status === 410 || result.error?.status === 401) {
+        clearWechatTransaction(transactionId);
+        setWechatMobileLogin({
+          message: result.error.code,
+          phase: 'failed',
+          retryable: result.error.status === 410,
+        });
+        return;
+      }
+      if (result.error || !result.data || result.data.state !== 'pending') {
+        const retryable = isRetryableWechatStatus(result.error?.status);
+        setWechatMobileLogin({
+          message: result.error?.code || 'WECHAT_MALFORMED_RESPONSE',
+          phase: 'failed',
+          ...(retryable ? { retry: { expiresAt, kind: 'poll' as const, transactionId } } : {}),
+          retryable,
+        });
+      }
+    } finally {
+      if (wechatPollInFlight.current === attempt) wechatPollInFlight.current = null;
     }
   };
 
@@ -298,7 +326,8 @@ export const useSignIn = () => {
     if (wechatMobileLogin.phase !== 'waiting') return;
     const transactionId = wechatMobileLogin.transactionId;
     const expiresAt = wechatMobileLogin.expiresAt;
-    const poll = () => void pollWechatTransaction(transactionId, expiresAt);
+    const attempt = wechatAttempt.current;
+    const poll = () => void pollWechatTransaction(transactionId, expiresAt, attempt);
     const interval = window.setInterval(poll, wechatPollAfterMs);
     const onFocus = () => poll();
     const onVisibility = () => {
@@ -314,10 +343,13 @@ export const useSignIn = () => {
   }, [wechatMobileLogin, wechatPollAfterMs]);
 
   const prepareWechatMobileLogin = async () => {
+    const attempt = ++wechatAttempt.current;
+    clearWechatTransaction(currentWechatTransactionId);
     const callbackURL = searchParams.get('callbackUrl') || '/';
     const result = await wechatRequest<WechatMobileStartResponse>('/api/auth/wechat-mobile/start', {
       body: { callbackURL },
     });
+    if (attempt !== wechatAttempt.current) return;
     if (!isWechatMobileStartResponse(result.data)) {
       setWechatMobileLogin({
         message: result.error?.code || 'WECHAT_MALFORMED_RESPONSE',
@@ -366,6 +398,7 @@ export const useSignIn = () => {
       await pollWechatTransaction(
         wechatMobileLogin.retry.transactionId,
         wechatMobileLogin.retry.expiresAt,
+        wechatAttempt.current,
       );
       return;
     }
@@ -382,21 +415,17 @@ export const useSignIn = () => {
   };
 
   const cancelWechatMobile = async () => {
-    if (
-      wechatMobileLogin.phase !== 'prepared' &&
-      wechatMobileLogin.phase !== 'waiting' &&
-      wechatMobileLogin.phase !== 'account-switch'
-    ) {
-      setWechatMobileLogin({ phase: 'idle' });
-      return;
-    }
-    const id = wechatMobileLogin.transactionId;
-    await wechatRequest('/api/auth/wechat-mobile/cancel', {
+    wechatAttempt.current += 1;
+    const id = currentWechatTransactionId;
+    // Capture the tab proof before clearing it; a late cancel response must
+    // not reset a replacement transaction's UI. Server CAS owns any session race.
+    const cancellation = id ? wechatRequest('/api/auth/wechat-mobile/cancel', {
       body: { transactionId: id },
       transactionId: id,
-    });
+    }) : undefined;
     clearWechatTransaction(id);
     setWechatMobileLogin({ phase: 'idle' });
+    await cancellation;
   };
 
   const confirmWechatAccountSwitch = async () => {
