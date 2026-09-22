@@ -39,7 +39,9 @@ describe('Release B website WeChat provider', () => {
 
   it.each([undefined, '', ' ', 123, [], {}])('rejects missing or malformed UnionID %j', async (value) => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json(profile({ unionid: value })));
-    expect(await provider().getUserInfo!(tokens(value))).toBeNull();
+    const input = tokens();
+    input.raw.unionid = value;
+    expect(await provider().getUserInfo!(input)).toBeNull();
   });
 
   it.each([
@@ -65,11 +67,26 @@ describe('Release B website WeChat provider', () => {
     const input = { accessToken: 'synthetic-access', raw: { openid: 'synthetic-website-openid' } };
     expect((await provider().getUserInfo!(input))?.id).toBe(unionid);
   });
+
+  it.each([Response.json(null), new Response('invalid-json'), Response.json({}, { status: 503 })])('rejects unusable userinfo responses', async (response) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response);
+    expect(await provider().getUserInfo!(tokens())).toBeNull();
+  });
+
+  it('redacts token errors instead of surfacing provider messages or request URLs', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(Response.json({
+      errcode: 40029, errmsg: 'synthetic-private-token-and-url',
+    })).mockRejectedValueOnce(new Error('synthetic-private-token-and-url'));
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await expect(provider().getToken!({ code: 'synthetic-code', redirectURI: `${origin}/callback` })).rejects.toThrow('wechat_token_exchange_failed');
+    }
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
 });
 
 const cookies = (response: Response) => response.headers.getSetCookie().map((cookie) => cookie.split(';')[0]).join('; ');
 
-function fixture() {
+function fixture(identity: { unionid: unknown } = { unionid }) {
   const database: Record<string, Record<string, unknown>[]> = {
     account: [], session: [], user: [], verification: [],
     wechatMobileLoginTransaction: [], wechatRebindClaim: [],
@@ -96,11 +113,11 @@ function fixture() {
     const url = new URL(String(input));
     expect(url.origin).toBe('https://api.weixin.qq.com');
     if (url.pathname === '/sns/oauth2/access_token') return Response.json({
-      access_token: 'synthetic-access', openid: 'synthetic-website-openid', unionid,
+      access_token: 'synthetic-access', openid: 'synthetic-website-openid', unionid: identity.unionid,
     });
-    if (url.pathname === '/sns/userinfo') return Response.json(profile());
+    if (url.pathname === '/sns/userinfo') return Response.json(profile({ unionid: identity.unionid }));
     if (url.pathname === '/sns/jscode2session') return Response.json({
-      openid: 'synthetic-mini-openid', session_key: 'synthetic-session-key', unionid,
+      openid: 'synthetic-mini-openid', session_key: 'synthetic-session-key', unionid: identity.unionid,
     });
     throw new Error('unexpected provider path');
   });
@@ -160,5 +177,32 @@ describe('canonical identity through both real Better Auth handlers', () => {
     expect(f.database.user).toHaveLength(1);
     expect(f.database.account).toEqual([]);
     expect(f.database.session).toEqual([]);
+  });
+
+  it('issues no desktop account or session when both provider responses omit UnionID', async () => {
+    const f = fixture({ unionid: undefined });
+    const response = await f.desktop();
+    expect(response.headers.get('location')).toContain('error=');
+    expect(f.database.user).toEqual([]);
+    expect(f.database.account).toEqual([]);
+    expect(f.database.session).toEqual([]);
+  });
+
+  it('preserves the historical canonical owner even when a different user has the new synthetic email', async () => {
+    const f = fixture();
+    const metadata = { createdAt: new Date(), emailVerified: true, name: 'Existing', updatedAt: new Date() };
+    f.database.user.push(
+      { ...metadata, email: 'historical@example.com', id: 'canonical-owner' },
+      { ...metadata, email, id: 'unrelated-owner' },
+    );
+    f.database.account.push({
+      accountId: unionid, createdAt: new Date(), id: 'canonical-account',
+      providerId: 'wechat', updatedAt: new Date(), userId: 'canonical-owner',
+    });
+    const response = await f.desktop();
+    const session = await (await f.request('/get-session', undefined, cookies(response))).json();
+    expect(session?.user?.id).toBe('canonical-owner');
+    expect(f.database.user).toHaveLength(2);
+    expect(f.database.account).toHaveLength(1);
   });
 });

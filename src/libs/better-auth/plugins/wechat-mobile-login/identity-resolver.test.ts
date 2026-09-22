@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { resolveCanonicalWechatUser, WechatIdentityConflictError } from './identity-resolver';
+import { canonicalWechatIdentity, resolveCanonicalWechatUser, WechatIdentityConflictError } from './identity-resolver';
 
 describe('canonical WeChat identity resolver', () => {
+  it.each([undefined, null, '', ' ', ' padded ', 123, {}, []])('rejects untyped or empty canonical identity %j', (value) => {
+    expect(() => canonicalWechatIdentity(value)).toThrow('missing_unionid');
+  });
+
   it('resolves only providerId=wechat/accountId=UnionID', async () => {
     const adapter = {
       createOAuthUser: vi.fn(),

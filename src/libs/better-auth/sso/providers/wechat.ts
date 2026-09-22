@@ -1,4 +1,5 @@
 import { authEnv } from '@/envs/auth';
+import { canonicalWechatIdentity } from '@/libs/better-auth/plugins/wechat-mobile-login/identity-resolver';
 
 import { type GenericProviderDefinition } from '../types';
 
@@ -50,15 +51,18 @@ const provider: GenericProviderDefinition<{
         tokenUrl.searchParams.set('code', code);
         tokenUrl.searchParams.set('grant_type', 'authorization_code');
 
-        const response = await fetch(tokenUrl, { cache: 'no-store' });
-        const data = (await response.json()) as WeChatTokenResponse;
-
-        if (!response.ok || data.errcode) {
-          throw new Error(data.errmsg ?? 'Failed to fetch WeChat OAuth token');
+        let response: Response;
+        let data: WeChatTokenResponse;
+        try {
+          response = await fetch(tokenUrl, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+          data = (await response.json()) as WeChatTokenResponse;
+        } catch {
+          throw new Error('wechat_token_exchange_failed');
         }
-
-        if (!data.access_token || !data.openid) {
-          throw new Error('WeChat token response is missing required fields');
+        if (!response.ok || !data || data.errcode ||
+            typeof data.access_token !== 'string' || !data.access_token.trim() ||
+            typeof data.openid !== 'string' || !data.openid.trim()) {
+          throw new Error('wechat_token_exchange_failed');
         }
 
         return {
@@ -67,7 +71,7 @@ const provider: GenericProviderDefinition<{
             ? new Date(Date.now() + data.expires_in * 1000)
             : undefined,
           expiresIn: data.expires_in,
-          raw: data,
+          raw: { openid: data.openid, unionid: data.unionid },
           refreshToken: data.refresh_token,
           refreshTokenExpiresAt: undefined,
           scopes: parseWechatScopes(data.scope),
@@ -83,7 +87,7 @@ const provider: GenericProviderDefinition<{
         const openId = (tokens as { raw?: WeChatTokenResponse }).raw?.openid;
         const unionId = (tokens as { raw?: WeChatTokenResponse }).raw?.unionid;
 
-        if (!accessToken || !openId) {
+        if (typeof accessToken !== 'string' || !accessToken || typeof openId !== 'string' || !openId) {
           return null;
         }
 
@@ -92,28 +96,24 @@ const provider: GenericProviderDefinition<{
         url.searchParams.set('openid', openId);
         url.searchParams.set('lang', 'zh_CN');
 
-        const response = await fetch(url, { cache: 'no-store' });
-        if (!response.ok) {
+        try {
+          const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+          if (!response.ok) return null;
+          const profile = (await response.json()) as Record<string, unknown> | null;
+          if (!profile || profile.errcode || profile.openid !== openId) return null;
+          if (unionId !== undefined && profile.unionid !== undefined && unionId !== profile.unionid) return null;
+          const identity = canonicalWechatIdentity(unionId ?? profile.unionid);
+          return {
+            email: identity.email,
+            emailVerified: false,
+            id: identity.accountId,
+            image: typeof profile.headimgurl === 'string' ? profile.headimgurl : null,
+            name: typeof profile.nickname === 'string' && profile.nickname ? profile.nickname : '微信用户',
+          };
+        } catch {
+          // Generic OAuth owns the failure redirect; never log raw provider data.
           return null;
         }
-
-        const profile = (await response.json()) as {
-          headimgurl?: string;
-          nickname?: string;
-          unionid?: string;
-        };
-
-        const finalUnionId = unionId ?? profile.unionid ?? openId;
-        const syntheticEmail = `${finalUnionId}@wechat.lobehub`;
-
-        return {
-          email: syntheticEmail,
-          emailVerified: false,
-          id: finalUnionId,
-          image: profile.headimgurl,
-          name: profile.nickname ?? finalUnionId,
-          ...profile,
-        };
       },
 
       pkce: false,

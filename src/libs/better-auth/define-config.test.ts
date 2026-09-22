@@ -118,7 +118,7 @@ vi.mock('@/libs/better-auth/utils/config', () => ({
 }));
 
 vi.mock('@/libs/better-auth/utils/server', () => ({
-  parseSSOProviders: vi.fn(() => []),
+  parseSSOProviders: vi.fn(() => ['wechat', 'github']),
 }));
 
 vi.mock('@/server/services/email', () => ({
@@ -158,7 +158,7 @@ describe('defineConfig', () => {
           accountLinking: {
             allowDifferentEmails: true,
             enabled: true,
-            trustedProviders: [],
+            trustedProviders: ['github'],
           },
         },
       }),

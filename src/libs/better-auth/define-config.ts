@@ -160,7 +160,8 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
       accountLinking: {
         allowDifferentEmails: true,
         enabled: true,
-        trustedProviders: enabledSSOProviders,
+        // WeChat identity is proven by UnionID, never by synthetic-email equality.
+        trustedProviders: enabledSSOProviders.filter((provider) => provider !== 'wechat'),
       },
     },
 

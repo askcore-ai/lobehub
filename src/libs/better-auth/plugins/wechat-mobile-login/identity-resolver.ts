@@ -14,9 +14,12 @@ interface IdentityAdapter {
   findUserById: (userId: string) => Promise<null | { id: string }>;
 }
 
-const syntheticEmail = (unionid: string): string => {
+export const canonicalWechatIdentity = (unionid: unknown) => {
+  if (typeof unionid !== 'string' || !unionid || unionid.trim() !== unionid) {
+    throw new WechatIdentityConflictError('missing_unionid');
+  }
   const digest = createHash('sha256').update(unionid).digest('hex');
-  return `wechat-${digest}@identity.askcore.invalid`;
+  return { accountId: unionid, email: `wechat-${digest}@identity.askcore.invalid` };
 };
 
 export async function resolveCanonicalWechatUser(
@@ -24,9 +27,9 @@ export async function resolveCanonicalWechatUser(
   unionid: string,
   options: { allowCreate: boolean },
 ) {
-  if (!unionid) throw new WechatIdentityConflictError('missing_unionid');
+  const identity = canonicalWechatIdentity(unionid);
   const adapter = context.context.internalAdapter as IdentityAdapter;
-  const existing = await adapter.findAccountByProviderId(unionid, 'wechat');
+  const existing = await adapter.findAccountByProviderId(identity.accountId, 'wechat');
   if (existing) {
     const user = await adapter.findUserById(existing.userId);
     if (!user) throw new WechatIdentityConflictError('identity_owner_missing');
@@ -38,13 +41,13 @@ export async function resolveCanonicalWechatUser(
   try {
     const created = await adapter.createOAuthUser(
       {
-        email: syntheticEmail(unionid),
+        email: identity.email,
         emailVerified: true,
         image: null,
         name: '微信用户',
       },
       {
-        accountId: unionid,
+        accountId: identity.accountId,
         providerId: 'wechat',
       },
     );
@@ -52,7 +55,7 @@ export async function resolveCanonicalWechatUser(
   } catch (error) {
     let raced: Awaited<ReturnType<IdentityAdapter['findAccountByProviderId']>>;
     try {
-      raced = await adapter.findAccountByProviderId(unionid, 'wechat');
+      raced = await adapter.findAccountByProviderId(identity.accountId, 'wechat');
     } catch {
       throw error;
     }
