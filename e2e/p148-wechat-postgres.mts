@@ -116,6 +116,21 @@ const prove = async (prepared: Awaited<ReturnType<typeof start>>) => {
 const originalFetch = globalThis.fetch;
 let providerUnionId = 'synthetic-unionid';
 
+const withUserInsertBlocker = async (run: () => Promise<void>) => {
+  const blocker = await pool.connect();
+  try {
+    await blocker.query('SELECT pg_advisory_lock(148113)');
+    await run();
+  } finally {
+    try {
+      await blocker.query('SELECT pg_advisory_unlock(148113)');
+    } finally {
+      // Destroying the connection also releases its lock if the unlock failed.
+      blocker.release(true);
+    }
+  }
+};
+
 try {
   // Minimal existing Better Auth tables; the P148 tables use the actual migration.
   await pool.query(`
@@ -333,12 +348,17 @@ try {
     BEGIN PERFORM pg_advisory_xact_lock(148113); RETURN NEW; END $$;
     CREATE TRIGGER hold_fixture_user_insert BEFORE INSERT ON users
       FOR EACH ROW EXECUTE FUNCTION hold_fixture_user_insert();`);
-  const blocker = await pool.connect();
-  await blocker.query('SELECT pg_advisory_lock(148113)');
-  const raceStarts = await Promise.all([start(), start()]);
-  const confirmations = Promise.allSettled(raceStarts.map(prove));
+  await assert.rejects(withUserInsertBlocker(async () => {
+    throw new Error('fixture_start_failure');
+  }), /fixture_start_failure/);
+  assert.equal((await pool.query(`SELECT count(*)::int AS count FROM pg_locks
+    WHERE locktype='advisory' AND objid=148113`)).rows[0].count, 0);
+  let raceStarts: Awaited<ReturnType<typeof start>>[] = [];
+  let confirmations: Promise<PromiseSettledResult<void>[]> = Promise.resolve([]);
   let waiters = 0;
-  try {
+  await withUserInsertBlocker(async () => {
+    raceStarts = await Promise.all([start(), start()]);
+    confirmations = Promise.allSettled(raceStarts.map(prove));
     const deadline = Date.now() + 10_000;
     while (Date.now() < deadline) {
       waiters = (await pool.query(`SELECT count(*)::int AS count FROM pg_locks
@@ -346,10 +366,7 @@ try {
       if (waiters === 2) break;
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
-  } finally {
-    await blocker.query('SELECT pg_advisory_unlock(148113)');
-    blocker.release();
-  }
+  });
   const outcomes = await confirmations;
   assert.equal(waiters, 2, 'both first-login transactions must overlap at insertion');
   assert.ok(outcomes.every((outcome) => outcome.status === 'fulfilled'), JSON.stringify(outcomes));
