@@ -44,6 +44,11 @@ describe('Release B website WeChat provider', () => {
     expect(await provider().getUserInfo!(input)).toBeNull();
   });
 
+  it.each([undefined, '', 123])('uses the existing localized default nickname for %j', async (nickname) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json(profile({ nickname })));
+    expect((await provider().getUserInfo!(tokens()))?.name).toBe('社区版用户');
+  });
+
   it.each([
     { unionid: 'different-union' },
     { openid: 'different-openid' },

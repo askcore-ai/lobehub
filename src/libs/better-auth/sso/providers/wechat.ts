@@ -1,5 +1,6 @@
 import { authEnv } from '@/envs/auth';
 import { canonicalWechatIdentity } from '@/libs/better-auth/plugins/wechat-mobile-login/identity-resolver';
+import { translation } from '@/server/translation';
 
 import { type GenericProviderDefinition } from '../types';
 
@@ -108,7 +109,9 @@ const provider: GenericProviderDefinition<{
             emailVerified: false,
             id: identity.accountId,
             image: typeof profile.headimgurl === 'string' ? profile.headimgurl : undefined,
-            name: typeof profile.nickname === 'string' && profile.nickname ? profile.nickname : '微信用户',
+            name: typeof profile.nickname === 'string' && profile.nickname
+              ? profile.nickname
+              : (await translation('common', 'zh-CN')).t('userPanel.defaultNickname'),
           };
         } catch {
           // Generic OAuth owns the failure redirect; never log raw provider data.
