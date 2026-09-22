@@ -107,7 +107,7 @@ const provider: GenericProviderDefinition<{
             email: identity.email,
             emailVerified: false,
             id: identity.accountId,
-            image: typeof profile.headimgurl === 'string' ? profile.headimgurl : null,
+            image: typeof profile.headimgurl === 'string' ? profile.headimgurl : undefined,
             name: typeof profile.nickname === 'string' && profile.nickname ? profile.nickname : '微信用户',
           };
         } catch {
