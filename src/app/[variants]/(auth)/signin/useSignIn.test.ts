@@ -365,6 +365,36 @@ describe('useSignIn', () => {
   });
 
   describe('handleSocialSignIn', () => {
+    it('ignores an authorized status response delivered after cancellation', async () => {
+      useMobileNavigator();
+      vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+      let deliverStatus!: (value: unknown) => void;
+      const status = new Promise((resolve) => { deliverStatus = resolve; });
+      mockFetch.mockImplementation(async (path: string) => {
+        if (path.endsWith('/start')) return {
+          ok: true,
+          json: async () => ({ expiresAt: '2099-01-01T00:00:00.000Z',
+            openTarget: 'weixin://dl/business/?synthetic=1', pollAfterMs: 1200,
+            tabBinding: 'a'.repeat(43), transactionId: 'wxm_transaction_1234' }),
+        };
+        if (path.includes('/status?')) return status;
+        return { ok: true, json: async () => ({ redirectTo: '/' }) };
+      });
+      const { result } = renderHook(() => useSignIn());
+      await act(async () => { await result.current.handleSocialSignIn('wechat'); });
+      act(() => { result.current.openPreparedWechat(); });
+      await act(async () => { window.dispatchEvent(new Event('focus')); });
+      expect(mockFetch.mock.calls.filter(([path]) => path.includes('/status?'))).toHaveLength(1);
+      await act(async () => { await result.current.cancelWechatMobile(); });
+      await act(async () => {
+        deliverStatus({ ok: true, json: async () => ({ state: 'authorized' }) });
+      });
+      expect(mockFetch.mock.calls.filter(([path]) => path.endsWith('/consume'))).toHaveLength(0);
+      expect(mockPush).not.toHaveBeenCalled();
+      expect(result.current.wechatMobileLogin).toEqual({ phase: 'idle' });
+      expect(sessionStorage.getItem('askcore:wechat-mobile:tab:wxm_transaction_1234')).toBeNull();
+    });
+
     it('prepares a mobile WeChat transaction without opening WeChat on the first click', async () => {
       useMobileNavigator();
       mockFetch.mockResolvedValueOnce({
