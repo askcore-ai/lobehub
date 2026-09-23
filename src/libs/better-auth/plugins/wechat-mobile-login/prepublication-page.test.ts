@@ -62,6 +62,10 @@ describe('isolated prepublication full document', () => {
     await flush();
     expect(document.getElementById('code')!.textContent).toBe('ABCDE F0123 ABCDE F0123');
     expect(button('cancel').hidden).toBe(false);
+    vi.setSystemTime(Date.now() + 60_000);
+    window.dispatchEvent(new Event('focus'));
+    await flush();
+    expect(document.getElementById('code')!.textContent).toBe('ABCDE F0123 ABCDE F0123');
     await vi.advanceTimersByTimeAsync(300_001);
     expect(document.getElementById('code')!.textContent).toBe('');
     expect(document.getElementById('status')!.textContent).toContain('expired');
