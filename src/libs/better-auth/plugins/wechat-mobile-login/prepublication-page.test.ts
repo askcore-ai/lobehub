@@ -67,6 +67,37 @@ describe('isolated prepublication full document', () => {
     expect(document.getElementById('status')!.textContent).toBe('expired');
   });
 
+  it('keeps a bounded local display when the server clock is behind', async () => {
+    const fetcher = await setup();
+    fetcher.mockResolvedValueOnce(Response.json({
+      expiresAt: new Date(Date.now() + 298_000).toISOString(),
+      manualCode: code,
+      tabBinding: tab,
+      transactionId: id,
+    }));
+    button('start').click();
+    await flush();
+    expect(document.getElementById('code')!.textContent).toBe('ABCDE F0123 ABCDE F0123');
+    await vi.advanceTimersByTimeAsync(300_001);
+    expect(document.getElementById('code')!.textContent).toBe('');
+    expect(document.getElementById('status')!.textContent).toBe('expired');
+  });
+
+  it('rejects a malformed server expiry without displaying a code', async () => {
+    const fetcher = await setup();
+    fetcher.mockResolvedValueOnce(Response.json({
+      expiresAt: 'not-a-date',
+      manualCode: code,
+      tabBinding: tab,
+      transactionId: id,
+    }));
+    button('start').click();
+    await flush();
+    expect(document.getElementById('code')!.textContent).toBe('');
+    expect(document.getElementById('status')!.textContent).toBe('failed');
+    expect(sessionStorage.length).toBe(0);
+  });
+
   it('has no external script/asset, a fresh nonce and matching enforced CSP', async () => {
     const first = prepublicationDocument('zh-CN');
     const second = prepublicationDocument('en');
