@@ -45,6 +45,63 @@ describe('isolated prepublication full document', () => {
     expect(document.getElementById('code')!.textContent).toBe('ABCDE F0123 ABCDE F0123');
   });
 
+  it('shows a successful start despite a small positive server clock skew', async () => {
+    const fetcher = await setup();
+    window.dispatchEvent(new Event('pagehide'));
+    const html = await prepublicationDocument('en').text();
+    document.documentElement.innerHTML = html;
+    const script = document.querySelector('script')!.textContent!;
+    fetcher.mockResolvedValueOnce(Response.json({
+      expiresAt: new Date(Date.now() + 302_000).toISOString(),
+      manualCode: code,
+      tabBinding: tab,
+      transactionId: id,
+    }));
+    window.eval(script);
+    button('start').click();
+    await flush();
+    expect(document.getElementById('code')!.textContent).toBe('ABCDE F0123 ABCDE F0123');
+    expect(button('cancel').hidden).toBe(false);
+    vi.setSystemTime(Date.now() + 60_000);
+    window.dispatchEvent(new Event('focus'));
+    await flush();
+    expect(document.getElementById('code')!.textContent).toBe('ABCDE F0123 ABCDE F0123');
+    await vi.advanceTimersByTimeAsync(300_001);
+    expect(document.getElementById('code')!.textContent).toBe('');
+    expect(document.getElementById('status')!.textContent).toContain('expired');
+  });
+
+  it('keeps a bounded local display when the server clock is behind', async () => {
+    const fetcher = await setup();
+    fetcher.mockResolvedValueOnce(Response.json({
+      expiresAt: new Date(Date.now() + 298_000).toISOString(),
+      manualCode: code,
+      tabBinding: tab,
+      transactionId: id,
+    }));
+    button('start').click();
+    await flush();
+    expect(document.getElementById('code')!.textContent).toBe('ABCDE F0123 ABCDE F0123');
+    await vi.advanceTimersByTimeAsync(300_001);
+    expect(document.getElementById('code')!.textContent).toBe('');
+    expect(document.getElementById('status')!.textContent).toBe('expired');
+  });
+
+  it('rejects a malformed server expiry without displaying a code', async () => {
+    const fetcher = await setup();
+    fetcher.mockResolvedValueOnce(Response.json({
+      expiresAt: 'not-a-date',
+      manualCode: code,
+      tabBinding: tab,
+      transactionId: id,
+    }));
+    button('start').click();
+    await flush();
+    expect(document.getElementById('code')!.textContent).toBe('');
+    expect(document.getElementById('status')!.textContent).toBe('failed');
+    expect(sessionStorage.length).toBe(0);
+  });
+
   it('has no external script/asset, a fresh nonce and matching enforced CSP', async () => {
     const first = prepublicationDocument('zh-CN');
     const second = prepublicationDocument('en');
