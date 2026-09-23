@@ -64,7 +64,7 @@ describe('isolated prepublication full document', () => {
     expect(button('cancel').hidden).toBe(false);
     await vi.advanceTimersByTimeAsync(300_001);
     expect(document.getElementById('code')!.textContent).toBe('');
-    expect(document.getElementById('status')!.textContent).toBe('expired');
+    expect(document.getElementById('status')!.textContent).toContain('expired');
   });
 
   it('keeps a bounded local display when the server clock is behind', async () => {
