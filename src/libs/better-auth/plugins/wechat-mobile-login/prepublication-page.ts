@@ -42,7 +42,7 @@ export function initializeProofPage(copy: Copy) {
     busy = false;
   };
   const expired = () => {
-    if (!transaction || Date.now() < transaction.expires) return false;
+    if (!transaction || performance.now() < transaction.expires) return false;
     stop(copy.expired);
     return true;
   };
@@ -121,21 +121,23 @@ export function initializeProofPage(copy: Copy) {
     try {
       const result = await request('start');
       if (!result) return;
-      const expires = Date.parse(result.expiresAt);
+      const serverExpiresAt = typeof result.expiresAt === 'string' ? Date.parse(result.expiresAt) : Number.NaN;
       if (!/^[A-F0-9]{20}$/.test(result.manualCode) ||
           !/^wxm_[\w-]{16,96}$/.test(result.transactionId) ||
           !/^[\w-]{43}$/.test(result.tabBinding) ||
-          !Number.isFinite(expires) || expires <= Date.now() || expires > Date.now() + 300_000) {
+          !Number.isFinite(serverExpiresAt)) {
         stop(copy.failed);
         return;
       }
-      transaction = { expires, id: result.transactionId };
+      // The server enforces absolute expiry. Browser wall clocks can differ from it;
+      // bound only the local display by elapsed time after this response arrives.
+      transaction = { expires: performance.now() + 300_000, id: result.transactionId };
       sessionStorage.setItem(prefix + transaction.id, result.tabBinding);
       code.textContent = result.manualCode.match(/.{5}/g).join(' ');
       status.textContent = copy.pending;
       cancel.hidden = false;
       cancel.disabled = false;
-      expiryTimer = setTimeout(() => stop(copy.expired), expires - Date.now());
+      expiryTimer = setTimeout(() => stop(copy.expired), 300_000);
       pollTimer = setTimeout(() => void check(), 1200);
     } catch {
       if (!disposed && activeGeneration === generation) stop(copy.failed);
