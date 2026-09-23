@@ -61,7 +61,7 @@ describe('isolated prepublication full document', () => {
     button('start').click();
     await flush();
     expect(document.getElementById('code')!.textContent).toBe('ABCDE F0123 ABCDE F0123');
-    expect(document.getElementById('status')!.textContent).toBe('pending');
+    expect(button('cancel').hidden).toBe(false);
     await vi.advanceTimersByTimeAsync(300_001);
     expect(document.getElementById('code')!.textContent).toBe('');
     expect(document.getElementById('status')!.textContent).toBe('expired');
