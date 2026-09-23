@@ -45,6 +45,28 @@ describe('isolated prepublication full document', () => {
     expect(document.getElementById('code')!.textContent).toBe('ABCDE F0123 ABCDE F0123');
   });
 
+  it('shows a successful start despite a small positive server clock skew', async () => {
+    const fetcher = await setup();
+    window.dispatchEvent(new Event('pagehide'));
+    const html = await prepublicationDocument('en').text();
+    document.documentElement.innerHTML = html;
+    const script = document.querySelector('script')!.textContent!;
+    fetcher.mockResolvedValueOnce(Response.json({
+      expiresAt: new Date(Date.now() + 302_000).toISOString(),
+      manualCode: code,
+      tabBinding: tab,
+      transactionId: id,
+    }));
+    window.eval(script);
+    button('start').click();
+    await flush();
+    expect(document.getElementById('code')!.textContent).toBe('ABCDE F0123 ABCDE F0123');
+    expect(document.getElementById('status')!.textContent).toBe('pending');
+    await vi.advanceTimersByTimeAsync(300_001);
+    expect(document.getElementById('code')!.textContent).toBe('');
+    expect(document.getElementById('status')!.textContent).toBe('expired');
+  });
+
   it('has no external script/asset, a fresh nonce and matching enforced CSP', async () => {
     const first = prepublicationDocument('zh-CN');
     const second = prepublicationDocument('en');
