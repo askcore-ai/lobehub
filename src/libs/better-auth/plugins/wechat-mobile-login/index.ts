@@ -49,8 +49,8 @@ export interface WechatMobileLoginOptions {
   appURL: string;
   identityMode: WechatIdentityMode;
   miniProgramAppId: string;
-  mobileLoginExistingOnly: boolean;
   mobileLoginEnabled: boolean;
+  mobileLoginExistingOnly: boolean;
   rebindEnabled: boolean;
   recoverySeconds: number;
   schemePath: 'pages/login/index';
