@@ -125,7 +125,8 @@ function fixture(identity: { unionid: unknown } = { unionid }) {
       genericOAuth({ config: [buildWechatProvider(env, store)] }),
       wechatMobileLogin({
         appId: 'synthetic-website', appSecret: 'synthetic-mini-secret', appURL: origin,
-        identityMode: 'canonical', miniProgramAppId: 'synthetic-mini', mobileLoginEnabled: true,
+        identityMode: 'canonical', miniProgramAppId: 'synthetic-mini',
+        mobileLoginEnabled: true, mobileLoginExistingOnly: false,
         rebindEnabled: true, recoverySeconds: 60, schemePath: 'pages/login/index',
         transactionTtlSeconds: 300, websiteAppSecret: 'synthetic-secret',
       }),

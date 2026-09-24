@@ -80,6 +80,7 @@ declare global {
       AUTH_WECHAT_IDENTITY_MODE?: string;
       AUTH_WECHAT_MINI_PROGRAM_APP_ID?: string;
       AUTH_WECHAT_MINI_PROGRAM_SECRET?: string;
+      AUTH_WECHAT_MOBILE_EXISTING_ONLY?: string;
       AUTH_WECHAT_MOBILE_LOGIN_ENABLED?: string;
       AUTH_WECHAT_REBIND_ENABLED?: string;
       AUTH_WECHAT_SCHEME_PATH?: string;
@@ -193,6 +194,7 @@ export const getAuthConfig = () => {
         .default('legacy'),
       AUTH_WECHAT_MINI_PROGRAM_APP_ID: z.string().optional().default(''),
       AUTH_WECHAT_MINI_PROGRAM_SECRET: z.string().optional().default(''),
+      AUTH_WECHAT_MOBILE_EXISTING_ONLY: z.boolean().optional().default(true),
       AUTH_WECHAT_MOBILE_LOGIN_ENABLED: z.boolean().optional().default(false),
       AUTH_WECHAT_REBIND_ENABLED: z.boolean().optional().default(false),
       AUTH_WECHAT_SCHEME_PATH: z
@@ -308,6 +310,8 @@ export const getAuthConfig = () => {
       AUTH_WECHAT_IDENTITY_MODE: process.env.AUTH_WECHAT_IDENTITY_MODE,
       AUTH_WECHAT_MINI_PROGRAM_APP_ID: process.env.AUTH_WECHAT_MINI_PROGRAM_APP_ID,
       AUTH_WECHAT_MINI_PROGRAM_SECRET: process.env.AUTH_WECHAT_MINI_PROGRAM_SECRET,
+      AUTH_WECHAT_MOBILE_EXISTING_ONLY:
+        process.env.AUTH_WECHAT_MOBILE_EXISTING_ONLY !== '0',
       AUTH_WECHAT_MOBILE_LOGIN_ENABLED: process.env.AUTH_WECHAT_MOBILE_LOGIN_ENABLED === '1',
       AUTH_WECHAT_REBIND_ENABLED: process.env.AUTH_WECHAT_REBIND_ENABLED === '1',
       AUTH_WECHAT_SCHEME_PATH: process.env.AUTH_WECHAT_SCHEME_PATH,

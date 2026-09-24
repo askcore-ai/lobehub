@@ -32,7 +32,8 @@ function fixture() {
   let nextId = 0;
   const options: WechatMobileLoginOptions = {
     appId: 'synthetic-website', appSecret: 'synthetic-mini-secret', appURL: origin,
-    identityMode: 'canonical', miniProgramAppId: 'synthetic-mini', mobileLoginEnabled: true,
+    identityMode: 'canonical', miniProgramAppId: 'synthetic-mini',
+    mobileLoginEnabled: true, mobileLoginExistingOnly: false,
     rebindEnabled: true, recoverySeconds: 60, schemePath: 'pages/login/index',
     transactionTtlSeconds: 300, websiteAppSecret: 'synthetic-website-secret',
   };
@@ -332,6 +333,50 @@ describe('WeChat bridge through the real Better Auth handler and adapter factory
     expect(recovered.status).toBe(200);
     expect(cookieHeader(recovered)).toBe(cookie);
     expect(database.session).toHaveLength(1);
+  });
+
+  it('admits an existing canonical WeChat owner in gray scope without creating another identity', async () => {
+    const f = fixture();
+    const first = await f.signIn();
+    const firstSession = await (await f.request('/get-session', { cookie: first.cookie })).json();
+    const before = structuredClone({
+      accounts: f.database.account,
+      users: f.database.user,
+    });
+    f.options.mobileLoginExistingOnly = true;
+
+    const second = await f.signIn();
+    const secondSession = await (await f.request('/get-session', { cookie: second.cookie })).json();
+
+    expect(secondSession.user.id).toBe(firstSession.user.id);
+    expect({ accounts: f.database.account, users: f.database.user }).toEqual(before);
+    expect(f.database.session).toHaveLength(2);
+  });
+
+  it('rejects a nonmember in gray scope without creating a user, account, or session', async () => {
+    const f = fixture();
+    f.options.mobileLoginExistingOnly = true;
+    const prepared = await f.start();
+    const before = structuredClone({
+      accounts: f.database.account,
+      sessions: f.database.session,
+      users: f.database.user,
+    });
+
+    const rejected = await f.prove(prepared);
+
+    expect(rejected.status).toBe(403);
+    expect(await rejected.json()).toMatchObject({ code: 'WECHAT_MOBILE_NOT_IN_ROLLOUT' });
+    expect({
+      accounts: f.database.account,
+      sessions: f.database.session,
+      users: f.database.user,
+    }).toEqual(before);
+    const status = await f.request(
+      `/wechat-mobile/status?transactionId=${prepared.transactionId}`,
+      { cookie: prepared.cookie, tab: prepared.tabBinding },
+    );
+    expect(await status.json()).toEqual({ reason: 'not_in_rollout', state: 'failed' });
   });
 
   it('records a verified rebind claim without mutating the existing WeChat account', async () => {

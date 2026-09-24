@@ -40,6 +40,7 @@ const users = pgTable('users', {
   updatedAt: timestamp('updated_at').notNull(),
 });
 let pool = new Pool({ database: 'p148', host: socket, port: 5432, user: 'p148' });
+let mobileLoginExistingOnly = false;
 const createAuth = () =>
   betterAuth({
     baseURL: origin,
@@ -60,6 +61,7 @@ const createAuth = () =>
         appURL: origin,
         identityMode: 'canonical',
         miniProgramAppId: 'synthetic-mini',
+        mobileLoginExistingOnly,
         mobileLoginEnabled: true,
         rebindEnabled: true,
         recoverySeconds: 60,
@@ -110,7 +112,7 @@ const start = async (rebind = false, cookie?: string) => {
   assert.equal(launch.transactionId, prepared.transactionId);
   return { ...prepared, cookie: cookieHeader(response), launch };
 };
-const prove = async (prepared: Awaited<ReturnType<typeof start>>) => {
+const prove = async (prepared: Awaited<ReturnType<typeof start>>, expectedStatus = 200) => {
   const response = await auth.handler(
     new Request(`${origin}${bridge.endpointForPurpose(prepared.launch.purpose)}`, {
       body: JSON.stringify({
@@ -122,8 +124,9 @@ const prove = async (prepared: Awaited<ReturnType<typeof start>>) => {
       method: 'POST',
     }),
   );
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { state: 'authorized' });
+  assert.equal(response.status, expectedStatus);
+  if (expectedStatus === 200) assert.deepEqual(await response.clone().json(), { state: 'authorized' });
+  return response;
 };
 const originalFetch = globalThis.fetch;
 let providerUnionId = 'synthetic-unionid';
@@ -261,6 +264,8 @@ try {
       openid: 'synthetic-mini-openid', session_key: 'synthetic-session-key', unionid: 'callback-unionid',
     });
   };
+  mobileLoginExistingOnly = true;
+  auth = createAuth();
   const sameWechatMobile = await start();
   await prove(sameWechatMobile);
   const sameWechatConsumed = await request('/wechat-mobile/consume', {
@@ -271,9 +276,37 @@ try {
   assert.equal(sameWechatSession?.user?.id, 'fixture-a');
   assert.equal((await pool.query(`SELECT count(*)::int AS count FROM accounts
     WHERE provider_id='wechat' AND account_id='callback-unionid'`)).rows[0].count, 1);
+  const grayBefore = (await pool.query(`SELECT
+    (SELECT count(*)::int FROM users) AS users,
+    (SELECT count(*)::int FROM accounts) AS accounts,
+    (SELECT count(*)::int FROM auth_sessions) AS sessions`)).rows[0];
+  providerUnionId = 'not-yet-canonical-unionid';
+  globalThis.fetch = async (input) => {
+    assert.equal(new URL(String(input)).pathname, '/sns/jscode2session');
+    return Response.json({
+      openid: 'synthetic-other-mini-openid', session_key: 'synthetic-session-key', unionid: providerUnionId,
+    });
+  };
+  const grayRejected = await start();
+  const grayResponse = await prove(grayRejected, 403);
+  assert.equal((await grayResponse.json()).code, 'WECHAT_MOBILE_NOT_IN_ROLLOUT');
+  const grayStatus = await request(
+    `/wechat-mobile/status?transactionId=${grayRejected.transactionId}`,
+    undefined,
+    grayRejected.cookie,
+    grayRejected.tabBinding,
+  );
+  assert.deepEqual(await grayStatus.json(), { reason: 'not_in_rollout', state: 'failed' });
+  assert.deepEqual((await pool.query(`SELECT
+    (SELECT count(*)::int FROM users) AS users,
+    (SELECT count(*)::int FROM accounts) AS accounts,
+    (SELECT count(*)::int FROM auth_sessions) AS sessions`)).rows[0], grayBefore);
   // Restore the independent mini-login fixture's empty-session/transaction baseline.
   await pool.query("DELETE FROM auth_sessions WHERE user_id='fixture-a'");
   await pool.query('DELETE FROM wechat_mobile_login_transactions WHERE id=$1', [sameWechatMobile.transactionId]);
+  mobileLoginExistingOnly = false;
+  auth = createAuth();
+  providerUnionId = 'synthetic-unionid';
   globalThis.fetch = async (input) => {
     assert.equal(new URL(String(input)).origin, 'https://api.weixin.qq.com');
     return Response.json({

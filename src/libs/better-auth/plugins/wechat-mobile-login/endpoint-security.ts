@@ -70,6 +70,14 @@ export const classifyAuthorizationFailure = (error: unknown): AuthorizationFailu
     };
   }
   if (error instanceof WechatIdentityConflictError) {
+    if (error.message === 'identity_not_reconciled') {
+      return {
+        code: 'WECHAT_MOBILE_NOT_IN_ROLLOUT',
+        failureCode: 'not_in_rollout',
+        retryable: false,
+        status: 'FORBIDDEN',
+      };
+    }
     return {
       code: 'WECHAT_IDENTITY_CONFLICT',
       failureCode: 'identity_conflict',

@@ -49,6 +49,7 @@ export interface WechatMobileLoginOptions {
   appURL: string;
   identityMode: WechatIdentityMode;
   miniProgramAppId: string;
+  mobileLoginExistingOnly: boolean;
   mobileLoginEnabled: boolean;
   rebindEnabled: boolean;
   recoverySeconds: number;
@@ -310,7 +311,7 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
               code: ctx.body.code,
             });
             const user = await resolveCanonicalWechatUser(ctx, codeSession.unionid, {
-              allowCreate: true,
+              allowCreate: !options.mobileLoginExistingOnly,
             });
             const authorized = await store.authorize(started.id, user.id);
             if (!authorized) endpointError('CONFLICT', 'WECHAT_TRANSACTION_REPLAYED');

@@ -9,6 +9,7 @@ const options = {
   appURL: 'https://askcore.cn',
   identityMode: 'canonical' as const,
   miniProgramAppId: 'wx-mini',
+  mobileLoginExistingOnly: false,
   mobileLoginEnabled: true,
   rebindEnabled: true,
   recoverySeconds: 60,

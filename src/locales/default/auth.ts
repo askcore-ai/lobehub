@@ -132,6 +132,8 @@ export default {
   'betterAuth.wechatMobile.cancel': 'Cancel',
   'betterAuth.wechatMobile.confirmSwitch': 'Switch to this WeChat account',
   'betterAuth.wechatMobile.failed': 'WeChat sign in could not be completed.',
+  'betterAuth.wechatMobile.errors.WECHAT_MOBILE_NOT_IN_ROLLOUT':
+    'This WeChat account is not yet included in mobile sign-in. Please use desktop QR sign-in for now.',
   'betterAuth.wechatMobile.openWechat': 'Open WeChat',
   'betterAuth.wechatMobile.prepared':
     'The login request is ready. Tap Open WeChat, authorize there, then return to this browser.',

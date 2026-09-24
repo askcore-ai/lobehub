@@ -451,6 +451,28 @@ describe('useSignIn', () => {
       expect(result.current.wechatMobileLogin).toEqual({ phase: 'idle' });
     });
 
+    it('shows the existing-identity gray message for an ineligible WeChat account', async () => {
+      vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+      mockFetch.mockImplementation(async (path: string) => {
+        if (path.endsWith('/start')) return jsonResponse(mobileLaunch());
+        if (path.includes('/status?')) {
+          return jsonResponse({ reason: 'not_in_rollout', state: 'failed' });
+        }
+        throw new Error('Unexpected test request');
+      });
+      const { result } = renderHook(() => useSignIn());
+      await act(async () => { await result.current.prepareWechatMobileLogin(); });
+      act(() => { result.current.openPreparedWechat(); });
+
+      await act(async () => { window.dispatchEvent(new Event('focus')); });
+
+      expect(result.current.wechatMobileLogin).toEqual({
+        message: 'WECHAT_MOBILE_NOT_IN_ROLLOUT',
+        phase: 'failed',
+        retryable: false,
+      });
+    });
+
     it('keeps a replacement prepared transaction when an old consume or cancel completes', async () => {
       vi.spyOn(window.location, 'assign').mockImplementation(() => {});
       const consume = deferredResponse();

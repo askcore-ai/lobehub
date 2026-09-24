@@ -281,7 +281,7 @@ export const useSignIn = () => {
     if (attempt !== wechatAttempt.current || wechatPollInFlight.current === attempt) return;
     wechatPollInFlight.current = attempt;
     try {
-      const result = await wechatRequest<{ state: string }>(
+      const result = await wechatRequest<{ reason?: string; state: string }>(
         `/api/auth/wechat-mobile/status?transactionId=${encodeURIComponent(transactionId)}`,
         { method: 'GET', transactionId },
       );
@@ -293,7 +293,10 @@ export const useSignIn = () => {
       if (result.data?.state === 'failed' || result.data?.state === 'expired') {
         clearWechatTransaction(transactionId);
         setWechatMobileLogin({
-          message: `WECHAT_TRANSACTION_${result.data.state.toUpperCase()}`,
+          message:
+            result.data.reason === 'not_in_rollout'
+              ? 'WECHAT_MOBILE_NOT_IN_ROLLOUT'
+              : `WECHAT_TRANSACTION_${result.data.state.toUpperCase()}`,
           phase: 'failed',
           retryable: result.data.state === 'expired',
         });
