@@ -482,7 +482,7 @@ try {
   let waiters = 0;
   await withUserInsertBlocker(async () => {
     raceStarts = await Promise.all([start(), start()]);
-    confirmations = Promise.allSettled(raceStarts.map(prove));
+    confirmations = Promise.allSettled(raceStarts.map((preparedRace) => prove(preparedRace)));
     const deadline = Date.now() + 10_000;
     while (Date.now() < deadline) {
       waiters = (await pool.query(`SELECT count(*)::int AS count FROM pg_locks
