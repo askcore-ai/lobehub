@@ -214,7 +214,10 @@ try {
     BEGIN IF OLD.id='website-fail' THEN RAISE EXCEPTION 'fixture_rewrite_failure'; END IF; RETURN NEW; END $$;
     CREATE TRIGGER reject_website_rewrite BEFORE UPDATE ON accounts
       FOR EACH ROW EXECUTE FUNCTION reject_website_rewrite();`);
-  await assert.rejects(reconcileWebsiteWechatIdentity(websiteStore, 'fail-openid', 'fail-unionid'), /fixture_rewrite_failure/);
+  await assert.rejects(
+    reconcileWebsiteWechatIdentity(websiteStore, 'fail-openid', 'fail-unionid'),
+    (error: { cause?: { code?: string } }) => error.cause?.code === 'P0001',
+  );
   assert.deepEqual((await pool.query(`SELECT account_id, user_id FROM accounts WHERE id='website-fail'`)).rows,
     [{ account_id: 'fail-openid', user_id: 'fixture-a' }]);
   await pool.query('DROP TRIGGER reject_website_rewrite ON accounts; DROP FUNCTION reject_website_rewrite();');
