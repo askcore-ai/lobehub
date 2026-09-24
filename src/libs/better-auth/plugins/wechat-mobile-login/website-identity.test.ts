@@ -15,7 +15,7 @@ function fixture(initial: { accountId: string; id: string; userId: string }[] = 
   });
   const store: WebsiteIdentityStore = {
     transaction: vi.fn(async (_, action) => action({
-      find: async (accountId) => rows.filter((row) => row.accountId === accountId),
+      find: async (accountId: string) => rows.filter((row) => row.accountId === accountId),
       replace,
     })),
   };
