@@ -1,5 +1,6 @@
-import { authEnv } from '@/envs/auth';
 import { type GenericOAuthConfig } from 'better-auth/plugins';
+
+import { authEnv } from '@/envs/auth';
 import {
   databaseWebsiteIdentityStore,
   reconcileWebsiteWechatIdentity,

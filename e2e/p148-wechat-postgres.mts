@@ -8,13 +8,13 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { boolean, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import { Pool } from 'pg';
 
-import type { LobeChatDatabase } from '../packages/database/src/type';
 import {
   account,
   session,
   wechatMobileLoginTransaction,
   wechatRebindClaim,
 } from '../packages/database/src/schemas/betterAuth';
+import type { LobeChatDatabase } from '../packages/database/src/type';
 import { wechatMobileLogin } from '../src/libs/better-auth/plugins/wechat-mobile-login';
 import {
   createDatabaseWebsiteIdentityStore,
