@@ -50,6 +50,7 @@ class SyntheticTransaction {
 const verifySourceBoundary = async () => {
   const signIn = await read('src/app/[variants]/(auth)/signin/useSignIn.ts');
   const plugin = await read('src/libs/better-auth/plugins/wechat-mobile-login/index.ts');
+  const endpointSecurity = await read('src/libs/better-auth/plugins/wechat-mobile-login/endpoint-security.ts');
   const store = await read('src/libs/better-auth/plugins/wechat-mobile-login/transaction-store.ts');
   const bridge = await read('apps/wechat-login-bridge/controllers/login-controller.js');
   const bridgeApp = await read('apps/wechat-login-bridge/app.js');
@@ -68,7 +69,7 @@ const verifySourceBoundary = async () => {
   assert.match(signIn, /kind: 'consume'/);
   assert.match(signIn, /retryWechatMobileLogin/);
 
-  assert.match(plugin, /x-askcore-wechat-tab-binding/i);
+  assert.match(endpointSecurity, /x-askcore-wechat-tab-binding/i);
   assert.match(plugin, /confirmAccountSwitch/);
   assert.match(plugin, /runWithTransaction/);
   assert.match(plugin, /setSessionCookie/);
@@ -78,7 +79,7 @@ const verifySourceBoundary = async () => {
   );
   assert.match(plugin, /maxAge: browserBindingMaxAge/);
   assert.match(plugin, /expireBrowserBindingCookie/);
-  assert.match(plugin, /maxAge: 0/);
+  assert.match(endpointSecurity, /maxAge: 0/);
   assert.match(plugin, /target\.hash = fragment\.toString\(\)/);
   assert.doesNotMatch(plugin, /searchParams\.set\('transactionId'/);
   assert.match(plugin, /authorization\.searchParams\.set\('state', oauthState\)/);
@@ -98,7 +99,9 @@ const verifySourceBoundary = async () => {
   assert.match(bridgePage, /controller\.authorize\(wx, currentLaunch\)/);
   assert.match(bridgePage, /if \(launch !== currentLaunch\) return/);
   assert.match(bridgePage, /pending\.version <= handledLaunchVersion/);
+  assert.match(bridgePage, /pending\?\.options \|\| options/);
   assert.match(bridge, /\[429, 502, 503\]/);
+  assert.doesNotMatch(bridgePage, /onManualProof|proof_authorizing|manualCode/);
   assert.doesNotMatch(bridge, /AppSecret|session_key|access_token|refresh_token/i);
 };
 
