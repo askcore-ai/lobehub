@@ -254,6 +254,9 @@ try {
   assert.deepEqual((await pool.query(`SELECT id, account_id, user_id FROM accounts
     WHERE id='website-callback-old'`)).rows,
     [{ id: 'website-callback-old', account_id: 'callback-unionid', user_id: 'fixture-a' }]);
+  assert.equal((await pool.query('SELECT count(*)::int AS count FROM auth_sessions')).rows[0].count, 1);
+  // Restore the independent mini-login fixture's empty-session baseline.
+  await pool.query("DELETE FROM auth_sessions WHERE user_id='fixture-a'");
   globalThis.fetch = async (input) => {
     assert.equal(new URL(String(input)).origin, 'https://api.weixin.qq.com');
     return Response.json({
