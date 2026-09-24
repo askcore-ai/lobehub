@@ -255,8 +255,25 @@ try {
     WHERE id='website-callback-old'`)).rows,
     [{ id: 'website-callback-old', account_id: 'callback-unionid', user_id: 'fixture-a' }]);
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM auth_sessions')).rows[0].count, 1);
-  // Restore the independent mini-login fixture's empty-session baseline.
+  globalThis.fetch = async (input) => {
+    assert.equal(new URL(String(input)).pathname, '/sns/jscode2session');
+    return Response.json({
+      openid: 'synthetic-mini-openid', session_key: 'synthetic-session-key', unionid: 'callback-unionid',
+    });
+  };
+  const sameWechatMobile = await start();
+  await prove(sameWechatMobile);
+  const sameWechatConsumed = await request('/wechat-mobile/consume', {
+    confirmAccountSwitch: false, transactionId: sameWechatMobile.transactionId,
+  }, sameWechatMobile.cookie, sameWechatMobile.tabBinding);
+  assert.equal(sameWechatConsumed.status, 200);
+  const sameWechatSession = await (await request('/get-session', undefined, cookieHeader(sameWechatConsumed))).json();
+  assert.equal(sameWechatSession?.user?.id, 'fixture-a');
+  assert.equal((await pool.query(`SELECT count(*)::int AS count FROM accounts
+    WHERE provider_id='wechat' AND account_id='callback-unionid'`)).rows[0].count, 1);
+  // Restore the independent mini-login fixture's empty-session/transaction baseline.
   await pool.query("DELETE FROM auth_sessions WHERE user_id='fixture-a'");
+  await pool.query('DELETE FROM wechat_mobile_login_transactions WHERE id=$1', [sameWechatMobile.transactionId]);
   globalThis.fetch = async (input) => {
     assert.equal(new URL(String(input)).origin, 'https://api.weixin.qq.com');
     return Response.json({
