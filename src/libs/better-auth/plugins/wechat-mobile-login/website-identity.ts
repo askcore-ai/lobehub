@@ -1,4 +1,4 @@
-import { serverDB } from '@lobechat/database';
+import { type LobeChatDatabase } from '@lobechat/database';
 import { account } from '@lobechat/database/schemas';
 import { and, eq, sql } from 'drizzle-orm';
 
@@ -15,8 +15,8 @@ export interface WebsiteIdentityStore {
   transaction: (unionId: string, action: (tx: WebsiteIdentityTransaction) => Promise<void>) => Promise<void>;
 }
 
-export const databaseWebsiteIdentityStore: WebsiteIdentityStore = {
-  transaction: (unionId, action) => serverDB.transaction(async (db) => {
+export const createDatabaseWebsiteIdentityStore = (database: LobeChatDatabase): WebsiteIdentityStore => ({
+  transaction: (unionId, action) => database.transaction(async (db) => {
     // All website callbacks for one UnionID serialize before checking either key.
     await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${unionId})::bigint)`);
     await action({
@@ -37,6 +37,13 @@ export const databaseWebsiteIdentityStore: WebsiteIdentityStore = {
       },
     });
   }),
+});
+
+export const databaseWebsiteIdentityStore: WebsiteIdentityStore = {
+  transaction: async (unionId, action) => {
+    const { serverDB } = await import('@lobechat/database');
+    return createDatabaseWebsiteIdentityStore(serverDB).transaction(unionId, action);
+  },
 };
 
 /** Reconcile only proof freshly returned by the website AppID's OAuth exchange. */

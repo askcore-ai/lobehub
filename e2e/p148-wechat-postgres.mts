@@ -8,6 +8,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { boolean, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import { Pool } from 'pg';
 
+import type { LobeChatDatabase } from '../packages/database/src/type';
 import {
   account,
   session,
@@ -15,6 +16,10 @@ import {
   wechatRebindClaim,
 } from '../packages/database/src/schemas/betterAuth';
 import { wechatMobileLogin } from '../src/libs/better-auth/plugins/wechat-mobile-login';
+import {
+  createDatabaseWebsiteIdentityStore,
+  reconcileWebsiteWechatIdentity,
+} from '../src/libs/better-auth/plugins/wechat-mobile-login/website-identity';
 
 const socket = process.env.P148_WECHAT_TEST_PG_SOCKET;
 assert.ok(socket?.startsWith(`${process.env.TMPDIR}/p148-pg.`), 'owned PostgreSQL socket required');
@@ -183,6 +188,36 @@ try {
     VALUES ('other-a', 'unreconciled-duplicate', 'github', 'fixture-a', now()),
            ('other-b', 'unreconciled-duplicate', 'github', 'fixture-b', now())`);
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM accounts')).rows[0].count, 4);
+  const websiteStore = createDatabaseWebsiteIdentityStore(drizzle(pool) as unknown as LobeChatDatabase);
+  await pool.query(`INSERT INTO accounts (id, account_id, provider_id, user_id, updated_at)
+    VALUES ('website-old', 'website-openid', 'wechat', 'fixture-a', now())`);
+  await Promise.all([
+    reconcileWebsiteWechatIdentity(websiteStore, 'website-openid', 'website-unionid'),
+    reconcileWebsiteWechatIdentity(websiteStore, 'website-openid', 'website-unionid'),
+  ]);
+  assert.deepEqual((await pool.query(`SELECT id, account_id, user_id FROM accounts
+    WHERE id='website-old'`)).rows, [{ id: 'website-old', account_id: 'website-unionid', user_id: 'fixture-a' }]);
+  assert.equal((await pool.query(`SELECT count(*)::int AS count FROM accounts
+    WHERE provider_id='wechat' AND account_id='website-unionid'`)).rows[0].count, 1);
+  await pool.query(`INSERT INTO accounts (id, account_id, provider_id, user_id, updated_at)
+    VALUES ('website-dual-open', 'dual-openid', 'wechat', 'fixture-a', now()),
+           ('website-dual-union', 'dual-unionid', 'wechat', 'fixture-b', now()),
+           ('website-fail', 'fail-openid', 'wechat', 'fixture-a', now())`);
+  await reconcileWebsiteWechatIdentity(websiteStore, 'dual-openid', 'dual-unionid');
+  assert.deepEqual((await pool.query(`SELECT id, account_id, user_id FROM accounts
+    WHERE id IN ('website-dual-open', 'website-dual-union') ORDER BY id`)).rows, [
+    { id: 'website-dual-open', account_id: 'dual-openid', user_id: 'fixture-a' },
+    { id: 'website-dual-union', account_id: 'dual-unionid', user_id: 'fixture-b' },
+  ]);
+  await assert.rejects(reconcileWebsiteWechatIdentity(websiteStore, 'fail-openid', undefined), /missing_unionid/);
+  await pool.query(`CREATE FUNCTION reject_website_rewrite() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN IF OLD.id='website-fail' THEN RAISE EXCEPTION 'fixture_rewrite_failure'; END IF; RETURN NEW; END $$;
+    CREATE TRIGGER reject_website_rewrite BEFORE UPDATE ON accounts
+      FOR EACH ROW EXECUTE FUNCTION reject_website_rewrite();`);
+  await assert.rejects(reconcileWebsiteWechatIdentity(websiteStore, 'fail-openid', 'fail-unionid'), /fixture_rewrite_failure/);
+  assert.deepEqual((await pool.query(`SELECT account_id, user_id FROM accounts WHERE id='website-fail'`)).rows,
+    [{ account_id: 'fail-openid', user_id: 'fixture-a' }]);
+  await pool.query('DROP TRIGGER reject_website_rewrite ON accounts; DROP FUNCTION reject_website_rewrite();');
   globalThis.fetch = async (input) => {
     assert.equal(new URL(String(input)).origin, 'https://api.weixin.qq.com');
     return Response.json({
