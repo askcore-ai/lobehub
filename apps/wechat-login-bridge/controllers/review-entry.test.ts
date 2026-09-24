@@ -30,7 +30,7 @@ const loadPage = () => {
     showToast: vi.fn(),
   };
   const app: {
-    globalData: { wechatLaunch: null | { options: Record<string, string>; version: number } };
+    globalData: { wechatLaunch: null | { options: Record<string, string | undefined>; version: number } };
   } = { globalData: { wechatLaunch: null } };
   vi.stubGlobal('wx', wxApi);
   vi.stubGlobal('getApp', () => app);
@@ -61,6 +61,28 @@ describe('WeChat login bridge direct entry', () => {
     expect(page.data.status).toBe('ready');
     expect(page.data.title).toBe('登录 AskCore');
     expect(app.globalData.wechatLaunch.options).toBeNull();
+    expect(wxApi.login).not.toHaveBeenCalled();
+  });
+
+  it('shows welcome when App has only unrelated launch parameters', () => {
+    const { page, wxApi, app } = loadPage();
+    // App.onShow retains the p/t/c keys with undefined values for other query input.
+    app.globalData.wechatLaunch = { options: { c: undefined, p: undefined, t: undefined }, version: 1 };
+
+    page.onLoad({});
+
+    expect(page.data.status).toBe('welcome');
+    expect(page.data.title).toBe('AskCore 微信登录助手');
+    expect(wxApi.login).not.toHaveBeenCalled();
+  });
+
+  it('keeps a partial App transaction fail-closed', () => {
+    const { page, wxApi, app } = loadPage();
+    app.globalData.wechatLaunch = { options: { c: undefined, p: 'signin', t: undefined }, version: 1 };
+
+    page.onLoad({});
+
+    expect(page.data.status).toBe('failed');
     expect(wxApi.login).not.toHaveBeenCalled();
   });
 

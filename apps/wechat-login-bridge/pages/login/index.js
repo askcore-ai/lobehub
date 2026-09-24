@@ -7,7 +7,7 @@ let launch = null;
 let handledLaunchVersion = 0;
 
 const hasLaunchFields = (options) => options && ['p', 't', 'c'].some((key) =>
-  Object.prototype.hasOwnProperty.call(options, key),
+  Object.prototype.hasOwnProperty.call(options, key) && options[key] !== undefined,
 );
 
 Page({
