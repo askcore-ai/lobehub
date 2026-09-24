@@ -12,6 +12,7 @@ import { Pool } from 'pg';
 import {
   account,
   session,
+  verification,
   wechatMobileLoginTransaction,
   wechatRebindClaim,
 } from '../packages/database/src/schemas/betterAuth';
@@ -44,7 +45,7 @@ const createAuth = () =>
     baseURL: origin,
     database: drizzleAdapter(drizzle(pool), {
       provider: 'pg',
-      schema: { account, session, users, wechatMobileLoginTransaction, wechatRebindClaim },
+      schema: { account, session, users, verification, wechatMobileLoginTransaction, wechatRebindClaim },
       transaction: true,
     }),
     logger: { disabled: true },
@@ -157,6 +158,9 @@ try {
       token text NOT NULL UNIQUE, expires_at timestamp NOT NULL,
       created_at timestamp NOT NULL DEFAULT now(), updated_at timestamp NOT NULL,
       active_organization_id text, impersonated_by text, ip_address text, user_agent text);
+    CREATE TABLE verifications (id text PRIMARY KEY, identifier text NOT NULL,
+      value text NOT NULL, expires_at timestamp NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now(), updated_at timestamp NOT NULL);
   `);
   const migration = await readFile(
     new URL('../packages/database/migrations/0111_wechat_mobile_login.sql', import.meta.url),
