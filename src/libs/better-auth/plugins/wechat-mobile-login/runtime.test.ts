@@ -144,16 +144,7 @@ describe('WeChat bridge through the real Better Auth handler and adapter factory
     const before = structuredClone({ accounts: f.database.account, sessions: f.database.session, users: f.database.user, claims: f.database.wechatRebindClaim });
     expect(prepared.manualCode).toMatch(/^[A-F0-9]{20}$/);
     expect(JSON.stringify(f.database)).not.toContain(prepared.manualCode);
-    const request = vi.fn(({ url, data, success }) => {
-      expect(url).toBe('https://askcore.cn/api/auth/wechat-prepublication/prove');
-      void f.auth.handler(new Request(`${origin}/api/auth/wechat-prepublication/prove`, {
-        body: JSON.stringify(data), headers: { 'content-type': 'application/json' }, method: 'POST',
-      })).then(async (response) => success({ data: await response.json(), statusCode: response.status }));
-    });
-    await bridge.provePrepublication({
-      login: ({ success }: { success: (value: unknown) => void }) => success({ code: 'synthetic-native-code' }), request,
-    }, prepared.manualCode.toLowerCase().match(/.{5}/g).join(' '));
-    expect(request).toHaveBeenCalledOnce();
+    expect((await f.proveManual(prepared.manualCode)).status).toBe(200);
     expect((await f.proveManual(prepared.manualCode)).status).toBe(404);
     expect(await (await f.request('/wechat-prepublication/status', prepared.browser)).json()).toEqual({ state: 'proof_ready' });
     for (let attempt = 0; attempt < 2; attempt += 1) {

@@ -11,19 +11,13 @@ interface LoginPage {
     actionText: string;
     detail: string;
     invalid: boolean;
-    manualCode: string;
-    manualValid: boolean;
     status: string;
     title: string;
   };
   onAuthorize: () => Promise<void>;
   onCopyWebsite: () => void;
-  onHide: () => void;
   onLoad: (options: Record<string, string>) => void;
-  onManualInput: (event: { detail: { value: string } }) => void;
-  onManualProof: () => Promise<void>;
   onShow: () => void;
-  onUnload: () => void;
   setData: (data: Partial<LoginPage['data']>) => void;
 }
 
@@ -58,57 +52,26 @@ afterEach(() => {
 });
 
 describe('WeChat login bridge direct entry', () => {
-  it('requires explicit valid manual input and describes only an authorization check', async () => {
-    const { page, wxApi } = loadPage();
-    page.onLoad({});
-    page.onManualInput({ detail: { value: 'short' } });
-    await page.onManualProof();
-    expect(wxApi.login).not.toHaveBeenCalled();
-    page.onManualInput({ detail: { value: 'abcde f0123 abcde f0123' } });
-    expect(page.data.manualValid).toBe(true);
-    expect(wxApi.login).not.toHaveBeenCalled();
-    wxApi.login.mockImplementation(({ success }) => success({ code: 'synthetic' }));
-    wxApi.request.mockImplementation(({ success }) => success({ statusCode: 200, data: { state: 'proof_ready' } }));
-    await page.onManualProof();
-    expect(page.data.status).toBe('proof_ready');
-    expect(page.data.detail).toContain('未创建登录会话');
-    expect(page.data.manualCode).toBe('');
-    expect(wxApi.setClipboardData).not.toHaveBeenCalled();
-    await page.onManualProof();
-    expect(wxApi.login).toHaveBeenCalledOnce();
-  });
-
-  it.each(['onHide', 'onUnload'] as const)('clears manual input on %s and ignores delayed completion', async (event) => {
-    const { page, wxApi } = loadPage();
-    page.onLoad({});
-    page.onManualInput({ detail: { value: 'a'.repeat(20) } });
-    let complete: (value: { code: string }) => void = () => {};
-    wxApi.login.mockImplementation(({ success }) => { complete = success; });
-    const pending = page.onManualProof();
-    page[event]();
-    complete({ code: 'synthetic' });
-    await pending;
-    expect(page.data.manualCode).toBe('');
-    expect(page.data.status).toBe('welcome');
-    expect(wxApi.request).not.toHaveBeenCalled();
-  });
-
-  it('rejects a delayed manual response after a new Scheme launch', async () => {
+  it('uses the App query on a cold Scheme launch when Page options are empty', async () => {
     const { page, wxApi, app } = loadPage();
-    page.onLoad({});
-    page.onManualInput({ detail: { value: 'a'.repeat(20) } });
-    wxApi.login.mockImplementation(({ success }) => success({ code: 'synthetic' }));
-    let complete: (value: unknown) => void = () => {};
-    wxApi.request.mockImplementation(({ success }) => { complete = success; });
-    const pending = page.onManualProof();
-    await vi.waitFor(() => expect(wxApi.request).toHaveBeenCalled());
     app.globalData.wechatLaunch = { options: launch, version: 1 };
-    page.onShow();
-    complete({ statusCode: 200, data: { state: 'proof_ready' } });
-    await pending;
+
+    page.onLoad({});
+
     expect(page.data.status).toBe('ready');
     expect(page.data.title).toBe('登录 AskCore');
-    expect(page.data.manualCode).toBe('');
+    expect(app.globalData.wechatLaunch.options).toBeNull();
+    expect(wxApi.login).not.toHaveBeenCalled();
+  });
+
+  it('does not replace malformed Page launch data with a valid App query', async () => {
+    const { page, wxApi, app } = loadPage();
+    app.globalData.wechatLaunch = { options: launch, version: 1 };
+
+    page.onLoad({ p: 'signin', t: 'invalid' });
+
+    expect(page.data.status).toBe('failed');
+    expect(wxApi.login).not.toHaveBeenCalled();
   });
 
   it('opens without launch parameters as an actionable welcome, not an expired login', async () => {

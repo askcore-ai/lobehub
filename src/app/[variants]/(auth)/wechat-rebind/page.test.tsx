@@ -63,11 +63,10 @@ vi.mock('react-i18next', () => ({
 }));
 
 describe('WechatRebindPage', () => {
-  it('uses a native document link for the isolated prepublication entry', async () => {
+  it('does not advertise the historical prepublication proof in the final page', async () => {
     render(<WechatRebindPage />);
-    const link = await screen.findByRole('link', { name: 'betterAuth.wechatProof.title' });
-    expect(link.getAttribute('href')).toBe('/api/auth/wechat-prepublication');
-    expect(link.getAttribute('target')).toBeNull();
+    await screen.findByRole('button', { name: 'betterAuth.wechatRebind.start' });
+    expect(screen.queryByRole('link', { name: 'betterAuth.wechatProof.title' })).toBeNull();
   });
 
   beforeEach(() => {
