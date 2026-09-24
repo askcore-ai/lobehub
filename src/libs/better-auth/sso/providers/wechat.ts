@@ -1,5 +1,10 @@
 import { authEnv } from '@/envs/auth';
-import { canonicalWechatIdentity } from '@/libs/better-auth/plugins/wechat-mobile-login/identity-resolver';
+import { type GenericOAuthConfig } from 'better-auth/plugins';
+import {
+  databaseWebsiteIdentityStore,
+  reconcileWebsiteWechatIdentity,
+  type WebsiteIdentityStore,
+} from '@/libs/better-auth/plugins/wechat-mobile-login/website-identity';
 import { translation } from '@/server/translation';
 
 import { type GenericProviderDefinition } from '../types';
@@ -23,11 +28,9 @@ type WeChatTokenResponse = {
 const parseWechatScopes = (scope: string | undefined) =>
   scope ? scope.split(' ').filter(Boolean) : [];
 
-const provider: GenericProviderDefinition<{
-  AUTH_WECHAT_ID: string;
-  AUTH_WECHAT_SECRET: string;
-}> = {
-  build: (env) => {
+type WechatEnv = { AUTH_WECHAT_ID: string; AUTH_WECHAT_SECRET: string };
+
+export const buildWechatProvider = (env: WechatEnv, store: WebsiteIdentityStore): GenericOAuthConfig => {
     const clientId = env.AUTH_WECHAT_ID;
     const clientSecret = env.AUTH_WECHAT_SECRET;
 
@@ -103,15 +106,16 @@ const provider: GenericProviderDefinition<{
           const profile = (await response.json()) as Record<string, unknown> | null;
           if (!profile || profile.errcode || profile.openid !== openId) return null;
           if (unionId !== undefined && profile.unionid !== undefined && unionId !== profile.unionid) return null;
-          const identity = canonicalWechatIdentity(unionId ?? profile.unionid);
+          const name = typeof profile.nickname === 'string' && profile.nickname
+            ? profile.nickname
+            : (await translation('common', 'zh-CN')).t('userPanel.defaultNickname');
+          const identity = await reconcileWebsiteWechatIdentity(store, openId, unionId ?? profile.unionid);
           return {
             email: identity.email,
             emailVerified: false,
             id: identity.accountId,
             image: typeof profile.headimgurl === 'string' ? profile.headimgurl : undefined,
-            name: typeof profile.nickname === 'string' && profile.nickname
-              ? profile.nickname
-              : (await translation('common', 'zh-CN')).t('userPanel.defaultNickname'),
+            name,
           };
         } catch {
           // Generic OAuth owns the failure redirect; never log raw provider data.
@@ -129,7 +133,10 @@ const provider: GenericProviderDefinition<{
 
       tokenUrl: WECHAT_TOKEN_URL,
     };
-  },
+  };
+
+const provider: GenericProviderDefinition<WechatEnv> = {
+  build: (env) => buildWechatProvider(env, databaseWebsiteIdentityStore),
 
   checkEnvs: () => {
     return !!(authEnv.AUTH_WECHAT_ID && authEnv.AUTH_WECHAT_SECRET)

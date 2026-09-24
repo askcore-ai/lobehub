@@ -7,14 +7,19 @@ import { genericOAuth } from 'better-auth/plugins';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { wechatMobileLogin } from '../../plugins/wechat-mobile-login';
-import Wechat from './wechat';
+import { type WebsiteIdentityStore } from '../../plugins/wechat-mobile-login/website-identity';
+import { buildWechatProvider } from './wechat';
 
 vi.mock('@/envs/auth', () => ({ authEnv: {} }));
 
 const origin = 'https://askcore.example';
 const unionid = 'synthetic-canonical-union';
 const email = `wechat-${createHash('sha256').update(unionid).digest('hex')}@identity.askcore.invalid`;
-const provider = () => Wechat.build({ AUTH_WECHAT_ID: 'synthetic-website', AUTH_WECHAT_SECRET: 'synthetic-secret' });
+const env = { AUTH_WECHAT_ID: 'synthetic-website', AUTH_WECHAT_SECRET: 'synthetic-secret' };
+const emptyStore: WebsiteIdentityStore = { transaction: async (_, action) => action({
+  find: async () => [], replace: async () => false,
+}) };
+const provider = () => buildWechatProvider(env, emptyStore);
 const tokens = (id: unknown = unionid) => ({
   accessToken: 'synthetic-access',
   raw: { openid: 'synthetic-website-openid', unionid: id },
@@ -96,13 +101,28 @@ function fixture(identity: { unionid: unknown } = { unionid }) {
     account: [], session: [], user: [], verification: [],
     wechatMobileLoginTransaction: [], wechatRebindClaim: [],
   };
+  const store: WebsiteIdentityStore = {
+    transaction: async (_, action) => action({
+      find: async (accountId) => database.account
+        .filter((row) => row.providerId === 'wechat' && row.accountId === accountId)
+        .map((row) => ({ id: String(row.id), userId: String(row.userId) })),
+      replace: async (id, oldAccountId, nextAccountId) => {
+        const row = database.account.find((candidate) => candidate.id === id &&
+          candidate.providerId === 'wechat' && candidate.accountId === oldAccountId);
+        if (!row || database.account.some((candidate) =>
+          candidate.providerId === 'wechat' && candidate.accountId === nextAccountId)) return false;
+        row.accountId = nextAccountId;
+        return true;
+      },
+    }),
+  };
   const auth = betterAuth({
     account: { accountLinking: { allowDifferentEmails: true, enabled: true, trustedProviders: [] } },
     baseURL: origin,
     database: memoryAdapter(database),
     logger: { disabled: true },
     plugins: [
-      genericOAuth({ config: [provider()] }),
+      genericOAuth({ config: [buildWechatProvider(env, store)] }),
       wechatMobileLogin({
         appId: 'synthetic-website', appSecret: 'synthetic-mini-secret', appURL: origin,
         identityMode: 'canonical', miniProgramAppId: 'synthetic-mini', mobileLoginEnabled: true,
@@ -185,6 +205,24 @@ describe('canonical identity through both real Better Auth handlers', () => {
     const mobileResponse = await f.mobile();
     const mobileSession = await (await f.request('/get-session', undefined, cookies(mobileResponse))).json();
     expect(mobileSession?.user?.id).toBe('historical-owner');
+  });
+
+  it('uses the UnionID owner on a double hit without rewriting the OpenID owner', async () => {
+    const f = fixture();
+    const now = new Date();
+    f.database.user.push(
+      { createdAt: now, email: 'old@example.com', emailVerified: false, id: 'old-owner', name: 'Old', updatedAt: now },
+      { createdAt: now, email, emailVerified: false, id: 'canonical-owner', name: 'Canonical', updatedAt: now },
+    );
+    f.database.account.push(
+      { accountId: 'synthetic-website-openid', createdAt: now, id: 'old-account', providerId: 'wechat', updatedAt: now, userId: 'old-owner' },
+      { accountId: unionid, createdAt: now, id: 'canonical-account', providerId: 'wechat', updatedAt: now, userId: 'canonical-owner' },
+    );
+    const response = await f.desktop();
+    const session = await (await f.request('/get-session', undefined, cookies(response))).json();
+    expect(session?.user?.id).toBe('canonical-owner');
+    expect(f.database.account).toHaveLength(2);
+    expect(f.database.account[0]).toMatchObject({ accountId: 'synthetic-website-openid', id: 'old-account', userId: 'old-owner' });
   });
 
   it.each(['desktop', 'mobile'] as const)('preserves one owner when %s logs in first', async (first) => {
