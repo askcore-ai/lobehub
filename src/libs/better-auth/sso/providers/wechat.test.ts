@@ -161,6 +161,32 @@ function fixture(identity: { unionid: unknown } = { unionid }) {
 }
 
 describe('canonical identity through both real Better Auth handlers', () => {
+  it('rewrites an OpenID-only historical association and keeps its original Account User', async () => {
+    const f = fixture();
+    const now = new Date();
+    f.database.user.push({
+      createdAt: now, email: 'historical@example.com', emailVerified: false,
+      id: 'historical-owner', name: 'Original', updatedAt: now,
+    });
+    f.database.account.push({
+      accountId: 'synthetic-website-openid', createdAt: now, id: 'historical-account',
+      providerId: 'wechat', updatedAt: now, userId: 'historical-owner',
+    });
+
+    const desktopResponse = await f.desktop();
+    const desktopSession = await (await f.request('/get-session', undefined, cookies(desktopResponse))).json();
+    expect(desktopSession?.user?.id).toBe('historical-owner');
+    expect(f.database.user).toHaveLength(1);
+    expect(f.database.account).toHaveLength(1);
+    expect(f.database.account[0]).toMatchObject({
+      accountId: unionid, id: 'historical-account', providerId: 'wechat', userId: 'historical-owner',
+    });
+
+    const mobileResponse = await f.mobile();
+    const mobileSession = await (await f.request('/get-session', undefined, cookies(mobileResponse))).json();
+    expect(mobileSession?.user?.id).toBe('historical-owner');
+  });
+
   it.each(['desktop', 'mobile'] as const)('preserves one owner when %s logs in first', async (first) => {
     const f = fixture();
     const firstResponse = await f[first]();
