@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { genericOAuth } from 'better-auth/plugins';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { boolean, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import { Pool } from 'pg';
@@ -20,6 +21,7 @@ import {
   createDatabaseWebsiteIdentityStore,
   reconcileWebsiteWechatIdentity,
 } from '../src/libs/better-auth/plugins/wechat-mobile-login/website-identity';
+import { buildWechatProvider } from '../src/libs/better-auth/sso/providers/wechat';
 
 const socket = process.env.P148_WECHAT_TEST_PG_SOCKET;
 assert.ok(socket?.startsWith(`${process.env.TMPDIR}/p148-pg.`), 'owned PostgreSQL socket required');
@@ -47,6 +49,10 @@ const createAuth = () =>
     }),
     logger: { disabled: true },
     plugins: [
+      genericOAuth({ config: [buildWechatProvider(
+        { AUTH_WECHAT_ID: 'synthetic-website', AUTH_WECHAT_SECRET: 'synthetic-website-secret' },
+        createDatabaseWebsiteIdentityStore(drizzle(pool) as unknown as LobeChatDatabase),
+      )] }),
       wechatMobileLogin({
         appId: 'synthetic-website',
         appSecret: 'synthetic-mini-secret',
@@ -221,6 +227,29 @@ try {
   assert.deepEqual((await pool.query(`SELECT account_id, user_id FROM accounts WHERE id='website-fail'`)).rows,
     [{ account_id: 'fail-openid', user_id: 'fixture-a' }]);
   await pool.query('DROP TRIGGER reject_website_rewrite ON accounts; DROP FUNCTION reject_website_rewrite();');
+  await pool.query(`INSERT INTO accounts (id, account_id, provider_id, user_id, updated_at)
+    VALUES ('website-callback-old', 'callback-openid', 'wechat', 'fixture-a', now())`);
+  globalThis.fetch = async (input) => {
+    const path = new URL(String(input)).pathname;
+    if (path === '/sns/oauth2/access_token') return Response.json({
+      access_token: 'synthetic-website-access', openid: 'callback-openid', unionid: 'callback-unionid',
+    });
+    if (path === '/sns/userinfo') return Response.json({
+      nickname: 'Fixture A', openid: 'callback-openid', unionid: 'callback-unionid',
+    });
+    throw new Error('unexpected website provider request');
+  };
+  const qrStart = await request('/sign-in/oauth2', { callbackURL: '/chat', providerId: 'wechat' });
+  assert.equal(qrStart.status, 200);
+  const qrTarget = new URL((await qrStart.json()).url);
+  const qrCallback = await request(`/oauth2/callback/wechat?${new URLSearchParams({
+    code: 'synthetic-code', state: qrTarget.searchParams.get('state')!,
+  })}`, undefined, cookieHeader(qrStart));
+  const qrSession = await (await request('/get-session', undefined, cookieHeader(qrCallback))).json();
+  assert.equal(qrSession?.user?.id, 'fixture-a');
+  assert.deepEqual((await pool.query(`SELECT id, account_id, user_id FROM accounts
+    WHERE id='website-callback-old'`)).rows,
+    [{ id: 'website-callback-old', account_id: 'callback-unionid', user_id: 'fixture-a' }]);
   globalThis.fetch = async (input) => {
     assert.equal(new URL(String(input)).origin, 'https://api.weixin.qq.com');
     return Response.json({
