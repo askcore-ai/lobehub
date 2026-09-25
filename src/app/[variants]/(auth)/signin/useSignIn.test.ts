@@ -19,6 +19,7 @@ const mockSignInOauth2 = vi.hoisted(() => vi.fn());
 const mockSignInEmail = vi.hoisted(() => vi.fn());
 const mockSignInMagicLink = vi.hoisted(() => vi.fn());
 const mockRequestPasswordReset = vi.hoisted(() => vi.fn());
+const mockTrackLoginOrSignupClicked = vi.hoisted(() => vi.fn());
 const mockLocalStorage = vi.hoisted(() => {
   const store = new Map<string, string>();
 
@@ -58,6 +59,10 @@ vi.mock('@/libs/better-auth/auth-client', () => ({
 vi.mock('@/libs/better-auth/utils/client', () => ({
   isBuiltinProvider: (p: string) => ['google', 'github', 'apple'].includes(p),
   normalizeProviderId: (p: string) => p,
+}));
+
+vi.mock('@/features/User/UserLoginOrSignup/trackLoginOrSignupClicked', () => ({
+  trackLoginOrSignupClicked: mockTrackLoginOrSignupClicked,
 }));
 
 vi.mock('@lobechat/business-const', () => ({
@@ -153,6 +158,7 @@ describe('useSignIn', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFetch.mockReset();
+    mockTrackLoginOrSignupClicked.mockResolvedValue(undefined);
     registrationConfig.magic = false;
     mockPrepareRegistration.mockResolvedValue({ handle: 'b'.repeat(64), expiresAt: '2099-01-01T00:00:00.000Z' });
     mockLocalStorage.clear();
@@ -385,6 +391,34 @@ describe('useSignIn', () => {
   });
 
   describe('handleSocialSignIn', () => {
+    it('starts mobile WeChat without waiting for optional analytics', async () => {
+      useMobileNavigator();
+      let releaseAnalytics!: () => void;
+      const pendingAnalytics = new Promise<void>((resolve) => {
+        releaseAnalytics = resolve;
+      });
+      mockTrackLoginOrSignupClicked.mockReturnValueOnce(pendingAnalytics);
+      mockFetch.mockResolvedValueOnce(jsonResponse(mobileLaunch()));
+      const { result } = renderHook(() => useSignIn());
+
+      let signIn!: Promise<void>;
+      act(() => {
+        signIn = result.current.handleSocialSignIn('wechat');
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      const startedBeforeAnalytics = mockFetch.mock.calls.some(([path]) => path.endsWith('/start'));
+      releaseAnalytics();
+      await act(async () => {
+        await signIn;
+      });
+
+      expect(startedBeforeAnalytics).toBe(true);
+      expect(result.current.wechatMobileLogin.phase).toBe('prepared');
+      expect(result.current.socialLoading).toBeNull();
+    });
+
     it.each(['cancel', 'unmount', 'replace'] as const)(
       'ignores an authorized status response delivered after %s', async (action) => {
       useMobileNavigator();
