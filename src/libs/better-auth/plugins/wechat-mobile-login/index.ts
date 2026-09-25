@@ -167,11 +167,6 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
     rateLimit: [
       ...prepublicationRateLimits,
       {
-        max: 10,
-        pathMatcher: (path) => path === '/wechat-mobile/start',
-        window: 60,
-      },
-      {
         max: 120,
         pathMatcher: (path) => path === '/wechat-mobile/status',
         window: 60,

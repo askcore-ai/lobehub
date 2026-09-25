@@ -226,7 +226,9 @@ export const useSignIn = () => {
       return {
         data: null,
         error: {
-          code: stableErrorCode(payload.code || payload.message, 'WECHAT_MOBILE_LOGIN_FAILED'),
+          code: response.status === 429
+            ? 'WECHAT_MOBILE_RATE_LIMITED'
+            : stableErrorCode(payload.code || payload.message, 'WECHAT_MOBILE_LOGIN_FAILED'),
           status: response.status,
         },
       };
@@ -583,7 +585,7 @@ export const useSignIn = () => {
   const handleSocialSignIn = async (provider: string) => {
     setSocialLoading(provider);
     const normalizedProvider = normalizeProviderId(provider);
-    await trackLoginOrSignupClicked({
+    void trackLoginOrSignupClicked({
       provider: normalizedProvider,
       spm: 'signin.social.click',
     });
