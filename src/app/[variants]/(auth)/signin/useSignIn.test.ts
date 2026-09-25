@@ -655,6 +655,26 @@ describe('useSignIn', () => {
       });
     });
 
+    it('shows a stable retryable message when an outer limiter rejects mobile start', async () => {
+      useMobileNavigator();
+      mockFetch.mockResolvedValueOnce(jsonResponse(
+        { message: 'Too many requests. Please try again later.' },
+        429,
+      ));
+      const { result } = renderHook(() => useSignIn());
+
+      await act(async () => {
+        await result.current.handleSocialSignIn('wechat');
+      });
+
+      expect(result.current.wechatMobileLogin).toEqual({
+        message: 'WECHAT_MOBILE_RATE_LIMITED',
+        phase: 'failed',
+        retryable: true,
+      });
+      expect(result.current.socialLoading).toBeNull();
+    });
+
     it('should call signIn.social for builtin providers', async () => {
       mockSignInSocial.mockResolvedValue({ url: 'https://google.com/auth' });
 
