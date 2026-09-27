@@ -74,6 +74,14 @@ function fixture() {
     });
     expect(response.status).toBe(200);
     const prepared = await response.json();
+    expect(prepared.openTarget).toContain('&path=pages/login/index&');
+    expect(prepared.openTarget).not.toContain('path=pages%2Flogin%2Findex');
+    expect(prepared.openTarget).toContain('&env_version=release');
+    const rawQuery = prepared.openTarget.match(/[?&]query=([^&]*)/)?.[1];
+    expect(rawQuery).toBeDefined();
+    expect(decodeURIComponent(rawQuery)).toBe(
+      new URL(prepared.openTarget).searchParams.get('query'),
+    );
     const query = new URLSearchParams(new URL(prepared.openTarget).searchParams.get('query')!);
     // Run the uploaded bridge's actual parser against the real framework response.
     const launch = bridge.parseLaunchOptions(Object.fromEntries(query));

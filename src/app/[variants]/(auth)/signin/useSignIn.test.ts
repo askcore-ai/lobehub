@@ -391,6 +391,39 @@ describe('useSignIn', () => {
   });
 
   describe('handleSocialSignIn', () => {
+    it('shows a cancellable preparing state and aborts a slow mobile start', async () => {
+      useMobileNavigator();
+      const start = deferredResponse();
+      let startSignal: AbortSignal | undefined;
+      mockFetch.mockImplementationOnce(async (_path: string, init?: RequestInit) => {
+        startSignal = init?.signal as AbortSignal | undefined;
+        return start.promise;
+      });
+      const { result } = renderHook(() => useSignIn());
+
+      let signIn!: Promise<void>;
+      act(() => {
+        signIn = result.current.handleSocialSignIn('wechat');
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      const phaseWhilePending = result.current.wechatMobileLogin.phase;
+      await act(async () => {
+        await result.current.cancelWechatMobile();
+      });
+      const abortedBeforeResolution = startSignal?.aborted;
+      await act(async () => {
+        start.resolve(jsonResponse(mobileLaunch()));
+        await signIn;
+      });
+
+      expect(phaseWhilePending).toBe('preparing');
+      expect(abortedBeforeResolution).toBe(true);
+      expect(result.current.wechatMobileLogin).toEqual({ phase: 'idle' });
+      expect(result.current.socialLoading).toBeNull();
+    });
+
     it('starts mobile WeChat without waiting for optional analytics', async () => {
       useMobileNavigator();
       let releaseAnalytics!: () => void;

@@ -13,6 +13,24 @@ vi.mock('react-i18next', () => ({
 const renderStatus = (ui: ReactElement) => render(<ConfigProvider motion={m}>{ui}</ConfigProvider>);
 
 describe('WechatMobileLoginStatus', () => {
+  it('shows immediate progress before the mobile start response exists', () => {
+    renderStatus(
+      <WechatMobileLoginStatus
+        state={{ phase: 'preparing' }}
+        onCancel={vi.fn()}
+        onConfirmAccountSwitch={vi.fn()}
+        onOpenWechat={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('betterAuth.wechatMobile.preparing')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'betterAuth.wechatMobile.openWechat' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'betterAuth.wechatMobile.cancel' })).toBeEnabled();
+  });
+
   it('requires an explicit second click before asking the browser to open WeChat', () => {
     const onOpenWechat = vi.fn();
 
