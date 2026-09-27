@@ -20,7 +20,7 @@ const cookieHeader = (response: Response) =>
     .map((cookie) => cookie.split(';')[0])
     .join('; ');
 
-function fixture() {
+function fixture(customUrlLinkGenerator?: WechatMobileLoginOptions['urlLinkGenerator']) {
   const database: Record<string, Record<string, unknown>[]> = {
     account: [],
     session: [],
@@ -30,12 +30,20 @@ function fixture() {
     wechatRebindClaim: [],
   };
   let nextId = 0;
+  let generatedLaunchQuery = '';
+  const urlLinkGenerator =
+    customUrlLinkGenerator ??
+    vi.fn(async ({ query }: { query: string }) => {
+      generatedLaunchQuery = query;
+      return 'https://wxmpurl.cn/synthetic-runtime-link';
+    });
   const options: WechatMobileLoginOptions = {
     appId: 'synthetic-website', appSecret: 'synthetic-mini-secret', appURL: origin,
     identityMode: 'canonical', miniProgramAppId: 'synthetic-mini',
     mobileLoginEnabled: true, mobileLoginExistingOnly: false,
-    rebindEnabled: true, recoverySeconds: 60, schemePath: 'pages/login/index',
-    transactionTtlSeconds: 300, websiteAppSecret: 'synthetic-website-secret',
+    rebindEnabled: true, recoverySeconds: 60,
+    transactionTtlSeconds: 300, urlLinkGenerator,
+    websiteAppSecret: 'synthetic-website-secret',
   };
   const auth = betterAuth({
     advanced: { database: { generateId: () => `framework_${++nextId}` } },
@@ -74,15 +82,8 @@ function fixture() {
     });
     expect(response.status).toBe(200);
     const prepared = await response.json();
-    expect(prepared.openTarget).toContain('&path=pages/login/index&');
-    expect(prepared.openTarget).not.toContain('path=pages%2Flogin%2Findex');
-    expect(prepared.openTarget).toContain('&env_version=release');
-    const rawQuery = prepared.openTarget.match(/[?&]query=([^&]*)/)?.[1];
-    expect(rawQuery).toBeDefined();
-    expect(decodeURIComponent(rawQuery)).toBe(
-      new URL(prepared.openTarget).searchParams.get('query'),
-    );
-    const query = new URLSearchParams(new URL(prepared.openTarget).searchParams.get('query')!);
+    expect(prepared.openTarget).toBe('https://wxmpurl.cn/synthetic-runtime-link');
+    const query = new URLSearchParams(generatedLaunchQuery);
     // Run the uploaded bridge's actual parser against the real framework response.
     const launch = bridge.parseLaunchOptions(Object.fromEntries(query));
     expect(launch.transactionId).toBe(prepared.transactionId);
@@ -145,6 +146,22 @@ function fixture() {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 describe('WeChat bridge through the real Better Auth handler and adapter factory', () => {
+  it('fails preparation without issuing a browser binding when URL Link generation fails', async () => {
+    const f = fixture(vi.fn().mockRejectedValue(new Error('provider detail')));
+    const response = await f.request('/wechat-mobile/start', {
+      body: { callbackURL: '/chat?from=wechat' },
+    });
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: 'WECHAT_URL_LINK_UNAVAILABLE' });
+    expect(cookieHeader(response)).not.toContain('__Host-askcore-wxm-');
+    expect(f.database.wechatMobileLoginTransaction).toHaveLength(1);
+    expect(f.database.wechatMobileLoginTransaction[0]).toMatchObject({
+      failureCode: 'url_link_unavailable',
+      state: 'failed',
+    });
+  });
+
   it('finishes a real-handler manual exchange in Release A without identity or session writes', async () => {
     const f = fixture();
     const prepared = await f.startManual();

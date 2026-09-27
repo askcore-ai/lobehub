@@ -91,7 +91,7 @@ describe('WechatRebindPage', () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       json: async () => ({
         expiresAt: '2026-07-29T12:05:00.000Z',
-        openTarget: 'weixin://dl/business/?redacted=1',
+        openTarget: 'https://wxmpurl.cn/redacted-link',
         pollAfterMs: 1200,
         tabBinding: 'a'.repeat(43),
         transactionId: 'wxm_transaction_1234',
@@ -158,5 +158,30 @@ describe('WechatRebindPage', () => {
     expect(
       await screen.findByRole('button', { name: 'betterAuth.wechatRebind.retry' }),
     ).toBeInTheDocument();
+  });
+
+  it('rejects the retired handwritten Scheme target', async () => {
+    vi.spyOn(navigator, 'maxTouchPoints', 'get').mockReturnValue(5);
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)',
+    );
+    vi.mocked(fetch).mockResolvedValueOnce({
+      json: async () => ({
+        expiresAt: '2026-07-29T12:05:00.000Z',
+        openTarget: 'weixin://dl/business/?retired=1',
+        pollAfterMs: 1200,
+        tabBinding: 'a'.repeat(43),
+        transactionId: 'wxm_transaction_1234',
+      }),
+      ok: true,
+    } as Response);
+
+    render(<WechatRebindPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'betterAuth.wechatRebind.start' }));
+
+    expect(
+      await screen.findByRole('button', { name: 'betterAuth.wechatRebind.retry' }),
+    ).toBeInTheDocument();
+    expect(sessionStorage.length).toBe(0);
   });
 });

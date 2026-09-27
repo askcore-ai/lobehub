@@ -13,7 +13,6 @@ const options = {
   mobileLoginEnabled: true,
   rebindEnabled: true,
   recoverySeconds: 60,
-  schemePath: 'pages/login/index' as const,
   transactionTtlSeconds: 300 as const,
   websiteAppSecret: 'website-server-only-secret',
 };

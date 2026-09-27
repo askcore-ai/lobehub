@@ -116,6 +116,7 @@ function fixture(identity: { unionid: unknown } = { unionid }) {
       },
     }),
   };
+  let mobileLaunchQuery = '';
   const auth = betterAuth({
     account: { accountLinking: { allowDifferentEmails: true, enabled: true, trustedProviders: [] } },
     baseURL: origin,
@@ -127,8 +128,13 @@ function fixture(identity: { unionid: unknown } = { unionid }) {
         appId: 'synthetic-website', appSecret: 'synthetic-mini-secret', appURL: origin,
         identityMode: 'canonical', miniProgramAppId: 'synthetic-mini',
         mobileLoginEnabled: true, mobileLoginExistingOnly: false,
-        rebindEnabled: true, recoverySeconds: 60, schemePath: 'pages/login/index',
-        transactionTtlSeconds: 300, websiteAppSecret: 'synthetic-secret',
+        rebindEnabled: true, recoverySeconds: 60,
+        transactionTtlSeconds: 300,
+        urlLinkGenerator: async ({ query }) => {
+          mobileLaunchQuery = query;
+          return 'https://wxmpurl.cn/synthetic-convergence-link';
+        },
+        websiteAppSecret: 'synthetic-secret',
       }),
     ],
     rateLimit: { enabled: false },
@@ -167,7 +173,8 @@ function fixture(identity: { unionid: unknown } = { unionid }) {
     const started = await request('/wechat-mobile/start', { callbackURL: '/chat' });
     expect(started.status).toBe(200);
     const data = await started.json();
-    const query = new URLSearchParams(new URL(data.openTarget).searchParams.get('query')!);
+    expect(data.openTarget).toBe('https://wxmpurl.cn/synthetic-convergence-link');
+    const query = new URLSearchParams(mobileLaunchQuery);
     const confirmed = await request('/wechat-mobile/confirm', {
       code: 'synthetic-code', completionCapability: query.get('c'), transactionId: data.transactionId,
     });

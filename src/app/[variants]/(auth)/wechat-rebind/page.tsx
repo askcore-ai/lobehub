@@ -31,16 +31,33 @@ const stableErrorCode = (value: unknown, fallback: string): string =>
 const isRetryableStatus = (status: number | undefined): boolean =>
   status === 429 || status === 502 || status === 503;
 
+const isOfficialWechatUrlLink = (value: string): boolean => {
+  try {
+    const target = new URL(value);
+    return (
+      target.protocol === 'https:' &&
+      (target.hostname === 'wxaurl.cn' || target.hostname === 'wxmpurl.cn') &&
+      !target.username &&
+      !target.password &&
+      !target.port
+    );
+  } catch {
+    return false;
+  }
+};
+
 const isStartResponse = (value: unknown, channel: 'desktop' | 'mobile'): value is StartResponse => {
   if (!value || typeof value !== 'object') return false;
   const response = value as Partial<StartResponse>;
-  const expectedTarget =
-    channel === 'mobile' ? 'weixin://dl/business/' : 'https://open.weixin.qq.com/';
+  const validTarget =
+    typeof response.openTarget === 'string' &&
+    (channel === 'mobile'
+      ? isOfficialWechatUrlLink(response.openTarget)
+      : response.openTarget.startsWith('https://open.weixin.qq.com/'));
   return (
     typeof response.expiresAt === 'string' &&
     !Number.isNaN(Date.parse(response.expiresAt)) &&
-    typeof response.openTarget === 'string' &&
-    response.openTarget.startsWith(expectedTarget) &&
+    validTarget &&
     typeof response.pollAfterMs === 'number' &&
     response.pollAfterMs >= 500 &&
     response.pollAfterMs <= 10_000 &&

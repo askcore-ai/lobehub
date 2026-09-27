@@ -83,7 +83,6 @@ vi.mock('@/envs/auth', () => ({
     AUTH_WECHAT_MOBILE_EXISTING_ONLY: true,
     AUTH_WECHAT_MOBILE_LOGIN_ENABLED: false,
     AUTH_WECHAT_REBIND_ENABLED: false,
-    AUTH_WECHAT_SCHEME_PATH: 'pages/login/index',
     AUTH_WECHAT_SECRET: 'wx-website-secret',
     AUTH_WECHAT_SESSION_RECOVERY_SECONDS: 60,
     AUTH_WECHAT_TRANSACTION_TTL_SECONDS: 300,
@@ -224,7 +223,6 @@ describe('defineConfig', () => {
       mobileLoginEnabled: false,
       rebindEnabled: false,
       recoverySeconds: 60,
-      schemePath: 'pages/login/index',
       transactionTtlSeconds: 300,
       websiteAppSecret: 'wx-website-secret',
     });

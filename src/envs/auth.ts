@@ -83,7 +83,6 @@ declare global {
       AUTH_WECHAT_MOBILE_EXISTING_ONLY?: string;
       AUTH_WECHAT_MOBILE_LOGIN_ENABLED?: string;
       AUTH_WECHAT_REBIND_ENABLED?: string;
-      AUTH_WECHAT_SCHEME_PATH?: string;
       AUTH_WECHAT_SECRET?: string;
       AUTH_WECHAT_SESSION_RECOVERY_SECONDS?: string;
       AUTH_WECHAT_TRANSACTION_TTL_SECONDS?: string;
@@ -197,10 +196,6 @@ export const getAuthConfig = () => {
       AUTH_WECHAT_MOBILE_EXISTING_ONLY: z.boolean().optional().default(true),
       AUTH_WECHAT_MOBILE_LOGIN_ENABLED: z.boolean().optional().default(false),
       AUTH_WECHAT_REBIND_ENABLED: z.boolean().optional().default(false),
-      AUTH_WECHAT_SCHEME_PATH: z
-        .literal('pages/login/index')
-        .optional()
-        .default('pages/login/index'),
       AUTH_WECHAT_SESSION_RECOVERY_SECONDS: z.coerce
         .number()
         .int()
@@ -314,7 +309,6 @@ export const getAuthConfig = () => {
         process.env.AUTH_WECHAT_MOBILE_EXISTING_ONLY !== '0',
       AUTH_WECHAT_MOBILE_LOGIN_ENABLED: process.env.AUTH_WECHAT_MOBILE_LOGIN_ENABLED === '1',
       AUTH_WECHAT_REBIND_ENABLED: process.env.AUTH_WECHAT_REBIND_ENABLED === '1',
-      AUTH_WECHAT_SCHEME_PATH: process.env.AUTH_WECHAT_SCHEME_PATH,
       AUTH_WECHAT_SESSION_RECOVERY_SECONDS: process.env.AUTH_WECHAT_SESSION_RECOVERY_SECONDS,
       AUTH_WECHAT_TRANSACTION_TTL_SECONDS: process.env.AUTH_WECHAT_TRANSACTION_TTL_SECONDS,
       AUTH_WECHAT_SECRET: process.env.AUTH_WECHAT_SECRET,

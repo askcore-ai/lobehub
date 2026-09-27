@@ -363,7 +363,6 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
         mobileLoginEnabled: authEnv.AUTH_WECHAT_MOBILE_LOGIN_ENABLED,
         rebindEnabled: authEnv.AUTH_WECHAT_REBIND_ENABLED,
         recoverySeconds: authEnv.AUTH_WECHAT_SESSION_RECOVERY_SECONDS,
-        schemePath: authEnv.AUTH_WECHAT_SCHEME_PATH,
         transactionTtlSeconds: authEnv.AUTH_WECHAT_TRANSACTION_TTL_SECONDS,
         websiteAppSecret: authEnv.AUTH_WECHAT_SECRET || '',
       }),

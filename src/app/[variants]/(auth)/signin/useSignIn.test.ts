@@ -126,7 +126,7 @@ const jsonResponse = (value: unknown, status = 200) => ({
 });
 const mobileLaunch = (transactionId = 'wxm_transaction_1234') => ({
   expiresAt: '2099-01-01T00:00:00.000Z',
-  openTarget: 'weixin://dl/business/?synthetic=1',
+  openTarget: 'https://wxmpurl.cn/synthetic-link',
   pollAfterMs: 1200,
   tabBinding: 'a'.repeat(43),
   transactionId,
@@ -606,7 +606,7 @@ describe('useSignIn', () => {
       mockFetch.mockResolvedValueOnce({
         json: async () => ({
           expiresAt: '2026-07-29T12:05:00.000Z',
-          openTarget: 'weixin://dl/business/?redacted=1',
+          openTarget: 'https://wxmpurl.cn/redacted-link',
           pollAfterMs: 1200,
           tabBinding: 'a'.repeat(43),
           transactionId: 'wxm_transaction_1234',
@@ -686,6 +686,28 @@ describe('useSignIn', () => {
         phase: 'failed',
         retryable: true,
       });
+    });
+
+    it('rejects the retired handwritten Scheme target', async () => {
+      useMobileNavigator();
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          ...mobileLaunch(),
+          openTarget: 'weixin://dl/business/?retired=1',
+        }),
+      );
+      const { result } = renderHook(() => useSignIn());
+
+      await act(async () => {
+        await result.current.handleSocialSignIn('wechat');
+      });
+
+      expect(result.current.wechatMobileLogin).toEqual({
+        message: 'WECHAT_MALFORMED_RESPONSE',
+        phase: 'failed',
+        retryable: false,
+      });
+      expect(sessionStorage.length).toBe(0);
     });
 
     it('shows a stable retryable message when an outer limiter rejects mobile start', async () => {

@@ -347,6 +347,17 @@ export class WechatMobileTransactionStore {
     });
   }
 
+  failPreparation(transactionId: string, failureCode: string, now: Date = new Date()) {
+    return this.adapter.update<WechatMobileTransaction>({
+      model: MODEL,
+      update: { failureCode, state: 'failed', updatedAt: now },
+      where: [
+        { field: 'id', value: transactionId },
+        { field: 'state', value: 'pending' },
+      ],
+    });
+  }
+
   cancel(transactionId: string, now: Date = new Date()) {
     return this.adapter.update<WechatMobileTransaction>({
       model: MODEL,

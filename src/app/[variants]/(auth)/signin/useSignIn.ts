@@ -84,6 +84,21 @@ interface WechatMobileStartResponse {
   transactionId: string;
 }
 
+const isOfficialWechatUrlLink = (value: string): boolean => {
+  try {
+    const target = new URL(value);
+    return (
+      target.protocol === 'https:' &&
+      (target.hostname === 'wxaurl.cn' || target.hostname === 'wxmpurl.cn') &&
+      !target.username &&
+      !target.password &&
+      !target.port
+    );
+  } catch {
+    return false;
+  }
+};
+
 const isWechatMobileStartResponse = (value: unknown): value is WechatMobileStartResponse => {
   if (!value || typeof value !== 'object') return false;
   const response = value as Partial<WechatMobileStartResponse>;
@@ -91,7 +106,7 @@ const isWechatMobileStartResponse = (value: unknown): value is WechatMobileStart
     typeof response.expiresAt === 'string' &&
     !Number.isNaN(Date.parse(response.expiresAt)) &&
     typeof response.openTarget === 'string' &&
-    response.openTarget.startsWith('weixin://dl/business/') &&
+    isOfficialWechatUrlLink(response.openTarget) &&
     typeof response.pollAfterMs === 'number' &&
     response.pollAfterMs >= 500 &&
     response.pollAfterMs <= 10_000 &&

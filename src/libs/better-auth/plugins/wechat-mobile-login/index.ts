@@ -40,6 +40,10 @@ import {
   exchangeWechatMiniProgramCode,
   exchangeWechatWebsiteCode,
 } from './wechat-client';
+import {
+  createWechatUrlLinkGenerator,
+  type WechatUrlLinkGenerator,
+} from './url-link-client';
 
 export type WechatIdentityMode = 'canonical' | 'legacy' | 'maintenance';
 
@@ -53,8 +57,8 @@ export interface WechatMobileLoginOptions {
   mobileLoginExistingOnly: boolean;
   rebindEnabled: boolean;
   recoverySeconds: number;
-  schemePath: 'pages/login/index';
   transactionTtlSeconds: 300;
+  urlLinkGenerator?: WechatUrlLinkGenerator;
   websiteAppSecret: string;
 }
 
@@ -71,27 +75,16 @@ const normalizeCallback = (callbackURL: string, appURL: string): string => {
 };
 
 
-const openTarget = (
-  options: WechatMobileLoginOptions,
+const miniProgramQuery = (
   purpose: 'rebind' | 'signin',
   transactionIdValue: string,
   completionCapability: string,
 ): string => {
-  const query = new URLSearchParams({
+  return new URLSearchParams({
     c: completionCapability,
     p: purpose,
     t: transactionIdValue,
   }).toString();
-  // WeChat's plain Scheme contract requires the published page path itself,
-  // while only the nested mini-program query is URL-encoded. URLSearchParams
-  // would also encode the path separators and WeChat can reject that target
-  // before the mini-program page is loaded.
-  return [
-    `weixin://dl/business/?appid=${encodeURIComponent(options.miniProgramAppId)}`,
-    `path=${options.schemePath}`,
-    `query=${encodeURIComponent(query)}`,
-    'env_version=release',
-  ].join('&');
 };
 
 const publicState = (transaction: WechatMobileTransaction) => ({
@@ -142,6 +135,12 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
     throw new Error('AUTH_WECHAT_TRANSACTION_TTL_SECONDS must be exactly 300');
   }
   const browserBindingMaxAge = options.transactionTtlSeconds + options.recoverySeconds;
+  const generateUrlLink =
+    options.urlLinkGenerator ??
+    createWechatUrlLinkGenerator({
+      appId: options.miniProgramAppId,
+      appSecret: options.appSecret,
+    });
   const adapterFor = (ctx: { context: { adapter: unknown } }) =>
     ctx.context.adapter as WechatMobileDatabaseAdapter;
   const storeFor = (ctx: { context: { adapter: unknown } }) =>
@@ -466,6 +465,20 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
             initiatingUserId: session?.user.id,
             purpose: 'signin',
           });
+          let generatedOpenTarget: string;
+          try {
+            generatedOpenTarget = await generateUrlLink({
+              expiresAt: created.transaction.expiresAt,
+              query: miniProgramQuery(
+                'signin',
+                created.transaction.id,
+                created.capabilities.completionCapability,
+              ),
+            });
+          } catch {
+            await store.failPreparation(created.transaction.id, 'url_link_unavailable');
+            endpointError('SERVICE_UNAVAILABLE', 'WECHAT_URL_LINK_UNAVAILABLE');
+          }
           await ctx.setSignedCookie(
             signedCookieName(created.transaction.id),
             created.capabilities.browserCookie,
@@ -481,12 +494,7 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
           return ctx.json(
             {
               expiresAt: created.transaction.expiresAt.toISOString(),
-              openTarget: openTarget(
-                options,
-                'signin',
-                created.transaction.id,
-                created.capabilities.completionCapability,
-              ),
+              openTarget: generatedOpenTarget,
               pollAfterMs: WECHAT_MOBILE_POLL_AFTER_MS,
               tabBinding: created.capabilities.tabBinding,
               transactionId: created.transaction.id,
@@ -529,6 +537,27 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
             purpose: 'rebind',
             rebindAccountRowId: account.id,
           });
+          let generatedOpenTarget: string;
+          if (ctx.body.channel === 'mobile') {
+            try {
+              generatedOpenTarget = await generateUrlLink({
+                expiresAt: created.transaction.expiresAt,
+                query: miniProgramQuery(
+                  'rebind',
+                  created.transaction.id,
+                  created.capabilities.completionCapability,
+                ),
+              });
+            } catch {
+              await store.failPreparation(created.transaction.id, 'url_link_unavailable');
+              endpointError('SERVICE_UNAVAILABLE', 'WECHAT_URL_LINK_UNAVAILABLE');
+            }
+          } else {
+            generatedOpenTarget = websiteRebindTarget(
+              options,
+              created.capabilities.oauthState,
+            );
+          }
           await ctx.setSignedCookie(
             signedCookieName(created.transaction.id),
             created.capabilities.browserCookie,
@@ -544,15 +573,7 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
           return ctx.json(
             {
               expiresAt: created.transaction.expiresAt.toISOString(),
-              openTarget:
-                ctx.body.channel === 'mobile'
-                  ? openTarget(
-                      options,
-                      'rebind',
-                      created.transaction.id,
-                      created.capabilities.completionCapability,
-                    )
-                  : websiteRebindTarget(options, created.capabilities.oauthState),
+              openTarget: generatedOpenTarget,
               pollAfterMs: WECHAT_MOBILE_POLL_AFTER_MS,
               tabBinding: created.capabilities.tabBinding,
               transactionId: created.transaction.id,
