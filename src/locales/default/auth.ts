@@ -139,10 +139,10 @@ export default {
   'betterAuth.wechatMobile.openWechat': 'Open WeChat',
   'betterAuth.wechatMobile.preparing': 'Preparing a secure WeChat sign-in request…',
   'betterAuth.wechatMobile.prepared':
-    'The login request is ready. Tap Open WeChat, authorize there, then return to this browser.',
+    'Opening WeChat automatically. If it does not open, tap Open WeChat below.',
   'betterAuth.wechatMobile.retry': 'Try again',
   'betterAuth.wechatMobile.returnGuidance':
-    'Complete authorization in WeChat, then use system navigation to return to this Safari or Chrome tab.',
+    'WeChat should open automatically. After authorization, use system navigation to return to this Safari or Chrome tab.',
   'betterAuth.wechatMobile.title': 'Sign in with WeChat',
   'betterAuth.wechatRebind.accountLabel': 'WeChat association {{index}}',
   'betterAuth.wechatRebind.confirm': 'Confirm verified identity',

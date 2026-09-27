@@ -378,7 +378,7 @@ export const useSignIn = () => {
     };
   }, [wechatMobileLogin, wechatPollAfterMs]);
 
-  const prepareWechatMobileLogin = async () => {
+  const prepareWechatMobileLogin = async (openAfterPrepare = false) => {
     const attempt = ++wechatAttempt.current;
     wechatStartAbort.current?.abort();
     const controller = new AbortController();
@@ -418,9 +418,10 @@ export const useSignIn = () => {
     setWechatPollAfterMs(result.data.pollAfterMs);
     setWechatMobileLogin({
       expiresAt: result.data.expiresAt,
-      phase: 'prepared',
+      phase: openAfterPrepare ? 'waiting' : 'prepared',
       transactionId: result.data.transactionId,
     });
+    if (openAfterPrepare) window.location.assign(result.data.openTarget);
   };
 
   const retryWechatMobileLogin = async () => {
@@ -444,15 +445,18 @@ export const useSignIn = () => {
       );
       return;
     }
-    await prepareWechatMobileLogin();
+    await prepareWechatMobileLogin(true);
   };
 
   const openPreparedWechat = () => {
-    if (wechatMobileLogin.phase !== 'prepared' || !wechatOpenTarget) return;
+    if (
+      (wechatMobileLogin.phase !== 'prepared' && wechatMobileLogin.phase !== 'waiting') ||
+      !wechatOpenTarget
+    )
+      return;
     const target = wechatOpenTarget;
-    setWechatOpenTarget(null);
     setWechatMobileLogin({ ...wechatMobileLogin, phase: 'waiting' });
-    // This assignment executes synchronously inside the explicit second button click.
+    // This fallback remains synchronous when automatic URL-Link navigation was blocked.
     window.location.assign(target);
   };
 
@@ -655,7 +659,7 @@ export const useSignIn = () => {
           ).userAgentData,
         }) === 'mobile'
       ) {
-        await prepareWechatMobileLogin();
+        await prepareWechatMobileLogin(true);
         return;
       }
       const handle = (await prepareRegistrationForSignin(callbackUrl))?.handle;

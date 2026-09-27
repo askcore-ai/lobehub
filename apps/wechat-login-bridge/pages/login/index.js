@@ -45,9 +45,9 @@ Page({
         });
       } else {
         this.setData({
-          actionText: '确认登录',
+          actionText: '重新登录',
           busy: false,
-          detail: '确认后，请使用系统导航返回原浏览器。',
+          detail: '正在自动完成微信登录，请稍候。',
           invalid: false,
           status: 'ready',
           title: '登录 AskCore',
@@ -72,6 +72,7 @@ Page({
     // launch paths omit the query from Page options, so retain the App query.
     this.applyLaunchOptions(hasLaunchFields(options) ? options : pending?.options || options);
     if (pending) pending.options = null;
+    if (launch && launch.purpose === 'signin') void this.onAuthorize();
   },
 
   onShow() {
@@ -80,6 +81,7 @@ Page({
     handledLaunchVersion = pending.version;
     this.applyLaunchOptions(pending.options);
     pending.options = null;
+    if (launch && launch.purpose === 'signin') void this.onAuthorize();
   },
 
   onCopyWebsite() {
@@ -111,6 +113,7 @@ Page({
       const retryable = ['askcore_unavailable', 'wx_login_failed'].includes(error.message);
       if (!retryable) launch = null;
       this.setData({
+        actionText: retryable ? '重新登录' : this.data.actionText,
         busy: false,
         detail: retryable
           ? '暂时无法连接，请稍后重试。'

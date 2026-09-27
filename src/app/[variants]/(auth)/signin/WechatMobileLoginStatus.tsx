@@ -70,7 +70,7 @@ export const WechatMobileLoginStatus = ({
       <Flexbox gap={12}>
         <div className={styles.title}>{t('betterAuth.wechatMobile.title')}</div>
         <p className={styles.description}>{description}</p>
-        {prepared && (
+        {(prepared || state.phase === 'waiting') && (
           <Button block type="primary" onClick={onOpenWechat}>
             {t('betterAuth.wechatMobile.openWechat')}
           </Button>
