@@ -37,13 +37,13 @@ import {
   WechatMobileTransactionStore,
 } from './transaction-store';
 import {
-  exchangeWechatMiniProgramCode,
-  exchangeWechatWebsiteCode,
-} from './wechat-client';
-import {
   createWechatUrlLinkGenerator,
   type WechatUrlLinkGenerator,
 } from './url-link-client';
+import {
+  exchangeWechatMiniProgramCode,
+  exchangeWechatWebsiteCode,
+} from './wechat-client';
 
 export type WechatIdentityMode = 'canonical' | 'legacy' | 'maintenance';
 
