@@ -14,6 +14,7 @@ const options = {
   rebindEnabled: true,
   recoverySeconds: 60,
   transactionTtlSeconds: 300 as const,
+  urlLinkEnvironment: 'release' as const,
   websiteAppSecret: 'website-server-only-secret',
 };
 

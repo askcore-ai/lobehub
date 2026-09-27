@@ -72,6 +72,7 @@ export const isOfficialWechatUrlLink = (value: string): boolean => {
 export const createWechatUrlLinkGenerator = (input: {
   appId: string;
   appSecret: string;
+  environment: 'release' | 'trial';
   fetcher?: typeof fetch;
   now?: () => number;
 }): WechatUrlLinkGenerator => {
@@ -131,7 +132,7 @@ export const createWechatUrlLinkGenerator = (input: {
     try {
       response = await fetcher(`${URL_LINK_ENDPOINT}?access_token=${encodeURIComponent(token)}`, {
         body: JSON.stringify({
-          env_version: 'release',
+          env_version: input.environment,
           expire_time: Math.floor(request.expiresAt.getTime() / 1000),
           expire_type: 0,
           path: 'pages/login/index',

@@ -19,6 +19,7 @@ describe('WeChat URL Link client', () => {
     const generate = createWechatUrlLinkGenerator({
       appId: 'wx-mini',
       appSecret: 'server-secret',
+      environment: 'release',
       fetcher,
       now,
     });
@@ -48,6 +49,27 @@ describe('WeChat URL Link client', () => {
     });
   });
 
+  it('generates trial links only when the server configuration selects trial', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ access_token: 'server-token', expires_in: 7200 }))
+      .mockResolvedValueOnce(Response.json({ url_link: 'https://wxmpurl.cn/trial' }));
+    const generate = createWechatUrlLinkGenerator({
+      appId: 'wx-mini',
+      appSecret: 'server-secret',
+      environment: 'trial',
+      fetcher,
+      now,
+    });
+
+    await expect(generate({ expiresAt, query: 'c=cap&p=signin&t=tx' })).resolves.toBe(
+      'https://wxmpurl.cn/trial',
+    );
+    expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toMatchObject({
+      env_version: 'trial',
+    });
+  });
+
   it('forces one stable-token refresh after an invalid access token', async () => {
     const fetcher = vi
       .fn<typeof fetch>()
@@ -58,6 +80,7 @@ describe('WeChat URL Link client', () => {
     const generate = createWechatUrlLinkGenerator({
       appId: 'wx-mini',
       appSecret: 'server-secret',
+      environment: 'release',
       fetcher,
       now,
     });
@@ -79,6 +102,7 @@ describe('WeChat URL Link client', () => {
     const generate = createWechatUrlLinkGenerator({
       appId: 'wx-mini',
       appSecret: 'server-secret',
+      environment: 'release',
       fetcher,
       now,
     });
@@ -97,12 +121,14 @@ describe('WeChat URL Link client', () => {
     const providerFailure = createWechatUrlLinkGenerator({
       appId: 'wx-mini',
       appSecret: 'server-secret',
+      environment: 'release',
       fetcher: vi.fn().mockResolvedValue(Response.json({ errcode: 45009, errmsg: 'sensitive' })),
       now,
     });
     const transportFailure = createWechatUrlLinkGenerator({
       appId: 'wx-mini',
       appSecret: 'server-secret',
+      environment: 'release',
       fetcher: vi.fn().mockRejectedValue(new Error('sensitive transport detail')),
       now,
     });

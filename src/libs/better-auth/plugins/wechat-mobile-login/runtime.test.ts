@@ -43,6 +43,7 @@ function fixture(customUrlLinkGenerator?: WechatMobileLoginOptions['urlLinkGener
     mobileLoginEnabled: true, mobileLoginExistingOnly: false,
     rebindEnabled: true, recoverySeconds: 60,
     transactionTtlSeconds: 300, urlLinkGenerator,
+    urlLinkEnvironment: 'release',
     websiteAppSecret: 'synthetic-website-secret',
   };
   const auth = betterAuth({

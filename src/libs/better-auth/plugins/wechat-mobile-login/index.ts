@@ -58,6 +58,7 @@ export interface WechatMobileLoginOptions {
   rebindEnabled: boolean;
   recoverySeconds: number;
   transactionTtlSeconds: 300;
+  urlLinkEnvironment: 'release' | 'trial';
   urlLinkGenerator?: WechatUrlLinkGenerator;
   websiteAppSecret: string;
 }
@@ -140,6 +141,7 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
     createWechatUrlLinkGenerator({
       appId: options.miniProgramAppId,
       appSecret: options.appSecret,
+      environment: options.urlLinkEnvironment,
     });
   const adapterFor = (ctx: { context: { adapter: unknown } }) =>
     ctx.context.adapter as WechatMobileDatabaseAdapter;

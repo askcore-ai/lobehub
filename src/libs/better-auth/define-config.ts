@@ -359,6 +359,7 @@ export function defineConfig(customOptions: CustomBetterAuthOptions) {
         appURL: appEnv.APP_URL || 'http://localhost:3210',
         identityMode: authEnv.AUTH_WECHAT_IDENTITY_MODE,
         miniProgramAppId: authEnv.AUTH_WECHAT_MINI_PROGRAM_APP_ID,
+        urlLinkEnvironment: authEnv.AUTH_WECHAT_MINI_PROGRAM_ENV_VERSION,
         mobileLoginExistingOnly: authEnv.AUTH_WECHAT_MOBILE_EXISTING_ONLY,
         mobileLoginEnabled: authEnv.AUTH_WECHAT_MOBILE_LOGIN_ENABLED,
         rebindEnabled: authEnv.AUTH_WECHAT_REBIND_ENABLED,
