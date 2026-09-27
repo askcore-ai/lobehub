@@ -180,8 +180,11 @@ describe('WechatRebindPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'betterAuth.wechatRebind.start' }));
 
     expect(
-      await screen.findByRole('button', { name: 'betterAuth.wechatRebind.retry' }),
+      await screen.findByText('betterAuth.wechatRebind.errors.WECHAT_REBIND_FAILED'),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'betterAuth.wechatRebind.openWechat' }),
+    ).not.toBeInTheDocument();
     expect(sessionStorage.length).toBe(0);
   });
 });
