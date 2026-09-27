@@ -36,14 +36,8 @@ import {
   type WechatMobileTransaction,
   WechatMobileTransactionStore,
 } from './transaction-store';
-import {
-  createWechatUrlLinkGenerator,
-  type WechatUrlLinkGenerator,
-} from './url-link-client';
-import {
-  exchangeWechatMiniProgramCode,
-  exchangeWechatWebsiteCode,
-} from './wechat-client';
+import { createWechatUrlLinkGenerator, type WechatUrlLinkGenerator } from './url-link-client';
+import { exchangeWechatMiniProgramCode, exchangeWechatWebsiteCode } from './wechat-client';
 
 export type WechatIdentityMode = 'canonical' | 'legacy' | 'maintenance';
 
@@ -58,6 +52,8 @@ export interface WechatMobileLoginOptions {
   rebindEnabled: boolean;
   recoverySeconds: number;
   transactionTtlSeconds: 300;
+  urlLinkEnvironment: 'release' | 'trial';
+  urlLinkTrialExpiresAt: string;
   urlLinkGenerator?: WechatUrlLinkGenerator;
   websiteAppSecret: string;
 }
@@ -73,7 +69,6 @@ const normalizeCallback = (callbackURL: string, appURL: string): string => {
   }
   return `${candidate.pathname}${candidate.search}${candidate.hash}`;
 };
-
 
 const miniProgramQuery = (
   purpose: 'rebind' | 'signin',
@@ -105,7 +100,6 @@ const websiteRebindTarget = (options: WechatMobileLoginOptions, oauthState: stri
 };
 
 const parseWebsiteRebindState = (state: string) => capability.parse(state);
-
 
 const isLegacyWechatIdentityRequest = async (request: Request): Promise<boolean> => {
   const path = new URL(request.url).pathname;
@@ -140,6 +134,8 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
     createWechatUrlLinkGenerator({
       appId: options.miniProgramAppId,
       appSecret: options.appSecret,
+      environment: options.urlLinkEnvironment,
+      trialExpiresAt: options.urlLinkTrialExpiresAt,
     });
   const adapterFor = (ctx: { context: { adapter: unknown } }) =>
     ctx.context.adapter as WechatMobileDatabaseAdapter;
@@ -274,7 +270,11 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
             transactionId: ctx.body.transactionId,
           });
           requireTruthy(transaction, 'UNAUTHORIZED', 'INVALID_BROWSER_BINDING');
-          requireTruthy(transaction.purpose !== 'prepublication', 'UNAUTHORIZED', 'INVALID_BROWSER_BINDING');
+          requireTruthy(
+            transaction.purpose !== 'prepublication',
+            'UNAUTHORIZED',
+            'INVALID_BROWSER_BINDING',
+          );
           const cancelled = await store.cancel(transaction.id);
           if (!cancelled && transaction.state !== 'cancelled') {
             endpointError('CONFLICT', 'WECHAT_TRANSACTION_NOT_CANCELLABLE');
@@ -424,7 +424,11 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
             transactionId: ctx.query.transactionId,
           });
           requireTruthy(transaction, 'UNAUTHORIZED', 'INVALID_BROWSER_BINDING');
-          requireTruthy(transaction.purpose !== 'prepublication', 'UNAUTHORIZED', 'INVALID_BROWSER_BINDING');
+          requireTruthy(
+            transaction.purpose !== 'prepublication',
+            'UNAUTHORIZED',
+            'INVALID_BROWSER_BINDING',
+          );
           const now = new Date();
           if (
             transaction.expiresAt <= now &&
@@ -537,16 +541,16 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
           const generatedOpenTarget =
             ctx.body.channel === 'mobile'
               ? await generateUrlLink({
-                expiresAt: created.transaction.expiresAt,
-                query: miniProgramQuery(
-                  'rebind',
-                  created.transaction.id,
-                  created.capabilities.completionCapability,
-                ),
-              }).catch(async () => {
-                await store.failPreparation(created.transaction.id, 'url_link_unavailable');
-                endpointError('SERVICE_UNAVAILABLE', 'WECHAT_URL_LINK_UNAVAILABLE');
-              })
+                  expiresAt: created.transaction.expiresAt,
+                  query: miniProgramQuery(
+                    'rebind',
+                    created.transaction.id,
+                    created.capabilities.completionCapability,
+                  ),
+                }).catch(async () => {
+                  await store.failPreparation(created.transaction.id, 'url_link_unavailable');
+                  endpointError('SERVICE_UNAVAILABLE', 'WECHAT_URL_LINK_UNAVAILABLE');
+                })
               : websiteRebindTarget(options, created.capabilities.oauthState);
           await ctx.setSignedCookie(
             signedCookieName(created.transaction.id),

@@ -79,6 +79,8 @@ declare global {
       AUTH_WECHAT_ID?: string;
       AUTH_WECHAT_IDENTITY_MODE?: string;
       AUTH_WECHAT_MINI_PROGRAM_APP_ID?: string;
+      AUTH_WECHAT_MINI_PROGRAM_ENV_VERSION?: 'release' | 'trial';
+      AUTH_WECHAT_MINI_PROGRAM_TRIAL_EXPIRES_AT?: string;
       AUTH_WECHAT_MINI_PROGRAM_SECRET?: string;
       AUTH_WECHAT_MOBILE_EXISTING_ONLY?: string;
       AUTH_WECHAT_MOBILE_LOGIN_ENABLED?: string;
@@ -192,6 +194,14 @@ export const getAuthConfig = () => {
         .optional()
         .default('legacy'),
       AUTH_WECHAT_MINI_PROGRAM_APP_ID: z.string().optional().default(''),
+      AUTH_WECHAT_MINI_PROGRAM_ENV_VERSION: z
+        .enum(['release', 'trial'])
+        .optional()
+        .default('release'),
+      AUTH_WECHAT_MINI_PROGRAM_TRIAL_EXPIRES_AT: z
+        .union([z.literal(''), z.string().datetime({ offset: true })])
+        .optional()
+        .default(''),
       AUTH_WECHAT_MINI_PROGRAM_SECRET: z.string().optional().default(''),
       AUTH_WECHAT_MOBILE_EXISTING_ONLY: z.boolean().optional().default(true),
       AUTH_WECHAT_MOBILE_LOGIN_ENABLED: z.boolean().optional().default(false),
@@ -304,9 +314,9 @@ export const getAuthConfig = () => {
       AUTH_WECHAT_ID: process.env.AUTH_WECHAT_ID,
       AUTH_WECHAT_IDENTITY_MODE: process.env.AUTH_WECHAT_IDENTITY_MODE,
       AUTH_WECHAT_MINI_PROGRAM_APP_ID: process.env.AUTH_WECHAT_MINI_PROGRAM_APP_ID,
+      AUTH_WECHAT_MINI_PROGRAM_ENV_VERSION: process.env.AUTH_WECHAT_MINI_PROGRAM_ENV_VERSION,
       AUTH_WECHAT_MINI_PROGRAM_SECRET: process.env.AUTH_WECHAT_MINI_PROGRAM_SECRET,
-      AUTH_WECHAT_MOBILE_EXISTING_ONLY:
-        process.env.AUTH_WECHAT_MOBILE_EXISTING_ONLY !== '0',
+      AUTH_WECHAT_MOBILE_EXISTING_ONLY: process.env.AUTH_WECHAT_MOBILE_EXISTING_ONLY !== '0',
       AUTH_WECHAT_MOBILE_LOGIN_ENABLED: process.env.AUTH_WECHAT_MOBILE_LOGIN_ENABLED === '1',
       AUTH_WECHAT_REBIND_ENABLED: process.env.AUTH_WECHAT_REBIND_ENABLED === '1',
       AUTH_WECHAT_SESSION_RECOVERY_SECONDS: process.env.AUTH_WECHAT_SESSION_RECOVERY_SECONDS,

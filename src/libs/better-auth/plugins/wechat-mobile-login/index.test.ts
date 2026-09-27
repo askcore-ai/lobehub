@@ -14,6 +14,8 @@ const options = {
   rebindEnabled: true,
   recoverySeconds: 60,
   transactionTtlSeconds: 300 as const,
+  urlLinkEnvironment: 'release' as const,
+  urlLinkTrialExpiresAt: '',
   websiteAppSecret: 'website-server-only-secret',
 };
 
@@ -47,9 +49,7 @@ describe('wechatMobileLogin Better Auth plugin', () => {
         (rule) => rule.max === 20 && rule.pathMatcher('/wechat-mobile/consume'),
       ),
     ).toBe(true);
-    expect(
-      plugin.rateLimit?.some((rule) => rule.pathMatcher('/wechat-mobile/start')),
-    ).toBe(false);
+    expect(plugin.rateLimit?.some((rule) => rule.pathMatcher('/wechat-mobile/start'))).toBe(false);
   });
 
   it('rejects an invalid recovery window during configuration', () => {

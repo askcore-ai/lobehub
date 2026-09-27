@@ -1,6 +1,25 @@
 import { describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  authEnv: {
+    AUTH_DISABLE_EMAIL_PASSWORD: false,
+    AUTH_EMAIL_VERIFICATION: true,
+    AUTH_ENABLE_MAGIC_LINK: false,
+    AUTH_SECRET: 'test-secret',
+    AUTH_SSO_PROVIDERS: '',
+    AUTH_WECHAT_ID: 'wx-open-platform-app',
+    AUTH_WECHAT_IDENTITY_MODE: 'legacy',
+    AUTH_WECHAT_MINI_PROGRAM_APP_ID: '',
+    AUTH_WECHAT_MINI_PROGRAM_ENV_VERSION: 'release',
+    AUTH_WECHAT_MINI_PROGRAM_SECRET: '',
+    AUTH_WECHAT_MINI_PROGRAM_TRIAL_EXPIRES_AT: '',
+    AUTH_WECHAT_MOBILE_EXISTING_ONLY: true,
+    AUTH_WECHAT_MOBILE_LOGIN_ENABLED: false,
+    AUTH_WECHAT_REBIND_ENABLED: false,
+    AUTH_WECHAT_SECRET: 'wx-website-secret',
+    AUTH_WECHAT_SESSION_RECOVERY_SECONDS: 60,
+    AUTH_WECHAT_TRANSACTION_TTL_SECONDS: 300,
+  },
   betterAuth: vi.fn((options) => options),
   businessEmailHarmonyOptions: { allowNormalizedSignin: false },
   drizzleAdapter: vi.fn(() => ({ id: 'drizzle-adapter' })),
@@ -70,23 +89,7 @@ vi.mock('@/envs/app', () => ({
 }));
 
 vi.mock('@/envs/auth', () => ({
-  authEnv: {
-    AUTH_DISABLE_EMAIL_PASSWORD: false,
-    AUTH_EMAIL_VERIFICATION: true,
-    AUTH_ENABLE_MAGIC_LINK: false,
-    AUTH_SECRET: 'test-secret',
-    AUTH_SSO_PROVIDERS: '',
-    AUTH_WECHAT_ID: 'wx-open-platform-app',
-    AUTH_WECHAT_IDENTITY_MODE: 'legacy',
-    AUTH_WECHAT_MINI_PROGRAM_APP_ID: '',
-    AUTH_WECHAT_MINI_PROGRAM_SECRET: '',
-    AUTH_WECHAT_MOBILE_EXISTING_ONLY: true,
-    AUTH_WECHAT_MOBILE_LOGIN_ENABLED: false,
-    AUTH_WECHAT_REBIND_ENABLED: false,
-    AUTH_WECHAT_SECRET: 'wx-website-secret',
-    AUTH_WECHAT_SESSION_RECOVERY_SECONDS: 60,
-    AUTH_WECHAT_TRANSACTION_TTL_SECONDS: 300,
-  },
+  authEnv: mocks.authEnv,
 }));
 
 vi.mock('@/libs/better-auth/email-templates', () => ({
@@ -144,7 +147,10 @@ describe('defineConfig', () => {
     const options = mocks.betterAuth.mock.calls.at(-1)![0];
     expect(options.plugins[0].id).toBe('askcore-registration');
     expect(options.user.additionalFields.registrationIntentId).toEqual({
-      input: false, returned: false, required: false, type: 'string',
+      input: false,
+      returned: false,
+      required: false,
+      type: 'string',
     });
   });
   it('keeps native login methods linked to one Better Auth user', async () => {
@@ -219,6 +225,8 @@ describe('defineConfig', () => {
       appURL: 'https://example.com',
       identityMode: 'legacy',
       miniProgramAppId: '',
+      urlLinkEnvironment: 'release',
+      urlLinkTrialExpiresAt: '',
       mobileLoginExistingOnly: true,
       mobileLoginEnabled: false,
       rebindEnabled: false,
@@ -230,5 +238,23 @@ describe('defineConfig', () => {
       {},
       expect.objectContaining({ provider: 'pg', transaction: true }),
     );
+  });
+
+  it('wires the bounded trial selector from server configuration into the plugin', async () => {
+    const { defineConfig } = await import('./define-config');
+    mocks.authEnv.AUTH_WECHAT_MINI_PROGRAM_ENV_VERSION = 'trial';
+    mocks.authEnv.AUTH_WECHAT_MINI_PROGRAM_TRIAL_EXPIRES_AT = '2026-09-28T09:30:00Z';
+    try {
+      defineConfig({ plugins: [] });
+      expect(mocks.wechatMobileLogin).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          urlLinkEnvironment: 'trial',
+          urlLinkTrialExpiresAt: '2026-09-28T09:30:00Z',
+        }),
+      );
+    } finally {
+      mocks.authEnv.AUTH_WECHAT_MINI_PROGRAM_ENV_VERSION = 'release';
+      mocks.authEnv.AUTH_WECHAT_MINI_PROGRAM_TRIAL_EXPIRES_AT = '';
+    }
   });
 });
