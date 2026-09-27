@@ -13,6 +13,30 @@ vi.mock('react-i18next', () => ({
 const renderStatus = (ui: ReactElement) => render(<ConfigProvider motion={m}>{ui}</ConfigProvider>);
 
 describe('WechatMobileLoginStatus', () => {
+  it('renders in flow without creating a modal or blocking unrelated page controls', () => {
+    const onUnrelatedAction = vi.fn();
+
+    renderStatus(
+      <>
+        <button type="button" onClick={onUnrelatedAction}>
+          unrelated action
+        </button>
+        <WechatMobileLoginStatus
+          state={{ phase: 'preparing' }}
+          onCancel={vi.fn()}
+          onConfirmAccountSwitch={vi.fn()}
+          onOpenWechat={vi.fn()}
+          onRetry={vi.fn()}
+        />
+      </>,
+    );
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'unrelated action' }));
+    expect(onUnrelatedAction).toHaveBeenCalledOnce();
+  });
+
   it('shows immediate progress before the mobile start response exists', () => {
     renderStatus(
       <WechatMobileLoginStatus
