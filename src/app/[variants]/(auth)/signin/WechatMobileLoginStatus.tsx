@@ -1,10 +1,29 @@
 'use client';
 
-import { Modal } from '@lobehub/ui/base-ui';
-import { Button, Space, Typography } from 'antd';
+import { Button, Flexbox } from '@lobehub/ui';
+import { createStaticStyles } from 'antd-style';
 import { useTranslation } from 'react-i18next';
 
 import type { WechatMobileLoginState } from './useSignIn';
+
+const styles = createStaticStyles(({ css, cssVar }) => ({
+  description: css`
+    margin: 0;
+    color: ${cssVar.colorTextSecondary};
+  `,
+  root: css`
+    padding: 12px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: 12px;
+
+    color: ${cssVar.colorText};
+
+    background: ${cssVar.colorBgElevated};
+  `,
+  title: css`
+    font-weight: 600;
+  `,
+}));
 
 interface WechatMobileLoginStatusProps {
   onCancel: () => void;
@@ -26,7 +45,6 @@ export const WechatMobileLoginStatus = ({
 
   const preparing = state.phase === 'preparing';
   const prepared = state.phase === 'prepared';
-  const waiting = state.phase === 'waiting';
   const switching = state.phase === 'account-switch';
   const failed = state.phase === 'failed';
   let description: string;
@@ -42,16 +60,16 @@ export const WechatMobileLoginStatus = ({
   }
 
   return (
-    <Modal
-      centered
-      open
-      closable={!waiting && !preparing}
-      footer={null}
-      title={t('betterAuth.wechatMobile.title')}
-      onCancel={onCancel}
+    <section
+      aria-atomic="true"
+      aria-busy={preparing}
+      aria-live="polite"
+      className={styles.root}
+      role={failed ? 'alert' : 'status'}
     >
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Typography.Paragraph>{description}</Typography.Paragraph>
+      <Flexbox gap={12}>
+        <div className={styles.title}>{t('betterAuth.wechatMobile.title')}</div>
+        <p className={styles.description}>{description}</p>
         {prepared && (
           <Button block type="primary" onClick={onOpenWechat}>
             {t('betterAuth.wechatMobile.openWechat')}
@@ -70,7 +88,7 @@ export const WechatMobileLoginStatus = ({
         <Button block onClick={onCancel}>
           {t('betterAuth.wechatMobile.cancel')}
         </Button>
-      </Space>
-    </Modal>
+      </Flexbox>
+    </section>
   );
 };

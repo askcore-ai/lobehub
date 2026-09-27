@@ -4,7 +4,7 @@ import { type FormInstance, type InputRef } from 'antd';
 import { Badge, Divider, Form } from 'antd';
 import { createStaticStyles } from 'antd-style';
 import { ChevronRight, Mail } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 
 import AuthIcons from '@/components/AuthIcons';
@@ -35,6 +35,7 @@ export interface SignInEmailStepProps {
   onSocialSignIn: (provider: string) => void;
   serverConfigInit: boolean;
   socialLoading: string | null;
+  wechatMobileLoginStatus?: ReactNode;
 }
 
 export const SignInEmailStep = ({
@@ -46,6 +47,7 @@ export const SignInEmailStep = ({
   oAuthSSOProviders,
   serverConfigInit,
   socialLoading,
+  wechatMobileLoginStatus,
   onCheckUser,
   onSetPassword,
   onSocialSignIn,
@@ -155,6 +157,7 @@ export const SignInEmailStep = ({
               button
             );
           })}
+          {wechatMobileLoginStatus}
           {!disableEmailPassword && divider}
         </Flexbox>
       )}

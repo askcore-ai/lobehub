@@ -46,6 +46,15 @@ const SignInPage = () => {
             oAuthSSOProviders={oAuthSSOProviders}
             serverConfigInit={serverConfigInit}
             socialLoading={socialLoading}
+            wechatMobileLoginStatus={
+              <WechatMobileLoginStatus
+                state={wechatMobileLogin}
+                onCancel={cancelWechatMobile}
+                onConfirmAccountSwitch={confirmWechatAccountSwitch}
+                onOpenWechat={openPreparedWechat}
+                onRetry={retryWechatMobileLogin}
+              />
+            }
             onCheckUser={handleCheckUser}
             onSetPassword={handleForgotPassword}
             onSocialSignIn={handleSocialSignIn}
@@ -61,13 +70,6 @@ const SignInPage = () => {
           />
         )}
       </Suspense>
-      <WechatMobileLoginStatus
-        state={wechatMobileLogin}
-        onCancel={cancelWechatMobile}
-        onConfirmAccountSwitch={confirmWechatAccountSwitch}
-        onOpenWechat={openPreparedWechat}
-        onRetry={retryWechatMobileLogin}
-      />
     </>
   );
 };
