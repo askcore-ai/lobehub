@@ -426,6 +426,7 @@ describe('useSignIn', () => {
 
     it('starts mobile WeChat without waiting for optional analytics', async () => {
       useMobileNavigator();
+      const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
       let releaseAnalytics!: () => void;
       const pendingAnalytics = new Promise<void>((resolve) => {
         releaseAnalytics = resolve;
@@ -448,7 +449,8 @@ describe('useSignIn', () => {
       });
 
       expect(startedBeforeAnalytics).toBe(true);
-      expect(result.current.wechatMobileLogin.phase).toBe('prepared');
+      expect(assign).toHaveBeenCalledExactlyOnceWith(mobileLaunch().openTarget);
+      expect(result.current.wechatMobileLogin.phase).toBe('waiting');
       expect(result.current.socialLoading).toBeNull();
     });
 
@@ -602,8 +604,9 @@ describe('useSignIn', () => {
       expect(sessionStorage.length).toBe(0);
     });
 
-    it('prepares a mobile WeChat transaction without opening WeChat on the first click', async () => {
+    it('opens the prepared URL Link automatically from the first mobile WeChat click', async () => {
       useMobileNavigator();
+      const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
       mockFetch.mockResolvedValueOnce({
         json: async () => ({
           expiresAt: '2026-07-29T12:05:00.000Z',
@@ -631,9 +634,10 @@ describe('useSignIn', () => {
       expect(sessionStorage.getItem('askcore:wechat-mobile:tab:wxm_transaction_1234')).toBe(
         'a'.repeat(43),
       );
+      expect(assign).toHaveBeenCalledExactlyOnceWith('https://wxmpurl.cn/redacted-link');
       expect(result.current.wechatMobileLogin).toEqual({
         expiresAt: '2026-07-29T12:05:00.000Z',
-        phase: 'prepared',
+        phase: 'waiting',
         transactionId: 'wxm_transaction_1234',
       });
       expect(mockSignInSocial).not.toHaveBeenCalled();

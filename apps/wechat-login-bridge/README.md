@@ -55,13 +55,14 @@ Configure and verify all of the following before publication:
 - request domain: `https://askcore.cn`;
 - page path: `pages/login/index`;
 - privacy purpose: login identity confirmation only;
-- “明文 Scheme 拉起此小程序” enabled for the published release;
 - name search disabled and no public marketing entry;
 - website application and mini-program display the same Open Platform owner.
 
 Preview, development upload, and experience versions are useful for controller
-testing, but an external Safari/Chrome Scheme launch requires a published
-release. The browser cannot be forced back to its original tab; after the
+testing, but the external Safari/Chrome URL Link targets the published release.
+A valid sign-in launch automatically obtains a one-time `wx.login` code and
+confirms the transaction; rebind still requires explicit confirmation. The
+mini-program cannot be forced back to its original browser tab; after the
 success screen, the user returns with iOS/Android system navigation.
 
 ## Upload sequence

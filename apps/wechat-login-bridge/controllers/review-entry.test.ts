@@ -52,16 +52,21 @@ afterEach(() => {
 });
 
 describe('WeChat login bridge direct entry', () => {
-  it('uses the App query on a cold Scheme launch when Page options are empty', async () => {
+  it('uses the App query and automatically confirms a cold sign-in launch', async () => {
     const { page, wxApi, app } = loadPage();
+    wxApi.login.mockImplementation(({ success }) => success({ code: 'synthetic-code' }));
+    wxApi.request.mockImplementation(({ success }) =>
+      success({ data: { state: 'authorized' }, statusCode: 200 }),
+    );
     app.globalData.wechatLaunch = { options: launch, version: 1 };
 
     page.onLoad({});
 
-    expect(page.data.status).toBe('ready');
-    expect(page.data.title).toBe('登录 AskCore');
+    await vi.waitFor(() => expect(page.data.status).toBe('authorized'));
+    expect(page.data.title).toBe('微信授权已完成');
     expect(app.globalData.wechatLaunch.options).toBeNull();
-    expect(wxApi.login).not.toHaveBeenCalled();
+    expect(wxApi.login).toHaveBeenCalledOnce();
+    expect(wxApi.request).toHaveBeenCalledOnce();
   });
 
   it('shows welcome when App has only unrelated launch parameters', () => {
@@ -160,7 +165,8 @@ describe('WeChat login bridge direct entry', () => {
     wxApi.request.mockImplementationOnce(({ success }) => success({ statusCode: 409 }));
 
     page.onLoad(launch);
-    await page.onAuthorize();
+    await vi.waitFor(() => expect(page.data.status).toBe('ready'));
+    expect(wxApi.login).toHaveBeenCalledOnce();
     expect(page.data.status).toBe('ready');
     expect(page.data.invalid).toBe(false);
     await page.onAuthorize();
@@ -178,7 +184,6 @@ describe('WeChat login bridge direct entry', () => {
       completeRequest = success;
     });
     page.onLoad(launch);
-    const completion = page.onAuthorize();
     await vi.waitFor(() => expect(completeRequest).toBeDefined());
     app.globalData.wechatLaunch = {
       options: { ...launch, p: 'rebind', t: `wxm_${'c'.repeat(24)}` },
@@ -186,7 +191,7 @@ describe('WeChat login bridge direct entry', () => {
     };
     page.onShow();
     completeRequest!({ data: { state: 'authorized' }, statusCode: 200 });
-    await completion;
+    await vi.waitFor(() => expect(page.data.title).toBe('验证 AskCore 微信身份'));
 
     expect(page.data.status).toBe('ready');
     expect(page.data.title).toBe('验证 AskCore 微信身份');

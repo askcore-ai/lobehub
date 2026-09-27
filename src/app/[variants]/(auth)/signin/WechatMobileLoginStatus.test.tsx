@@ -55,7 +55,7 @@ describe('WechatMobileLoginStatus', () => {
     expect(screen.getByRole('button', { name: 'betterAuth.wechatMobile.cancel' })).toBeEnabled();
   });
 
-  it('requires an explicit second click before asking the browser to open WeChat', () => {
+  it('keeps an explicit open control as a fallback for a prepared target', () => {
     const onOpenWechat = vi.fn();
 
     renderStatus(
@@ -93,9 +93,7 @@ describe('WechatMobileLoginStatus', () => {
     );
 
     expect(screen.getByText('betterAuth.wechatMobile.returnGuidance')).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'betterAuth.wechatMobile.openWechat' }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'betterAuth.wechatMobile.openWechat' })).toBeEnabled();
   });
 
   it('requires a distinct confirmation before replacing another signed-in account', () => {
