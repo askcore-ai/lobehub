@@ -82,12 +82,16 @@ const openTarget = (
     p: purpose,
     t: transactionIdValue,
   }).toString();
-  const scheme = new URL('weixin://dl/business/');
-  scheme.searchParams.set('appid', options.miniProgramAppId);
-  scheme.searchParams.set('path', options.schemePath);
-  scheme.searchParams.set('query', query);
-  scheme.searchParams.set('env_version', 'release');
-  return scheme.toString();
+  // WeChat's plain Scheme contract requires the published page path itself,
+  // while only the nested mini-program query is URL-encoded. URLSearchParams
+  // would also encode the path separators and WeChat can reject that target
+  // before the mini-program page is loaded.
+  return [
+    `weixin://dl/business/?appid=${encodeURIComponent(options.miniProgramAppId)}`,
+    `path=${options.schemePath}`,
+    `query=${encodeURIComponent(query)}`,
+    'env_version=release',
+  ].join('&');
 };
 
 const publicState = (transaction: WechatMobileTransaction) => ({

@@ -24,12 +24,14 @@ export const WechatMobileLoginStatus = ({
   const { t } = useTranslation('auth');
   if (state.phase === 'idle') return null;
 
+  const preparing = state.phase === 'preparing';
   const prepared = state.phase === 'prepared';
   const waiting = state.phase === 'waiting';
   const switching = state.phase === 'account-switch';
   const failed = state.phase === 'failed';
   let description: string;
-  if (state.phase === 'prepared') description = t('betterAuth.wechatMobile.prepared');
+  if (state.phase === 'preparing') description = t('betterAuth.wechatMobile.preparing');
+  else if (state.phase === 'prepared') description = t('betterAuth.wechatMobile.prepared');
   else if (state.phase === 'waiting') description = t('betterAuth.wechatMobile.returnGuidance');
   else if (state.phase === 'account-switch')
     description = t('betterAuth.wechatMobile.accountSwitch');
@@ -43,7 +45,7 @@ export const WechatMobileLoginStatus = ({
     <Modal
       centered
       open
-      closable={!waiting}
+      closable={!waiting && !preparing}
       footer={null}
       title={t('betterAuth.wechatMobile.title')}
       onCancel={onCancel}

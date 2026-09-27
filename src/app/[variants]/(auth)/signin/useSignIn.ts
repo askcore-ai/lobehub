@@ -44,6 +44,7 @@ export const classifyWechatClient = (client: {
 
 export type WechatMobileLoginState =
   | { phase: 'idle' }
+  | { phase: 'preparing' }
   | {
       expiresAt: string;
       phase: 'prepared';
@@ -146,6 +147,7 @@ export const useSignIn = () => {
   const [wechatPollAfterMs, setWechatPollAfterMs] = useState(1200);
   const wechatAttempt = useRef(0);
   const wechatPollInFlight = useRef<number | null>(null);
+  const wechatStartAbort = useRef<AbortController | null>(null);
   const currentWechatTransactionId =
     'transactionId' in wechatMobileLogin
       ? wechatMobileLogin.transactionId
@@ -168,7 +170,14 @@ export const useSignIn = () => {
     if (emailParam) form.setFieldValue('email', emailParam);
   }, [searchParams, form]);
 
-  useEffect(() => () => { wechatAttempt.current += 1; }, []);
+  useEffect(
+    () => () => {
+      wechatAttempt.current += 1;
+      wechatStartAbort.current?.abort();
+      wechatStartAbort.current = null;
+    },
+    [],
+  );
 
   const clearWechatTransaction = (transactionId?: string) => {
     if (transactionId) {
@@ -183,7 +192,12 @@ export const useSignIn = () => {
 
   const wechatRequest = async <T>(
     path: string,
-    input: { body?: Record<string, unknown>; method?: 'GET' | 'POST'; transactionId?: string },
+    input: {
+      body?: Record<string, unknown>;
+      controller?: AbortController;
+      method?: 'GET' | 'POST';
+      transactionId?: string;
+    },
   ): Promise<{ data: null | T; error: null | { code: string; status: number } }> => {
     const headers: Record<string, string> = {};
     if (input.body) headers['Content-Type'] = 'application/json';
@@ -196,7 +210,7 @@ export const useSignIn = () => {
       }
       if (tabBinding) headers['X-AskCore-WeChat-Tab-Binding'] = tabBinding;
     }
-    const controller = new AbortController();
+    const controller = input.controller || new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 8000);
     let response: Response;
     let payload: Record<string, unknown>;
@@ -349,11 +363,17 @@ export const useSignIn = () => {
 
   const prepareWechatMobileLogin = async () => {
     const attempt = ++wechatAttempt.current;
+    wechatStartAbort.current?.abort();
+    const controller = new AbortController();
+    wechatStartAbort.current = controller;
     clearWechatTransaction(currentWechatTransactionId);
+    setWechatMobileLogin({ phase: 'preparing' });
     const callbackURL = searchParams.get('callbackUrl') || '/';
     const result = await wechatRequest<WechatMobileStartResponse>('/api/auth/wechat-mobile/start', {
       body: { callbackURL },
+      controller,
     });
+    if (wechatStartAbort.current === controller) wechatStartAbort.current = null;
     if (attempt !== wechatAttempt.current) return;
     if (!isWechatMobileStartResponse(result.data)) {
       setWechatMobileLogin({
@@ -421,6 +441,8 @@ export const useSignIn = () => {
 
   const cancelWechatMobile = async () => {
     wechatAttempt.current += 1;
+    wechatStartAbort.current?.abort();
+    wechatStartAbort.current = null;
     const id = currentWechatTransactionId;
     // Capture the tab proof before clearing it; a late cancel response must
     // not reset a replacement transaction's UI. Server CAS owns any session race.

@@ -137,6 +137,7 @@ export default {
   'betterAuth.wechatMobile.errors.WECHAT_MOBILE_NOT_IN_ROLLOUT':
     'This WeChat account is not yet included in mobile sign-in. Please use desktop QR sign-in for now.',
   'betterAuth.wechatMobile.openWechat': 'Open WeChat',
+  'betterAuth.wechatMobile.preparing': 'Preparing a secure WeChat sign-in request…',
   'betterAuth.wechatMobile.prepared':
     'The login request is ready. Tap Open WeChat, authorize there, then return to this browser.',
   'betterAuth.wechatMobile.retry': 'Try again',
