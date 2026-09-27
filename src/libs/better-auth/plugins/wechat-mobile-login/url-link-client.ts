@@ -118,7 +118,7 @@ export const createWechatUrlLinkGenerator = (input: {
       cachedToken = await currentRequest;
       return cachedToken.accessToken;
     } catch (error) {
-      if (cachedToken?.refreshAt <= now() || forceRefresh) cachedToken = undefined;
+      if (forceRefresh || (cachedToken && cachedToken.refreshAt <= now())) cachedToken = undefined;
       if (error instanceof WechatUrlLinkError) throw error;
       throw new WechatUrlLinkError('unavailable');
     } finally {

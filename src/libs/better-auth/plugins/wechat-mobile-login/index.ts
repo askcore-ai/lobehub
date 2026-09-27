@@ -465,20 +465,17 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
             initiatingUserId: session?.user.id,
             purpose: 'signin',
           });
-          let generatedOpenTarget: string;
-          try {
-            generatedOpenTarget = await generateUrlLink({
-              expiresAt: created.transaction.expiresAt,
-              query: miniProgramQuery(
-                'signin',
-                created.transaction.id,
-                created.capabilities.completionCapability,
-              ),
-            });
-          } catch {
+          const generatedOpenTarget = await generateUrlLink({
+            expiresAt: created.transaction.expiresAt,
+            query: miniProgramQuery(
+              'signin',
+              created.transaction.id,
+              created.capabilities.completionCapability,
+            ),
+          }).catch(async () => {
             await store.failPreparation(created.transaction.id, 'url_link_unavailable');
             endpointError('SERVICE_UNAVAILABLE', 'WECHAT_URL_LINK_UNAVAILABLE');
-          }
+          });
           await ctx.setSignedCookie(
             signedCookieName(created.transaction.id),
             created.capabilities.browserCookie,
@@ -537,27 +534,20 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
             purpose: 'rebind',
             rebindAccountRowId: account.id,
           });
-          let generatedOpenTarget: string;
-          if (ctx.body.channel === 'mobile') {
-            try {
-              generatedOpenTarget = await generateUrlLink({
+          const generatedOpenTarget =
+            ctx.body.channel === 'mobile'
+              ? await generateUrlLink({
                 expiresAt: created.transaction.expiresAt,
                 query: miniProgramQuery(
                   'rebind',
                   created.transaction.id,
                   created.capabilities.completionCapability,
                 ),
-              });
-            } catch {
-              await store.failPreparation(created.transaction.id, 'url_link_unavailable');
-              endpointError('SERVICE_UNAVAILABLE', 'WECHAT_URL_LINK_UNAVAILABLE');
-            }
-          } else {
-            generatedOpenTarget = websiteRebindTarget(
-              options,
-              created.capabilities.oauthState,
-            );
-          }
+              }).catch(async () => {
+                await store.failPreparation(created.transaction.id, 'url_link_unavailable');
+                endpointError('SERVICE_UNAVAILABLE', 'WECHAT_URL_LINK_UNAVAILABLE');
+              })
+              : websiteRebindTarget(options, created.capabilities.oauthState);
           await ctx.setSignedCookie(
             signedCookieName(created.transaction.id),
             created.capabilities.browserCookie,
