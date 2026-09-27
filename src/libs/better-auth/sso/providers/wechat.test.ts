@@ -130,10 +130,12 @@ function fixture(identity: { unionid: unknown } = { unionid }) {
         mobileLoginEnabled: true, mobileLoginExistingOnly: false,
         rebindEnabled: true, recoverySeconds: 60,
         transactionTtlSeconds: 300,
+        urlLinkEnvironment: 'release',
         urlLinkGenerator: async ({ query }) => {
           mobileLaunchQuery = query;
           return 'https://wxmpurl.cn/synthetic-convergence-link';
         },
+        urlLinkTrialExpiresAt: '',
         websiteAppSecret: 'synthetic-secret',
       }),
     ],
