@@ -514,7 +514,8 @@ describe('useSignIn', () => {
       expect(mockFetch.mock.calls.filter(([path]) => path.endsWith('/consume'))).toHaveLength(1);
       expect(mockFetch.mock.calls.filter(([path]) => path.includes('/status?'))).toHaveLength(1);
       await act(async () => { consume.resolve(jsonResponse({ redirectTo: '/welcome' })); });
-      expect(mockPush).toHaveBeenCalledExactlyOnceWith('/welcome');
+      expect(assign).toHaveBeenNthCalledWith(2, '/welcome');
+      expect(mockPush).not.toHaveBeenCalled();
       expect(result.current.wechatMobileLogin).toEqual({ phase: 'idle' });
     });
 
