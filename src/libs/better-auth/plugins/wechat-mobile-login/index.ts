@@ -53,8 +53,8 @@ export interface WechatMobileLoginOptions {
   recoverySeconds: number;
   transactionTtlSeconds: 300;
   urlLinkEnvironment: 'release' | 'trial';
-  urlLinkTrialExpiresAt: string;
   urlLinkGenerator?: WechatUrlLinkGenerator;
+  urlLinkTrialExpiresAt: string;
   websiteAppSecret: string;
 }
 
