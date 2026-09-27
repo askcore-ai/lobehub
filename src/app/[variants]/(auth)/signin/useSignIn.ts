@@ -280,7 +280,9 @@ export const useSignIn = () => {
       wechatAttempt.current += 1;
       clearWechatTransaction(transactionId);
       setWechatMobileLogin({ phase: 'idle' });
-      router.push(result.data.redirectTo);
+      // Cross the auth boundary with a full request so the freshly issued
+      // session cookie cannot be shadowed by unauthenticated router cache.
+      window.location.assign(result.data.redirectTo);
       return;
     }
     if (result.error?.code === 'ACCOUNT_SWITCH_CONFIRMATION_REQUIRED') {
