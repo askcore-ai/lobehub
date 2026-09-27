@@ -16,43 +16,66 @@ const origin = 'https://askcore.example';
 const unionid = 'synthetic-canonical-union';
 const email = `wechat-${createHash('sha256').update(unionid).digest('hex')}@identity.askcore.invalid`;
 const env = { AUTH_WECHAT_ID: 'synthetic-website', AUTH_WECHAT_SECRET: 'synthetic-secret' };
-const emptyStore: WebsiteIdentityStore = { transaction: async (_, action) => action({
-  find: async () => [], replace: async () => false,
-}) };
+const emptyStore: WebsiteIdentityStore = {
+  transaction: async (_, action) =>
+    action({
+      find: async () => [],
+      replace: async () => false,
+    }),
+};
 const provider = () => buildWechatProvider(env, emptyStore);
 const tokens = (id: unknown = unionid) => ({
   accessToken: 'synthetic-access',
   raw: { openid: 'synthetic-website-openid', unionid: id },
 });
 const profile = (extra: Record<string, unknown> = {}) => ({
-  headimgurl: 'https://example.com/avatar.png', nickname: '测试用户',
-  openid: 'synthetic-website-openid', unionid, ...extra,
+  headimgurl: 'https://example.com/avatar.png',
+  nickname: '测试用户',
+  openid: 'synthetic-website-openid',
+  unionid,
+  ...extra,
 });
 
-afterEach(() => { vi.restoreAllMocks(); });
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('Release B website WeChat provider', () => {
   it('preserves desktop QR configuration and requires the canonical identity', async () => {
     const config = provider();
     expect(config.authorizationUrl).toBe('https://open.weixin.qq.com/connect/qrconnect');
-    expect(config.authorizationUrlParams).toEqual({ appid: 'synthetic-website', response_type: 'code', scope: 'snsapi_login' });
+    expect(config.authorizationUrlParams).toEqual({
+      appid: 'synthetic-website',
+      response_type: 'code',
+      scope: 'snsapi_login',
+    });
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json(profile()));
     expect(await config.getUserInfo!(tokens())).toEqual({
-      email, emailVerified: false, id: unionid, image: 'https://example.com/avatar.png', name: '测试用户',
+      email,
+      emailVerified: false,
+      id: unionid,
+      image: 'https://example.com/avatar.png',
+      name: '测试用户',
     });
   });
 
-  it.each([undefined, '', ' ', 123, [], {}])('rejects missing or malformed UnionID %j', async (value) => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json(profile({ unionid: value })));
-    const input = tokens();
-    input.raw.unionid = value;
-    expect(await provider().getUserInfo!(input)).toBeNull();
-  });
+  it.each([undefined, '', ' ', 123, [], {}])(
+    'rejects missing or malformed UnionID %j',
+    async (value) => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json(profile({ unionid: value })));
+      const input = tokens();
+      input.raw.unionid = value;
+      expect(await provider().getUserInfo!(input)).toBeNull();
+    },
+  );
 
-  it.each([undefined, '', 123])('uses the existing localized default nickname for %j', async (nickname) => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json(profile({ nickname })));
-    expect((await provider().getUserInfo!(tokens()))?.name).toBe('社区版用户');
-  });
+  it.each([undefined, '', 123])(
+    'uses the existing localized default nickname for %j',
+    async (nickname) => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json(profile({ nickname })));
+      expect((await provider().getUserInfo!(tokens()))?.name).toBe('社区版用户');
+    },
+  );
 
   it.each([
     { unionid: 'different-union' },
@@ -64,11 +87,21 @@ describe('Release B website WeChat provider', () => {
   });
 
   it('does not let profile extras replace the canonical id or email policy', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json(profile({
-      email: 'unrelated@example.com', emailVerified: true, id: 'other-owner',
-    })));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json(
+        profile({
+          email: 'unrelated@example.com',
+          emailVerified: true,
+          id: 'other-owner',
+        }),
+      ),
+    );
     expect(await provider().getUserInfo!(tokens())).toEqual({
-      email, emailVerified: false, id: unionid, image: 'https://example.com/avatar.png', name: '测试用户',
+      email,
+      emailVerified: false,
+      id: unionid,
+      image: 'https://example.com/avatar.png',
+      name: '测试用户',
     });
   });
 
@@ -78,57 +111,95 @@ describe('Release B website WeChat provider', () => {
     expect((await provider().getUserInfo!(input))?.id).toBe(unionid);
   });
 
-  it.each([Response.json(null), new Response('invalid-json'), Response.json({}, { status: 503 })])('rejects unusable userinfo responses', async (response) => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response);
-    expect(await provider().getUserInfo!(tokens())).toBeNull();
-  });
+  it.each([Response.json(null), new Response('invalid-json'), Response.json({}, { status: 503 })])(
+    'rejects unusable userinfo responses',
+    async (response) => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(response);
+      expect(await provider().getUserInfo!(tokens())).toBeNull();
+    },
+  );
 
   it('redacts token errors instead of surfacing provider messages or request URLs', async () => {
-    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(Response.json({
-      errcode: 40029, errmsg: 'synthetic-private-token-and-url',
-    })).mockRejectedValueOnce(new Error('synthetic-private-token-and-url'));
+    const fetch = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        Response.json({
+          errcode: 40029,
+          errmsg: 'synthetic-private-token-and-url',
+        }),
+      )
+      .mockRejectedValueOnce(new Error('synthetic-private-token-and-url'));
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      await expect(provider().getToken!({ code: 'synthetic-code', redirectURI: `${origin}/callback` })).rejects.toThrow('wechat_token_exchange_failed');
+      await expect(
+        provider().getToken!({ code: 'synthetic-code', redirectURI: `${origin}/callback` }),
+      ).rejects.toThrow('wechat_token_exchange_failed');
     }
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 });
 
-const cookies = (response: Response) => response.headers.getSetCookie().map((cookie) => cookie.split(';')[0]).join('; ');
+const cookies = (response: Response) =>
+  response.headers
+    .getSetCookie()
+    .map((cookie) => cookie.split(';')[0])
+    .join('; ');
 
 function fixture(identity: { unionid: unknown } = { unionid }) {
   const database: Record<string, Record<string, unknown>[]> = {
-    account: [], session: [], user: [], verification: [],
-    wechatMobileLoginTransaction: [], wechatRebindClaim: [],
+    account: [],
+    session: [],
+    user: [],
+    verification: [],
+    wechatMobileLoginTransaction: [],
+    wechatRebindClaim: [],
   };
   const store: WebsiteIdentityStore = {
-    transaction: async (_, action) => action({
-      find: async (accountId) => database.account
-        .filter((row) => row.providerId === 'wechat' && row.accountId === accountId)
-        .map((row) => ({ id: String(row.id), userId: String(row.userId) })),
-      replace: async (id, oldAccountId, nextAccountId) => {
-        const row = database.account.find((candidate) => candidate.id === id &&
-          candidate.providerId === 'wechat' && candidate.accountId === oldAccountId);
-        if (!row || database.account.some((candidate) =>
-          candidate.providerId === 'wechat' && candidate.accountId === nextAccountId)) return false;
-        row.accountId = nextAccountId;
-        return true;
-      },
-    }),
+    transaction: async (_, action) =>
+      action({
+        find: async (accountId) =>
+          database.account
+            .filter((row) => row.providerId === 'wechat' && row.accountId === accountId)
+            .map((row) => ({ id: String(row.id), userId: String(row.userId) })),
+        replace: async (id, oldAccountId, nextAccountId) => {
+          const row = database.account.find(
+            (candidate) =>
+              candidate.id === id &&
+              candidate.providerId === 'wechat' &&
+              candidate.accountId === oldAccountId,
+          );
+          if (
+            !row ||
+            database.account.some(
+              (candidate) =>
+                candidate.providerId === 'wechat' && candidate.accountId === nextAccountId,
+            )
+          )
+            return false;
+          row.accountId = nextAccountId;
+          return true;
+        },
+      }),
   };
   let mobileLaunchQuery = '';
   const auth = betterAuth({
-    account: { accountLinking: { allowDifferentEmails: true, enabled: true, trustedProviders: [] } },
+    account: {
+      accountLinking: { allowDifferentEmails: true, enabled: true, trustedProviders: [] },
+    },
     baseURL: origin,
     database: memoryAdapter(database),
     logger: { disabled: true },
     plugins: [
       genericOAuth({ config: [buildWechatProvider(env, store)] }),
       wechatMobileLogin({
-        appId: 'synthetic-website', appSecret: 'synthetic-mini-secret', appURL: origin,
-        identityMode: 'canonical', miniProgramAppId: 'synthetic-mini',
-        mobileLoginEnabled: true, mobileLoginExistingOnly: false,
-        rebindEnabled: true, recoverySeconds: 60,
+        appId: 'synthetic-website',
+        appSecret: 'synthetic-mini-secret',
+        appURL: origin,
+        identityMode: 'canonical',
+        miniProgramAppId: 'synthetic-mini',
+        mobileLoginEnabled: true,
+        mobileLoginExistingOnly: false,
+        rebindEnabled: true,
+        recoverySeconds: 60,
         transactionTtlSeconds: 300,
         urlLinkEnvironment: 'release',
         urlLinkGenerator: async ({ query }) => {
@@ -146,13 +217,20 @@ function fixture(identity: { unionid: unknown } = { unionid }) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = new URL(String(input));
     expect(url.origin).toBe('https://api.weixin.qq.com');
-    if (url.pathname === '/sns/oauth2/access_token') return Response.json({
-      access_token: 'synthetic-access', openid: 'synthetic-website-openid', unionid: identity.unionid,
-    });
-    if (url.pathname === '/sns/userinfo') return Response.json(profile({ unionid: identity.unionid }));
-    if (url.pathname === '/sns/jscode2session') return Response.json({
-      openid: 'synthetic-mini-openid', session_key: 'synthetic-session-key', unionid: identity.unionid,
-    });
+    if (url.pathname === '/sns/oauth2/access_token')
+      return Response.json({
+        access_token: 'synthetic-access',
+        openid: 'synthetic-website-openid',
+        unionid: identity.unionid,
+      });
+    if (url.pathname === '/sns/userinfo')
+      return Response.json(profile({ unionid: identity.unionid }));
+    if (url.pathname === '/sns/jscode2session')
+      return Response.json({
+        openid: 'synthetic-mini-openid',
+        session_key: 'synthetic-session-key',
+        unionid: identity.unionid,
+      });
     throw new Error('unexpected provider path');
   });
   const request = (path: string, body?: unknown, cookie?: string, tab?: string) => {
@@ -160,16 +238,23 @@ function fixture(identity: { unionid: unknown } = { unionid }) {
     if (body !== undefined) headers.set('content-type', 'application/json');
     if (cookie) headers.set('cookie', cookie);
     if (tab) headers.set('x-askcore-wechat-tab-binding', tab);
-    return auth.handler(new Request(`${origin}/api/auth${path}`, {
-      body: body === undefined ? undefined : JSON.stringify(body), headers,
-      method: body === undefined ? 'GET' : 'POST',
-    }));
+    return auth.handler(
+      new Request(`${origin}/api/auth${path}`, {
+        body: body === undefined ? undefined : JSON.stringify(body),
+        headers,
+        method: body === undefined ? 'GET' : 'POST',
+      }),
+    );
   };
   const desktop = async () => {
     const start = await request('/sign-in/oauth2', { callbackURL: '/chat', providerId: 'wechat' });
     expect(start.status).toBe(200);
     const target = new URL((await start.json()).url);
-    return request(`/oauth2/callback/wechat?${new URLSearchParams({ code: 'synthetic-code', state: target.searchParams.get('state')! })}`, undefined, cookies(start));
+    return request(
+      `/oauth2/callback/wechat?${new URLSearchParams({ code: 'synthetic-code', state: target.searchParams.get('state')! })}`,
+      undefined,
+      cookies(start),
+    );
   };
   const mobile = async () => {
     const started = await request('/wechat-mobile/start', { callbackURL: '/chat' });
@@ -178,12 +263,20 @@ function fixture(identity: { unionid: unknown } = { unionid }) {
     expect(data.openTarget).toBe('https://wxmpurl.cn/synthetic-convergence-link');
     const query = new URLSearchParams(mobileLaunchQuery);
     const confirmed = await request('/wechat-mobile/confirm', {
-      code: 'synthetic-code', completionCapability: query.get('c'), transactionId: data.transactionId,
+      code: 'synthetic-code',
+      completionCapability: query.get('c'),
+      transactionId: data.transactionId,
     });
     expect(confirmed.status).toBe(200);
-    const consumed = await request('/wechat-mobile/consume', {
-      confirmAccountSwitch: false, transactionId: data.transactionId,
-    }, cookies(started), data.tabBinding);
+    const consumed = await request(
+      '/wechat-mobile/consume',
+      {
+        confirmAccountSwitch: false,
+        transactionId: data.transactionId,
+      },
+      cookies(started),
+      data.tabBinding,
+    );
     expect(consumed.status).toBe(200);
     return consumed;
   };
@@ -195,25 +288,40 @@ describe('canonical identity through both real Better Auth handlers', () => {
     const f = fixture();
     const now = new Date();
     f.database.user.push({
-      createdAt: now, email: 'historical@example.com', emailVerified: false,
-      id: 'historical-owner', name: 'Original', updatedAt: now,
+      createdAt: now,
+      email: 'historical@example.com',
+      emailVerified: false,
+      id: 'historical-owner',
+      name: 'Original',
+      updatedAt: now,
     });
     f.database.account.push({
-      accountId: 'synthetic-website-openid', createdAt: now, id: 'historical-account',
-      providerId: 'wechat', updatedAt: now, userId: 'historical-owner',
+      accountId: 'synthetic-website-openid',
+      createdAt: now,
+      id: 'historical-account',
+      providerId: 'wechat',
+      updatedAt: now,
+      userId: 'historical-owner',
     });
 
     const desktopResponse = await f.desktop();
-    const desktopSession = await (await f.request('/get-session', undefined, cookies(desktopResponse))).json();
+    const desktopSession = await (
+      await f.request('/get-session', undefined, cookies(desktopResponse))
+    ).json();
     expect(desktopSession?.user?.id).toBe('historical-owner');
     expect(f.database.user).toHaveLength(1);
     expect(f.database.account).toHaveLength(1);
     expect(f.database.account[0]).toMatchObject({
-      accountId: unionid, id: 'historical-account', providerId: 'wechat', userId: 'historical-owner',
+      accountId: unionid,
+      id: 'historical-account',
+      providerId: 'wechat',
+      userId: 'historical-owner',
     });
 
     const mobileResponse = await f.mobile();
-    const mobileSession = await (await f.request('/get-session', undefined, cookies(mobileResponse))).json();
+    const mobileSession = await (
+      await f.request('/get-session', undefined, cookies(mobileResponse))
+    ).json();
     expect(mobileSession?.user?.id).toBe('historical-owner');
   });
 
@@ -221,36 +329,86 @@ describe('canonical identity through both real Better Auth handlers', () => {
     const f = fixture();
     const now = new Date();
     f.database.user.push(
-      { createdAt: now, email: 'old@example.com', emailVerified: false, id: 'old-owner', name: 'Old', updatedAt: now },
-      { createdAt: now, email, emailVerified: false, id: 'canonical-owner', name: 'Canonical', updatedAt: now },
+      {
+        createdAt: now,
+        email: 'old@example.com',
+        emailVerified: false,
+        id: 'old-owner',
+        name: 'Old',
+        updatedAt: now,
+      },
+      {
+        createdAt: now,
+        email,
+        emailVerified: false,
+        id: 'canonical-owner',
+        name: 'Canonical',
+        updatedAt: now,
+      },
     );
     f.database.account.push(
-      { accountId: 'synthetic-website-openid', createdAt: now, id: 'old-account', providerId: 'wechat', updatedAt: now, userId: 'old-owner' },
-      { accountId: unionid, createdAt: now, id: 'canonical-account', providerId: 'wechat', updatedAt: now, userId: 'canonical-owner' },
+      {
+        accountId: 'synthetic-website-openid',
+        createdAt: now,
+        id: 'old-account',
+        providerId: 'wechat',
+        updatedAt: now,
+        userId: 'old-owner',
+      },
+      {
+        accountId: unionid,
+        createdAt: now,
+        id: 'canonical-account',
+        providerId: 'wechat',
+        updatedAt: now,
+        userId: 'canonical-owner',
+      },
     );
     const response = await f.desktop();
     const session = await (await f.request('/get-session', undefined, cookies(response))).json();
     expect(session?.user?.id).toBe('canonical-owner');
     expect(f.database.account).toHaveLength(2);
-    expect(f.database.account[0]).toMatchObject({ accountId: 'synthetic-website-openid', id: 'old-account', userId: 'old-owner' });
+    expect(f.database.account[0]).toMatchObject({
+      accountId: 'synthetic-website-openid',
+      id: 'old-account',
+      userId: 'old-owner',
+    });
   });
 
-  it.each(['desktop', 'mobile'] as const)('preserves one owner when %s logs in first', async (first) => {
-    const f = fixture();
-    const firstResponse = await f[first]();
-    const firstSession = await (await f.request('/get-session', undefined, cookies(firstResponse))).json();
-    expect(firstSession?.user?.id).toBeTruthy();
-    const secondResponse = await f[first === 'desktop' ? 'mobile' : 'desktop']();
-    const secondSession = await (await f.request('/get-session', undefined, cookies(secondResponse))).json();
-    expect(secondSession?.user?.id).toBe(firstSession.user.id);
-    expect(f.database.user).toHaveLength(1);
-    expect(f.database.account).toHaveLength(1);
-    expect(f.database.account[0]).toMatchObject({ accountId: unionid, providerId: 'wechat', userId: firstSession.user.id });
-  });
+  it.each(['desktop', 'mobile'] as const)(
+    'preserves one owner when %s logs in first',
+    async (first) => {
+      const f = fixture();
+      const firstResponse = await f[first]();
+      const firstSession = await (
+        await f.request('/get-session', undefined, cookies(firstResponse))
+      ).json();
+      expect(firstSession?.user?.id).toBeTruthy();
+      const secondResponse = await f[first === 'desktop' ? 'mobile' : 'desktop']();
+      const secondSession = await (
+        await f.request('/get-session', undefined, cookies(secondResponse))
+      ).json();
+      expect(secondSession?.user?.id).toBe(firstSession.user.id);
+      expect(f.database.user).toHaveLength(1);
+      expect(f.database.account).toHaveLength(1);
+      expect(f.database.account[0]).toMatchObject({
+        accountId: unionid,
+        providerId: 'wechat',
+        userId: firstSession.user.id,
+      });
+    },
+  );
 
   it('does not link a desktop identity to a different owner solely by synthetic email', async () => {
     const f = fixture();
-    f.database.user.push({ createdAt: new Date(), email, emailVerified: true, id: 'unrelated-owner', name: 'Other', updatedAt: new Date() });
+    f.database.user.push({
+      createdAt: new Date(),
+      email,
+      emailVerified: true,
+      id: 'unrelated-owner',
+      name: 'Other',
+      updatedAt: new Date(),
+    });
     const response = await f.desktop();
     expect(response.headers.get('location')).toContain('error=');
     expect(f.database.user).toHaveLength(1);
@@ -269,14 +427,23 @@ describe('canonical identity through both real Better Auth handlers', () => {
 
   it('preserves the historical canonical owner even when a different user has the new synthetic email', async () => {
     const f = fixture();
-    const metadata = { createdAt: new Date(), emailVerified: true, name: 'Existing', updatedAt: new Date() };
+    const metadata = {
+      createdAt: new Date(),
+      emailVerified: true,
+      name: 'Existing',
+      updatedAt: new Date(),
+    };
     f.database.user.push(
       { ...metadata, email: 'historical@example.com', id: 'canonical-owner' },
       { ...metadata, email, id: 'unrelated-owner' },
     );
     f.database.account.push({
-      accountId: unionid, createdAt: new Date(), id: 'canonical-account',
-      providerId: 'wechat', updatedAt: new Date(), userId: 'canonical-owner',
+      accountId: unionid,
+      createdAt: new Date(),
+      id: 'canonical-account',
+      providerId: 'wechat',
+      updatedAt: new Date(),
+      userId: 'canonical-owner',
     });
     const response = await f.desktop();
     const session = await (await f.request('/get-session', undefined, cookies(response))).json();
