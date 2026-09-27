@@ -255,9 +255,10 @@ export const useSignIn = () => {
       return {
         data: null,
         error: {
-          code: response.status === 429
-            ? 'WECHAT_MOBILE_RATE_LIMITED'
-            : stableErrorCode(payload.code || payload.message, 'WECHAT_MOBILE_LOGIN_FAILED'),
+          code:
+            response.status === 429
+              ? 'WECHAT_MOBILE_RATE_LIMITED'
+              : stableErrorCode(payload.code || payload.message, 'WECHAT_MOBILE_LOGIN_FAILED'),
           status: response.status,
         },
       };
@@ -467,10 +468,12 @@ export const useSignIn = () => {
     const id = currentWechatTransactionId;
     // Capture the tab proof before clearing it; a late cancel response must
     // not reset a replacement transaction's UI. Server CAS owns any session race.
-    const cancellation = id ? wechatRequest('/api/auth/wechat-mobile/cancel', {
-      body: { transactionId: id },
-      transactionId: id,
-    }) : undefined;
+    const cancellation = id
+      ? wechatRequest('/api/auth/wechat-mobile/cancel', {
+          body: { transactionId: id },
+          transactionId: id,
+        })
+      : undefined;
     clearWechatTransaction(id);
     setWechatMobileLogin({ phase: 'idle' });
     await cancellation;
@@ -494,7 +497,9 @@ export const useSignIn = () => {
       const callbackUrl = searchParams.get('callbackUrl') || '/';
       const handle = (await prepareRegistrationForSignin(callbackUrl))?.handle;
       const { error } = await signIn.magicLink({
-        callbackURL: callbackUrl, email: emailValue, newUserCallbackURL: ASKCORE_REGISTRATION_PATH,
+        callbackURL: callbackUrl,
+        email: emailValue,
+        newUserCallbackURL: ASKCORE_REGISTRATION_PATH,
         fetchOptions: handle ? { headers: { 'x-askcore-registration-intent': handle } } : undefined,
       });
       if (error) {

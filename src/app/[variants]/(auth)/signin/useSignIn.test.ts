@@ -7,7 +7,9 @@ import { classifyWechatClient, useSignIn } from './useSignIn';
 // ── hoisted mocks ──────────────────────────────────────────────
 const mockPrepareRegistration = vi.hoisted(() => vi.fn());
 const registrationConfig = vi.hoisted(() => ({ magic: false }));
-vi.mock('@/business/client/AskCoreWorkbench/api', () => ({ prepareRegistrationForSignin: mockPrepareRegistration }));
+vi.mock('@/business/client/AskCoreWorkbench/api', () => ({
+  prepareRegistrationForSignin: mockPrepareRegistration,
+}));
 
 const mockPush = vi.hoisted(() => vi.fn());
 const mockSearchParamsGet = vi.hoisted(() => vi.fn().mockReturnValue(null));
@@ -133,7 +135,9 @@ const mobileLaunch = (transactionId = 'wxm_transaction_1234') => ({
 });
 const deferredResponse = () => {
   let resolve!: (value: ReturnType<typeof jsonResponse>) => void;
-  const promise = new Promise<ReturnType<typeof jsonResponse>>((done) => { resolve = done; });
+  const promise = new Promise<ReturnType<typeof jsonResponse>>((done) => {
+    resolve = done;
+  });
   return { promise, resolve };
 };
 
@@ -160,7 +164,10 @@ describe('useSignIn', () => {
     mockFetch.mockReset();
     mockTrackLoginOrSignupClicked.mockResolvedValue(undefined);
     registrationConfig.magic = false;
-    mockPrepareRegistration.mockResolvedValue({ handle: 'b'.repeat(64), expiresAt: '2099-01-01T00:00:00.000Z' });
+    mockPrepareRegistration.mockResolvedValue({
+      handle: 'b'.repeat(64),
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    });
     mockLocalStorage.clear();
     sessionStorage.clear();
     mockWechatMobileEnabled.value = true;
@@ -175,17 +182,24 @@ describe('useSignIn', () => {
   it('carries the prepared OAuth handle in state and keeps callback URLs secret-free', async () => {
     mockSignInSocial.mockResolvedValue({ error: null });
     const { result } = renderHook(() => useSignIn());
-    await act(async () => { await result.current.handleSocialSignIn('google'); });
-    expect(mockSignInSocial).toHaveBeenCalledWith(expect.objectContaining({
-      additionalData: { registrationIntent: 'b'.repeat(64) },
-      callbackURL: '/', newUserCallbackURL: '/askcore/workbench?protocol=registration',
-    }));
+    await act(async () => {
+      await result.current.handleSocialSignIn('google');
+    });
+    expect(mockSignInSocial).toHaveBeenCalledWith(
+      expect.objectContaining({
+        additionalData: { registrationIntent: 'b'.repeat(64) },
+        callbackURL: '/',
+        newUserCallbackURL: '/askcore/workbench?protocol=registration',
+      }),
+    );
   });
   it('continues OAuth without context when preparation reports a temporary failure', async () => {
     mockPrepareRegistration.mockResolvedValueOnce(undefined);
     mockSignInSocial.mockResolvedValue({ error: null });
     const { result } = renderHook(() => useSignIn());
-    await act(async () => { await result.current.handleSocialSignIn('google'); });
+    await act(async () => {
+      await result.current.handleSocialSignIn('google');
+    });
     const input = mockSignInSocial.mock.calls[0][0];
     expect(input.additionalData.registrationIntent).toBeUndefined();
     expect(input.newUserCallbackURL).toBe('/askcore/workbench?protocol=registration');
@@ -194,19 +208,29 @@ describe('useSignIn', () => {
   it('does not continue OAuth after an explicit preparation security refusal', async () => {
     mockPrepareRegistration.mockRejectedValueOnce(new Error('forbidden'));
     const { result } = renderHook(() => useSignIn());
-    await act(async () => { await result.current.handleSocialSignIn('google'); });
+    await act(async () => {
+      await result.current.handleSocialSignIn('google');
+    });
     expect(mockSignInSocial).not.toHaveBeenCalled();
   });
   it('sends the magic-link handle in a header while preserving existing-user continuation', async () => {
     registrationConfig.magic = true;
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ exists: true, hasPassword: false }) });
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ exists: true, hasPassword: false }),
+    });
     mockSignInMagicLink.mockResolvedValue({ error: null });
     const { result } = renderHook(() => useSignIn());
-    await act(async () => { await result.current.handleCheckUser({ email: 'synthetic@example.com' }); });
-    expect(mockSignInMagicLink).toHaveBeenCalledWith(expect.objectContaining({
-      callbackURL: '/', newUserCallbackURL: '/askcore/workbench?protocol=registration',
-      fetchOptions: { headers: { 'x-askcore-registration-intent': 'b'.repeat(64) } },
-    }));
+    await act(async () => {
+      await result.current.handleCheckUser({ email: 'synthetic@example.com' });
+    });
+    expect(mockSignInMagicLink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        callbackURL: '/',
+        newUserCallbackURL: '/askcore/workbench?protocol=registration',
+        fetchOptions: { headers: { 'x-askcore-registration-intent': 'b'.repeat(64) } },
+      }),
+    );
   });
   describe('initial state', () => {
     it('should return initial values', () => {
@@ -455,39 +479,60 @@ describe('useSignIn', () => {
     });
 
     it.each(['cancel', 'unmount', 'replace'] as const)(
-      'ignores an authorized status response delivered after %s', async (action) => {
-      useMobileNavigator();
-      vi.spyOn(window.location, 'assign').mockImplementation(() => {});
-      const status = deferredResponse();
-      let launch = mobileLaunch();
-      mockFetch.mockImplementation(async (path: string) => {
-        if (path.endsWith('/start')) return jsonResponse(launch);
-        if (path.includes('/status?')) return status.promise;
-        return jsonResponse({ redirectTo: '/' });
-      });
-      const { result, unmount } = renderHook(() => useSignIn());
-      await act(async () => { await result.current.handleSocialSignIn('wechat'); });
-      act(() => { result.current.openPreparedWechat(); });
-      await act(async () => { window.dispatchEvent(new Event('focus')); });
-      expect(mockFetch.mock.calls.filter(([path]) => path.includes('/status?'))).toHaveLength(1);
-      if (action === 'cancel') await act(async () => { await result.current.cancelWechatMobile(); });
-      else if (action === 'unmount') unmount();
-      else {
-        launch = mobileLaunch('wxm_transaction_5678');
-        await act(async () => { await result.current.prepareWechatMobileLogin(); });
-      }
-      await act(async () => {
-        status.resolve(jsonResponse({ state: 'authorized' }));
-      });
-      expect(mockFetch.mock.calls.filter(([path]) => path.endsWith('/consume'))).toHaveLength(0);
-      expect(mockPush).not.toHaveBeenCalled();
-      if (action !== 'unmount') {
-        expect(result.current.wechatMobileLogin).toEqual(action === 'cancel' ? { phase: 'idle' } : {
-          phase: 'prepared', expiresAt: launch.expiresAt, transactionId: launch.transactionId,
+      'ignores an authorized status response delivered after %s',
+      async (action) => {
+        useMobileNavigator();
+        vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+        const status = deferredResponse();
+        let launch = mobileLaunch();
+        mockFetch.mockImplementation(async (path: string) => {
+          if (path.endsWith('/start')) return jsonResponse(launch);
+          if (path.includes('/status?')) return status.promise;
+          return jsonResponse({ redirectTo: '/' });
         });
-        expect(sessionStorage.getItem('askcore:wechat-mobile:tab:wxm_transaction_1234')).toBeNull();
-      }
-    });
+        const { result, unmount } = renderHook(() => useSignIn());
+        await act(async () => {
+          await result.current.handleSocialSignIn('wechat');
+        });
+        act(() => {
+          result.current.openPreparedWechat();
+        });
+        await act(async () => {
+          window.dispatchEvent(new Event('focus'));
+        });
+        expect(mockFetch.mock.calls.filter(([path]) => path.includes('/status?'))).toHaveLength(1);
+        if (action === 'cancel')
+          await act(async () => {
+            await result.current.cancelWechatMobile();
+          });
+        else if (action === 'unmount') unmount();
+        else {
+          launch = mobileLaunch('wxm_transaction_5678');
+          await act(async () => {
+            await result.current.prepareWechatMobileLogin();
+          });
+        }
+        await act(async () => {
+          status.resolve(jsonResponse({ state: 'authorized' }));
+        });
+        expect(mockFetch.mock.calls.filter(([path]) => path.endsWith('/consume'))).toHaveLength(0);
+        expect(mockPush).not.toHaveBeenCalled();
+        if (action !== 'unmount') {
+          expect(result.current.wechatMobileLogin).toEqual(
+            action === 'cancel'
+              ? { phase: 'idle' }
+              : {
+                  phase: 'prepared',
+                  expiresAt: launch.expiresAt,
+                  transactionId: launch.transactionId,
+                },
+          );
+          expect(
+            sessionStorage.getItem('askcore:wechat-mobile:tab:wxm_transaction_1234'),
+          ).toBeNull();
+        }
+      },
+    );
 
     it('coalesces focus visibility and interval polls then consumes once on return', async () => {
       vi.useFakeTimers();
@@ -501,9 +546,13 @@ describe('useSignIn', () => {
         throw new Error('Unexpected test request');
       });
       const { result } = renderHook(() => useSignIn());
-      await act(async () => { await result.current.prepareWechatMobileLogin(); });
+      await act(async () => {
+        await result.current.prepareWechatMobileLogin();
+      });
       expect(assign).not.toHaveBeenCalled();
-      act(() => { result.current.openPreparedWechat(); });
+      act(() => {
+        result.current.openPreparedWechat();
+      });
       expect(assign).toHaveBeenCalledExactlyOnceWith(mobileLaunch().openTarget);
       await act(async () => {
         window.dispatchEvent(new Event('focus'));
@@ -511,11 +560,17 @@ describe('useSignIn', () => {
         await vi.advanceTimersByTimeAsync(2400);
       });
       expect(mockFetch.mock.calls.filter(([path]) => path.includes('/status?'))).toHaveLength(1);
-      await act(async () => { status.resolve(jsonResponse({ state: 'authorized' })); });
-      await act(async () => { window.dispatchEvent(new Event('focus')); });
+      await act(async () => {
+        status.resolve(jsonResponse({ state: 'authorized' }));
+      });
+      await act(async () => {
+        window.dispatchEvent(new Event('focus'));
+      });
       expect(mockFetch.mock.calls.filter(([path]) => path.endsWith('/consume'))).toHaveLength(1);
       expect(mockFetch.mock.calls.filter(([path]) => path.includes('/status?'))).toHaveLength(1);
-      await act(async () => { consume.resolve(jsonResponse({ redirectTo: '/welcome' })); });
+      await act(async () => {
+        consume.resolve(jsonResponse({ redirectTo: '/welcome' }));
+      });
       expect(assign).toHaveBeenNthCalledWith(2, '/welcome');
       expect(mockPush).not.toHaveBeenCalled();
       expect(result.current.wechatMobileLogin).toEqual({ phase: 'idle' });
@@ -531,10 +586,16 @@ describe('useSignIn', () => {
         throw new Error('Unexpected test request');
       });
       const { result } = renderHook(() => useSignIn());
-      await act(async () => { await result.current.prepareWechatMobileLogin(); });
-      act(() => { result.current.openPreparedWechat(); });
+      await act(async () => {
+        await result.current.prepareWechatMobileLogin();
+      });
+      act(() => {
+        result.current.openPreparedWechat();
+      });
 
-      await act(async () => { window.dispatchEvent(new Event('focus')); });
+      await act(async () => {
+        window.dispatchEvent(new Event('focus'));
+      });
 
       expect(result.current.wechatMobileLogin).toEqual({
         message: 'WECHAT_MOBILE_NOT_IN_ROLLOUT',
@@ -555,23 +616,38 @@ describe('useSignIn', () => {
         return cancel.promise;
       });
       const { result } = renderHook(() => useSignIn());
-      await act(async () => { await result.current.prepareWechatMobileLogin(); });
-      act(() => { result.current.openPreparedWechat(); });
-      await act(async () => { window.dispatchEvent(new Event('focus')); });
+      await act(async () => {
+        await result.current.prepareWechatMobileLogin();
+      });
+      act(() => {
+        result.current.openPreparedWechat();
+      });
+      await act(async () => {
+        window.dispatchEvent(new Event('focus'));
+      });
       expect(mockFetch.mock.calls.filter(([path]) => path.endsWith('/consume'))).toHaveLength(1);
       let cancelling!: Promise<void>;
-      act(() => { cancelling = result.current.cancelWechatMobile(); });
+      act(() => {
+        cancelling = result.current.cancelWechatMobile();
+      });
       launch = mobileLaunch('wxm_transaction_5678');
-      await act(async () => { await result.current.prepareWechatMobileLogin(); });
+      await act(async () => {
+        await result.current.prepareWechatMobileLogin();
+      });
       await act(async () => {
         consume.resolve(jsonResponse({ redirectTo: '/obsolete' }));
         cancel.resolve(jsonResponse({}));
         await cancelling;
       });
       expect(mockPush).not.toHaveBeenCalled();
-      expect(result.current.wechatMobileLogin).toEqual({ phase: 'prepared',
-        expiresAt: launch.expiresAt, transactionId: launch.transactionId });
-      expect(sessionStorage.getItem(`askcore:wechat-mobile:tab:${launch.transactionId}`)).toBe('a'.repeat(43));
+      expect(result.current.wechatMobileLogin).toEqual({
+        phase: 'prepared',
+        expiresAt: launch.expiresAt,
+        transactionId: launch.transactionId,
+      });
+      expect(sessionStorage.getItem(`askcore:wechat-mobile:tab:${launch.transactionId}`)).toBe(
+        'a'.repeat(43),
+      );
     });
 
     it('ignores an obsolete start response and clears proof on cancellation from a retry error', async () => {
@@ -580,8 +656,12 @@ describe('useSignIn', () => {
       mockFetch.mockResolvedValueOnce(firstStart.promise);
       const { result } = renderHook(() => useSignIn());
       let preparing!: Promise<void>;
-      act(() => { preparing = result.current.prepareWechatMobileLogin(); });
-      await act(async () => { await result.current.cancelWechatMobile(); });
+      act(() => {
+        preparing = result.current.prepareWechatMobileLogin();
+      });
+      await act(async () => {
+        await result.current.cancelWechatMobile();
+      });
       await act(async () => {
         firstStart.resolve(jsonResponse(mobileLaunch()));
         await preparing;
@@ -589,17 +669,29 @@ describe('useSignIn', () => {
       expect(result.current.wechatMobileLogin).toEqual({ phase: 'idle' });
       expect(sessionStorage.length).toBe(0);
       mockFetch.mockResolvedValueOnce(jsonResponse(mobileLaunch()));
-      await act(async () => { await result.current.prepareWechatMobileLogin(); });
-      act(() => { result.current.openPreparedWechat(); });
+      await act(async () => {
+        await result.current.prepareWechatMobileLogin();
+      });
+      act(() => {
+        result.current.openPreparedWechat();
+      });
       mockFetch.mockResolvedValueOnce(jsonResponse({ code: 'TEMPORARY_FAILURE' }, 503));
-      await act(async () => { window.dispatchEvent(new Event('focus')); });
+      await act(async () => {
+        window.dispatchEvent(new Event('focus'));
+      });
       expect(result.current.wechatMobileLogin.phase).toBe('failed');
       mockFetch.mockResolvedValueOnce(jsonResponse({}));
-      await act(async () => { await result.current.cancelWechatMobile(); });
-      expect(mockFetch).toHaveBeenLastCalledWith('/api/auth/wechat-mobile/cancel',
-        expect.objectContaining({ headers: expect.objectContaining({
-          'X-AskCore-WeChat-Tab-Binding': 'a'.repeat(43),
-        }) }));
+      await act(async () => {
+        await result.current.cancelWechatMobile();
+      });
+      expect(mockFetch).toHaveBeenLastCalledWith(
+        '/api/auth/wechat-mobile/cancel',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'X-AskCore-WeChat-Tab-Binding': 'a'.repeat(43),
+          }),
+        }),
+      );
       expect(result.current.wechatMobileLogin).toEqual({ phase: 'idle' });
       expect(sessionStorage.length).toBe(0);
     });
@@ -717,10 +809,9 @@ describe('useSignIn', () => {
 
     it('shows a stable retryable message when an outer limiter rejects mobile start', async () => {
       useMobileNavigator();
-      mockFetch.mockResolvedValueOnce(jsonResponse(
-        { message: 'Too many requests. Please try again later.' },
-        429,
-      ));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ message: 'Too many requests. Please try again later.' }, 429),
+      );
       const { result } = renderHook(() => useSignIn());
 
       await act(async () => {

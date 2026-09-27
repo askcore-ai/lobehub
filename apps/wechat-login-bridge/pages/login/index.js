@@ -6,15 +6,18 @@ const controller = require('../../controllers/login-controller');
 let launch = null;
 let handledLaunchVersion = 0;
 
-const hasLaunchFields = (options) => options && ['p', 't', 'c'].some((key) =>
-  Object.prototype.hasOwnProperty.call(options, key) && options[key] !== undefined,
-);
+const hasLaunchFields = (options) =>
+  options &&
+  ['p', 't', 'c'].some(
+    (key) => Object.prototype.hasOwnProperty.call(options, key) && options[key] !== undefined,
+  );
 
 Page({
   data: {
     actionText: '确认登录',
     busy: false,
-    detail: '请先在 Safari 或 Chrome 打开 askcore.cn，按网站提示发起微信登录或身份验证，再在这里确认。',
+    detail:
+      '请先在 Safari 或 Chrome 打开 askcore.cn，按网站提示发起微信登录或身份验证，再在这里确认。',
     invalid: false,
     status: 'welcome',
     title: 'AskCore 微信登录助手',
@@ -25,7 +28,8 @@ Page({
       launch = null;
       this.setData({
         busy: false,
-        detail: '请先在 Safari 或 Chrome 打开 askcore.cn，按网站提示发起微信登录或身份验证，再在这里确认。',
+        detail:
+          '请先在 Safari 或 Chrome 打开 askcore.cn，按网站提示发起微信登录或身份验证，再在这里确认。',
         invalid: false,
         status: 'welcome',
         title: 'AskCore 微信登录助手',
@@ -102,9 +106,10 @@ Page({
       launch = null;
       this.setData({
         busy: false,
-        detail: currentLaunch.purpose === 'rebind'
-          ? '身份验证已提交。请返回原浏览器继续确认；此操作不会自动合并或关联账号。'
-          : '微信授权已完成。请使用系统导航返回原 Safari 或 Chrome，完成网站登录。',
+        detail:
+          currentLaunch.purpose === 'rebind'
+            ? '身份验证已提交。请返回原浏览器继续确认；此操作不会自动合并或关联账号。'
+            : '微信授权已完成。请使用系统导航返回原 Safari 或 Chrome，完成网站登录。',
         status: 'authorized',
         title: currentLaunch.purpose === 'rebind' ? '身份验证已提交' : '微信授权已完成',
       });

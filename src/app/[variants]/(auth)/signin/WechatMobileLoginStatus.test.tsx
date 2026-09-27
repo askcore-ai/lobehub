@@ -93,7 +93,9 @@ describe('WechatMobileLoginStatus', () => {
     );
 
     expect(screen.getByText('betterAuth.wechatMobile.returnGuidance')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'betterAuth.wechatMobile.openWechat' })).toBeEnabled();
+    expect(
+      screen.getByRole('button', { name: 'betterAuth.wechatMobile.openWechat' }),
+    ).toBeEnabled();
   });
 
   it('requires a distinct confirmation before replacing another signed-in account', () => {

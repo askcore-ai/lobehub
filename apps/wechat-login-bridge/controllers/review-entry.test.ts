@@ -30,7 +30,9 @@ const loadPage = () => {
     showToast: vi.fn(),
   };
   const app: {
-    globalData: { wechatLaunch: null | { options: Record<string, string | undefined>; version: number } };
+    globalData: {
+      wechatLaunch: null | { options: Record<string, string | undefined>; version: number };
+    };
   } = { globalData: { wechatLaunch: null } };
   vi.stubGlobal('wx', wxApi);
   vi.stubGlobal('getApp', () => app);
@@ -72,7 +74,10 @@ describe('WeChat login bridge direct entry', () => {
   it('shows welcome when App has only unrelated launch parameters', () => {
     const { page, wxApi, app } = loadPage();
     // App.onShow retains the p/t/c keys with undefined values for other query input.
-    app.globalData.wechatLaunch = { options: { c: undefined, p: undefined, t: undefined }, version: 1 };
+    app.globalData.wechatLaunch = {
+      options: { c: undefined, p: undefined, t: undefined },
+      version: 1,
+    };
 
     page.onLoad({});
 
@@ -83,7 +88,10 @@ describe('WeChat login bridge direct entry', () => {
 
   it('keeps a partial App transaction fail-closed', () => {
     const { page, wxApi, app } = loadPage();
-    app.globalData.wechatLaunch = { options: { c: undefined, p: 'signin', t: undefined }, version: 1 };
+    app.globalData.wechatLaunch = {
+      options: { c: undefined, p: 'signin', t: undefined },
+      version: 1,
+    };
 
     page.onLoad({});
 
@@ -179,7 +187,8 @@ describe('WeChat login bridge direct entry', () => {
   it('does not let a previous pending response replace a newer launch', async () => {
     const { app, page, wxApi } = loadPage();
     wxApi.login.mockImplementation(({ success }) => success({ code: 'synthetic-code' }));
-    let completeRequest: ((result: { data: { state: string }; statusCode: number }) => void) | undefined;
+    let completeRequest:
+      ((result: { data: { state: string }; statusCode: number }) => void) | undefined;
     wxApi.request.mockImplementation(({ success }) => {
       completeRequest = success;
     });

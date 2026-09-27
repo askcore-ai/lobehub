@@ -1,15 +1,21 @@
 export default {
   'betterAuth.wechatProof.title': 'Prepublication WeChat authorization check',
-  'betterAuth.wechatProof.explanation': 'This checks the WeChat authorization connection only. It does not sign you in, link accounts, match historical identities or create migration evidence. Use only a code you created here yourself. Do not share, copy, photograph or record it.',
-  'betterAuth.wechatProof.instructions': 'Open the ordinary AskCore mini-program experience version, enter this code and confirm. Then return to this browser using system navigation. The code expires after five minutes.',
+  'betterAuth.wechatProof.explanation':
+    'This checks the WeChat authorization connection only. It does not sign you in, link accounts, match historical identities or create migration evidence. Use only a code you created here yourself. Do not share, copy, photograph or record it.',
+  'betterAuth.wechatProof.instructions':
+    'Open the ordinary AskCore mini-program experience version, enter this code and confirm. Then return to this browser using system navigation. The code expires after five minutes.',
   'betterAuth.wechatProof.start': 'Create a five-minute verification code',
   'betterAuth.wechatProof.pending': 'Waiting for your confirmation in the mini-program.',
-  'betterAuth.wechatProof.ready': 'WeChat authorization exchange completed. Confirm receipt here; this does not establish an account match.',
+  'betterAuth.wechatProof.ready':
+    'WeChat authorization exchange completed. Confirm receipt here; this does not establish an account match.',
   'betterAuth.wechatProof.finish': 'Confirm authorization check result',
-  'betterAuth.wechatProof.completed': 'Authorization check completed. No login, account association or migration proof was created.',
-  'betterAuth.wechatProof.failed': 'This check could not be completed. Return to AskCore and start again.',
+  'betterAuth.wechatProof.completed':
+    'Authorization check completed. No login, account association or migration proof was created.',
+  'betterAuth.wechatProof.failed':
+    'This check could not be completed. Return to AskCore and start again.',
   'betterAuth.wechatProof.expired': 'The five-minute code has expired. Start again if needed.',
-  'betterAuth.wechatProof.retry': 'Connection unavailable. The original expiry is unchanged; retry before it expires.',
+  'betterAuth.wechatProof.retry':
+    'Connection unavailable. The original expiry is unchanged; retry before it expires.',
   'betterAuth.wechatProof.retryAction': 'Retry status check',
   'betterAuth.wechatProof.cancel': 'Cancel this check',
   'betterAuth.wechatProof.cancelled': 'Check cancelled.',
@@ -331,25 +337,35 @@ export default {
   'usage.trends.tokens': 'Tokens',
   'usage.welcome.model': 'Model',
   'usage.welcome.provider': 'Provider',
-  "registration.title": "Set up your school access",
-  "registration.state.loading": "Checking your registration status…",
-  "registration.state.pending": "Your school access is being prepared. You can close this page; setup will continue.",
-  "registration.state.completed": "Your school access is ready. Continuing…",
-  "registration.state.retry": "Setup was interrupted and will retry automatically. You can also retry now.",
-  "registration.state.authenticate": "Sign in to continue setting up school access for your account.",
-  "registration.state.chooseIntent": "Choose to create a new school identity or use your school invitation. Existing school records are kept unchanged.",
-  "registration.state.reviewIdentity": "Your linked school identity changed. Confirm that setup should continue with your current identity. Previous records stay with their original identity.",
-  "registration.state.replaceInvitation": "Your invitation cannot be used. Open a new invitation from your school and try again.",
-  "registration.state.contactSchool": "School access needs an identity review. Contact your school administrator.",
-  "registration.state.sessionChanged": "Your session changed. Check the current account before submitting again.",
-  "registration.state.unavailable": "Registration is temporarily unavailable. Your session has not been signed out. Try again shortly.",
-  "registration.action.createIdentity": "Create a new school identity",
-  "registration.action.useInvitation": "Use my school invitation",
-  "registration.action.acknowledgeIdentity": "Continue with my current school identity",
-  "registration.action.retryProvisioning": "Retry setup",
-  "registration.action.refresh": "Check status again",
-  "registration.action.signIn": "Sign in",
-  "registration.action.home": "Back to home",
-  'registration.state.forbidden': 'Use your own account with a normal sign-in to manage registration.',
+  'registration.title': 'Set up your school access',
+  'registration.state.loading': 'Checking your registration status…',
+  'registration.state.pending':
+    'Your school access is being prepared. You can close this page; setup will continue.',
+  'registration.state.completed': 'Your school access is ready. Continuing…',
+  'registration.state.retry':
+    'Setup was interrupted and will retry automatically. You can also retry now.',
+  'registration.state.authenticate':
+    'Sign in to continue setting up school access for your account.',
+  'registration.state.chooseIntent':
+    'Choose to create a new school identity or use your school invitation. Existing school records are kept unchanged.',
+  'registration.state.reviewIdentity':
+    'Your linked school identity changed. Confirm that setup should continue with your current identity. Previous records stay with their original identity.',
+  'registration.state.replaceInvitation':
+    'Your invitation cannot be used. Open a new invitation from your school and try again.',
+  'registration.state.contactSchool':
+    'School access needs an identity review. Contact your school administrator.',
+  'registration.state.sessionChanged':
+    'Your session changed. Check the current account before submitting again.',
+  'registration.state.unavailable':
+    'Registration is temporarily unavailable. Your session has not been signed out. Try again shortly.',
+  'registration.action.createIdentity': 'Create a new school identity',
+  'registration.action.useInvitation': 'Use my school invitation',
+  'registration.action.acknowledgeIdentity': 'Continue with my current school identity',
+  'registration.action.retryProvisioning': 'Retry setup',
+  'registration.action.refresh': 'Check status again',
+  'registration.action.signIn': 'Sign in',
+  'registration.action.home': 'Back to home',
+  'registration.state.forbidden':
+    'Use your own account with a normal sign-in to manage registration.',
   'registration.account.label': 'Current account: {{email}}',
 };
