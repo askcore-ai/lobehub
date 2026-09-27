@@ -145,7 +145,10 @@ describe('defineConfig', () => {
     const options = mocks.betterAuth.mock.calls.at(-1)![0];
     expect(options.plugins[0].id).toBe('askcore-registration');
     expect(options.user.additionalFields.registrationIntentId).toEqual({
-      input: false, returned: false, required: false, type: 'string',
+      input: false,
+      returned: false,
+      required: false,
+      type: 'string',
     });
   });
   it('keeps native login methods linked to one Better Auth user', async () => {
