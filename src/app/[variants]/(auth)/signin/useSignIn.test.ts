@@ -783,7 +783,7 @@ describe('useSignIn', () => {
         transactionId: 'wxm_transaction_1234',
       });
       expect(
-        [...Array(sessionStorage.length).keys()].map((index) =>
+        [...new Array(sessionStorage.length).keys()].map((index) =>
           sessionStorage.getItem(sessionStorage.key(index)!),
         ),
       ).not.toContain(openTarget);

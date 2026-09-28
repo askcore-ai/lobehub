@@ -50,7 +50,9 @@ class SyntheticTransaction {
 const verifySourceBoundary = async () => {
   const signIn = await read('src/app/[variants]/(auth)/signin/useSignIn.ts');
   const plugin = await read('src/libs/better-auth/plugins/wechat-mobile-login/index.ts');
-  const endpointSecurity = await read('src/libs/better-auth/plugins/wechat-mobile-login/endpoint-security.ts');
+  const endpointSecurity = await read(
+    'src/libs/better-auth/plugins/wechat-mobile-login/endpoint-security.ts',
+  );
   const store = await read('src/libs/better-auth/plugins/wechat-mobile-login/transaction-store.ts');
   const bridge = await read('apps/wechat-login-bridge/controllers/login-controller.js');
   const bridgeApp = await read('apps/wechat-login-bridge/app.js');

@@ -20,18 +20,13 @@ const LAST_AUTH_PROVIDER_KEY = 'lobehub:auth:last-provider:v1';
 const WECHAT_MINI_PROGRAM_CLIENT = 'wechat-mini-program';
 const WECHAT_MINI_PROGRAM_CLIENT_KEY = 'askcore:wechat-mini-program-client:v1';
 const WECHAT_MINI_PROGRAM_SDK_ID = 'askcore-wechat-mini-program-sdk';
-const WECHAT_MINI_PROGRAM_SDK_SRC =
-  'https://res.wx.qq.com/open/js/jweixin-1.3.2.js';
+const WECHAT_MINI_PROGRAM_SDK_SRC = 'https://res.wx.qq.com/open/js/jweixin-1.3.2.js';
 const WECHAT_TAB_STORAGE_PREFIX = 'askcore:wechat-mobile:tab:';
 
 type WechatMobileHandoff = 'mini_program_navigation' | 'url_link';
 
 interface WechatMiniProgramBridge {
-  navigateTo: (options: {
-    fail?: () => void;
-    success?: () => void;
-    url: string;
-  }) => void;
+  navigateTo: (options: { fail?: () => void; success?: () => void; url: string }) => void;
 }
 
 const currentWechatMiniProgramBridge = (): WechatMiniProgramBridge | undefined =>

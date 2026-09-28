@@ -3,8 +3,13 @@
   "compileType": "miniprogram",
   "condition": {},
   "description": "AskCore web workspace and WeChat login",
+  "editorSetting": {},
   "libVersion": "3.7.12",
   "miniprogramRoot": "./",
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
   "projectname": "askcore-wechat-login-bridge",
   "setting": {
     "checkInvalidKey": true,
@@ -33,10 +38,5 @@
       "outputPath": ""
     }
   },
-  "simulatorPluginLibVersion": {},
-  "packOptions": {
-    "ignore": [],
-    "include": []
-  },
-  "editorSetting": {}
+  "simulatorPluginLibVersion": {}
 }

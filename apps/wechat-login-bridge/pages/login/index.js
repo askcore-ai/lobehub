@@ -104,8 +104,7 @@ Page({
       }
       if (launch !== currentLaunch) return;
       launch = null;
-      const returnToWebView =
-        currentLaunch.purpose === 'signin' && currentLaunch.returnToWebView;
+      const returnToWebView = currentLaunch.purpose === 'signin' && currentLaunch.returnToWebView;
       this.setData({
         busy: false,
         detail:
