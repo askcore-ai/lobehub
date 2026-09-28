@@ -315,6 +315,7 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
             }
             endpointError('NOT_FOUND', 'WECHAT_TRANSACTION_NOT_FOUND');
           }
+          requireTruthy(started, 'NOT_FOUND', 'WECHAT_TRANSACTION_NOT_FOUND');
           try {
             const codeSession = await exchangeWechatMiniProgramCode({
               appId: options.miniProgramAppId,
