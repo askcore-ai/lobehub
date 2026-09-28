@@ -301,7 +301,20 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
             purpose: 'signin',
             transactionId: ctx.body.transactionId,
           });
-          requireTruthy(started, 'NOT_FOUND', 'WECHAT_TRANSACTION_NOT_FOUND');
+          if (!started) {
+            const existing = await store.readAuthorizationByCompletion({
+              completionCapability: ctx.body.completionCapability,
+              purpose: 'signin',
+              transactionId: ctx.body.transactionId,
+            });
+            if (existing?.state === 'authorized') {
+              return ctx.json({ state: 'authorized' }, { headers: noStore });
+            }
+            if (existing?.state === 'authorizing') {
+              endpointError('SERVICE_UNAVAILABLE', 'WECHAT_AUTHORIZATION_IN_PROGRESS');
+            }
+            endpointError('NOT_FOUND', 'WECHAT_TRANSACTION_NOT_FOUND');
+          }
           try {
             const codeSession = await exchangeWechatMiniProgramCode({
               appId: options.miniProgramAppId,

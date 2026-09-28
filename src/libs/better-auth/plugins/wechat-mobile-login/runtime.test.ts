@@ -190,6 +190,53 @@ describe('WeChat bridge through the real Better Auth handler and adapter factory
         (row) => row.id === prepared.transactionId,
       ),
     ).toMatchObject({ attemptCount: 1, state: 'authorized' });
+
+    const wrongCapability = await f.request('/wechat-mobile/confirm', {
+      body: {
+        code: 'another-unused-one-time-code',
+        completionCapability: 'x'.repeat(43),
+        transactionId: prepared.transactionId,
+      },
+    });
+    expect(wrongCapability.status).toBe(404);
+
+    const consumed = await f.request('/wechat-mobile/consume', {
+      body: { confirmAccountSwitch: false, transactionId: prepared.transactionId },
+      cookie: prepared.cookie,
+      tab: prepared.tabBinding,
+    });
+    expect(consumed.status).toBe(200);
+    const afterConsume = await f.request('/wechat-mobile/confirm', {
+      body: {
+        code: 'unused-after-consume-code',
+        completionCapability: prepared.launch.completionCapability,
+        transactionId: prepared.transactionId,
+      },
+    });
+    expect(afterConsume.status).toBe(404);
+    expect(providerFetch).toHaveBeenCalledOnce();
+  });
+
+  it('keeps an exact concurrent confirmation retry temporary while authorization is in progress', async () => {
+    const f = fixture();
+    const prepared = await f.start();
+    const row = f.database.wechatMobileLoginTransaction.find(
+      (item) => item.id === prepared.transactionId,
+    )!;
+    row.state = 'authorizing';
+    row.attemptCount = 1;
+
+    const response = await f.request('/wechat-mobile/confirm', {
+      body: {
+        code: 'fresh-unused-one-time-code',
+        completionCapability: prepared.launch.completionCapability,
+        transactionId: prepared.transactionId,
+      },
+    });
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: 'WECHAT_AUTHORIZATION_IN_PROGRESS' });
+    expect(row).toMatchObject({ attemptCount: 1, state: 'authorizing' });
   });
 
   it('fails preparation without issuing a browser binding when URL Link generation fails', async () => {

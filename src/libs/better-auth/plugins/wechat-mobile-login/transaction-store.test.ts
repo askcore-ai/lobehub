@@ -224,6 +224,45 @@ describe('WechatMobileTransactionStore', () => {
     });
   });
 
+  it('reads an unexpired authorization only with its exact completion capability and purpose', async () => {
+    const store = new WechatMobileTransactionStore(new MemoryAdapter());
+    const now = new Date('2026-07-29T00:00:00Z');
+    const created = await store.create({ callbackUrl: '/', now, purpose: 'signin' });
+
+    expect(
+      await store.readAuthorizationByCompletion({
+        completionCapability: created.capabilities.completionCapability,
+        now,
+        purpose: 'signin',
+        transactionId: created.transaction.id,
+      }),
+    ).toMatchObject({ id: created.transaction.id, state: 'pending' });
+    expect(
+      await store.readAuthorizationByCompletion({
+        completionCapability: 'x'.repeat(43),
+        now,
+        purpose: 'signin',
+        transactionId: created.transaction.id,
+      }),
+    ).toBeNull();
+    expect(
+      await store.readAuthorizationByCompletion({
+        completionCapability: created.capabilities.completionCapability,
+        now,
+        purpose: 'rebind',
+        transactionId: created.transaction.id,
+      }),
+    ).toBeNull();
+    expect(
+      await store.readAuthorizationByCompletion({
+        completionCapability: created.capabilities.completionCapability,
+        now: new Date('2026-07-29T00:05:00Z'),
+        purpose: 'signin',
+        transactionId: created.transaction.id,
+      }),
+    ).toBeNull();
+  });
+
   it('opportunistically deletes only a bounded expired batch after the recovery window', async () => {
     const adapter = new MemoryAdapter();
     const store = new WechatMobileTransactionStore(adapter);

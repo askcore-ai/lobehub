@@ -99,7 +99,17 @@ Page({
     const currentLaunch = launch;
     this.setData({ busy: true, status: 'authorizing' });
     try {
-      await controller.authorize(wx, currentLaunch);
+      const maxAttempts = currentLaunch.purpose === 'signin' ? 2 : 1;
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        try {
+          await controller.authorize(wx, currentLaunch);
+          break;
+        } catch (error) {
+          if (launch !== currentLaunch) return;
+          const retryable = ['askcore_unavailable', 'wx_login_failed'].includes(error.message);
+          if (!retryable || attempt + 1 >= maxAttempts) throw error;
+        }
+      }
       if (launch !== currentLaunch) return;
       launch = null;
       this.setData({

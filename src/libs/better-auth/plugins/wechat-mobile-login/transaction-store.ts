@@ -258,6 +258,25 @@ export class WechatMobileTransactionStore {
     });
   }
 
+  async readAuthorizationByCompletion(input: {
+    completionCapability: string;
+    now?: Date;
+    purpose: 'rebind' | 'signin';
+    transactionId: string;
+  }): Promise<WechatMobileTransaction | null> {
+    const current = await this.find(input.transactionId);
+    const now = input.now ?? new Date();
+    if (
+      !current ||
+      current.purpose !== input.purpose ||
+      current.expiresAt <= now ||
+      !capabilityMatches('completion', input.completionCapability, current.completionCapabilityHash)
+    ) {
+      return null;
+    }
+    return current;
+  }
+
   async beginWebsiteAuthorization(input: {
     now?: Date;
     oauthState: string;
