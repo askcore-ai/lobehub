@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -65,7 +66,9 @@ describe('WeChat login bridge direct entry', () => {
     page.onLoad({});
 
     await vi.waitFor(() => expect(page.data.status).toBe('authorized'));
-    expect(page.data.title).toBe('微信授权已完成');
+    expect(page.data.title).toBe('AskCore 登录成功');
+    expect(page.data.detail).toBe('请返回原浏览器，继续使用 AskCore。');
+    expect(page.data.title).not.toContain('授权');
     expect(app.globalData.wechatLaunch.options).toBeNull();
     expect(wxApi.login).toHaveBeenCalledOnce();
     expect(wxApi.request).toHaveBeenCalledOnce();
@@ -82,7 +85,7 @@ describe('WeChat login bridge direct entry', () => {
     page.onLoad({});
 
     expect(page.data.status).toBe('welcome');
-    expect(page.data.title).toBe('AskCore 微信登录助手');
+    expect(page.data.title).toBe('AskCore 微信登录');
     expect(wxApi.login).not.toHaveBeenCalled();
   });
 
@@ -114,7 +117,7 @@ describe('WeChat login bridge direct entry', () => {
 
     page.onLoad({});
 
-    expect(page.data.title).not.toBe('链接已失效');
+    expect(page.data.title).not.toBe('登录链接已失效');
     expect(page.data.status).toBe('welcome');
     expect(page.data.detail).toContain('askcore.cn');
     await page.onAuthorize();
@@ -161,7 +164,7 @@ describe('WeChat login bridge direct entry', () => {
 
     expect(page.data.status).toBe('authorized');
     expect(page.data.title).toBe('身份验证已提交');
-    expect(page.data.detail).toContain('返回原浏览器继续确认');
+    expect(page.data.detail).toBe('请返回原浏览器查看结果。');
     await page.onAuthorize();
     expect(wxApi.login).toHaveBeenCalledOnce();
   });
@@ -177,9 +180,13 @@ describe('WeChat login bridge direct entry', () => {
     expect(wxApi.login).toHaveBeenCalledOnce();
     expect(page.data.status).toBe('ready');
     expect(page.data.invalid).toBe(false);
+    expect(page.data.title).toBe('AskCore 登录失败');
+    expect(page.data.detail).toBe('请稍后重试；仍失败请返回原浏览器。');
     await page.onAuthorize();
     expect(page.data.status).toBe('failed');
     expect(page.data.invalid).toBe(true);
+    expect(page.data.title).toBe('AskCore 登录失败');
+    expect(page.data.detail).toBe('请返回原浏览器重新发起操作。');
     await page.onAuthorize();
     expect(wxApi.login).toHaveBeenCalledTimes(2);
   });
@@ -200,10 +207,21 @@ describe('WeChat login bridge direct entry', () => {
     };
     page.onShow();
     completeRequest!({ data: { state: 'authorized' }, statusCode: 200 });
-    await vi.waitFor(() => expect(page.data.title).toBe('验证 AskCore 微信身份'));
+    await vi.waitFor(() => expect(page.data.title).toBe('确认微信身份'));
 
     expect(page.data.status).toBe('ready');
-    expect(page.data.title).toBe('验证 AskCore 微信身份');
+    expect(page.data.title).toBe('确认微信身份');
     expect(page.data.busy).toBe(false);
+  });
+
+  it('keeps the functional page concise and avoids ambiguous authorization copy', () => {
+    const template = readFileSync(new URL('../pages/login/index.wxml', import.meta.url), 'utf8');
+    const pageSource = readFileSync(pagePath, 'utf8');
+
+    expect(pageSource).not.toContain('微信授权已完成');
+    expect(template).not.toContain('微信授权已完成');
+    expect(template).not.toContain('class="steps"');
+    expect(template).not.toContain('class="privacy"');
+    expect(template).not.toContain('class="success"');
   });
 });

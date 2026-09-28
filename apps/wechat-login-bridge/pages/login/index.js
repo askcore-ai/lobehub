@@ -16,11 +16,10 @@ Page({
   data: {
     actionText: '确认登录',
     busy: false,
-    detail:
-      '请先在 Safari 或 Chrome 打开 askcore.cn，按网站提示发起微信登录或身份验证，再在这里确认。',
+    detail: '请从手机浏览器的 AskCore 登录页发起微信登录。',
     invalid: false,
     status: 'welcome',
-    title: 'AskCore 微信登录助手',
+    title: 'AskCore 微信登录',
   },
 
   applyLaunchOptions(options) {
@@ -28,11 +27,10 @@ Page({
       launch = null;
       this.setData({
         busy: false,
-        detail:
-          '请先在 Safari 或 Chrome 打开 askcore.cn，按网站提示发起微信登录或身份验证，再在这里确认。',
+        detail: '请从手机浏览器的 AskCore 登录页发起微信登录。',
         invalid: false,
         status: 'welcome',
-        title: 'AskCore 微信登录助手',
+        title: 'AskCore 微信登录',
       });
       return;
     }
@@ -42,29 +40,29 @@ Page({
         this.setData({
           actionText: '确认验证',
           busy: false,
-          detail: '这只会提交身份验证，账号关联由 AskCore 审核后处理。',
+          detail: '点击确认后，请返回原浏览器查看结果。',
           invalid: false,
           status: 'ready',
-          title: '验证 AskCore 微信身份',
+          title: '确认微信身份',
         });
       } else {
         this.setData({
           actionText: '重新登录',
           busy: false,
-          detail: '正在自动完成微信登录，请稍候。',
+          detail: '请稍候。',
           invalid: false,
           status: 'ready',
-          title: '登录 AskCore',
+          title: '正在登录 AskCore',
         });
       }
     } catch {
       launch = null;
       this.setData({
         busy: false,
-        detail: '请返回 AskCore，重新点击微信登录。',
+        detail: '请返回原浏览器，重新点击微信登录。',
         invalid: true,
         status: 'failed',
-        title: '链接已失效',
+        title: '登录链接已失效',
       });
     }
   },
@@ -108,26 +106,27 @@ Page({
         busy: false,
         detail:
           currentLaunch.purpose === 'rebind'
-            ? '身份验证已提交。请返回原浏览器继续确认；此操作不会自动合并或关联账号。'
-            : '微信授权已完成。请使用系统导航返回原 Safari 或 Chrome，完成网站登录。',
+            ? '请返回原浏览器查看结果。'
+            : '请返回原浏览器，继续使用 AskCore。',
         status: 'authorized',
-        title: currentLaunch.purpose === 'rebind' ? '身份验证已提交' : '微信授权已完成',
+        title: currentLaunch.purpose === 'rebind' ? '身份验证已提交' : 'AskCore 登录成功',
       });
     } catch (error) {
       if (launch !== currentLaunch) return;
       const retryable = ['askcore_unavailable', 'wx_login_failed'].includes(error.message);
       if (!retryable) launch = null;
+      const isRebind = currentLaunch.purpose === 'rebind';
       this.setData({
-        actionText: retryable ? '重新登录' : this.data.actionText,
+        actionText: retryable ? (isRebind ? '重新验证' : '重新登录') : this.data.actionText,
         busy: false,
         detail: retryable
-          ? '暂时无法连接，请稍后重试。'
+          ? '请稍后重试；仍失败请返回原浏览器。'
           : error.message === 'maintenance'
-            ? '微信身份服务维护中，请稍后返回 AskCore 重新开始。'
-            : '验证失败，请返回 AskCore 重新开始。',
+            ? '请稍后返回原浏览器重试。'
+            : '请返回原浏览器重新发起操作。',
         invalid: !retryable,
         status: retryable ? 'ready' : 'failed',
-        title: retryable ? '暂时无法完成验证' : '本次验证未完成',
+        title: isRebind ? '身份验证失败' : 'AskCore 登录失败',
       });
     }
   },
