@@ -186,9 +186,7 @@ describe('WeChat bridge through the real Better Auth handler and adapter factory
     expect(await repeated.json()).toEqual({ state: 'authorized' });
     expect(providerFetch).toHaveBeenCalledOnce();
     expect(
-      f.database.wechatMobileLoginTransaction.find(
-        (row) => row.id === prepared.transactionId,
-      ),
+      f.database.wechatMobileLoginTransaction.find((row) => row.id === prepared.transactionId),
     ).toMatchObject({ attemptCount: 1, state: 'authorized' });
 
     const wrongCapability = await f.request('/wechat-mobile/confirm', {

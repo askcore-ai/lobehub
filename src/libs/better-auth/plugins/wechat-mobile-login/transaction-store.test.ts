@@ -20,17 +20,13 @@ class MemoryAdapter implements WechatMobileDatabaseAdapter {
   rows = new Map<string, Record<string, unknown>>();
 
   async create<T>({ data }: { data: Record<string, unknown>; model: string }): Promise<T> {
-    if (this.rows.has(String(data.id))) throw Object.assign(new Error('duplicate'), { code: '23505' });
+    if (this.rows.has(String(data.id)))
+      throw Object.assign(new Error('duplicate'), { code: '23505' });
     this.rows.set(String(data.id), { ...data });
     return { ...data } as T;
   }
 
-  async deleteMany({
-    where,
-  }: {
-    model: string;
-    where: Clause[];
-  }): Promise<number> {
+  async deleteMany({ where }: { model: string; where: Clause[] }): Promise<number> {
     const ids = new Set(where[0].value as string[]);
     let deleted = 0;
     for (const id of ids) {
@@ -56,9 +52,8 @@ class MemoryAdapter implements WechatMobileDatabaseAdapter {
 
   async findOne<T>({ where }: { model: string; where: Clause[] }) {
     return (
-      ([...this.rows.values()].find((row) =>
-        where.every((clause) => matches(row, clause)),
-      ) as T | undefined) ?? null
+      ([...this.rows.values()].find((row) => where.every((clause) => matches(row, clause))) as
+        T | undefined) ?? null
     );
   }
 
@@ -96,13 +91,20 @@ describe('WechatMobileTransactionStore', () => {
   it('limits acceptance-only issuance to five atomic account/window slots', async () => {
     const adapter = new MemoryAdapter();
     const store = new WechatPrepublicationStore(adapter);
-    const input = { now: new Date('2026-09-21T00:00:00Z'), secret: 'synthetic', sessionId: 'session', userId: 'user' };
+    const input = {
+      now: new Date('2026-09-21T00:00:00Z'),
+      secret: 'synthetic',
+      sessionId: 'session',
+      userId: 'user',
+    };
     const results = await Promise.all(Array.from({ length: 12 }, () => store.create(input)));
     expect(results.filter(Boolean)).toHaveLength(5);
     expect(adapter.rows.size).toBe(5);
     const first = results.find(Boolean)!;
     expect(first.capabilities.completionCapability).toMatch(/^[A-F0-9]{20}$/);
-    expect(JSON.stringify([...adapter.rows.values()])).not.toContain(first.capabilities.completionCapability);
+    expect(JSON.stringify([...adapter.rows.values()])).not.toContain(
+      first.capabilities.completionCapability,
+    );
     expect(await store.create({ ...input, sessionId: 'other-session' })).toBeNull();
     expect(await store.create({ ...input, now: new Date('2026-09-21T00:05:00Z') })).not.toBeNull();
   });
@@ -111,16 +113,25 @@ describe('WechatMobileTransactionStore', () => {
     const adapter = new MemoryAdapter();
     const proof = new WechatPrepublicationStore(adapter);
     const store = new WechatMobileTransactionStore(adapter);
-    const created = await proof.create({ secret: 'synthetic', sessionId: 'session', userId: 'user' });
+    const created = await proof.create({
+      secret: 'synthetic',
+      sessionId: 'session',
+      userId: 'user',
+    });
     await proof.begin(created!.capabilities.completionCapability);
     expect(await store.authorize(created!.transaction.id, 'user')).toBeNull();
     let issued = false;
-    expect(await store.consumeWithSession({
-      accountSwitchConfirmed: false,
-      createSession: async () => { issued = true; return { id: 'bad' }; },
-      recoverySeconds: 60,
-      transaction: { ...created!.transaction, authorizedUserId: 'user', state: 'authorized' },
-    })).toBeNull();
+    expect(
+      await store.consumeWithSession({
+        accountSwitchConfirmed: false,
+        createSession: async () => {
+          issued = true;
+          return { id: 'bad' };
+        },
+        recoverySeconds: 60,
+        transaction: { ...created!.transaction, authorizedUserId: 'user', state: 'authorized' },
+      }),
+    ).toBeNull();
     expect(issued).toBe(false);
   });
 

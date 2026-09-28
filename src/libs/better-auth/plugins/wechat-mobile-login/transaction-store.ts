@@ -270,7 +270,11 @@ export class WechatMobileTransactionStore {
       !current ||
       current.purpose !== input.purpose ||
       current.expiresAt <= now ||
-      !capabilityMatches('completion', input.completionCapability, current.completionCapabilityHash)
+      !capabilityMatches(
+        'completion',
+        input.completionCapability,
+        current.completionCapabilityHash,
+      )
     ) {
       return null;
     }
