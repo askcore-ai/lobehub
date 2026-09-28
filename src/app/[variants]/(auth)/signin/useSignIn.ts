@@ -17,7 +17,74 @@ import { useAuthServerConfigStore } from '../_layout/AuthServerConfigProvider';
 import { EMAIL_REGEX, USERNAME_REGEX } from './SignInEmailStep';
 
 const LAST_AUTH_PROVIDER_KEY = 'lobehub:auth:last-provider:v1';
+const WECHAT_MINI_PROGRAM_CLIENT = 'wechat-mini-program';
+const WECHAT_MINI_PROGRAM_CLIENT_KEY = 'askcore:wechat-mini-program-client:v1';
+const WECHAT_MINI_PROGRAM_SDK_ID = 'askcore-wechat-mini-program-sdk';
+const WECHAT_MINI_PROGRAM_SDK_SRC =
+  'https://res.wx.qq.com/open/js/jweixin-1.3.2.js';
 const WECHAT_TAB_STORAGE_PREFIX = 'askcore:wechat-mobile:tab:';
+
+type WechatMobileHandoff = 'mini_program_navigation' | 'url_link';
+
+interface WechatMiniProgramBridge {
+  navigateTo: (options: {
+    fail?: () => void;
+    success?: () => void;
+    url: string;
+  }) => void;
+}
+
+const currentWechatMiniProgramBridge = (): WechatMiniProgramBridge | undefined =>
+  (
+    window as typeof window & {
+      wx?: { miniProgram?: WechatMiniProgramBridge };
+    }
+  ).wx?.miniProgram;
+
+const loadWechatMiniProgramBridge = async (): Promise<WechatMiniProgramBridge> => {
+  const current = currentWechatMiniProgramBridge();
+  if (current) return current;
+
+  await new Promise<void>((resolve, reject) => {
+    let script = document.querySelector<HTMLScriptElement>(`#${WECHAT_MINI_PROGRAM_SDK_ID}`);
+    let appendScript = false;
+    const timeout = window.setTimeout(() => reject(new Error('wechat_bridge_unavailable')), 5000);
+    const finish = (callback: () => void) => {
+      window.clearTimeout(timeout);
+      script?.removeEventListener('load', onLoad);
+      script?.removeEventListener('error', onError);
+      callback();
+    };
+    const onLoad = () => finish(resolve);
+    const onError = () => finish(() => reject(new Error('wechat_bridge_unavailable')));
+    if (!script) {
+      script = document.createElement('script');
+      appendScript = true;
+      script.async = true;
+      script.id = WECHAT_MINI_PROGRAM_SDK_ID;
+      script.referrerPolicy = 'no-referrer';
+      script.src = WECHAT_MINI_PROGRAM_SDK_SRC;
+    }
+    script.addEventListener('load', onLoad, { once: true });
+    script.addEventListener('error', onError, { once: true });
+    if (appendScript) document.head.append(script);
+  });
+
+  const loaded = currentWechatMiniProgramBridge();
+  if (!loaded) throw new Error('wechat_bridge_unavailable');
+  return loaded;
+};
+
+const navigateWithinWechatMiniProgram = async (url: string): Promise<void> => {
+  const bridge = await loadWechatMiniProgramBridge();
+  await new Promise<void>((resolve, reject) => {
+    bridge.navigateTo({
+      fail: () => reject(new Error('wechat_navigation_failed')),
+      success: resolve,
+      url,
+    });
+  });
+};
 
 export type WechatClientClass = 'desktop' | 'mobile';
 
@@ -78,6 +145,7 @@ export type WechatMobileLoginState =
 
 interface WechatMobileStartResponse {
   expiresAt: string;
+  handoff: WechatMobileHandoff;
   openTarget: string;
   pollAfterMs: number;
   tabBinding: string;
@@ -99,14 +167,39 @@ const isOfficialWechatUrlLink = (value: string): boolean => {
   }
 };
 
+const isWechatMiniProgramNavigationTarget = (value: string): boolean => {
+  try {
+    const target = new URL(value, 'https://mini-program.invalid');
+    return (
+      value.startsWith('/pages/login/index?') &&
+      target.origin === 'https://mini-program.invalid' &&
+      target.pathname === '/pages/login/index' &&
+      target.searchParams.get('p') === 'signin' &&
+      /^wxm_[\w-]{16,96}$/.test(target.searchParams.get('t') || '') &&
+      /^[\w-]{43}$/.test(target.searchParams.get('c') || '') &&
+      target.searchParams.get('r') === 'webview' &&
+      [...target.searchParams.keys()].sort().join(',') === 'c,p,r,t' &&
+      !target.hash &&
+      !target.username &&
+      !target.password &&
+      !target.port
+    );
+  } catch {
+    return false;
+  }
+};
+
 const isWechatMobileStartResponse = (value: unknown): value is WechatMobileStartResponse => {
   if (!value || typeof value !== 'object') return false;
   const response = value as Partial<WechatMobileStartResponse>;
   return (
     typeof response.expiresAt === 'string' &&
     !Number.isNaN(Date.parse(response.expiresAt)) &&
+    (response.handoff === 'url_link' || response.handoff === 'mini_program_navigation') &&
     typeof response.openTarget === 'string' &&
-    isOfficialWechatUrlLink(response.openTarget) &&
+    (response.handoff === 'url_link'
+      ? isOfficialWechatUrlLink(response.openTarget)
+      : isWechatMiniProgramNavigationTarget(response.openTarget)) &&
     typeof response.pollAfterMs === 'number' &&
     response.pollAfterMs >= 500 &&
     response.pollAfterMs <= 10_000 &&
@@ -139,6 +232,7 @@ export const useSignIn = () => {
   const { t } = useTranslation('auth');
   const router = useRouter();
   const searchParams = useSearchParams();
+  const miniProgramClientQuery = searchParams.get('client') === WECHAT_MINI_PROGRAM_CLIENT;
   const enableMagicLink = useAuthServerConfigStore((s) => s.serverConfig.enableMagicLink || false);
   const disableEmailPassword = useAuthServerConfigStore(
     (s) => s.serverConfig.disableEmailPassword || false,
@@ -159,6 +253,7 @@ export const useSignIn = () => {
     phase: 'idle',
   });
   const [wechatOpenTarget, setWechatOpenTarget] = useState<null | string>(null);
+  const [wechatHandoff, setWechatHandoff] = useState<WechatMobileHandoff>('url_link');
   const [wechatPollAfterMs, setWechatPollAfterMs] = useState(1200);
   const wechatAttempt = useRef(0);
   const wechatPollInFlight = useRef<number | null>(null);
@@ -176,6 +271,14 @@ export const useSignIn = () => {
       return null;
     }
   });
+  const [isWechatMiniProgramClient] = useState(() => {
+    if (miniProgramClientQuery) return true;
+    try {
+      return sessionStorage.getItem(WECHAT_MINI_PROGRAM_CLIENT_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
   const serverConfigInit = useAuthServerConfigStore((s) => s.serverConfigInit);
   const oAuthSSOProviders = useAuthServerConfigStore((s) => s.serverConfig.oAuthSSOProviders) || [];
   const { getAdditionalData, preSocialSigninCheck, ssoProviders } = useBusinessSignin();
@@ -184,6 +287,16 @@ export const useSignIn = () => {
     const emailParam = searchParams.get('email');
     if (emailParam) form.setFieldValue('email', emailParam);
   }, [searchParams, form]);
+
+  useEffect(() => {
+    if (!miniProgramClientQuery) return;
+    try {
+      sessionStorage.setItem(WECHAT_MINI_PROGRAM_CLIENT_KEY, '1');
+    } catch {
+      // The container marker selects only a launch Adapter and grants no authority.
+    }
+    void loadWechatMiniProgramBridge().catch(() => undefined);
+  }, [miniProgramClientQuery]);
 
   useEffect(
     () => () => {
@@ -203,6 +316,15 @@ export const useSignIn = () => {
       }
     }
     setWechatOpenTarget(null);
+    setWechatHandoff('url_link');
+  };
+
+  const openWechatTarget = async (handoff: WechatMobileHandoff, target: string) => {
+    if (handoff === 'mini_program_navigation') {
+      await navigateWithinWechatMiniProgram(target);
+      return;
+    }
+    window.location.assign(target);
   };
 
   const wechatRequest = async <T>(
@@ -387,8 +509,11 @@ export const useSignIn = () => {
     clearWechatTransaction(currentWechatTransactionId);
     setWechatMobileLogin({ phase: 'preparing' });
     const callbackURL = searchParams.get('callbackUrl') || '/';
+    const handoff: WechatMobileHandoff = isWechatMiniProgramClient
+      ? 'mini_program_navigation'
+      : 'url_link';
     const result = await wechatRequest<WechatMobileStartResponse>('/api/auth/wechat-mobile/start', {
-      body: { callbackURL },
+      body: { callbackURL, handoff },
       controller,
     });
     if (wechatStartAbort.current === controller) wechatStartAbort.current = null;
@@ -416,13 +541,25 @@ export const useSignIn = () => {
     }
     // openTarget contains the completion capability and must remain transient page memory only.
     setWechatOpenTarget(result.data.openTarget);
+    setWechatHandoff(result.data.handoff);
     setWechatPollAfterMs(result.data.pollAfterMs);
     setWechatMobileLogin({
       expiresAt: result.data.expiresAt,
       phase: openAfterPrepare ? 'waiting' : 'prepared',
       transactionId: result.data.transactionId,
     });
-    if (openAfterPrepare) window.location.assign(result.data.openTarget);
+    if (openAfterPrepare) {
+      try {
+        await openWechatTarget(result.data.handoff, result.data.openTarget);
+      } catch {
+        if (attempt !== wechatAttempt.current) return;
+        setWechatMobileLogin({
+          expiresAt: result.data.expiresAt,
+          phase: 'prepared',
+          transactionId: result.data.transactionId,
+        });
+      }
+    }
   };
 
   const retryWechatMobileLogin = async () => {
@@ -449,16 +586,22 @@ export const useSignIn = () => {
     await prepareWechatMobileLogin(true);
   };
 
-  const openPreparedWechat = () => {
+  const openPreparedWechat = async () => {
     if (
       (wechatMobileLogin.phase !== 'prepared' && wechatMobileLogin.phase !== 'waiting') ||
       !wechatOpenTarget
     )
       return;
     const target = wechatOpenTarget;
+    const attempt = wechatAttempt.current;
     setWechatMobileLogin({ ...wechatMobileLogin, phase: 'waiting' });
-    // This fallback remains synchronous when automatic URL-Link navigation was blocked.
-    window.location.assign(target);
+    // Keep the same target available when automatic handoff was blocked.
+    try {
+      await openWechatTarget(wechatHandoff, target);
+    } catch {
+      if (attempt !== wechatAttempt.current) return;
+      setWechatMobileLogin({ ...wechatMobileLogin, phase: 'prepared' });
+    }
   };
 
   const cancelWechatMobile = async () => {
@@ -724,7 +867,13 @@ export const useSignIn = () => {
     }
   };
 
-  const resolvedProviders = enableBusinessFeatures ? ssoProviders : oAuthSSOProviders;
+  const configuredProviders = enableBusinessFeatures ? ssoProviders : oAuthSSOProviders;
+  // A Mini Program WebView may navigate only within verified business domains.
+  // Keep external OAuth providers out of this surface until their return journey
+  // has a separately accepted in-container Adapter.
+  const resolvedProviders = isWechatMiniProgramClient
+    ? configuredProviders.filter((provider) => normalizeProviderId(provider) === 'wechat')
+    : configuredProviders;
   const sortedProviders = lastAuthProvider
     ? [...resolvedProviders].sort((a, b) => {
         if (a === lastAuthProvider) return -1;

@@ -1,14 +1,34 @@
-# AskCore WeChat Login Bridge
+# AskCore Mini Program Web Workspace
 
-## Final-function candidate after the 1.0.1 experience version
+## Review-recovery candidate after the 1.0.5 rejection
+
+The Mini Program now has two explicit entry paths. Direct, search and ordinary
+open start at `pages/home/index`, a full-page WebView of the AskCore sign-in and
+home experience. A Safari/Chrome WeChat login still uses a server-generated URL
+Link that explicitly opens `pages/login/index`; changing the default page does
+not redirect that browser journey through the WebView.
+
+Inside the WebView, the AskCore WeChat button starts the same five-minute
+Better Auth transaction with the `mini_program_navigation` Adapter. The website
+uses the official Mini Program JS bridge to open `pages/login/index`; successful
+native confirmation automatically navigates back to the retained WebView,
+which consumes the standard Better Auth session. No native user table, second
+session type or review-only success path is added.
+
+Production requires both `https://askcore.cn` entries in the platform console:
+
+- request legal domain, for the native `wx.request` confirmation;
+- verified business domain, for the full-page `web-view`.
+
+## Historical candidate after the 1.0.1 experience version
 
 The first review opened the mini-program without a website transaction and
-received `链接已失效`. Direct entry now shows usage/privacy guidance and an
-explicit action to copy the public website address; it does not request a
-WeChat code or pretend the user is authorized. Invalid supplied transactions
-still fail closed. A fresh website-issued Scheme request can display its confirm
-button, and only server `state=authorized` produces normal-flow success. Rebind
-success means proof submitted, not a new browser login or an account merge.
+received `链接已失效`. A later historical candidate replaced that with
+copy-public-website guidance, but 1.0.5 was rejected as pure diversion.
+T148-134 supersedes that direct-entry design with the WebView above. Invalid
+protected login input still fails closed, and only server `state=authorized`
+produces normal-flow success. Rebind success means proof submitted, not a new
+browser login or an account merge.
 
 The uploaded **1.0.1 experience version** contained a separate, clearly
 labelled prepublication manual-code authorization check. Its genuine phone
@@ -32,9 +52,10 @@ Official references: [restricted-access rejection criteria](https://developers.w
 [custom-condition device preview](https://developers.weixin.qq.com/miniprogram/dev/devtools/different.html),
 and [review screenshots/video](https://developers.weixin.qq.com/doc/oplatform/openApi/OpenApiDoc/miniprogram-management/code-management/submitAudit.html).
 
-This directory is the complete native mini-program uploaded for P148. It is a
-private login bridge, not a public product surface. It requests no avatar,
-nickname, phone, location, or profile scope. The only provider call is
+This directory is the complete native mini-program uploaded for P148. Its
+default page is the AskCore web product surface; the protected native page is
+the WeChat login Adapter. It requests no avatar, nickname, phone, location, or
+profile scope. The only provider call is
 `wx.login`; the only AskCore payload is the one-time WeChat code plus the
 server-issued transaction and completion capability.
 
@@ -53,7 +74,9 @@ server's ignored `.env/lobehub.secret` as
 Configure and verify all of the following before publication:
 
 - request domain: `https://askcore.cn`;
-- page path: `pages/login/index`;
+- URL Link page path: `pages/login/index`;
+- default direct-entry page: `pages/home/index`;
+- business domain: `https://askcore.cn`;
 - privacy purpose: login identity confirmation only;
 - name search disabled and no public marketing entry;
 - website application and mini-program display the same Open Platform owner.
@@ -68,8 +91,9 @@ success screen, the user returns with iOS/Android system navigation.
 ## Upload sequence
 
 1. Import this directory in WeChat Developer Tools with the real AppID.
-2. Compile normally in the simulator with an empty query. Verify welcome,
-   the no-transaction help state and invalid-link state, using no real credential.
+2. Compile normally in the simulator with an empty query. Verify the AskCore
+   WebView. Then compile the explicit `pages/login/index` page with only
+   `p=invalid` and verify the invalid-link state, using no real credential.
    Do not use phone debugging or put live Scheme values in compile settings.
 3. Click **Upload**, enter a version and description, then select the uploaded
    development version in the platform console.

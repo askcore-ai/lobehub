@@ -83,12 +83,15 @@ function fixture(customUrlLinkGenerator?: WechatMobileLoginOptions['urlLinkGener
 
   const start = async (path = '/wechat-mobile/start', cookie?: string) => {
     const response = await request(path, {
-      body: path.includes('rebind') ? { channel: 'mobile' } : { callbackURL: '/chat?from=wechat' },
+      body: path.includes('rebind')
+        ? { channel: 'mobile' }
+        : { callbackURL: '/chat?from=wechat', handoff: 'url_link' },
       cookie,
     });
     expect(response.status).toBe(200);
     const prepared = await response.json();
     expect(prepared.openTarget).toBe('https://wxmpurl.cn/synthetic-runtime-link');
+    expect(prepared.handoff).toBe('url_link');
     const query = new URLSearchParams(generatedLaunchQuery);
     // Run the uploaded bridge's actual parser against the real framework response.
     const launch = bridge.parseLaunchOptions(Object.fromEntries(query));
@@ -240,7 +243,7 @@ describe('WeChat bridge through the real Better Auth handler and adapter factory
   it('fails preparation without issuing a browser binding when URL Link generation fails', async () => {
     const f = fixture(vi.fn().mockRejectedValue(new Error('provider detail')));
     const response = await f.request('/wechat-mobile/start', {
-      body: { callbackURL: '/chat?from=wechat' },
+      body: { callbackURL: '/chat?from=wechat', handoff: 'url_link' },
     });
 
     expect(response.status).toBe(503);
@@ -251,6 +254,31 @@ describe('WeChat bridge through the real Better Auth handler and adapter factory
       failureCode: 'url_link_unavailable',
       state: 'failed',
     });
+  });
+
+  it('returns a WebView-native page without calling the URL Link provider', async () => {
+    const generateUrlLink = vi.fn(async () => 'https://wxmpurl.cn/should-not-be-used');
+    const f = fixture(generateUrlLink);
+    const response = await f.request('/wechat-mobile/start', {
+      body: { callbackURL: '/', handoff: 'mini_program_navigation' },
+    });
+
+    expect(response.status).toBe(200);
+    const prepared = await response.json();
+    expect(prepared.handoff).toBe('mini_program_navigation');
+    expect(prepared.openTarget).toMatch(
+      /^\/pages\/login\/index\?c=[\w-]{43}&p=signin&r=webview&t=wxm_[\w-]+$/,
+    );
+    expect(generateUrlLink).not.toHaveBeenCalled();
+    const query = Object.fromEntries(
+      new URL(`https://mini.invalid${prepared.openTarget}`).searchParams,
+    );
+    expect(bridge.parseLaunchOptions(query)).toMatchObject({
+      purpose: 'signin',
+      returnToWebView: true,
+      transactionId: prepared.transactionId,
+    });
+    expect(cookieHeader(response)).toContain('__Host-askcore-wxm-');
   });
 
   it('finishes a real-handler manual exchange in Release A without identity or session writes', async () => {

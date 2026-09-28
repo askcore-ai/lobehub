@@ -105,7 +105,7 @@ const restart = async () => {
 const start = async (rebind = false, cookie?: string) => {
   const response = await request(
     rebind ? '/wechat-rebind/start' : '/wechat-mobile/start',
-    rebind ? { channel: 'mobile' } : { callbackURL: '/chat' },
+    rebind ? { channel: 'mobile' } : { callbackURL: '/chat', handoff: 'url_link' },
     cookie,
   );
   assert.equal(response.status, 200);

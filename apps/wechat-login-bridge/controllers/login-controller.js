@@ -7,14 +7,22 @@ function parseLaunchOptions(options) {
   const purpose = options && options.p;
   const transactionId = options && options.t;
   const completionCapability = options && options.c;
+  const returnTarget = options && options.r;
   if (
     !['signin', 'rebind'].includes(purpose) ||
     !TRANSACTION_PATTERN.test(transactionId || '') ||
-    !CAPABILITY_PATTERN.test(completionCapability || '')
+    !CAPABILITY_PATTERN.test(completionCapability || '') ||
+    ![undefined, 'webview'].includes(returnTarget) ||
+    (returnTarget === 'webview' && purpose !== 'signin')
   ) {
     throw new Error('invalid_launch');
   }
-  return Object.freeze({ completionCapability, purpose, transactionId });
+  return Object.freeze({
+    completionCapability,
+    purpose,
+    returnToWebView: returnTarget === 'webview',
+    transactionId,
+  });
 }
 
 function endpointForPurpose(purpose) {

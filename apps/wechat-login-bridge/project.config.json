@@ -2,7 +2,7 @@
   "appid": "wxed7149f982c59938",
   "compileType": "miniprogram",
   "condition": {},
-  "description": "AskCore private WeChat login bridge",
+  "description": "AskCore web workspace and WeChat login",
   "libVersion": "3.7.12",
   "miniprogramRoot": "./",
   "projectname": "askcore-wechat-login-bridge",
