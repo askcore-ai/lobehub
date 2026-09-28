@@ -257,7 +257,10 @@ function fixture(identity: { unionid: unknown } = { unionid }) {
     );
   };
   const mobile = async () => {
-    const started = await request('/wechat-mobile/start', { callbackURL: '/chat' });
+    const started = await request('/wechat-mobile/start', {
+      callbackURL: '/chat',
+      handoff: 'url_link',
+    });
     expect(started.status).toBe(200);
     const data = await started.json();
     expect(data.openTarget).toBe('https://wxmpurl.cn/synthetic-convergence-link');

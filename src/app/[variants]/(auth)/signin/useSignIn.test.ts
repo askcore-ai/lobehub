@@ -128,6 +128,7 @@ const jsonResponse = (value: unknown, status = 200) => ({
 });
 const mobileLaunch = (transactionId = 'wxm_transaction_1234') => ({
   expiresAt: '2099-01-01T00:00:00.000Z',
+  handoff: 'url_link',
   openTarget: 'https://wxmpurl.cn/synthetic-link',
   pollAfterMs: 1200,
   tabBinding: 'a'.repeat(43),
@@ -172,11 +173,13 @@ describe('useSignIn', () => {
     sessionStorage.clear();
     mockWechatMobileEnabled.value = true;
     mockSearchParamsGet.mockReturnValue(null);
+    delete (window as typeof window & { wx?: unknown }).wx;
   });
 
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    delete (window as typeof window & { wx?: unknown }).wx;
   });
 
   it('carries the prepared OAuth handle in state and keeps callback URLs secret-free', async () => {
@@ -702,6 +705,7 @@ describe('useSignIn', () => {
       mockFetch.mockResolvedValueOnce({
         json: async () => ({
           expiresAt: '2026-07-29T12:05:00.000Z',
+          handoff: 'url_link',
           openTarget: 'https://wxmpurl.cn/redacted-link',
           pollAfterMs: 1200,
           tabBinding: 'a'.repeat(43),
@@ -719,7 +723,7 @@ describe('useSignIn', () => {
       expect(mockFetch).toHaveBeenCalledWith(
         '/api/auth/wechat-mobile/start',
         expect.objectContaining({
-          body: JSON.stringify({ callbackURL: '/' }),
+          body: JSON.stringify({ callbackURL: '/', handoff: 'url_link' }),
           method: 'POST',
         }),
       );
@@ -735,6 +739,55 @@ describe('useSignIn', () => {
       expect(mockSignInSocial).not.toHaveBeenCalled();
       expect(mockSignInOauth2).not.toHaveBeenCalled();
       expect(mockPrepareRegistration).not.toHaveBeenCalled();
+    });
+
+    it('uses native Mini Program navigation from the AskCore WebView', async () => {
+      useMobileNavigator();
+      mockSearchParamsGet.mockImplementation((key: string) =>
+        key === 'client' ? 'wechat-mini-program' : null,
+      );
+      const navigateTo = vi.fn(({ success }) => success());
+      (window as typeof window & { wx?: unknown }).wx = { miniProgram: { navigateTo } };
+      const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+      const openTarget = `/pages/login/index?c=${'c'.repeat(
+        43,
+      )}&p=signin&r=webview&t=wxm_transaction_1234`;
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          ...mobileLaunch(),
+          handoff: 'mini_program_navigation',
+          openTarget,
+        }),
+      );
+
+      const { result } = renderHook(() => useSignIn());
+
+      await act(async () => {
+        await result.current.handleSocialSignIn('wechat');
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/auth/wechat-mobile/start',
+        expect.objectContaining({
+          body: JSON.stringify({ callbackURL: '/', handoff: 'mini_program_navigation' }),
+          method: 'POST',
+        }),
+      );
+      expect(navigateTo).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ url: openTarget }),
+      );
+      expect(assign).not.toHaveBeenCalled();
+      expect(result.current.wechatMobileLogin).toEqual({
+        expiresAt: '2099-01-01T00:00:00.000Z',
+        phase: 'waiting',
+        transactionId: 'wxm_transaction_1234',
+      });
+      expect(
+        Array.from({ length: sessionStorage.length }, (_, index) =>
+          sessionStorage.getItem(sessionStorage.key(index)!),
+        ),
+      ).not.toContain(openTarget);
+      expect(result.current.oAuthSSOProviders).toEqual([]);
     });
 
     it('keeps legacy WeChat QR login on mobile while the feature gate is disabled', async () => {

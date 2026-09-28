@@ -27,6 +27,15 @@ describe('WeChat login bridge controller', () => {
     expect(() => controller.parseLaunchOptions({ ...launch, p: 'profile' })).toThrow(
       'invalid_launch',
     );
+    expect(() => controller.parseLaunchOptions({ ...launch, r: 'browser' })).toThrow(
+      'invalid_launch',
+    );
+    expect(() => controller.parseLaunchOptions({ ...launch, p: 'rebind', r: 'webview' })).toThrow(
+      'invalid_launch',
+    );
+    expect(controller.parseLaunchOptions({ ...launch, r: 'webview' })).toMatchObject({
+      returnToWebView: true,
+    });
   });
 
   it('sends only code and transient server capabilities', async () => {
@@ -82,7 +91,7 @@ describe('WeChat login bridge controller', () => {
     },
   );
 
-  it('captures a new Scheme transaction when an existing mini-program is shown again', () => {
+  it('captures a new login transaction and its return Adapter when shown again', () => {
     let app:
       | {
           globalData: {
@@ -101,13 +110,13 @@ describe('WeChat login bridge controller', () => {
     vi.resetModules();
     require('../app');
 
-    app!.onShow({ query: launch });
+    app!.onShow({ query: { ...launch, r: 'webview' } });
     expect(app!.globalData.wechatLaunch).toMatchObject({
-      options: launch,
+      options: { ...launch, r: 'webview' },
       version: 1,
     });
 
-    app!.onShow({ query: launch });
+    app!.onShow({ query: { ...launch, r: 'webview' } });
     expect(app!.globalData.wechatLaunch?.version).toBe(1);
 
     const nextLaunch = { ...launch, t: `wxm_${'c'.repeat(24)}` };

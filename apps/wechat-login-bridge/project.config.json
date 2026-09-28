@@ -2,9 +2,14 @@
   "appid": "wxed7149f982c59938",
   "compileType": "miniprogram",
   "condition": {},
-  "description": "AskCore private WeChat login bridge",
+  "description": "AskCore web workspace and WeChat login",
+  "editorSetting": {},
   "libVersion": "3.7.12",
   "miniprogramRoot": "./",
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
   "projectname": "askcore-wechat-login-bridge",
   "setting": {
     "checkInvalidKey": true,
@@ -33,10 +38,5 @@
       "outputPath": ""
     }
   },
-  "simulatorPluginLibVersion": {},
-  "packOptions": {
-    "ignore": [],
-    "include": []
-  },
-  "editorSetting": {}
+  "simulatorPluginLibVersion": {}
 }

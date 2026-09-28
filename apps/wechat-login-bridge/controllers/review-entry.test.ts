@@ -5,6 +5,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const pagePath = require.resolve('../pages/login/index.js');
+const appConfigPath = require.resolve('../app.json');
+const homePagePath = require.resolve('../pages/home/index.js');
+const sitemapPath = require.resolve('../sitemap.json');
 
 interface LoginPage {
   data: {
@@ -16,7 +19,6 @@ interface LoginPage {
     title: string;
   };
   onAuthorize: () => Promise<void>;
-  onCopyWebsite: () => void;
   onLoad: (options: Record<string, string>) => void;
   onShow: () => void;
   setData: (data: Partial<LoginPage['data']>) => void;
@@ -27,6 +29,7 @@ const loadPage = () => {
   const wxApi = {
     login: vi.fn(),
     request: vi.fn(),
+    navigateBack: vi.fn(),
     setClipboardData: vi.fn(),
     showToast: vi.fn(),
   };
@@ -72,9 +75,27 @@ describe('WeChat login bridge direct entry', () => {
     expect(app.globalData.wechatLaunch.options).toBeNull();
     expect(wxApi.login).toHaveBeenCalledOnce();
     expect(wxApi.request).toHaveBeenCalledOnce();
+    expect(wxApi.navigateBack).not.toHaveBeenCalled();
   });
 
-  it('shows welcome when App has only unrelated launch parameters', () => {
+  it('returns a successful WebView sign-in to the retained AskCore page', async () => {
+    const { page, wxApi } = loadPage();
+    wxApi.login.mockImplementation(({ success }) => success({ code: 'synthetic-code' }));
+    wxApi.request.mockImplementation(({ success }) =>
+      success({ data: { state: 'authorized' }, statusCode: 200 }),
+    );
+
+    page.onLoad({ ...launch, r: 'webview' });
+
+    await vi.waitFor(() => expect(page.data.status).toBe('authorized'));
+    expect(page.data.title).toBe('AskCore 登录成功');
+    expect(page.data.detail).toBe('正在返回 AskCore。');
+    expect(wxApi.navigateBack).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ delta: 1 }),
+    );
+  });
+
+  it('keeps the protected login page fail-closed for unrelated launch parameters', () => {
     const { page, wxApi, app } = loadPage();
     // App.onShow retains the p/t/c keys with undefined values for other query input.
     app.globalData.wechatLaunch = {
@@ -84,8 +105,8 @@ describe('WeChat login bridge direct entry', () => {
 
     page.onLoad({});
 
-    expect(page.data.status).toBe('welcome');
-    expect(page.data.title).toBe('AskCore 微信登录');
+    expect(page.data.status).toBe('failed');
+    expect(page.data.title).toBe('登录链接已失效');
     expect(wxApi.login).not.toHaveBeenCalled();
   });
 
@@ -112,14 +133,14 @@ describe('WeChat login bridge direct entry', () => {
     expect(wxApi.login).not.toHaveBeenCalled();
   });
 
-  it('opens without launch parameters as an actionable welcome, not an expired login', async () => {
+  it('opens the protected login page without parameters as an expired link', async () => {
     const { page, wxApi } = loadPage();
 
     page.onLoad({});
 
-    expect(page.data.title).not.toBe('登录链接已失效');
-    expect(page.data.status).toBe('welcome');
-    expect(page.data.detail).toBe('请从手机浏览器的 AskCore 登录页发起微信登录。');
+    expect(page.data.title).toBe('登录链接已失效');
+    expect(page.data.status).toBe('failed');
+    expect(page.data.detail).toBe('请返回 AskCore 重新登录。');
     await page.onAuthorize();
     expect(wxApi.login).not.toHaveBeenCalled();
     expect(wxApi.request).not.toHaveBeenCalled();
@@ -137,17 +158,14 @@ describe('WeChat login bridge direct entry', () => {
     expect(wxApi.request).not.toHaveBeenCalled();
   });
 
-  it('copies only the public website address on an explicit action', () => {
+  it('does not expose a clipboard redirect from the protected login page', () => {
     const { page, wxApi } = loadPage();
     page.onLoad({});
+
     expect(wxApi.setClipboardData).not.toHaveBeenCalled();
-
-    page.onCopyWebsite();
-
-    expect(wxApi.setClipboardData).toHaveBeenCalledWith(
-      expect.objectContaining({ data: 'https://askcore.cn' }),
-    );
     expect(wxApi.login).not.toHaveBeenCalled();
+    expect(readFileSync(pagePath, 'utf8')).not.toContain('setClipboardData');
+    expect(readFileSync(pagePath.replace(/\.js$/, '.wxml'), 'utf8')).not.toContain('复制');
   });
 
   it('only confirms a valid request after a tap and distinguishes identity proof', async () => {
@@ -254,5 +272,23 @@ describe('WeChat login bridge direct entry', () => {
     expect(template).not.toContain('class="steps"');
     expect(template).not.toContain('class="privacy"');
     expect(template).not.toContain('class="success"');
+  });
+
+  it('uses the AskCore WebView as default product entry and keeps login protected', () => {
+    const appConfig = JSON.parse(readFileSync(appConfigPath, 'utf8'));
+    const homePage = readFileSync(homePagePath, 'utf8');
+    const homeTemplate = readFileSync(homePagePath.replace(/\.js$/, '.wxml'), 'utf8');
+    const sitemap = JSON.parse(readFileSync(sitemapPath, 'utf8'));
+
+    expect(appConfig.pages).toEqual(['pages/home/index', 'pages/login/index']);
+    expect(homePage).toContain(
+      'https://askcore.cn/signin?client=wechat-mini-program&callbackUrl=%2F',
+    );
+    expect(homeTemplate.trim()).toBe('<web-view src="{{src}}"></web-view>');
+    expect(homePage).not.toContain('wx.login');
+    expect(sitemap.rules).toEqual([
+      { action: 'allow', page: 'pages/home/index' },
+      { action: 'disallow', page: 'pages/login/index' },
+    ]);
   });
 });

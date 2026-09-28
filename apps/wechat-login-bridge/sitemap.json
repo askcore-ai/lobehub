@@ -1,9 +1,13 @@
 {
-  "desc": "AskCore login bridge is reachable only through a server-issued Scheme.",
+  "desc": "AskCore product surface and protected WeChat login page.",
   "rules": [
     {
+      "action": "allow",
+      "page": "pages/home/index"
+    },
+    {
       "action": "disallow",
-      "page": "*"
+      "page": "pages/login/index"
     }
   ]
 }

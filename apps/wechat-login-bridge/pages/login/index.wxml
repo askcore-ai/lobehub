@@ -12,12 +12,5 @@
     >
       {{actionText}}
     </button>
-    <button
-      wx:if="{{status === 'welcome' || status === 'failed'}}"
-      class="primary"
-      bindtap="onCopyWebsite"
-    >
-      复制 AskCore 网址
-    </button>
   </view>
 </view>

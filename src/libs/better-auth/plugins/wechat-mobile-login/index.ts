@@ -60,6 +60,7 @@ export interface WechatMobileLoginOptions {
 
 const transactionId = z.string().min(8).max(128);
 const capability = z.string().length(43);
+const mobileHandoff = z.enum(['mini_program_navigation', 'url_link']);
 
 const normalizeCallback = (callbackURL: string, appURL: string): string => {
   const base = new URL(appURL);
@@ -74,13 +75,26 @@ const miniProgramQuery = (
   purpose: 'rebind' | 'signin',
   transactionIdValue: string,
   completionCapability: string,
+  returnTarget?: 'webview',
 ): string => {
   return new URLSearchParams({
     c: completionCapability,
     p: purpose,
+    ...(returnTarget ? { r: returnTarget } : {}),
     t: transactionIdValue,
   }).toString();
 };
+
+const miniProgramNavigationTarget = (
+  transactionIdValue: string,
+  completionCapability: string,
+): string =>
+  `/pages/login/index?${miniProgramQuery(
+    'signin',
+    transactionIdValue,
+    completionCapability,
+    'webview',
+  )}`;
 
 const publicState = (transaction: WechatMobileTransaction) => ({
   ...(transaction.failureCode ? { reason: transaction.failureCode } : {}),
@@ -467,7 +481,10 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
       startWechatMobileLogin: createAuthEndpoint(
         '/wechat-mobile/start',
         {
-          body: z.object({ callbackURL: z.string().min(1).max(2048) }),
+          body: z.object({
+            callbackURL: z.string().min(1).max(2048),
+            handoff: mobileHandoff,
+          }),
           method: 'POST',
         },
         async (ctx) => {
@@ -483,17 +500,23 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
             initiatingUserId: session?.user.id,
             purpose: 'signin',
           });
-          const generatedOpenTarget = await generateUrlLink({
-            expiresAt: created.transaction.expiresAt,
-            query: miniProgramQuery(
-              'signin',
-              created.transaction.id,
-              created.capabilities.completionCapability,
-            ),
-          }).catch(async () => {
-            await store.failPreparation(created.transaction.id, 'url_link_unavailable');
-            endpointError('SERVICE_UNAVAILABLE', 'WECHAT_URL_LINK_UNAVAILABLE');
-          });
+          const generatedOpenTarget =
+            ctx.body.handoff === 'url_link'
+              ? await generateUrlLink({
+                  expiresAt: created.transaction.expiresAt,
+                  query: miniProgramQuery(
+                    'signin',
+                    created.transaction.id,
+                    created.capabilities.completionCapability,
+                  ),
+                }).catch(async () => {
+                  await store.failPreparation(created.transaction.id, 'url_link_unavailable');
+                  endpointError('SERVICE_UNAVAILABLE', 'WECHAT_URL_LINK_UNAVAILABLE');
+                })
+              : miniProgramNavigationTarget(
+                  created.transaction.id,
+                  created.capabilities.completionCapability,
+                );
           await ctx.setSignedCookie(
             signedCookieName(created.transaction.id),
             created.capabilities.browserCookie,
@@ -509,6 +532,7 @@ export const wechatMobileLogin = (options: WechatMobileLoginOptions): BetterAuth
           return ctx.json(
             {
               expiresAt: created.transaction.expiresAt.toISOString(),
+              handoff: ctx.body.handoff,
               openTarget: generatedOpenTarget,
               pollAfterMs: WECHAT_MOBILE_POLL_AFTER_MS,
               tabBinding: created.capabilities.tabBinding,

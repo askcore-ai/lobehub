@@ -16,10 +16,10 @@ Page({
   data: {
     actionText: '确认登录',
     busy: false,
-    detail: '请从手机浏览器的 AskCore 登录页发起微信登录。',
-    invalid: false,
-    status: 'welcome',
-    title: 'AskCore 微信登录',
+    detail: '请返回 AskCore 重新登录。',
+    invalid: true,
+    status: 'failed',
+    title: '登录链接已失效',
   },
 
   applyLaunchOptions(options) {
@@ -27,10 +27,10 @@ Page({
       launch = null;
       this.setData({
         busy: false,
-        detail: '请从手机浏览器的 AskCore 登录页发起微信登录。',
-        invalid: false,
-        status: 'welcome',
-        title: 'AskCore 微信登录',
+        detail: '请返回 AskCore 重新登录。',
+        invalid: true,
+        status: 'failed',
+        title: '登录链接已失效',
       });
       return;
     }
@@ -86,14 +86,6 @@ Page({
     if (launch && launch.purpose === 'signin') void this.onAuthorize();
   },
 
-  onCopyWebsite() {
-    wx.setClipboardData({
-      data: 'https://askcore.cn',
-      fail: () => wx.showToast({ icon: 'none', title: '请在浏览器输入 askcore.cn' }),
-      success: () => wx.showToast({ icon: 'none', title: '已复制，请在浏览器中打开' }),
-    });
-  },
-
   async onAuthorize() {
     if (!launch || this.data.busy || this.data.status !== 'ready') return;
     const currentLaunch = launch;
@@ -112,15 +104,24 @@ Page({
       }
       if (launch !== currentLaunch) return;
       launch = null;
+      const returnToWebView = currentLaunch.purpose === 'signin' && currentLaunch.returnToWebView;
       this.setData({
         busy: false,
         detail:
           currentLaunch.purpose === 'rebind'
             ? '请返回原浏览器查看结果。'
-            : '请返回原浏览器，继续使用 AskCore。',
+            : returnToWebView
+              ? '正在返回 AskCore。'
+              : '请返回原浏览器，继续使用 AskCore。',
         status: 'authorized',
         title: currentLaunch.purpose === 'rebind' ? '身份验证已提交' : 'AskCore 登录成功',
       });
+      if (returnToWebView) {
+        wx.navigateBack({
+          delta: 1,
+          fail: () => this.setData({ detail: '请返回 AskCore 首页继续使用。' }),
+        });
+      }
     } catch (error) {
       if (launch !== currentLaunch) return;
       const retryable = ['askcore_unavailable', 'wx_login_failed'].includes(error.message);

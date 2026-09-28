@@ -50,11 +50,16 @@ class SyntheticTransaction {
 const verifySourceBoundary = async () => {
   const signIn = await read('src/app/[variants]/(auth)/signin/useSignIn.ts');
   const plugin = await read('src/libs/better-auth/plugins/wechat-mobile-login/index.ts');
-  const endpointSecurity = await read('src/libs/better-auth/plugins/wechat-mobile-login/endpoint-security.ts');
+  const endpointSecurity = await read(
+    'src/libs/better-auth/plugins/wechat-mobile-login/endpoint-security.ts',
+  );
   const store = await read('src/libs/better-auth/plugins/wechat-mobile-login/transaction-store.ts');
   const bridge = await read('apps/wechat-login-bridge/controllers/login-controller.js');
   const bridgeApp = await read('apps/wechat-login-bridge/app.js');
   const bridgePage = await read('apps/wechat-login-bridge/pages/login/index.js');
+  const bridgeHome = await read('apps/wechat-login-bridge/pages/home/index.js');
+  const bridgeHomeTemplate = await read('apps/wechat-login-bridge/pages/home/index.wxml');
+  const bridgeConfig = JSON.parse(await read('apps/wechat-login-bridge/app.json'));
 
   assert.match(signIn, /phase: 'prepared'/);
   assert.match(signIn, /window\.location\.assign\(target\)/);
@@ -64,6 +69,8 @@ const verifySourceBoundary = async () => {
   );
   assert.match(signIn, /sessionStorage\.setItem/);
   assert.doesNotMatch(signIn, /localStorage\.setItem\([\s\S]*openTarget/);
+  assert.match(signIn, /mini_program_navigation/);
+  assert.match(signIn, /wx\?: \{ miniProgram\?: WechatMiniProgramBridge \}/);
   assert.match(signIn, /addEventListener\('focus'/);
   assert.match(signIn, /addEventListener\('visibilitychange'/);
   assert.match(signIn, /kind: 'consume'/);
@@ -71,6 +78,8 @@ const verifySourceBoundary = async () => {
 
   assert.match(endpointSecurity, /x-askcore-wechat-tab-binding/i);
   assert.match(plugin, /confirmAccountSwitch/);
+  assert.match(plugin, /miniProgramNavigationTarget/);
+  assert.match(plugin, /handoff: mobileHandoff/);
   assert.match(plugin, /runWithTransaction/);
   assert.match(plugin, /setSessionCookie/);
   assert.match(
@@ -83,6 +92,10 @@ const verifySourceBoundary = async () => {
   assert.match(plugin, /target\.hash = fragment\.toString\(\)/);
   assert.doesNotMatch(plugin, /searchParams\.set\('transactionId'/);
   assert.match(plugin, /authorization\.searchParams\.set\('state', oauthState\)/);
+  assert.deepEqual(bridgeConfig.pages, ['pages/home/index', 'pages/login/index']);
+  assert.match(bridgeHome, /https:\/\/askcore\.cn\/signin\?client=wechat-mini-program/);
+  assert.equal(bridgeHomeTemplate.trim(), '<web-view src="{{src}}"></web-view>');
+  assert.match(bridgePage, /navigateBack/);
   assert.match(plugin, /store\.findByOauthState\(oauthState\)/);
   assert.match(plugin, /WECHAT_IDENTITY_MAINTENANCE/);
   assert.match(plugin, /transaction\.state === 'authorizing' \? 'pending'/);
