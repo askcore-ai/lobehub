@@ -169,15 +169,24 @@ describe('WeChat login bridge direct entry', () => {
     expect(wxApi.login).toHaveBeenCalledOnce();
   });
 
-  it('allows temporary failure retry but makes a rejected transaction terminal', async () => {
+  it('silently retries one temporary sign-in failure before exposing manual retry', async () => {
     const { page, wxApi } = loadPage();
-    wxApi.login.mockImplementation(({ success }) => success({ code: 'synthetic-code' }));
+    wxApi.login
+      .mockImplementationOnce(({ success }) => success({ code: 'synthetic-code-1' }))
+      .mockImplementationOnce(({ success }) => success({ code: 'synthetic-code-2' }))
+      .mockImplementationOnce(({ success }) => success({ code: 'synthetic-code-3' }));
+    wxApi.request.mockImplementationOnce(({ success }) => success({ statusCode: 503 }));
     wxApi.request.mockImplementationOnce(({ success }) => success({ statusCode: 503 }));
     wxApi.request.mockImplementationOnce(({ success }) => success({ statusCode: 409 }));
 
     page.onLoad(launch);
     await vi.waitFor(() => expect(page.data.status).toBe('ready'));
-    expect(wxApi.login).toHaveBeenCalledOnce();
+    expect(wxApi.login).toHaveBeenCalledTimes(2);
+    expect(wxApi.request).toHaveBeenCalledTimes(2);
+    expect(wxApi.request.mock.calls.map(([options]) => options.data.code)).toEqual([
+      'synthetic-code-1',
+      'synthetic-code-2',
+    ]);
     expect(page.data.status).toBe('ready');
     expect(page.data.invalid).toBe(false);
     expect(page.data.title).toBe('AskCore 登录失败');
@@ -188,7 +197,29 @@ describe('WeChat login bridge direct entry', () => {
     expect(page.data.title).toBe('AskCore 登录失败');
     expect(page.data.detail).toBe('请返回原浏览器重新发起操作。');
     await page.onAuthorize();
-    expect(wxApi.login).toHaveBeenCalledTimes(2);
+    expect(wxApi.login).toHaveBeenCalledTimes(3);
+  });
+
+  it('silently retries one wx.login failure for sign-in but never for rebind', async () => {
+    const signin = loadPage();
+    signin.wxApi.login
+      .mockImplementationOnce(({ fail }) => fail())
+      .mockImplementationOnce(({ success }) => success({ code: 'fresh-code' }));
+    signin.wxApi.request.mockImplementation(({ success }) =>
+      success({ data: { state: 'authorized' }, statusCode: 200 }),
+    );
+
+    signin.page.onLoad(launch);
+    await vi.waitFor(() => expect(signin.page.data.status).toBe('authorized'));
+    expect(signin.wxApi.login).toHaveBeenCalledTimes(2);
+    expect(signin.wxApi.request).toHaveBeenCalledOnce();
+
+    const rebind = loadPage();
+    rebind.wxApi.login.mockImplementation(({ fail }) => fail());
+    rebind.page.onLoad({ ...launch, p: 'rebind' });
+    await rebind.page.onAuthorize();
+    expect(rebind.page.data.status).toBe('ready');
+    expect(rebind.wxApi.login).toHaveBeenCalledOnce();
   });
 
   it('does not let a previous pending response replace a newer launch', async () => {

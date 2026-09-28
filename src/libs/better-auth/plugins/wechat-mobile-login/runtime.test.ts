@@ -166,6 +166,32 @@ afterEach(() => {
 });
 
 describe('WeChat bridge through the real Better Auth handler and adapter factory', () => {
+  it('acknowledges an exact already-authorized confirmation without another provider exchange', async () => {
+    const f = fixture();
+    const prepared = await f.start();
+    const first = await f.prove(prepared);
+    expect(first.status).toBe(200);
+    expect(await first.json()).toEqual({ state: 'authorized' });
+    const providerFetch = vi.mocked(globalThis.fetch);
+
+    const repeated = await f.request('/wechat-mobile/confirm', {
+      body: {
+        code: 'fresh-unused-one-time-code',
+        completionCapability: prepared.launch.completionCapability,
+        transactionId: prepared.transactionId,
+      },
+    });
+
+    expect(repeated.status).toBe(200);
+    expect(await repeated.json()).toEqual({ state: 'authorized' });
+    expect(providerFetch).toHaveBeenCalledOnce();
+    expect(
+      f.database.wechatMobileLoginTransaction.find(
+        (row) => row.id === prepared.transactionId,
+      ),
+    ).toMatchObject({ attemptCount: 1, state: 'authorized' });
+  });
+
   it('fails preparation without issuing a browser binding when URL Link generation fails', async () => {
     const f = fixture(vi.fn().mockRejectedValue(new Error('provider detail')));
     const response = await f.request('/wechat-mobile/start', {
