@@ -65,8 +65,11 @@ const createAuth = () =>
         mobileLoginEnabled: true,
         rebindEnabled: true,
         recoverySeconds: 60,
-        schemePath: 'pages/login/index',
         transactionTtlSeconds: 300,
+        urlLinkEnvironment: 'release',
+        urlLinkGenerator: async ({ query }) =>
+          `https://wxmpurl.cn/synthetic-runtime-link?query=${encodeURIComponent(query)}`,
+        urlLinkTrialExpiresAt: '',
         websiteAppSecret: 'synthetic-website-secret',
       }),
     ],
