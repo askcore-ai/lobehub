@@ -119,7 +119,7 @@ describe('WeChat login bridge direct entry', () => {
 
     expect(page.data.title).not.toBe('登录链接已失效');
     expect(page.data.status).toBe('welcome');
-    expect(page.data.detail).toContain('askcore.cn');
+    expect(page.data.detail).toBe('请从手机浏览器的 AskCore 登录页发起微信登录。');
     await page.onAuthorize();
     expect(wxApi.login).not.toHaveBeenCalled();
     expect(wxApi.request).not.toHaveBeenCalled();
@@ -215,7 +215,7 @@ describe('WeChat login bridge direct entry', () => {
   });
 
   it('keeps the functional page concise and avoids ambiguous authorization copy', () => {
-    const template = readFileSync(new URL('../pages/login/index.wxml', import.meta.url), 'utf8');
+    const template = readFileSync(pagePath.replace(/\.js$/, '.wxml'), 'utf8');
     const pageSource = readFileSync(pagePath, 'utf8');
 
     expect(pageSource).not.toContain('微信授权已完成');
