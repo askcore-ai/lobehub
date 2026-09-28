@@ -91,7 +91,8 @@ function fixture(customUrlLinkGenerator?: WechatMobileLoginOptions['urlLinkGener
     expect(response.status).toBe(200);
     const prepared = await response.json();
     expect(prepared.openTarget).toBe('https://wxmpurl.cn/synthetic-runtime-link');
-    expect(prepared.handoff).toBe('url_link');
+    if (path.includes('rebind')) expect(prepared.handoff).toBeUndefined();
+    else expect(prepared.handoff).toBe('url_link');
     const query = new URLSearchParams(generatedLaunchQuery);
     // Run the uploaded bridge's actual parser against the real framework response.
     const launch = bridge.parseLaunchOptions(Object.fromEntries(query));
