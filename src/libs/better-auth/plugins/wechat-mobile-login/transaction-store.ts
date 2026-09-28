@@ -6,7 +6,15 @@ export const WECHAT_MOBILE_MAX_CONFIRM_ATTEMPTS = 3;
 
 export type WechatMobilePurpose = 'prepublication' | 'rebind' | 'signin';
 export type WechatMobileTransactionState =
-  'authorized' | 'authorizing' | 'cancelled' | 'completed' | 'consumed' | 'expired' | 'failed' | 'pending' | 'proof_ready';
+  | 'authorized'
+  | 'authorizing'
+  | 'cancelled'
+  | 'completed'
+  | 'consumed'
+  | 'expired'
+  | 'failed'
+  | 'pending'
+  | 'proof_ready';
 
 export interface WechatMobileTransaction {
   accountSwitchConfirmedAt: Date | null;
@@ -97,22 +105,26 @@ export const capabilityMatches = (
 export class WechatMobileTransactionStore {
   constructor(private readonly adapter: WechatMobileDatabaseAdapter) {}
 
-  async create(input: {
-    callbackUrl: string;
-    initiatingSessionId?: string;
-    initiatingUserId?: string;
-    now?: Date;
-    rebindAccountRowId?: string;
-  } & ({ purpose: 'rebind' | 'signin' } | { purpose: 'prepublication'; reservedId: string })): Promise<{ capabilities: TransactionCapabilities; transaction: WechatMobileTransaction }> {
+  async create(
+    input: {
+      callbackUrl: string;
+      initiatingSessionId?: string;
+      initiatingUserId?: string;
+      now?: Date;
+      rebindAccountRowId?: string;
+    } & ({ purpose: 'rebind' | 'signin' } | { purpose: 'prepublication'; reservedId: string }),
+  ): Promise<{ capabilities: TransactionCapabilities; transaction: WechatMobileTransaction }> {
     const now = input.now ?? new Date();
-    const transactionId = input.purpose === 'prepublication'
-      ? input.reservedId
-      : `wxm_${randomBytes(18).toString('base64url')}`;
+    const transactionId =
+      input.purpose === 'prepublication'
+        ? input.reservedId
+        : `wxm_${randomBytes(18).toString('base64url')}`;
     const browserCookie = capability();
     const tabBinding = capability();
-    const completionCapability = input.purpose === 'prepublication'
-      ? randomBytes(10).toString('hex').toUpperCase()
-      : capability();
+    const completionCapability =
+      input.purpose === 'prepublication'
+        ? randomBytes(10).toString('hex').toUpperCase()
+        : capability();
     const oauthState = capability();
     const transaction = await this.adapter.create<WechatMobileTransaction>({
       data: {
@@ -270,11 +282,7 @@ export class WechatMobileTransactionStore {
       !current ||
       current.purpose !== input.purpose ||
       current.expiresAt <= now ||
-      !capabilityMatches(
-        'completion',
-        input.completionCapability,
-        current.completionCapabilityHash,
-      )
+      !capabilityMatches('completion', input.completionCapability, current.completionCapabilityHash)
     ) {
       return null;
     }
