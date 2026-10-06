@@ -1,4 +1,7 @@
 // @vitest-environment node
+import { createServer } from 'node:http';
+import { type AddressInfo } from 'node:net';
+
 import { NextRequest } from 'next/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -108,5 +111,40 @@ describe('internal school composite source authorization', () => {
 
     expect((await GET(request('moodle', 'MoodleSession=source-session'))).status).toBe(401);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('authorizes a 38-image burst without flooding the same native-session verifier', async () => {
+    let upstreamCalls = 0;
+    let sessionWork = Promise.resolve();
+    const server = createServer((_request, response) => {
+      upstreamCalls += 1;
+      // Model the native session's exclusive work using real HTTP connections.
+      sessionWork = sessionWork.then(async () => {
+        if (response.destroyed) return;
+        await new Promise((resolve) => setTimeout(resolve, 110));
+        if (!response.destroyed) response.writeHead(204).end();
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as AddressInfo).port;
+    process.env.ASKCORE_MOODLE_SESSION_VERIFY_URL =
+      `http://127.0.0.1:${port}/session.php?mode=edge`;
+    createSourceAccessProof.mockResolvedValue({ proof: 'same-current-account-proof' });
+    const { GET } = await import('./route');
+
+    try {
+      const responses = await Promise.all(
+        Array.from({ length: 38 }, () => GET(request('moodle', 'MoodleSession=source-session'))),
+      );
+      expect(responses.map((response) => response.status)).toEqual(Array(38).fill(204));
+      expect(upstreamCalls).toBe(1);
+      expect(createSourceAccessProof).toHaveBeenCalledTimes(38);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => error ? reject(error) : resolve()),
+      );
+      await sessionWork;
+    }
   });
 });
