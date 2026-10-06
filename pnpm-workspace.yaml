@@ -10,6 +10,9 @@ onlyBuiltDependencies:
   - '@vercel/speed-insights'
 
 overrides:
+  '@lobehub/charts': 5.2.1
+  '@lobehub/icons': 5.10.0
+  '@lobehub/ui': 5.23.5
   jose: ^6.1.3
   stylelint-config-clean-order: 7.0.0
   pdfjs-dist: 5.4.530
