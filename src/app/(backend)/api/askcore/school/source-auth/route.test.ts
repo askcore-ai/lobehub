@@ -136,7 +136,7 @@ describe('internal school composite source authorization', () => {
       const responses = await Promise.all(
         Array.from({ length: 38 }, () => GET(request('moodle', 'MoodleSession=source-session'))),
       );
-      expect(responses.map((response) => response.status)).toEqual(new Array<number>(38).fill(204));
+      expect(responses.map((response) => response.status)).toEqual(Array.from({ length: 38 }, () => 204));
       expect(upstreamCalls).toBe(1);
       expect(createSourceAccessProof).toHaveBeenCalledTimes(38);
     } finally {
