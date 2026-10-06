@@ -46,11 +46,12 @@ export function defineConfig(config: CustomNextConfig) {
               // Ensure native bindings are included in standalone output.
               // `@napi-rs/canvas` is loaded via dynamic `require()` (see packages/file-loaders),
               // which may not be picked up by Next.js output tracing.
-              'node_modules/@napi-rs/canvas/**/*',
-              'node_modules/@napi-rs/canvas-*/**/*',
-              // pnpm real package locations (including platform-specific bindings with `.node`)
-              'node_modules/.pnpm/@napi-rs+canvas*/**/*',
-              'node_modules/.pnpm/@napi-rs+canvas-*/**/*',
+              // Trace runtime files explicitly: broad pnpm trees also match package
+              // symlink directories, which Turbopack cannot emit as file assets.
+              'node_modules/@napi-rs/canvas/{*.js,package.json}',
+              'node_modules/@napi-rs/canvas-*/{*.node,package.json}',
+              'node_modules/.pnpm/@napi-rs+canvas@*/node_modules/@napi-rs/canvas/{*.js,package.json}',
+              'node_modules/.pnpm/@napi-rs+canvas-*/node_modules/@napi-rs/canvas-*/{*.node,package.json}',
             ]
           : []),
       ],
