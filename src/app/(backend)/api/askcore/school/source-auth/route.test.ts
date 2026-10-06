@@ -142,9 +142,108 @@ describe('internal school composite source authorization', () => {
     } finally {
       server.closeAllConnections();
       await new Promise<void>((resolve, reject) =>
-        server.close((error) => error ? reject(error) : resolve()),
+        server.close((error) => {
+          if (error) reject(error);
+          else resolve();
+        }),
       );
       await sessionWork;
     }
+  });
+
+  it.each(['proof', 'cookie', 'target'] as const)(
+    'keeps concurrent requests with a different %s independent',
+    async (difference) => {
+      const firstTarget = 'http://native.local/session.php?mode=edge';
+      process.env.ASKCORE_MOODLE_SESSION_VERIFY_URL = firstTarget;
+      createSourceAccessProof
+        .mockResolvedValueOnce({ proof: 'account-one-proof' })
+        .mockResolvedValueOnce({
+          proof: difference === 'proof' ? 'account-two-proof' : 'account-one-proof',
+        });
+      const releases: Array<() => void> = [];
+      const fetchMock = vi.fn<typeof fetch>(() => new Promise<Response>((resolve) => {
+        const status = releases.length === 0 ? 204 : 403;
+        releases.push(() => resolve(new Response(null, { status })));
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+      const { GET } = await import('./route');
+      const first = GET(request('moodle', 'MoodleSession=first-session'));
+      if (difference === 'target') {
+        process.env.ASKCORE_MOODLE_SESSION_VERIFY_URL = 'http://other-native.local/session.php?mode=edge';
+      }
+      const second = GET(request('moodle', difference === 'cookie'
+        ? 'MoodleSession=second-session' : 'MoodleSession=first-session'));
+      try {
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+      } finally {
+        releases.forEach((release) => release());
+      }
+      expect((await first).status).toBe(204);
+      expect((await second).status).toBe(403);
+      expect(createSourceAccessProof).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it('checks the source again after a completed decision and observes revocation', async () => {
+    process.env.ASKCORE_MOODLE_SESSION_VERIFY_URL = 'http://native.local/session.php?mode=edge';
+    createSourceAccessProof.mockResolvedValue({ proof: 'same-current-account-proof' });
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 403 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { GET } = await import('./route');
+    expect((await GET(request('moodle', 'MoodleSession=source-session'))).status).toBe(204);
+    expect((await GET(request('moodle', 'MoodleSession=source-session'))).status).toBe(403);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(createSourceAccessProof).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears a shared verifier failure and freshly checks recovery', async () => {
+    process.env.ASKCORE_MOODLE_SESSION_VERIFY_URL = 'http://native.local/session.php?mode=edge';
+    createSourceAccessProof.mockResolvedValue({ proof: 'same-current-account-proof' });
+    let rejectVerification: (error: Error) => void = () => {};
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockImplementationOnce(() => new Promise<Response>((_resolve, reject) => {
+        rejectVerification = reject;
+      }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { GET } = await import('./route');
+    const first = GET(request('moodle', 'MoodleSession=source-session'));
+    const second = GET(request('moodle', 'MoodleSession=source-session'));
+    try {
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    } finally {
+      rejectVerification(new Error('native verifier timed out'));
+    }
+    expect((await first).status).toBe(503);
+    expect((await second).status).toBe(503);
+    expect((await GET(request('moodle', 'MoodleSession=source-session'))).status).toBe(204);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(createSourceAccessProof).toHaveBeenCalledTimes(3);
+  });
+
+  it('checks each current account before it can join a pending source request', async () => {
+    process.env.ASKCORE_MOODLE_SESSION_VERIFY_URL = 'http://native.local/session.php?mode=edge';
+    createSourceAccessProof
+      .mockResolvedValueOnce({ proof: 'current-account-proof' })
+      .mockRejectedValueOnce(new TestSchoolSessionRequiredError());
+    let release: () => void = () => {};
+    const fetchMock = vi.fn<typeof fetch>(() => new Promise<Response>((resolve) => {
+      release = () => resolve(new Response(null, { status: 204 }));
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { GET } = await import('./route');
+    const current = GET(request('moodle', 'MoodleSession=source-session'));
+    try {
+      const signedOut = await GET(request('moodle', 'MoodleSession=source-session'));
+      expect(signedOut.status).toBe(401);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      release();
+    }
+    expect((await current).status).toBe(204);
+    expect(createSourceAccessProof).toHaveBeenCalledTimes(2);
   });
 });

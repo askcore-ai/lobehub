@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { type NextRequest, NextResponse } from 'next/server';
 
 import {
@@ -14,6 +16,7 @@ const SOURCE_HEADER = 'X-AskCore-School-Source';
 const SOURCE_COOKIE_HEADER = 'X-AskCore-Source-Cookie';
 const INTERNAL_HEADER = 'X-AskCore-Internal-Request';
 const VERIFY_TIMEOUT_MS = 3000;
+const pendingVerifications = new Map<string, Promise<number>>();
 
 const sourceFromRequest = (request: NextRequest): SchoolSourceAudience | undefined => {
   if (request.nextUrl.search || request.headers.get(INTERNAL_HEADER) !== '1') return undefined;
@@ -52,6 +55,29 @@ const verificationTarget = (source: SchoolSourceAudience) => {
   }
 };
 
+const verifySourceSession = (target: URL, cookie: string, proof: string): Promise<number> => {
+  // Share pending work only for an identical signed identity and native session.
+  // Hash the index; never retain a completed authorization decision.
+  const key = createHash('sha256').update(JSON.stringify([target.href, cookie, proof])).digest('hex');
+  const pending = pendingVerifications.get(key);
+  if (pending) return pending;
+
+  const verification = fetch(target, {
+    cache: 'no-store',
+    headers: {
+      Cookie: cookie,
+      'X-AskCore-Source-Proof': proof,
+    },
+    redirect: 'manual',
+    signal: AbortSignal.timeout(VERIFY_TIMEOUT_MS),
+  })
+    .then((response) => [204, 401, 403].includes(response.status) ? response.status : 503)
+    .catch(() => 503)
+    .finally(() => pendingVerifications.delete(key));
+  pendingVerifications.set(key, verification);
+  return verification;
+};
+
 export const GET = async (request: NextRequest) => {
   const source = sourceFromRequest(request);
   if (!source) return new NextResponse(null, { headers: noStoreHeaders, status: 404 });
@@ -67,16 +93,7 @@ export const GET = async (request: NextRequest) => {
 
   try {
     const { proof } = await createSourceAccessProof(request.headers, source);
-    const response = await fetch(target, {
-      cache: 'no-store',
-      headers: {
-        Cookie: cookie,
-        'X-AskCore-Source-Proof': proof,
-      },
-      redirect: 'manual',
-      signal: AbortSignal.timeout(VERIFY_TIMEOUT_MS),
-    });
-    const status = [204, 401, 403].includes(response.status) ? response.status : 503;
+    const status = await verifySourceSession(target, cookie, proof);
     return new NextResponse(null, { headers: noStoreHeaders, status });
   } catch (error) {
     return new NextResponse(null, {
